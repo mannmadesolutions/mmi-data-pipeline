@@ -1,0 +1,70 @@
+/**
+ * MMI Universal Column Resizer Styles
+ * 
+ * Global styles for column resizing functionality
+ * Applied to all wp-list-table and similar tables across MMI plugins
+ * 
+ * @package MMI
+ * @version 1.0.0
+ */
+
+/* Column Resizing */
+.mmi-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background-color 0.2s ease;
+}
+
+.mmi-resize-handle:hover,
+.mmi-resize-handle.resizing {
+    background: #2271b1;
+}
+
+.mmi-resizing {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+.mmi-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+.mmi-no-select {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+}
+
+/* Ensure tables with resizing have fixed layout */
+table[data-resizer-init="true"] {
+    table-layout: fixed;
+}
+
+/* Ensure headers can contain resize handles. */
+.mmi-data-table th,
+.mmi-data-table td,
+[data-mmi-resizable] th,
+[data-mmi-resizable] td {
+    position: relative;
+}
+
+/* Prevent resize handle from interfering with sortable headers */
+.mmi-data-table th.sortable .resize-handle,
+.mmi-data-table th.sortable .mmi-resize-handle,
+[data-mmi-resizable] th.sortable .resize-handle,
+[data-mmi-resizable] th.sortable .mmi-resize-handle {
+    z-index: 5;
+}
+
+/* Checkbox columns shouldn't be resizable */
+.widefat th.check-column {
+    min-width: 2.2em;
+}

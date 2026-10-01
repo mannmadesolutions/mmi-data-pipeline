@@ -1,0 +1,1139 @@
+/* ── MMI VIP — Taxonomy Mapping ─────────────────────────────────────────── */
+
+/* ── Layout wrapper ─────────────────────────────────────────────────────── */
+
+.mmi-taxmap-wrap {
+    width: 100%;
+}
+
+/* ── Page header ────────────────────────────────────────────────────────── */
+
+.mmi-taxmap-page-header {
+    margin-bottom: 1.25rem;
+}
+
+.mmi-taxmap-page-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0 0 0.4rem;
+}
+
+.mmi-taxmap-page-title .dashicons {
+    font-size: 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-taxmap-applies-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    margin: 0.6rem 0 0;
+    padding: 0.5rem 0.75rem;
+    background: #f0f6ea;
+    border: 1px solid #c3e0ad;
+    border-radius: 4px;
+    color: #2d6a14;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.mmi-taxmap-applies-note .dashicons {
+    color: var(--mmi-primary, #45852C);
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+}
+
+/* Populated client-side by updateSupplierScopedBanner() when the panel is
+   opened via a supplier row's "N mapped"/"Not mapped" quick link
+   (mmi-taxmap-toggle-cell) — the per-source companion to the Global
+   explanation above it (the former per-Import-Profile summary line that used
+   to sit here was removed 2026-08-31, see section-taxonomy-mapping.php). */
+.mmi-taxmap-supplier-summary {
+    color: #8a5a00;
+}
+
+.mmi-taxmap-supplier-summary .dashicons {
+    flex-shrink: 0;
+}
+
+/* ── Preset view buttons ────────────────────────────────────────────────── */
+
+/* ── Toolbar: filter pills + primary actions ─────────────────────────── */
+
+/* .mmi-toolbar (shared) supplies display/align-items/gap/flex-wrap/margin; this is
+   the one real local difference — filter pills left, action buttons right. */
+.mmi-taxmap-toolbar {
+    justify-content: space-between;
+}
+
+.mmi-taxmap-filter-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.mmi-taxmap-pill {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid #c3c4c7;
+    background: #fff;
+    color: #1d2327;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.mmi-taxmap-pill .dashicons {
+    font-size: 0.9rem;
+    width: 0.9rem;
+    height: 0.9rem;
+    line-height: 1;
+}
+
+.mmi-taxmap-pill.is-active {
+    background: var(--mmi-primary, #45852C);
+    border-color: var(--mmi-primary, #45852C);
+    color: #fff;
+}
+
+.mmi-taxmap-pill.is-active .dashicons {
+    color: #fff;
+}
+
+.mmi-taxmap-primary-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.mmi-taxmap-refresh-btn .dashicons,
+.mmi-taxmap-apply-btn .dashicons {
+    font-size: 1rem;
+    width: 1rem;
+    height: 1rem;
+    line-height: 1;
+}
+
+/* Advanced toggle link */
+.mmi-taxmap-advanced-toggle {
+    margin-bottom: 0.4rem;
+}
+
+.mmi-taxmap-advanced-toggle-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-family: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #646970;
+    cursor: pointer;
+    text-decoration: none;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+.mmi-taxmap-advanced-toggle-btn:hover {
+    color: var(--mmi-primary, #45852C);
+    text-decoration: underline;
+}
+
+.mmi-taxmap-advanced-toggle .dashicons {
+    font-size: 0.9rem;
+    width: 0.9rem;
+    height: 0.9rem;
+    line-height: 1;
+}
+
+.mmi-taxmap-advanced-toggle {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.mmi-taxmap-rules-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.2rem;
+    height: 1.2rem;
+    padding: 0 0.35rem;
+    border-radius: 10px;
+    background: var(--mmi-primary, #45852C);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.2rem;
+}
+
+/* ── Config panel (custom mapping) ─────────────────────────────────────── */
+
+.mmi-taxmap-config-panel {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* flex-start, not flex-end: the Source Field column has an extra
+   description line below its input that Supplier/WooCommerce Taxonomy
+   don't, so bottom-aligning the columns left every OTHER field's actual
+   select/input sitting higher than Source Field's input instead of level
+   with it. Top-aligning keeps every label at the same y-position, which
+   keeps every input/select level regardless of what optional text follows
+   underneath — see .mmi-taxmap-config-actions-spacer below for how the
+   button (no label of its own) is kept level with them too. */
+.mmi-taxmap-config-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.mmi-taxmap-config-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 180px;
+}
+
+.mmi-taxmap-config-field label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #50575e;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.mmi-taxmap-config-field input[type="text"],
+.mmi-taxmap-config-field select {
+    min-width: 180px;
+}
+
+.mmi-taxmap-config-field .description {
+    font-size: 0.75rem;
+    color: #646970;
+    margin: 0;
+}
+
+.mmi-taxmap-config-field code {
+    background: #f0f0f1;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-size: 0.8em;
+}
+
+.mmi-taxmap-config-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+/* Invisible stand-in for the label every other field has above its
+   input/select — same font-size/line-height as .mmi-taxmap-config-field
+   label, so it reserves the exact same height rather than an eyeballed
+   margin, keeping "Add to Table" level with the row's actual selects/input
+   under align-items:flex-start above. */
+.mmi-taxmap-config-actions-spacer {
+    font-size: 0.8rem;
+    line-height: normal;
+    visibility: hidden;
+}
+
+.mmi-taxmap-config-actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* ── Alias rules panel ──────────────────────────────────────────────────── */
+
+.mmi-taxmap-rules-desc {
+    margin: 0 0 1rem;
+}
+
+.mmi-taxmap-rules-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.mmi-taxmap-rules-table th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #50575e;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.mmi-taxmap-rules-table td {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid #f0f0f1;
+    vertical-align: middle;
+}
+
+.mmi-taxmap-rules-table input[type="text"],
+.mmi-taxmap-rules-table select {
+    width: 100%;
+    min-width: 100px;
+}
+
+.mmi-taxmap-rules-table .col-order {
+    width: 28px;
+    white-space: nowrap;
+}
+
+.mmi-rule-move-up,
+.mmi-rule-move-down {
+    appearance: none;
+    -webkit-appearance: none;
+    display: block;
+    width: 100%;
+    border: none;
+    background: none;
+    color: #646970;
+    cursor: pointer;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    padding: 0;
+}
+
+.mmi-rule-move-up:hover,
+.mmi-rule-move-down:hover {
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-taxmap-rules-table .col-term {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+    min-width: 160px;
+}
+
+.mmi-taxmap-rules-table .col-matches {
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: #646970;
+}
+
+.mmi-taxmap-rules-table .col-actions {
+    width: 32px;
+}
+
+.mmi-taxmap-rules-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.mmi-taxmap-rules-actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* ── Manage Variations panel ────────────────────────────────────────────
+ * Shares .mmi-taxmap-rules-table's base th/td styling above — only the
+ * column widths and toolbar are specific to this table. */
+
+.mmi-taxmap-variations-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.mmi-taxmap-variations-toolbar label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #50575e;
+}
+
+.mmi-taxmap-variations-toolbar select {
+    font-size: 0.8rem;
+    max-width: 220px;
+}
+
+.mmi-taxmap-variations-spacer {
+    flex: 1;
+}
+
+.mmi-taxmap-variations-table .col-select {
+    width: 28px;
+}
+
+.mmi-taxmap-variations-table .col-supplier,
+.mmi-taxmap-variations-table .col-taxonomy,
+.mmi-taxmap-variations-table .col-profile {
+    width: 15%;
+    white-space: nowrap;
+}
+
+.mmi-taxmap-variations-table .col-term {
+    color: #007017;
+}
+
+.mmi-taxmap-variations-table .col-actions {
+    width: 32px;
+}
+
+.mmi-taxmap-variations-empty {
+    text-align: center;
+    padding: 1rem 0;
+}
+
+.mmi-taxmap-status.status-via-rule::after {
+    content: "🔗";
+    margin-left: 0.3em;
+}
+
+/* ── Progress bar ───────────────────────────────────────────────────────── */
+
+.mmi-taxmap-progress {
+    margin-bottom: 0.75rem;
+}
+
+.mmi-taxmap-progress-bar {
+    height: 8px;
+    background: #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.35rem;
+}
+
+.mmi-taxmap-progress-fill {
+    height: 100%;
+    background: var(--mmi-primary, #45852C);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0;
+}
+
+.mmi-taxmap-progress-text {
+    font-size: 0.8rem;
+    color: #646970;
+}
+
+/* ── Notice ─────────────────────────────────────────────────────────────── */
+
+.mmi-taxmap-notice {
+    padding: 0.65rem 1rem;
+    border-radius: 4px;
+    border-left: 4px solid transparent;
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+}
+
+.mmi-taxmap-notice.is-success {
+    background: #edfaef;
+    border-color: #45852C;
+    color: #145a1a;
+}
+
+.mmi-taxmap-notice.is-error {
+    background: #fceaea;
+    border-color: #d63638;
+    color: #8a1f1f;
+}
+
+/* ── Stats bar ──────────────────────────────────────────────────────────── */
+
+.mmi-taxmap-stats {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem 1.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #e2e4e7;
+}
+
+/* Each stat is also the status filter — click to show only that subset. */
+.mmi-taxmap-stat {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: #50575e;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.mmi-taxmap-stat:hover {
+    background: var(--mmi-primary-lightest, #f0f6ed);
+}
+
+.mmi-taxmap-stat.is-active {
+    border-color: var(--mmi-primary, #45852C);
+    background: var(--mmi-primary-lightest, #f0f6ed);
+}
+
+.mmi-taxmap-stat strong {
+    font-weight: 700;
+    color: #1d2327;
+}
+
+.mmi-taxmap-stat-mapped strong {
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-taxmap-stat-unmapped strong {
+    color: #d63638;
+}
+
+.mmi-taxmap-search input[type="search"] {
+    font-size: 0.8rem;
+    padding: 3px 7px;
+    min-width: 180px;
+}
+
+/* ── Mapping table ──────────────────────────────────────────────────────── */
+
+/* Scrollable body with a sticky header — the table itself can grow taller than
+   the viewport without pushing the rest of the page (filters, stats bar) off
+   screen. Border/radius live here now since the table no longer clips its own
+   sticky thead (overflow:hidden on .mmi-taxmap-table would break position:sticky). */
+#mmi-taxmap-table-wrap {
+    overflow: auto;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    border-radius: 4px;
+    max-height: 65vh;
+}
+
+.mmi-taxmap-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.mmi-taxmap-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.mmi-taxmap-table thead tr {
+    background: #f6f7f7;
+}
+
+.mmi-taxmap-table th {
+    position: relative;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #50575e;
+    border-bottom: 2px solid #c3c4c7;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Column-resize handle — a thin draggable strip on the right edge of each
+   resizable <th>. Width is exaggerated (10px) for an easy grab target but
+   only the center renders visibly (via the inner ::after-style hover bar).
+   right: 0, not a negative offset — the th above has overflow:hidden for its
+   text-ellipsis truncation, which clips away any part of this handle drawn
+   outside the cell's own border box. A negative right here silently shrinks
+   the real clickable area to just the sliver overflow:hidden leaves visible. */
+.mmi-taxmap-th-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 10px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    z-index: 3;
+}
+
+.mmi-taxmap-th-resize::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 4px;
+    width: 2px;
+    height: 100%;
+    background: transparent;
+}
+
+.mmi-taxmap-th-resize:hover::before,
+.mmi-taxmap-th-resize.is-resizing::before {
+    background: var(--mmi-primary, #45852C);
+}
+
+.mmi-taxmap-table td {
+    padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid #f0f0f1;
+    vertical-align: middle;
+}
+
+.mmi-taxmap-table tr:last-child td {
+    border-bottom: none;
+}
+
+.mmi-taxmap-table tr.is-saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Column widths — defaults only; table-layout:fixed (below) means these are
+   real pixel/percentage allocations, not auto-content hints, and the resize
+   handles in each <th> let the user override them (persisted to localStorage,
+   see initColumnResize() in taxonomy-mapping.js). */
+.mmi-taxmap-table .col-source      { width: 14%; font-size: 0.875rem; font-weight: 500; }
+.mmi-taxmap-table .col-source-file { width: 130px; }
+.mmi-taxmap-table .col-count       { width: 80px; text-align: center; }
+.mmi-taxmap-table .col-samples     { width: 18%; }
+.mmi-taxmap-table .col-arrow       { width: 28px; text-align: center; color: #c3c4c7; }
+.mmi-taxmap-table .col-target      { width: 320px; }
+.mmi-taxmap-table .col-status      { width: 90px; }
+.mmi-taxmap-table .col-actions     { width: 80px; white-space: nowrap; }
+
+/* The term-input + chip stacking layout belongs to the body cell only — applying
+   it to th.col-target too (as a single ".col-target" rule used to) made the
+   header a flex container. Flex items default to min-width:auto, which refuses
+   to shrink "WooCommerce Term" below its intrinsic text width even though
+   table-layout:fixed had already assigned this column a fixed track — so on
+   resize, the header content kept its full natural width and visually spilled
+   into the Status column next to it. th.col-target now stays a plain table
+   cell, which respects the same overflow:hidden/ellipsis truncation every
+   other header already gets from the generic ".mmi-taxmap-table th" rule. */
+.mmi-taxmap-table td.col-target {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+}
+
+/* table-layout:fixed truncates overflowing text instead of breaking layout —
+   apply ellipsis to the columns most likely to hold long content. */
+.mmi-taxmap-table td.col-source,
+.mmi-taxmap-table td.col-samples {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmi-taxmap-count {
+    display: inline-block;
+    background: #f0f0f1;
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #50575e;
+}
+
+/* Sortable column headers */
+.mmi-taxmap-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.mmi-taxmap-table th.sortable:hover {
+    background: #ebebeb;
+}
+
+.mmi-taxmap-table th.sort-active {
+    color: var(--mmi-primary, #45852C);
+}
+
+.sort-icon {
+    display: inline;
+    font-style: normal;
+    font-size: 0.85em;
+    opacity: 0.5;
+    margin-left: 2px;
+}
+
+th.sort-active .sort-icon {
+    opacity: 1;
+}
+
+/* Source file chip */
+.mmi-taxmap-file-chip {
+    display: inline-block;
+    background: #f0f0f1;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: #50575e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+/* Source field tag — shown below the file chip */
+.mmi-taxmap-field-tag {
+    display: block;
+    font-size: 0.68rem;
+    color: #8c8f94;
+    font-family: monospace;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Sample products list */
+.mmi-taxmap-samples {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mmi-taxmap-samples li {
+    font-size: 0.75rem;
+    color: #646970;
+    line-height: 1.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+}
+
+.mmi-taxmap-samples li + li {
+    border-top: 1px solid #f0f0f1;
+    margin-top: 1px;
+    padding-top: 1px;
+}
+
+/* Taxonomy chip — colour-coded indicator of which taxonomy a row/rule/search targets.
+   Colour comes from JS via --chip-bg/--chip-text (deterministic per taxonomy slug). */
+.mmi-taxmap-taxonomy-chip {
+    display: inline-block;
+    margin-bottom: 0.3rem;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--chip-bg, var(--mmi-gray-300, #e5e5e5));
+    color: var(--chip-text, var(--mmi-gray-700, #50575e));
+}
+
+.mmi-taxmap-rule-taxonomy-chip:empty {
+    display: none;
+}
+
+/* Per-row taxonomy select — same colour-coded chip look as .mmi-taxmap-taxonomy-chip
+   above, but an actual <select> so the user can redirect a misclassified source value
+   (e.g. a category name the fixed scan profile put under Brand) to the correct
+   taxonomy instead of being stuck with whatever the scan profile assigned. */
+.mmi-taxmap-taxonomy-select {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    margin-bottom: 0.3rem;
+    padding: 1px 18px 1px 7px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--chip-bg, var(--mmi-gray-300, #e5e5e5));
+    color: var(--chip-text, var(--mmi-gray-700, #50575e));
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath fill='%2350575e' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 8px 5px;
+}
+
+.mmi-taxmap-taxonomy-select:focus {
+    outline: 2px solid var(--chip-text, var(--mmi-gray-700, #50575e));
+    outline-offset: 1px;
+}
+
+/* Term input field */
+.mmi-taxmap-term-input {
+    width: 100%;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+}
+
+.mmi-taxmap-term-input:focus {
+    border-color: var(--mmi-primary, #45852C);
+    box-shadow: 0 0 0 1px var(--mmi-primary, #45852C);
+    outline: none;
+}
+
+.mmi-taxmap-term-input:disabled {
+    background: #f6f7f7;
+    border-color: #ddd;
+    color: #aaa;
+    cursor: not-allowed;
+}
+
+/* ── Profile-specific variations ─────────────────────────────────────────
+ * A value's Global mapping (the term-search input above) always applies to
+ * every Import Profile. A variation is always this row's own, explicit,
+ * opt-in override — never a page-wide mode. See buildVariantRow() in
+ * taxonomy-mapping.js and the 2026-08-30 Incident History entry for why an
+ * earlier ambient "editing scope" selector was replaced with this. */
+
+.mmi-taxmap-variant-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    align-self: flex-start;
+    font-family: inherit;
+    font-size: 0.72rem;
+    color: #646970;
+    cursor: pointer;
+    text-decoration: none;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+.mmi-taxmap-variant-toggle .dashicons {
+    font-size: 0.85rem;
+    width: 0.85rem;
+    height: 0.85rem;
+    line-height: 1;
+}
+
+.mmi-taxmap-variant-toggle:hover {
+    color: var(--mmi-primary, #45852C);
+    text-decoration: underline;
+}
+
+/* A value with real per-profile differences reads as visibly distinct from
+   one that's the same everywhere — same badge language as .mmi-taxmap-count,
+   in the info-blue used elsewhere in this suite for "extra context" chips. */
+.mmi-taxmap-variant-toggle.has-variants {
+    color: var(--mmi-info-text, #1565c0);
+    font-weight: 600;
+}
+
+.mmi-taxmap-variant-row td {
+    background: #fafbfc;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.mmi-taxmap-variant-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 640px;
+}
+
+.mmi-taxmap-variant-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.mmi-taxmap-variant-empty {
+    font-size: 0.78rem;
+    color: #8c8f94;
+    font-style: italic;
+}
+
+.mmi-taxmap-variant-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+    background: #fff;
+    border: 1px solid #e2e4e7;
+    border-radius: 3px;
+}
+
+.mmi-taxmap-variant-profile {
+    font-weight: 600;
+    color: #1d2327;
+    min-width: 140px;
+}
+
+.mmi-taxmap-variant-item > .dashicons {
+    font-size: 0.85rem;
+    width: 0.85rem;
+    height: 0.85rem;
+    color: #c3c4c7;
+}
+
+.mmi-taxmap-variant-term {
+    flex: 1;
+    color: #007017;
+}
+
+.mmi-taxmap-variant-delete-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    width: 1.4rem;
+    height: 1.4rem;
+    border: none;
+    background: none;
+    color: #8a1f1f;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.mmi-taxmap-variant-delete-btn:hover {
+    background: #fceaea;
+}
+
+.mmi-taxmap-variant-delete-btn .dashicons {
+    font-size: 0.9rem;
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+.mmi-taxmap-variant-add {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding-top: 0.35rem;
+    border-top: 1px dashed #dcdcde;
+}
+
+.mmi-taxmap-variant-profile-select {
+    font-size: 0.8rem;
+    max-width: 180px;
+    flex-shrink: 0;
+}
+
+.mmi-taxmap-variant-add .mmi-taxmap-variant-term-input {
+    flex: 1;
+}
+
+/* Status badges */
+.mmi-taxmap-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.mmi-taxmap-status.status-mapped {
+    background: #45852C;
+    color: #fff;
+}
+
+.mmi-taxmap-status.status-unmapped {
+    background: #8a1f1f;
+    color: #fff;
+}
+
+.mmi-taxmap-status.status-skip {
+    background: var(--mmi-info-bg, #e3f2fd);
+    color: var(--mmi-info-text, #1565c0);
+}
+
+/* Row state indicators */
+.mmi-taxmap-table tr.is-mapped {
+    background: #f9fef9;
+}
+
+.mmi-taxmap-table tr.is-mapped td:first-child {
+    border-left: 3px solid rgba(0, 163, 42, 0.45);
+}
+
+.mmi-taxmap-table tr.is-skipped td:first-child {
+    text-decoration: line-through;
+    color: #8c8f94;
+}
+
+/* Action buttons in table — sizing/coloring is fully owned by the shared
+   .mmi-action-btn / .mmi-button-small / .mmi-action-btn--danger system in
+   mmi-suite-common.css (create/skip use the neutral secondary look, clear
+   uses the danger variant); this plugin no longer defines any of its own
+   color or padding rules for them. A prior version of this file had bespoke
+   overrides here (plain WP-native .button + hand-picked colors) — those were
+   removed rather than left dormant once the shared classes were added, since
+   the shared rules' !important would have silently won anyway, leaving a
+   confusing dead second copy of "what controls this button's look." */
+
+/* ── Empty + loading states ─────────────────────────────────────────────── */
+
+.mmi-taxmap-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    color: #50575e;
+    font-size: 0.9rem;
+}
+
+.mmi-taxmap-empty .dashicons {
+    font-size: 1.5rem;
+    color: #c3c4c7;
+}
+
+.mmi-taxmap-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    color: #646970;
+    font-size: 0.9rem;
+}
+
+/* ── Autocomplete dropdown ──────────────────────────────────────────────── */
+
+.mmi-taxmap-autocomplete {
+    position: fixed;
+    z-index: 99999;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+/* "Searching: Brand" banner — colour-coded to match the taxonomy chip elsewhere on the page */
+.mmi-taxmap-ac-header {
+    position: sticky;
+    top: 0;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--chip-bg, var(--mmi-gray-300, #e5e5e5));
+    color: var(--chip-text, var(--mmi-gray-700, #50575e));
+}
+
+.mmi-taxmap-autocomplete-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-item:last-child {
+    border-bottom: none;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-item:hover,
+.mmi-taxmap-autocomplete-list li.ac-item.ac-active {
+    background: var(--mmi-primary-lightest, #f0f6ed);
+}
+
+.mmi-taxmap-autocomplete-list li.ac-item .ac-name {
+    color: #1d2327;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-item .ac-count {
+    font-size: 0.72rem;
+    color: #8c8f94;
+    background: #f0f0f1;
+    border-radius: 8px;
+    padding: 1px 6px;
+}
+
+.mmi-taxmap-autocomplete-create {
+    padding: 0.45rem 0.75rem;
+    border-top: 1px solid #e2e4e7;
+}
+
+.mmi-taxmap-create-term-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.8rem;
+    color: var(--mmi-primary, #45852C);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.mmi-taxmap-create-term-btn:hover {
+    text-decoration: underline;
+}
+
+.mmi-taxmap-create-term-btn .dashicons {
+    font-size: 0.85rem;
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
+/* ── Responsive adjustments ─────────────────────────────────────────────── */
+
+@media screen and (max-width: 900px) {
+    .mmi-taxmap-config-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .mmi-taxmap-config-field {
+        min-width: unset;
+    }
+
+    .mmi-taxmap-table .col-target {
+        min-width: 140px;
+    }
+}

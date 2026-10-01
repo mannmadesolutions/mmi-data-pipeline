@@ -1,0 +1,572 @@
+/* ── MMI VIP — Duplicate Products ─────────────────────────────────────────── */
+
+.mmi-dupes-wrap {
+    width: 100%;
+}
+
+/* Page header */
+.mmi-dupes-page-header {
+    margin-bottom: 1rem;
+}
+
+.mmi-dupes-page-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.4rem;
+    font-size: 1.3rem;
+}
+
+.mmi-dupes-page-desc {
+    margin: 0;
+    color: #50575e;
+    max-width: 90ch;
+}
+
+/* Toolbar — real toolbar is shared .mmi-toolbar; this scopes its one local addition.
+   Stats bar (status filter) lives inside it, as its last child; margin-left: auto
+   pushes it to the toolbar's right edge, right next to the Reload button, while the
+   label/select/button group stays left-aligned in normal flow. */
+.mmi-toolbar .mmi-dupes-stats {
+    margin-left: auto;
+}
+
+.mmi-dupes-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0;
+    flex-wrap: wrap;
+}
+
+.mmi-dupes-stat {
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.mmi-dupes-stat.is-active {
+    border-color: var(--mmi-primary, #45852C);
+    background: #eaf4e6;
+    color: var(--mmi-primary, #45852C);
+    font-weight: 600;
+}
+
+.mmi-dupes-stat-new strong  { color: #b32d2e; }
+.mmi-dupes-stat-linked strong { color: var(--mmi-primary, #45852C); }
+
+/* Notice area */
+.mmi-dupes-notice {
+    padding: 0.6rem 0.9rem;
+    border-radius: 4px;
+    margin-bottom: 0.8rem;
+    font-size: 0.875rem;
+}
+
+.mmi-dupes-notice.notice-success { background: #eaf4e6; color: #2b5c1d; border: 1px solid #b6dba9; }
+.mmi-dupes-notice.notice-error   { background: #fcf0f1; color: #8a1f22; border: 1px solid #e6a8aa; }
+
+/* Scrollable table container — sticky header, never overflow:hidden on the
+   table itself (breaks sticky positioning). */
+#mmi-dupes-table-wrap {
+    max-height: 65vh;
+    overflow: auto;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.mmi-dupes-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.mmi-dupes-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.mmi-dupes-table thead tr {
+    background: #f6f7f7;
+}
+
+/* Queue-only selectors use `> thead` / `> tbody`: each expanded group nests a
+   .mmi-dupes-member-table inside this table, and a plain `.mmi-dupes-table th`
+   styled (and sorted) those headings too. */
+.mmi-dupes-table > thead > tr > th {
+    position: relative;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #50575e;
+    border-bottom: 2px solid #c3c4c7;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Column-resize handle — see taxonomy-mapping.css for the identical pattern
+   (and its fix: right: 0, not a negative offset — the th above has
+   overflow:hidden, which clips any part of this handle drawn outside its
+   own border box down to an all-but-unusable sliver). */
+.mmi-dupes-th-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 10px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    z-index: 3;
+}
+
+.mmi-dupes-th-resize::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 4px;
+    width: 2px;
+    height: 100%;
+    background: transparent;
+}
+
+.mmi-dupes-th-resize:hover::before,
+.mmi-dupes-th-resize.is-resizing::before {
+    background: var(--mmi-primary, #45852C);
+}
+
+.mmi-dupes-table > tbody > tr > td {
+    padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid #f0f0f1;
+    vertical-align: middle;
+}
+
+.mmi-dupes-table > tbody > tr:last-child > td {
+    border-bottom: none;
+}
+
+.mmi-dupes-row.is-saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* The whole row is the click target now (Actions column removed — see
+   duplicate-products.js's buildGroupRow()) — same hover/focus affordance
+   .mmi-profile-grid-card already uses for its own click-to-select rows. */
+.mmi-dupes-row {
+    cursor: pointer;
+}
+
+.mmi-dupes-row:hover {
+    background: #f6f9f2;
+}
+
+.mmi-dupes-row:focus-visible {
+    outline: 2px solid var(--mmi-primary, #45852C);
+    outline-offset: -2px;
+}
+
+/* Column widths — defaults only; table-layout:fixed means these are real
+   pixel/percentage allocations, overridable via the resize handles. */
+.mmi-dupes-table .col-arrow   { width: 28px; text-align: center; color: #c3c4c7; }
+.mmi-dupes-table .col-brand   { width: 16%; font-weight: 500; }
+.mmi-dupes-table .col-name    { width: 28%; }
+.mmi-dupes-table .col-members { width: 90px; text-align: center; }
+.mmi-dupes-table .col-spread  { width: 150px; }
+.mmi-dupes-table .col-source  { width: 110px; }
+.mmi-dupes-table .col-status  { width: 100px; }
+
+.mmi-dupes-table td.col-brand,
+.mmi-dupes-table td.col-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Brand/product thumbnails — prefixed before the text, see thumbHtml() in
+   duplicate-products.js. Small and inline so a missing image (most brands
+   have none) doesn't disrupt the row's normal text-only layout. */
+.mmi-dupes-brand-thumb,
+.mmi-dupes-product-thumb {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+    border-radius: 3px;
+    background: #fff;
+    border: 1px solid #e2e4e7;
+}
+
+/* Sortable column headers (queue + member tables). The shared sort arrow
+   (mmi-suite-common.css, th.sortable::after) moves left of the 10px resize
+   handle, so clicking the arrow sorts and only the handle resizes. */
+.mmi-dupes-table > thead th.sortable,
+.mmi-dupes-member-table > thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+    padding-right: 30px;
+}
+
+.mmi-dupes-table > thead th.sortable::after,
+.mmi-dupes-member-table > thead th.sortable::after {
+    right: 14px;
+}
+
+.mmi-dupes-table > thead th.sortable:hover,
+.mmi-dupes-member-table > thead th.sortable:hover {
+    background: #ebebeb;
+}
+
+.mmi-dupes-table > thead th.sort-active {
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-dupes-expand-icon {
+    transition: transform 0.15s ease;
+}
+
+.mmi-dupes-expand-icon.is-open {
+    transform: rotate(90deg);
+}
+
+/* Status badges */
+.mmi-dupes-status {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.mmi-dupes-status.status-new    { background: #fcf0f1; color: #b32d2e; }
+.mmi-dupes-status.status-linked { background: #eaf4e6; color: var(--mmi-primary, #45852C); }
+
+/* The same badge as a button (member Actions: Make Canonical / Remove), so the
+   column reads as one set with the "✓ Canonical" badge. */
+button.mmi-dupes-status--btn {
+    appearance: none;
+    border: 0;
+    margin: 0;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+button.mmi-dupes-status--btn.status-linked:hover,
+button.mmi-dupes-status--btn.status-linked:focus-visible {
+    background: #dcefda;
+}
+
+button.mmi-dupes-status--btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Source badge — distinguishes the unified queue's two origins (see
+   changelog.md 1.72.0): a real, pre-existing database link
+   vs. a freshly-detected feed-match candidate. Now the shared .mmi-badge
+   info/warning modifiers (see buildGroupRow() in duplicate-products.js). */
+
+/* Action buttons */
+.mmi-dupes-dismiss-btn {
+    color: #d63638;
+    border-color: #d63638;
+}
+
+.mmi-dupes-dismiss-btn:hover {
+    background: #fceaea;
+    color: #8a1f1f;
+    border-color: #8a1f1f;
+}
+
+/* Review row — expands below a group row to show member listings + the
+   canonical-pick / include controls. */
+.mmi-dupes-review-row td {
+    background: #fafbfb;
+    padding: 0;
+}
+
+.mmi-dupes-review-row.is-saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.mmi-dupes-review-box {
+    padding: 0.9rem 1.2rem;
+    overflow-x: auto; /* a member table widened by column resizing scrolls here */
+}
+
+.mmi-dupes-review-hint {
+    margin: 0 0 0.7rem;
+    font-size: 0.8rem;
+    color: #50575e;
+}
+
+/* Member review table — one row per candidate/linked product, uniform
+   column order shared by buildReviewRow() (candidates) and
+   buildLegacyReviewRow() (already-linked groups) in duplicate-products.js:
+   Supplier/SKU/Vendor/Cost/Product/Status, then one column per "product
+   data winner" field visible for this group (see ASSET_FIELDS), then a
+   trailing control column (Canonical+Include, or Actions). */
+.mmi-dupes-member-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid #e2e4e7;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.8rem;
+    font-size: 0.82rem;
+}
+
+.mmi-dupes-member-table thead th {
+    position: relative; /* anchors the .mmi-dupes-th-resize handle */
+    box-sizing: border-box;
+    background: #f6f7f7;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #50575e;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid #e2e4e7;
+}
+
+.mmi-dupes-member-table td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid #f0f0f1;
+    vertical-align: middle;
+}
+
+.mmi-dupes-member-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.mmi-dupes-member-table tbody tr:hover {
+    background: #fafbfb;
+}
+
+/* After a column resize (freezeMemberTable() in duplicate-products.js): fixed
+   layout, cells clip, and previews use the column's full width. */
+.mmi-dupes-member-table.is-resized {
+    table-layout: fixed;
+}
+
+.mmi-dupes-member-table.is-resized thead th,
+.mmi-dupes-member-table.is-resized td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmi-dupes-member-table.is-resized .mmi-dupes-winner-cell .mmi-dupes-winner-preview {
+    max-width: none;
+}
+
+/* Lowest non-zero cost in the group (replaces the "(lowest cost)" tag). */
+.mmi-dupes-member-table .mmi-dupes-cost--lowest {
+    color: var(--mmi-primary, #45852C);
+    font-weight: 700;
+}
+
+.mmi-dupes-member-row.is-unresolved {
+    opacity: 0.6;
+}
+
+.mmi-dupes-member-table .col-mt-canon,
+.mmi-dupes-member-table .col-mt-include {
+    text-align: center;
+    width: 70px;
+}
+
+/* Per-field "winner" cell — a radio plus a short preview of that member's
+   value for the field, or an em-dash when this member has nothing to offer
+   for it (a member legitimately having no image/description/etc. is the
+   whole reason this feature exists, not an error state). */
+.mmi-dupes-winner-cell {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.mmi-dupes-winner-cell--empty {
+    color: #c3c4c7;
+}
+
+.mmi-dupes-winner-cell .mmi-dupes-winner-preview {
+    display: block;
+    margin-top: 0.2rem;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #646970;
+    font-size: 0.75rem;
+}
+
+.mmi-dupes-asset-thumb {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 3px;
+    border: 1px solid #e2e4e7;
+    background: #fff;
+}
+
+.mmi-dupes-review-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* Legacy-group Manage panel — per-member action buttons (Make Canonical /
+   Remove) inside the trailing Actions column, on one line. */
+.mmi-dupes-member-table td .mmi-dupes-member-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+/* ── Pill-styled buttons — matches the .mmi-dupes-stat/.mmi-dupes-status
+   theme (light tinted background, colored text/border, rounded) rather
+   than the default WP .button look, per this section's own visual system. */
+.mmi-dupes-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #50575e;
+    cursor: pointer;
+}
+
+.mmi-dupes-pill-btn:hover {
+    background: #ebebeb;
+}
+
+.mmi-dupes-pill-btn--primary {
+    background: #eaf4e6;
+    border-color: var(--mmi-primary, #45852C);
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-dupes-pill-btn--primary:hover {
+    background: #dcefda;
+}
+
+.mmi-dupes-pill-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* ── Empty + loading states ───────────────────────────────────────────────── */
+
+.mmi-dupes-empty,
+.mmi-dupes-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: center;
+    padding: 2.5rem 1rem;
+    color: #50575e;
+}
+
+.mmi-dupes-empty .dashicons {
+    color: var(--mmi-primary, #45852C);
+}
+
+/* ── Detection mode select ────────────────────────────────────────────────── */
+
+.mmi-dupes-detection-label {
+    font-size: 0.85rem;
+    color: #50575e;
+    margin-right: 0.2rem;
+}
+
+.mmi-dupes-detection-select {
+    margin-right: auto;
+}
+
+/* ── Confirmed Collisions table — a deliberately simpler, non-resizable/
+   non-sortable table (see section-duplicate-products.php's own comment on
+   why: real collision groups are few, well under the ~15-row threshold that
+   would otherwise call for those features). ─────────────────────────────── */
+
+.mmi-dupes-collision-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.mmi-dupes-collision-table th,
+.mmi-dupes-collision-table td {
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid #e0e0e0;
+    text-align: left;
+    vertical-align: top;
+}
+
+.mmi-dupes-collision-table thead th {
+    background: #f6f7f7;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.mmi-collision-member {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+}
+
+.mmi-collision-detail {
+    color: #50575e;
+    font-size: 0.85rem;
+}
+
+.mmi-collision-row-highlight {
+    animation: mmi-collision-highlight-pulse 2s ease-in-out;
+}
+
+.mmi-collision-action {
+    margin-top: 0.3rem;
+}
+
+/* Canonical badge in the Confirmed Collisions table now reuses the shared
+   .mmi-dupes-status.status-linked look directly (see renderCollisionGroups()
+   in duplicate-products.js) rather than a second, bespoke color/size rule —
+   one definition of "this is the linked/canonical look," not two. */
+
+.mmi-collision-suppressed-badge {
+    color: #6b7280;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+.mmi-collision-recommended-tag {
+    font-weight: 400;
+    opacity: 0.85;
+    font-size: 0.8em;
+}
+
+@keyframes mmi-collision-highlight-pulse {
+    0%, 100% { background: transparent; }
+    30% { background: #fff3cd; }
+}

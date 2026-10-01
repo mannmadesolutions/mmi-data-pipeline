@@ -1,0 +1,65 @@
+/**
+ * Rule Builder — action settings styles (taxonomy/term/mode, price, sale
+ * dates, copy-to-meta), shared by Catalog Maintenance's Custom Rules and
+ * Product Workbench. Behavior: assets/js/rule-builder.js.
+ *
+ * Condition rows, Add Condition and the rest of the condition builder moved
+ * to mmi-suite-common.css ("Condition builder") — the suite-wide
+ * MMI_Condition_Builder component, also used by Field Mapping.
+ *
+ * @package MannMade\DataPipeline
+ */
+
+/* Action-specific extra parameters (taxonomy/term/mode, price, sale dates) —
+   only the group matching the row's currently selected action is visible,
+   toggled by updateActionParamsVisibility() in JS via data-action-types. */
+.mmi-custom-rule-params:not(:empty) {
+    margin-bottom: 8px;
+}
+
+.mmi-crp-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.mmi-crp-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #50575e;
+}
+
+.mmi-crp-group select,
+.mmi-crp-group input {
+    font-size: 13px;
+    padding: 3px 6px;
+    height: 28px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background-color: #fff;
+    color: #1d2327;
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.mmi-crp-group select:focus,
+.mmi-crp-group input:focus {
+    border-color: #45852C;
+    box-shadow: 0 0 0 1px #45852C;
+    outline: none;
+}
+
+.mmi-crp-group select:disabled,
+.mmi-crp-group input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.mmi-crp-taxonomy,
+.mmi-crp-term { min-width: 140px; flex: 0 1 180px; }
+.mmi-crp-tax-mode { min-width: 100px; flex: 0 1 110px; }
+.mmi-crp-price,
+.mmi-crp-source-field,
+.mmi-crp-meta-key { min-width: 100px; flex: 0 1 180px; }

@@ -1,0 +1,1102 @@
+/**
+ * Import Preview Styles
+ * Styles for the live import preview table with field comparisons
+ */
+
+/* ===== FORM SECTIONS ===== */
+.mmi-form-section { 
+    margin-bottom: 30px; 
+}
+
+/* Supplier Colors */
+.mmi-supplier-checkboxes { 
+    display: flex; 
+    gap: 30px; 
+    margin-top: 15px; 
+}
+
+.mmi-supplier-label { 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    cursor: pointer; 
+    padding: 10px 15px; 
+    border-radius: 6px; 
+    transition: background 0.2s; 
+}
+
+.mmi-supplier-label input[type="checkbox"] { 
+    width: 18px; 
+    height: 18px; 
+    cursor: pointer; 
+}
+
+.mmi-supplier-label:hover { 
+    background: rgba(0,0,0,0.03); 
+}
+
+.mmi-supplier-skuport { 
+    border-left: 4px solid #2271b1; 
+}
+
+.mmi-supplier-xchange { 
+    border-left: 4px solid #45852C; 
+}
+
+.mmi-supplier-plugivery { 
+    border-left: 4px solid #764ba2; 
+}
+
+/* Preview Section - Simplified */
+.mmi-preview-stats-summary {
+    padding: 8px 20px;
+    background: #f9f9f9;
+    border-bottom: 1px solid #e0e0e0;
+    display: none;
+}
+
+.mmi-preview-stats-summary.active { 
+    display: block; 
+}
+
+.mmi-preview-table-content {
+    background: white;
+    padding: 20px;
+    overflow-x: auto;
+}
+
+/* Dim the table while a scheduleRefresh debounce is in flight */
+.mmi-preview-table-content.mmi-preview-stale {
+    opacity: 0.45;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+
+/* Refresh-pending notice above the table */
+.mmi-refresh-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0f6fc;
+    border: 1px solid #c3d3e5;
+    border-radius: 4px;
+    padding: 7px 12px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #2271b1;
+}
+
+/* Initial hidden state — plain display:none, not the shared .mmi-hidden
+   (!important would block import-preview.js's later .show()/.hide() calls). */
+.mmi-refresh-notice.mmi-refresh-notice--hidden {
+    display: none;
+}
+
+.mmi-spinner-sm {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.mmi-spinner-sm svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    animation: mmi-spin 0.9s linear infinite;
+}
+
+.mmi-preview-loading { 
+    text-align: center; 
+    padding: 40px; 
+    color: #999; 
+}
+
+.mmi-preview-loading .dashicons { 
+    font-size: 32px; 
+}
+
+.mmi-preview-loading p { 
+    margin-top: 10px; 
+}
+
+/* ===== LAYOUT ===== */
+.mmi-preview-empty { 
+    text-align: center; 
+    padding: 40px; 
+    color: #999; 
+}
+
+.mmi-preview-empty .dashicons { 
+    font-size: 48px; 
+    padding-bottom: 25px;
+}
+
+.mmi-preview-empty h3 { 
+    margin-top: 15px; 
+    color: #666; 
+}
+
+.mmi-preview-empty p { 
+    margin-top: 10px; 
+}
+
+.mmi-preview-error { 
+    text-align: center; 
+    padding: 40px; 
+    color: #d63638; 
+}
+
+.mmi-preview-error .dashicons { 
+    font-size: 48px; 
+}
+
+.mmi-preview-error h3 { 
+    margin-top: 15px; 
+}
+
+.mmi-preview-error p {
+    margin-top: 10px;
+}
+
+.mmi-preview-error-list {
+    text-align: left;
+    display: inline-block;
+    margin: 10px 0;
+}
+
+.mmi-preview-error-causes {
+    margin-top: 15px;
+}
+
+.mmi-supplier-warning {
+    margin: 10px 0;
+    padding: 10px;
+}
+
+.mmi-supplier-warning-list {
+    margin: 5px 0 5px 20px;
+}
+
+.mmi-supplier-warning-note {
+    margin-top: 10px;
+}
+
+.mmi-edit-preview-banner {
+    margin: 0 0 8px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mmi-edit-preview-banner .dashicons {
+    flex-shrink: 0;
+}
+
+.mmi-clear-edits-btn {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+/* ===== SUMMARY STATS ===== */
+.mmi-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+    gap: 8px;
+    text-align: center;
+}
+
+.mmi-stat-value {
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.mmi-stat-label {
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+    margin-top: 1px;
+}
+
+.mmi-stat-total .mmi-stat-value { 
+    color: #667eea; 
+}
+
+.mmi-stat-create .mmi-stat-value { 
+    color: #45852C; 
+}
+
+.mmi-stat-update .mmi-stat-value { 
+    color: #2271b1; 
+}
+
+.mmi-stat-unchanged .mmi-stat-value { 
+    color: #999; 
+}
+
+.mmi-stat-sample .mmi-stat-value { 
+    color: #666; 
+}
+
+.mmi-stat-skipped .mmi-stat-value {
+    color: #b45309;
+}
+
+.mmi-stat-conflict .mmi-stat-value {
+    color: #d63638;
+}
+
+/* SKU Conflicts stat tile doubles as a click-to-filter toggle */
+.mmi-stat-clickable {
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+}
+
+.mmi-stat-clickable:hover {
+    border-color: rgba(214, 54, 56, 0.4);
+    background: rgba(214, 54, 56, 0.05);
+}
+
+.mmi-stat-clickable:focus-visible {
+    outline: 2px solid #d63638;
+    outline-offset: 2px;
+}
+
+.mmi-stat-clickable.mmi-stat-active {
+    border-color: #d63638;
+    background: rgba(214, 54, 56, 0.1);
+}
+
+.mmi-clear-all-conflicts-btn {
+    display: block;
+    margin: 4px auto 0;
+    padding: 1px 6px;
+    font-size: 10px;
+    line-height: 1.6;
+    color: #d63638;
+    background: #fff;
+    border: 1px solid #d63638;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.mmi-clear-all-conflicts-btn:hover {
+    background: #d63638;
+    color: #fff;
+}
+
+.mmi-clear-all-conflicts-btn:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+/* When all results are fully sampled, show the checkmark in green */
+.mmi-stats-grid.mmi-is-exact .mmi-stat-sample .mmi-stat-value {
+    color: #45852C;
+    font-size: 20px;
+}
+
+/* ===== TABLE STRUCTURE ===== */
+.mmi-table-container { 
+    overflow-x: auto;
+    /* Vertical scroll on the container so the sticky thead sticks within it
+       rather than trying to stick to the page viewport (which breaks when the
+       container has overflow-x set). max-height reserves space for the toolbar,
+       filter bar, stats row, and top/bottom pagination controls. */
+    overflow-y: auto;
+    max-height: calc(100vh - 420px);
+    min-height: 300px;
+}
+
+/* Table shell/header/cell padding, font-size, and border color come from
+   .mmi-uniform-table (import-settings.css) — added alongside this class on
+   the same <table> — not an independent copy of the same properties with a
+   different header background (#f0f0f1 vs the shared #f6f7f7) and different
+   padding (12px all-around vs the shared 9px/6px). Only what's genuinely
+   specific to resizable/sticky columns stays here. Deliberately NOT given
+   the shared --hoverable modifier — this table's row backgrounds already
+   encode real data (create/update/conflict/supplier tint, below), which a
+   flat hover color would visually contradict rather than complement. See
+   AGENTS.md's 2026-09-01 changelog. */
+.mmi-resizable-table {
+    table-layout: fixed;
+    min-width: 100%;
+}
+
+.mmi-resizable-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    /* Hairline border replacement — border doesn't render on sticky cells
+       across all browsers without this trick. */
+    box-shadow: inset 0 -1px 0 #c3c4c7;
+    overflow: hidden;
+}
+
+.mmi-resizable-table td {
+    vertical-align: top;
+    /* Matches th's own overflow:hidden above — a cell's content (e.g. a long
+       badge) must never bleed past its column into the next one. Doesn't
+       restrict normal vertical wrapping/multi-line content within the cell's
+       own natural height, only horizontal overflow beyond the column width. */
+    overflow: hidden;
+}
+
+/* Column Widths */
+.mmi-col-source { 
+    width: 100px; 
+}
+
+.mmi-col-status { 
+    width: 160px; 
+}
+
+.mmi-col-id { 
+    width: 80px; 
+}
+
+.mmi-col-name { 
+    width: 250px; 
+}
+
+.mmi-col-key { 
+    width: 150px; 
+}
+
+/* Column Resizer */
+.col-resizer { 
+    position: absolute; 
+    top: 0; 
+    right: 0; 
+    width: 5px; 
+    height: 100%; 
+    cursor: col-resize; 
+    user-select: none; 
+    background: transparent; 
+    z-index: 10; 
+}
+
+.col-resizer:hover {
+    background: rgba(69, 133, 44, 0.3);
+}
+
+/* ===== ROW COLORS BY SUPPLIER ===== */
+.mmi-row-create { 
+    border-top: 2px solid #e0e0e0; 
+}
+
+.mmi-row-update { 
+    border-top: 2px solid #e0e0e0; 
+}
+
+.mmi-row-unchanged {
+    border-top: 2px solid #e0e0e0;
+}
+
+/* SKU-conflict rows: red tint overrides supplier tints so doomed creates stand out */
+.mmi-row-conflict,
+.mmi-row-conflict.mmi-row-skuport,
+.mmi-row-conflict.mmi-row-xchange,
+.mmi-row-conflict.mmi-row-plugivery {
+    border-top: 2px solid #e0e0e0;
+    background: rgba(214, 54, 56, 0.06);
+}
+
+.mmi-conflict-link {
+    color: #d63638;
+}
+
+/* Conflicting product's title, shown directly under the #id link so the
+   user doesn't have to hover to see which existing product is blocking
+   this create. */
+.mmi-conflict-name {
+    margin-top: 2px;
+    font-size: 11px;
+    color: #8a1f21;
+    line-height: 1.3;
+    max-width: 140px;
+}
+
+/* Per-row "Clear" button on a SKU-conflict row's status cell — dismisses
+   just that one conflict warning. */
+.mmi-conflict-clear-btn {
+    display: block;
+    margin-top: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    color: #d63638;
+    background: #fff;
+    border: 1px solid #d63638;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.mmi-conflict-clear-btn:hover {
+    background: #d63638;
+    color: #fff;
+}
+
+.mmi-conflict-clear-btn:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+/* Supplier row colors - subtle tint */
+.mmi-row-skuport { 
+    background: rgba(34, 113, 177, 0.03); 
+}
+
+.mmi-row-xchange { 
+    background: rgba(0, 163, 42, 0.03); 
+}
+
+.mmi-row-plugivery { 
+    background: rgba(118, 75, 162, 0.03); 
+}
+
+/* Combined with action colors */
+.mmi-row-create.mmi-row-skuport { 
+    background: linear-gradient(90deg, rgba(34, 113, 177, 0.08) 0%, rgba(0, 163, 42, 0.08) 100%); 
+}
+
+.mmi-row-create.mmi-row-xchange { 
+    background: #fff; 
+}
+
+.mmi-row-create.mmi-row-plugivery { 
+    background: #fff; }
+
+.mmi-row-update.mmi-row-skuport { 
+    background: #fff; }
+
+.mmi-row-update.mmi-row-xchange { 
+    background: #fff; 
+}
+
+.mmi-row-update.mmi-row-plugivery { 
+    background: #fff; 
+}
+
+.mmi-row-unchanged.mmi-row-skuport { 
+    background: #fff; 
+}
+
+.mmi-row-unchanged.mmi-row-xchange { 
+    background: #fff; 
+}
+
+.mmi-row-unchanged.mmi-row-plugivery { 
+    background: #fff; 
+}
+
+/* ===== BADGES ===== */
+/* Renamed from bare `.mmi-badge` (2026-09-20) — that name collides with the
+   real shared component mmi-suite-common.css defines. Checked every real
+   usage across this plugin's 8 consuming files before renaming rather than
+   deleting or scoping: several (`.mmi-stock-pill`, `.mmi-group-mapped-chip`,
+   `.mmi-field-not-mapped-pill`, `.mmi-action-badge`, `.mmi-code-pill--*`)
+   are self-sufficient companion classes that explicitly combine with the
+   real SHARED `.mmi-badge` + `success`/`warning`/`error` tokens (confirmed
+   by their own code comments, e.g. import-pipeline.css's ".mmi-stock-pill":
+   "Color now comes from the shared .mmi-badge success/error/warning
+   variants" — the collision was silently forcing this plugin's flat gray
+   truncating look onto those instead, breaking their intended color
+   coding). Only the genuinely different usages below — supplier/status
+   labels and pk-collision flags in Import Preview, Duplicate Products'
+   unchanged/conflict badges, CSV mapping's supplier badge — need the
+   truncation this file provides (a raw, unbounded, un-truncated supplier/
+   source id would otherwise overflow its table column). Those markup call
+   sites now add `mmi-badge-truncate` alongside `mmi-badge`; every other
+   usage was left as bare `mmi-badge` and now correctly reaches the shared
+   component.
+
+   Original truncation rationale, unchanged: a dynamically-created source's
+   badge text is its raw source/supplier id (e.g. an uploaded file slugified
+   with a timestamp, "product-categories-2026-07-17-00-00") — unbounded and
+   un-truncated, that single unbroken token was overflowing straight out of
+   its 100px .mmi-col-source column and painting over the neighboring Status
+   column, since neither this badge nor .mmi-resizable-table td clipped
+   overflow. max-width + ellipsis contains it to its column; box-
+   sizing:border-box keeps the padding from pushing the rendered width past
+   that max-width. background is a fallback for any supplier id that
+   doesn't match one of the specific .mmi-badge-supplier-* color variants
+   below (only skuport/xchange/plugivery have one) — without it, a dynamic
+   source's badge had no background at all. */
+.mmi-badge-truncate {
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+    padding: 4px 10px;
+    color: white;
+    background: #666;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.mmi-badge-supplier-skuport { 
+    background: #2271b1; 
+}
+
+.mmi-badge-supplier-xchange { 
+    background: #45852C; 
+}
+
+.mmi-badge-supplier-plugivery { 
+    background: #764ba2; 
+}
+
+.mmi-badge-supplier-default { 
+    background: #666; 
+}
+
+.mmi-badge-status { 
+    font-size: 10px; 
+    white-space: nowrap; 
+}
+
+.mmi-badge-create { 
+    background: #45852C; 
+}
+
+.mmi-badge-update { 
+    background: #2271b1; 
+}
+
+.mmi-badge-unchanged {
+    background: #999;
+}
+
+.mmi-badge-conflict {
+    background: #d63638;
+}
+
+/* Primary-key collision — this value matches more than one live WC product
+   (see class-import-preview.php's $pk_collision). Deliberately a distinct
+   color/shape from .mmi-badge-conflict: that badge means "will fail to
+   import"; this one means "already imported, but to the wrong/ambiguous
+   product" — a different failure the user needs to resolve in Duplicates. */
+.mmi-badge-pk-collision {
+    background: #fff;
+    color: #b45309;
+    border: 1px solid #f0b849;
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 11px;
+}
+
+.mmi-pk-collision-trigger {
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+
+.mmi-pk-collision-trigger:hover,
+.mmi-pk-collision-trigger:focus-visible {
+    box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.35);
+    outline: none;
+}
+
+/* Clickable spot-check badge (the "UPDATE (n)" status badge) — imports just
+   that one product immediately using the profile's live field mappings. */
+.mmi-badge-clickable {
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.mmi-badge-clickable:hover {
+    box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.35);
+}
+
+.mmi-badge-clickable:active {
+    transform: scale(0.96);
+}
+
+.mmi-badge-clickable:focus-visible {
+    outline: 2px solid #2271b1;
+    outline-offset: 2px;
+}
+
+.mmi-badge-clickable.mmi-badge-loading {
+    cursor: wait;
+    opacity: 0.75;
+}
+
+/* Minimal self-dismissing toast for spot-check results — this plugin has no
+   shared notice/toast component, so a small standalone one lives here. */
+.mmi-spot-check-toast {
+    position: fixed;
+    top: 40px;
+    right: 20px;
+    z-index: 100000;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.25s, transform 0.25s;
+    max-width: 360px;
+}
+
+.mmi-spot-check-toast.mmi-is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.mmi-spot-check-toast--success {
+    background: #45852C;
+}
+
+.mmi-spot-check-toast--error {
+    background: #d63638;
+}
+
+/* ===== PRODUCT INFO ===== */
+.mmi-product-link { 
+    color: #45852C; 
+    font-weight: 600; 
+    text-decoration: none; 
+}
+
+.mmi-product-link:hover { 
+    text-decoration: underline;
+    color: #3b3b3b;
+    transition: all 0.3s ease;
+}
+
+.mmi-product-new { 
+    color: #999; 
+    font-style: italic; 
+}
+
+.mmi-product-name { 
+    display: block; 
+}
+
+.mmi-primary-key {
+    background: rgba(0,0,0,0.05);
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.mmi-inspect-source-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 5px;
+    margin-left: 4px;
+    vertical-align: middle;
+    opacity: 0.6;
+    transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.mmi-inspect-source-btn:hover {
+    opacity: 1;
+    background: #fff;
+    border-color: #dcdcde;
+}
+
+/* ── Source Data Inspection modal ─────────────────────────────────────────
+   Uses the shared .mmi-modal-backdrop/.mmi-modal-box chrome (import-settings.css)
+   scoped wider via .mmi-source-inspect-box, since its content (raw JSON,
+   multi-column tables) needs more room than the shared 600px default. */
+.mmi-source-inspect-box {
+    max-width: 860px;
+    width: 90vw;
+}
+
+.mmi-source-inspect-summary {
+    font-size: 13px;
+    color: #3c434a;
+    padding: 12px 0;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mmi-source-inspect-section {
+    margin-top: 18px;
+}
+
+.mmi-source-inspect-section h4 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #646970;
+}
+
+.mmi-source-inspect-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mmi-source-inspect-row-num {
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+    color: #999;
+}
+
+.mmi-source-inspect-copy-btn {
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.mmi-source-inspect-copy-btn:hover {
+    background: #f0f0f1;
+}
+
+.mmi-source-inspect-tax-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.mmi-source-inspect-tax-table th,
+.mmi-source-inspect-tax-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid #f0f0f1;
+    vertical-align: top;
+}
+
+.mmi-source-inspect-tax-table th {
+    background: #f6f7f7;
+    font-weight: 600;
+}
+
+.mmi-source-inspect-csv-key {
+    font-weight: 600;
+    color: #3c434a;
+    width: 220px;
+}
+
+.mmi-tax-resolution--mapped {
+    color: #2d6a14;
+    font-weight: 600;
+}
+
+.mmi-tax-resolution--unmapped {
+    color: #b32d2e;
+    font-weight: 600;
+}
+
+.mmi-source-inspect-raw-json {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre;
+}
+
+.mmi-source-inspect-loading,
+.mmi-source-inspect-error {
+    padding: 20px 0;
+    color: #646970;
+}
+
+.mmi-source-inspect-error {
+    color: #b32d2e;
+}
+
+/* Value Formatting */
+.mmi-value-null { 
+    color: #999; 
+    font-style: italic; 
+}
+
+.mmi-value-code { 
+    font-size: 10px; 
+    word-break: break-all; 
+}
+
+/* Footer */
+.mmi-footer { 
+    margin-top: 15px; 
+    padding: 12px; 
+    background: #f9f9f9; 
+    border-radius: 4px; 
+    font-size: 13px; 
+    color: #666; 
+    text-align: center; 
+}
+
+.mmi-footer .dashicons { 
+    vertical-align: middle; 
+}
+
+/* ===== FIELD COMPARISON CELLS ===== */
+.mmi-field-comparison { 
+    display: flex;
+    gap: 6px; 
+    font-size: 11px; 
+}
+
+.mmi-field-comparison.mmi-field-changed { 
+    background: #fff9e6; 
+    padding: 8px; 
+    border-radius: 4px; 
+    border-left: 3px solid #f0b429; 
+}
+
+/* Unchanged rows: current === import, shown side-by-side to confirm */
+.mmi-field-comparison.mmi-field-match {
+    padding: 8px 4px;
+    border-radius: 4px;
+    border-left: 3px solid #45852C;
+    gap: 10px;
+}
+
+/* Label and value sit side by side, not stacked — a stacked column here
+   makes every field cell two lines tall, which multiplies straight into the
+   table row's own height once several field columns are in play.
+   flex: 1 1 0 + min-width: 0 lets this side actually shrink to whatever
+   share of the column's width it's given (each side of a current/source
+   pair splits it evenly via the shared 0 flex-basis) instead of a flex
+   item's default auto min-width, which sizes to its content's own
+   intrinsic minimum and forces the row to wrap or overflow instead. */
+.mmi-field-value {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.mmi-field-label {
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* Truncates with an ellipsis at the column's current width rather than
+   wrapping to a second line — a column resized narrower than a value
+   (e.g. "Inspired Acoustics" in a ~150px Product Brand column) used to
+   wrap onto 2 lines by default, only laying out on one line once a user
+   manually widened the column. min-width: 0 is required alongside
+   overflow/white-space here because .mmi-field-val is itself a flex item
+   of .mmi-field-value above — a flex item's automatic minimum width is
+   its content's own intrinsic size unless min-width is forced to 0, which
+   is exactly what was overriding overflow:hidden and forcing the wrap.
+   The full, untruncated value is still available via this element's own
+   title attribute (see renderFieldComparison() in import-preview.js). */
+.mmi-field-val {
+    color: #333;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmi-field-current .mmi-field-val { 
+    /* background: #ffebee;  */
+    padding: 4px 6px; 
+    border-radius: 3px; 
+}
+
+.mmi-field-source .mmi-field-val { 
+    background: #e8f5e9; 
+    padding: 4px 6px; 
+    border-radius: 3px; 
+}
+
+.mmi-field-new .mmi-field-val { 
+    background: #e8f5e9; 
+    padding: 4px 6px; 
+    border-radius: 3px; 
+}
+
+.mmi-field-unchanged .mmi-field-val { 
+    color: #666; 
+}
+
+.mmi-field-arrow {
+    text-align: center;
+    color: #2271b1;
+    font-weight: bold;
+    margin: 2px 0;
+    /* Never shrink — this is the one flex item in .mmi-field-comparison that
+       must keep its own fixed size regardless of how little room the two
+       (now-shrinkable) .mmi-field-value sides on either side of it have. */
+    flex: 0 0 auto;
+}
+
+/* Green checkmark divider used in match (unchanged) rows */
+.mmi-field-arrow.mmi-field-arrow-match {
+    color: #45852C;
+    font-size: 14px;
+}
+
+/* mmi-field-status is superseded by the side-by-side match layout;
+   kept for backward compatibility but hidden in favour of mmi-field-match. */
+.mmi-field-status { 
+    display: none;
+}
+
+.mmi-col-field {
+    width: 200px;
+    min-width: 150px;
+    max-width: 300px;
+}
+
+/* Every sortable column header in this table's cursor comes from the class,
+   not a per-<th> inline style. */
+.mmi-resizable-table .mmi-sortable-header {
+    cursor: pointer;
+}
+
+/* ===== INLINE EDITING ===== */
+.mmi-field-val-editable {
+    position: relative;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 3px;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.mmi-field-val-editable:hover {
+    background: #f0f0f0;
+    border-color: #45852C;
+}
+
+.mmi-field-val-editable.mmi-edited {
+    background: #fff3cd;
+    border-color: #856404;
+    font-weight: 600;
+}
+
+.mmi-edit-indicator {
+    margin-left: 4px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.mmi-field-edit-mode {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.mmi-edit-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 2px solid #45852C;
+    border-radius: 3px;
+    font-size: 13px;
+    min-width: 80px;
+}
+
+.mmi-edit-input:focus {
+    outline: none;
+    border-color: #3a6f24;
+    box-shadow: 0 0 0 2px rgba(69, 133, 44, 0.1);
+}
+
+.mmi-edit-buttons {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.mmi-edit-save-btn,
+.mmi-edit-cancel-btn {
+    padding: 2px 6px !important;
+    min-width: 28px !important;
+    height: 26px !important;
+    border-radius: 3px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+.mmi-edit-save-btn {
+    background: #45852C !important;
+    color: white !important;
+    border-color: #45852C !important;
+}
+
+.mmi-edit-save-btn:hover {
+    background: #008a24 !important;
+}
+
+.mmi-edit-save-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}
+
+.mmi-edit-cancel-btn {
+    background: #dba617 !important;
+    color: white !important;
+    border-color: #dba617 !important;
+}
+
+/* Removed redundant .mmi-edit-cancel-btn definition - already declared above in combined selector */
+
+.mmi-edit-cancel-btn:hover {
+    background: #c29513 !important;
+}
+
+.mmi-edit-cancel-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}
+
+.mmi-edit-revert-btn {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #45852C;
+    text-decoration: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.mmi-edit-revert-btn:hover {
+    background: #f0f0f0;
+    color: #3a6f24;
+    text-decoration: none;
+}
+
+.mmi-editing {
+    background: #f8f9fa !important;
+    border: 2px solid #45852C !important;
+    padding: 8px !important;
+}
+

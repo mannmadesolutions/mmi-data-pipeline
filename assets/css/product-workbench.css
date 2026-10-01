@@ -1,0 +1,325 @@
+/**
+ * Product Workbench tab. Condition rows and action settings come from
+ * rule-builder.css; sections, toolbars, tables, badges and the progress bar
+ * are the suite's shared classes. Only Workbench-specific layout lives here.
+ *
+ * @package MannMade\DataPipeline
+ */
+
+.mmi-workbench {
+    --mmi-wb-border: var(--mmi-gray-300, #dcdcde);
+    --mmi-wb-muted: var(--mmi-gray-600, #646970);
+    --mmi-wb-accent: #45852c;
+    --mmi-wb-accent-bg: #f0f6ed;
+    --mmi-wb-danger: #b32d2e;
+    --mmi-wb-gap: 8px;
+}
+
+/* ── Section header actions (primary button lives in the header band) ── */
+
+.mmi-wb-section-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--mmi-wb-gap);
+    flex-shrink: 0;
+}
+
+/* ── Find products ─────────────────────────────────────────────────────── */
+
+.mmi-wb-quick {
+    flex-wrap: wrap;
+    gap: var(--mmi-wb-gap);
+}
+
+.mmi-wb-q {
+    flex: 1 1 280px;
+    max-width: 420px;
+}
+
+/* The shared Match case toggle is sized for 28px condition rows; here it
+   sits beside full-height toolbar inputs. */
+.mmi-wb-quick .mmi-cond-case {
+    align-self: stretch;
+    height: auto;
+}
+
+.mmi-wb-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--mmi-wb-border);
+}
+
+.mmi-wb-statuses {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mmi-wb-statuses label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.mmi-wb-conditions {
+    margin-top: 12px;
+}
+
+.mmi-wb-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mmi-wb-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.mmi-wb-stale {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 10px 0 0;
+    color: var(--mmi-wb-muted);
+    font-style: italic;
+}
+
+/* ── Results ───────────────────────────────────────────────────────────── */
+
+.mmi-wb-empty {
+    padding: 18px 4px;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-facets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.mmi-wb-facets .mmi-wb-label {
+    margin-right: 4px;
+}
+
+.mmi-wb-facet {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 12px;
+    background: #fff;
+    color: #1d2327;
+    font-size: 12px;
+    line-height: 1.5;
+    cursor: pointer;
+}
+
+.mmi-wb-facet b {
+    color: var(--mmi-wb-muted);
+    font-weight: 600;
+}
+
+.mmi-wb-facet:hover,
+.mmi-wb-facet:focus-visible {
+    border-color: var(--mmi-wb-accent);
+    outline: none;
+}
+
+.mmi-wb-facet.is-active {
+    border-color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+}
+
+.mmi-wb-selection {
+    gap: 14px;
+}
+
+.mmi-wb-per-page {
+    margin-left: auto;
+}
+
+.mmi-wb-count {
+    font-weight: 600;
+}
+
+.mmi-wb-selected {
+    color: var(--mmi-wb-accent);
+    font-weight: 600;
+}
+
+/* Grows to fit the page of rows the Per page select asks for — the shared
+   wrapper's 70vh cap would otherwise add a second scrollbar inside the page. */
+.mmi-wb-table-wrap {
+    max-height: none;
+}
+
+.mmi-wb-table {
+    table-layout: fixed;
+}
+
+.mmi-wb-col-title    { width: 30%; }
+.mmi-wb-col-sku      { width: 11%; }
+.mmi-wb-col-cats     { width: 20%; }
+.mmi-wb-col-brand    { width: 10%; }
+.mmi-wb-col-status   { width: 8%; }
+.mmi-wb-col-stock    { width: 8%; }
+.mmi-wb-col-supplier { width: 7%; }
+.mmi-wb-col-id       { width: 6%; }
+
+.mmi-wb-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+}
+
+.mmi-wb-sortable,
+.mmi-wb-job-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.mmi-wb-sortable .sort-icon::after,
+.mmi-wb-job-sortable .sort-icon::after {
+    content: "\2195";
+    margin-left: 3px;
+    opacity: 0.35;
+}
+
+.mmi-wb-sortable.is-active .sort-icon::after,
+.mmi-wb-job-sortable.is-active .sort-icon::after {
+    content: "\2191";
+    opacity: 1;
+}
+
+.mmi-wb-sortable.is-active.is-desc .sort-icon::after,
+.mmi-wb-job-sortable.is-active.is-desc .sort-icon::after {
+    content: "\2193";
+}
+
+.mmi-wb-term {
+    display: inline-block;
+    margin: 0 4px 2px 0;
+    padding: 0 6px;
+    border-radius: 3px;
+    background: var(--mmi-gray-100, #f0f0f1);
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.mmi-wb-none {
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-empty-cell {
+    padding: 14px !important;
+    color: var(--mmi-wb-muted);
+    text-align: center;
+}
+
+#mmi-wb-rows.mmi-wb-loading {
+    opacity: 0.5;
+}
+
+/* ── Change selected products ─────────────────────────────────────────── */
+
+.mmi-wb-action {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--mmi-wb-gap);
+}
+
+.mmi-wb-action .mmi-custom-rule-action {
+    min-width: 200px;
+    height: 28px;
+}
+
+.mmi-wb-action .mmi-custom-rule-params {
+    flex: 1 1 420px;
+}
+
+.mmi-wb-target {
+    margin: 4px 0 0;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.mmi-wb-progress .mmi-progress-track {
+    flex: 1 1 auto;
+    max-width: 420px;
+}
+
+.mmi-wb-message {
+    margin-top: 8px;
+    font-weight: 600;
+}
+
+.mmi-wb-message:empty {
+    display: none;
+}
+
+.mmi-wb-message.is-success {
+    color: var(--mmi-wb-accent);
+}
+
+.mmi-wb-message.is-error {
+    color: var(--mmi-wb-danger);
+}
+
+.mmi-wb-preview {
+    margin-top: 12px;
+}
+
+.mmi-wb-preview-summary {
+    margin: 0 0 8px;
+}
+
+.mmi-wb-preview-table .mmi-wb-before {
+    color: var(--mmi-wb-danger);
+    text-decoration: line-through;
+    text-decoration-color: rgba(179, 45, 46, 0.4);
+}
+
+.mmi-wb-preview-table .mmi-wb-after {
+    color: var(--mmi-wb-accent);
+    font-weight: 600;
+}
+
+.mmi-wb-preview-table .mmi-wb-arrow {
+    width: 20px;
+    color: var(--mmi-wb-muted);
+    text-align: center;
+}
+
+.mmi-wb-more {
+    margin: 6px 0 0;
+    color: var(--mmi-wb-muted);
+}
+
+/* ── Recent changes ────────────────────────────────────────────────────── */
+
+.mmi-wb-job-filter {
+    max-width: 360px;
+    color: var(--mmi-wb-muted);
+    font-size: 12px;
+}
+
+.mmi-wb-job-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+.mmi-wb-job-actions .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: text-bottom;
+}

@@ -1,0 +1,37 @@
+# Logs and runtime data
+logs/
+*.log
+
+# Secrets / local environment
+.env
+.env.*
+*.pem
+*.key
+
+# Database dumps, archives, build output
+*.sql
+*.sql.gz
+*.zip
+*.tar.gz
+
+# Dependencies
+node_modules/
+vendor/
+
+# Local feed caches, exports and uploads (never commit supplier or customer data)
+storage/
+exports/
+data/
+uploads/
+*.csv
+*.tsv
+*.xlsx
+*.xls
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

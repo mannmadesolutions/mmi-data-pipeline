@@ -1,0 +1,4979 @@
+/**
+ * MMI Suite Design System v1.0
+ * Unified styles for all MannMade Solutions plugins
+ * 
+ * Source: Extracted from mmi-reverb-integration
+ * Date: February 3, 2026
+ * 
+ * DO NOT EDIT PLUGIN-SPECIFIC STYLES HERE
+ * This file contains only shared components used across all plugins
+ */
+
+/* ===================================
+   CSS CUSTOM PROPERTIES
+   =================================== */
+
+:root {
+  /* Brand Colors - MannMade Green */
+  --mmi-primary: #45852C;
+  --mmi-primary-light: #6c8960;
+  --mmi-primary-hover: #3a6f24;
+  
+  /* Legacy Green Aliases (for backward compatibility) */
+  --mmi-green: #45852C;
+  --mmi-green-light: #6c8960;
+  --mmi-green-dark: #3a6f24;
+  
+  /* Secondary - WordPress Blue */
+  --mmi-secondary: #2271b1;
+  --mmi-secondary-hover: #135e96;
+  
+  /* Accent - Light Blue */
+  --mmi-accent: #72aee6;
+  
+  /* Status Colors */
+  --mmi-success: #45852C;
+  --mmi-success-bg: #d4edda;
+  --mmi-success-border: #28a745;
+  --mmi-success-text: #155724;
+  
+  --mmi-error: #d63638;
+  --mmi-error-bg: #f8d7da;
+  --mmi-error-border: #dc3545;
+  --mmi-error-text: #721c24;
+  
+  --mmi-warning: #dba617;
+  --mmi-warning-bg: #fff3cd;
+  --mmi-warning-border: #ff9800;
+  --mmi-warning-text: #856404;
+  
+  --mmi-info: #2196f3;
+  --mmi-info-bg: #e3f2fd;
+  --mmi-info-border: #2196f3;
+  --mmi-info-text: #1565c0;
+  
+  /* Neutral Colors */
+  --mmi-gray-50: #fafafa;
+  --mmi-gray-100: #f9f9f9;
+  --mmi-gray-200: #f6f7f7;
+  --mmi-gray-300: #e5e5e5;
+  --mmi-gray-400: #ccd0d4;
+  --mmi-gray-500: #999;
+  --mmi-gray-600: #646970;
+  --mmi-gray-700: #50575e;
+  --mmi-gray-800: #37474f;
+  --mmi-gray-900: #1d2327;
+  
+  /* Backgrounds */
+  --mmi-bg-white: #ffffff;
+  --mmi-bg-light: #f8f9fa;
+  --mmi-bg-dark: #f0f0f0;
+  
+  /* Text */
+  --mmi-text-primary: #1d2327;
+  --mmi-text-secondary: #646970;
+  --mmi-text-muted: #999;
+
+  /* Component Tokens — editable via mmi-admin's Style Manager tab
+     (MMI_UI_Styles). Values here are the built-in fallback if that tab's
+     shipped overrides are ever absent; keep in sync with
+     mmi-hub/includes/css/ui-style-tokens-default.php's own defaults. */
+  --mmi-header-bg-start: #ffffff;
+  --mmi-header-bg-end: #f8f9fa;
+  --mmi-header-border-color: var(--mmi-primary);
+  --mmi-header-radius: 8px;
+  --mmi-card-bg-start: #ffffff;
+  --mmi-card-bg-end: #fafafa;
+  --mmi-card-border-color: #e0e0e0;
+  --mmi-card-radius: 12px;
+  --mmi-card-footer-border-color: #f0f0f0;
+  --mmi-table-head-bg: #f6f7f7;
+  --mmi-table-head-text: #3c434a;
+  --mmi-table-border-color: #f0f0f0;
+  --mmi-table-row-hover-bg: #f6f9f2;
+
+  /* Typography */
+  --mmi-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --mmi-font-xs: 11px;
+  --mmi-font-sm: 12px;
+  --mmi-font-base: 14px;
+  --mmi-font-md: 16px;
+  --mmi-font-lg: 18px;
+  --mmi-font-xl: 23px;
+  --mmi-font-2xl: 26px;
+  
+  --mmi-font-normal: 400;
+  --mmi-font-medium: 500;
+  --mmi-font-semibold: 600;
+  --mmi-font-bold: 700;
+  
+  --mmi-line-height-tight: 1.3;
+  --mmi-line-height-normal: 1.5;
+  --mmi-line-height-relaxed: 1.6;
+  
+  /* Spacing */
+  --mmi-space-xs: 4px;
+  --mmi-space-sm: 8px;
+  --mmi-space-md: 12px;
+  --mmi-space-lg: 20px;
+  --mmi-space-xl: 30px;
+  --mmi-space-2xl: 40px;
+  
+  /* Layout Color Aliases */
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f8f9fa;
+  --color-border: #e0e0e0;
+  --color-border-light: #e5e5e5;
+  --color-text-primary: #1d2327;
+  --color-text-secondary: #646970;
+  --color-primary: #45852C;
+  --color-error: #d63638;
+  
+  /* Shadow Aliases */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+  
+  /* Border Radius Aliases */
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+
+  /* MMI-prefixed shadow aliases (used by utility classes) */
+  --mmi-shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --mmi-shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+  --mmi-shadow-lg: 0 3px 12px rgba(0,0,0,0.12);
+  --mmi-shadow-xl: 0 4px 16px rgba(0,0,0,0.15);
+
+  /* MMI-prefixed border-radius aliases (used by utility classes) */
+  --mmi-radius-sm: 4px;
+  --mmi-radius-md: 6px;
+  --mmi-radius-lg: 8px;
+  --mmi-radius-xl: 12px;
+  --mmi-radius-full: 50%;
+
+  /* Font-weight aliases with full name (used by utility classes) */
+  --mmi-font-weight-normal: 400;
+  --mmi-font-weight-medium: 500;
+  --mmi-font-weight-semibold: 600;
+  --mmi-font-weight-bold: 700;
+
+  /* Background aliases */
+  --mmi-bg-primary: #ffffff;
+  --mmi-bg-secondary: #f8f9fa;
+  --mmi-bg-tertiary: #f6f7f7;
+
+  /* Border aliases */
+  --mmi-border-primary: #e5e5e5;
+  --mmi-border-secondary: #ccd0d4;
+  --mmi-border-light: #e5e7eb;
+
+  /* Additional brand aliases */
+  --mmi-primary-dark: #3a6f24;
+  --mmi-primary-lightest: #f0f6ed;
+  --mmi-white: #ffffff;
+  --mmi-black: #1d2327;
+
+  /* Transition tokens */
+  --mmi-transition-fast: 0.15s ease;
+  --mmi-transition-base: 0.2s ease;
+  --mmi-transition-slow: 0.3s ease;
+
+  /* Z-index scale */
+  --mmi-z-base: 1;
+  --mmi-z-dropdown: 100;
+  --mmi-z-sticky: 200;
+  --mmi-z-fixed: 300;
+  /* Raised from 900/1000/1100/1200 (AGENTS.md changelog 1.118.0) — confirmed
+     unused by any consumer at the old values, and too low to ever have been
+     usable: WP admin's own chrome (admin bar/menu) sits around z-index
+     99999, so every real modal in the suite had hardcoded something in the
+     9999-999999 range instead of using these tokens. New values match what
+     .mmi-fcp-backdrop/.mmi-column-customize-panel already hardcode, so the
+     new .mmi-modal stacks consistently with that existing component. */
+  --mmi-z-modal-backdrop: 100000;
+  --mmi-z-modal: 100001;
+  --mmi-z-popover: 100002;
+  --mmi-z-tooltip: 100003;
+}
+
+
+/* ===================================
+   GLOBAL FONT FAMILY APPLICATION
+   Scoped to MMI admin pages (.mmi-page body class) and named MMI component
+   classes only. Generic HTML element selectors removed to avoid contaminating
+   native WP/WC admin pages where mmi-suite-common.css loads as a dependency.
+   =================================== */
+
+body.mmi-page,
+.mmi-page *,
+.mmi-header,
+.mmi-vip-header,
+.mmi-cf-header,
+.mmi-dashboard,
+.mmi-admin-page,
+.mmi-container {
+  font-family: var(--mmi-font-family);
+}
+
+/* Restore dashicons icon font — plugin CSS loads after WordPress core, so any
+   broad font-family rule (including .mmi-page *, theme admin CSS, or third-party
+   plugins) can override WordPress's .dashicons { font: ... dashicons } rule.
+   Using .wrap (WP's universal admin content wrapper) + !important ensures all
+   dashicons render correctly on every MMI admin page. */
+.wrap .dashicons,
+.wrap .dashicons::before {
+  font-family: dashicons !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===================================
+   NOTICE ANCHOR — prevent WP core from pulling .notice elements inside
+   .mmi-header's flex container after page load.
+
+   WordPress common.js relocates every .notice:not(.inline) to after the
+   .wp-header-end marker. Without that marker WP targets the first H1/H2
+   inside .wrap — which lives inside .mmi-header (flex). These rules are a
+   CSS safety-net; the definitive fix is the .wp-header-end PHP marker.
+   =================================== */
+
+.wp-header-end {
+    display: block !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    clear: both !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Notices that land adjacent to .mmi-header must never join its flex layout */
+.wrap > .notice,
+.mmi-header + .notice,
+.mmi-header ~ .notice {
+    flex: none !important;
+    width: auto !important;
+    align-self: auto !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* ── License gate admin notice ─────────────────────────────────────────── */
+.mmi-license-notice {
+    border-left-color: #d63638 !important;
+    background: #fff0f0;
+}
+.mmi-license-notice .mmi-notice-icon {
+    color: #d63638;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+.mmi-license-notice .mmi-notice-link {
+    font-weight: 600;
+}
+
+/* ===================================
+   PAGE WRAPPER WIDTH - Unified across all MMI admin pages
+   `body.mmi-page` is auto-added by Asset_Manager::add_mmi_body_class() for
+   every admin page slug starting with "mmi-", so this rule reaches every
+   MMI plugin's .wrap without each plugin needing its own max-width rule or
+   markup change. Do NOT add a competing `max-width` on a plugin-specific
+   wrap class (e.g. `.mmi-google-services-dashboard`) — it only causes drift.
+   =================================== */
+body.mmi-page .wrap {
+  max-width: 100%;
+}
+
+/* ===================================
+   SCROLLBAR-GUTTER RESERVATION - MMI admin pages only
+   Reserves the vertical scrollbar's width permanently on the document's own
+   scrolling box, so a page whose height crosses the viewport threshold (e.g.
+   expanding an accordion row, opening an inline panel) doesn't shrink every
+   descendant's available width the instant a scrollbar appears/disappears.
+   Without this, a `width:100%; table-layout:fixed` table nested several
+   levels under `body.mmi-page` visibly compresses/reflows on that exact
+   click — confirmed root cause in mmi-data-pipeline's wizard Field Mapping
+   table when its Conditions row expands (see mmi-data-pipeline AGENTS.md's
+   own incident history for the full trace). `:has()` scopes this to MMI
+   admin screens only, per this rule's own long-standing convention of never
+   applying a suite-wide visual change to core wp-admin screens; browsers
+   without `:has()` support simply keep the old (pre-existing) behavior.
+   =================================== */
+html:has(body.mmi-page) {
+  scrollbar-gutter: stable;
+}
+
+/* ===================================
+   COMPACT SELECTS - Unified across all MMI admin pages
+   WordPress core's .wp-core-ui select defaults (40px min-height, 14px font)
+   look oversized next to this suite's own compact controls. This used to be
+   hand-patched directly into wp-admin/css/forms.css/forms-rtl.css (and their
+   .min.css counterparts) — fragile by construction: any WP core update or
+   file-integrity regeneration silently overwrites those files back to stock
+   (confirmed 2026-08-12 — all four reverted to 40px/14px in one event, with
+   no warning). Overriding here instead survives core updates AND is properly
+   scoped to MMI's own pages only, unlike the old core-file hack which
+   affected every wp-admin screen site-wide. `body.mmi-page.wp-core-ui
+   select` (2 classes, compound — NOT `body.mmi-page .wp-core-ui select`
+   with a space: `.wp-core-ui` is only ever a class on <body> itself,
+   alongside `.mmi-page`, never a separate descendant element, so a
+   descendant-combinator selector looking for `.wp-core-ui` under
+   `body.mmi-page` can never match anything — confirmed via
+   wp-admin/admin-header.php's `<body class="wp-admin wp-core-ui ...">`.
+   A stray space here silently no-ops the whole override; caught 2026-08-13
+   when converted wizard dropdowns still rendered at core's 40px/14px)
+   also just outright wins the specificity fight against core's bare
+   `.wp-core-ui select` (1 class) regardless of stylesheet load order, so no
+   !important is needed.
+   =================================== */
+body.mmi-page.wp-core-ui select {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+@media screen and (max-width: 782px) {
+  body.mmi-page.wp-core-ui select,
+  body.mmi-page.wp-admin .form-table select {
+    min-height: 30px;
+    font-size: 12px;
+  }
+}
+
+/* ===================================
+   COMPACT INPUTS - Unified across all MMI admin pages
+   Same reasoning as COMPACT SELECTS above, applied to text-like inputs —
+   WP core defaults render noticeably taller/larger than this suite's own
+   compact controls. Input-type list matches the existing focus-state rule
+   further down this file so both stay in sync.
+   =================================== */
+body.mmi-page input[type="text"],
+body.mmi-page input[type="search"],
+body.mmi-page input[type="email"],
+body.mmi-page input[type="url"],
+body.mmi-page input[type="tel"],
+body.mmi-page input[type="number"],
+body.mmi-page input[type="date"],
+body.mmi-page input[type="time"],
+body.mmi-page input[type="password"] {
+  min-height: 30px;
+  font-size: 11px;
+}
+
+@media screen and (max-width: 782px) {
+  body.mmi-page input[type="text"],
+  body.mmi-page input[type="search"],
+  body.mmi-page input[type="email"],
+  body.mmi-page input[type="url"],
+  body.mmi-page input[type="tel"],
+  body.mmi-page input[type="number"],
+  body.mmi-page input[type="date"],
+  body.mmi-page input[type="time"],
+  body.mmi-page input[type="password"] {
+    min-height: 30px;
+    font-size: 11px;
+  }
+}
+
+/* ===================================
+   PAGE HEADER - Unified Structure
+   =================================== */
+
+.wrap .mmi-header,
+div.wrap div.mmi-header,
+.mmi-header {
+  display: var(--mmi-header-display, flex) !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: var(--mmi-header-padding, 24px 30px) !important;
+  background: linear-gradient(135deg, var(--mmi-header-bg-start) 0%, var(--mmi-header-bg-end) 100%) !important;
+  border-left: 4px solid var(--mmi-header-border-color) !important;
+  border-top: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+  margin: var(--mmi-header-margin, 20px 0) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+  border-radius: var(--mmi-header-radius) !important;
+  flex-wrap: var(--mmi-header-flex-wrap, wrap) !important;
+  gap: 8px !important;
+}
+
+.wrap .mmi-header h1,
+div.wrap div.mmi-header h1,
+.mmi-header h1 {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  color: var(--mmi-text-primary) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  line-height: 1.3 !important;
+}
+
+.wrap .mmi-header h1 .dashicons,
+div.wrap div.mmi-header h1 .dashicons,
+.mmi-header h1 .dashicons {
+  color: var(--mmi-primary) !important;
+  font-size: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.wrap .mmi-header .mmi-header-description,
+div.wrap div.mmi-header .mmi-header-description,
+.mmi-header .mmi-header-description,
+.wrap .mmi-header p,
+div.wrap div.mmi-header p,
+.mmi-header p {
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--mmi-text-secondary) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  width: 100% !important;
+}
+
+.mmi-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+  margin-left: auto !important;
+}
+
+.mmi-header-actions .button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  flex-grow: var(--mmi-header-actions-flex-grow, 0) !important;
+  flex-shrink: var(--mmi-header-actions-flex-shrink, 1) !important;
+}
+
+.mmi-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mmi-header-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.mmi-header-actions .dashicons {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+/* Header alert/status row — connection-test badges and similar dynamic
+   status indicators live here, never inside .mmi-header-actions, so a
+   badge's content growing (e.g. "Not yet checked" -> a full success/error
+   message) doesn't reflow the persistent controls (mode switcher, buttons)
+   sitting next to the title. Forced to its own full-width row the same way
+   .mmi-header-description is (see that rule's width:100% below). Pair with
+   mmi-resize-transition.js's window.mmiAnimateResize() when JS swaps this
+   row's content, so the header's height change animates instead of
+   snapping — reference implementation: mmi-xchange-integration's header
+   connection/order-API badges. */
+.mmi-header-alerts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.mmi-header-alerts:empty {
+  display: none;
+}
+
+/* Mode Switcher in Header */
+.mode-switcher-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--mmi-gray-100);
+  padding: 6px 12px;
+  border-radius: 20px;
+}
+
+.mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--mmi-text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.mode-label[data-mode="production"],
+.mode-label[data-mode="live"] {
+  color: var(--mmi-success);
+}
+
+.mode-switcher-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.mode-switcher-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mode-switcher-toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--mmi-warning);
+  transition: .3s;
+  border-radius: 24px;
+}
+
+.mode-switcher-toggle .slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+.mode-switcher-toggle input:checked + .slider {
+  background-color: var(--mmi-success);
+}
+
+.mode-switcher-toggle input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* Test Result Display */
+.mmi-test-result {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-radius: 6px;
+  display: none;
+}
+
+.mmi-test-result.success {
+  background: var(--mmi-success-bg);
+  border-left: 3px solid var(--mmi-success);
+  color: var(--mmi-success-text);
+}
+
+.mmi-test-result.error {
+  background: var(--mmi-error-bg);
+  border-left: 3px solid var(--mmi-error);
+  color: var(--mmi-error-text);
+}
+
+.mmi-header-title h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--mmi-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mmi-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+/* Header Status Variants */
+.mmi-header.connected {
+  border-left-color: var(--mmi-success);
+  background: linear-gradient(135deg, #fff 0%, #e6f9ed 100%);
+}
+
+.mmi-header.disconnected {
+  border-left-color: var(--mmi-error);
+  background: linear-gradient(135deg, #fff5f5 0%, #ffebeb 100%);
+}
+
+.mmi-header.warning {
+  border-left-color: var(--mmi-warning);
+  background: linear-gradient(135deg, #fffbf0 0%, #fff9e6 100%);
+}
+
+/* ===================================
+   TAB NAVIGATION
+   =================================== */
+
+.mmi-page .wrap .nav-tab-wrapper {
+  padding-left: 0;
+  background: white;
+  padding: 10px 20px 0;
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.mmi-page .wrap .nav-tab {
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--mmi-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 12px 18px;
+  margin: 0 8px 0 0;
+  transition: all 0.2s ease;
+  line-height: 1.5;
+  border-radius: 6px 6px 0 0;
+  text-decoration: none;
+}
+
+.mmi-page .wrap .nav-tab:hover {
+  background: rgba(69, 133, 44, 0.05);
+  color: var(--mmi-primary);
+  border-bottom-color: var(--mmi-primary);
+}
+
+.mmi-page .wrap .nav-tab-active,
+.mmi-page .wrap .nav-tab-active:hover {
+  background: rgba(69, 133, 44, 0.1);
+  color: var(--mmi-primary);
+  border-bottom-color: var(--mmi-primary);
+  font-weight: 600;
+}
+
+/* Tab Content Container */
+.mmi-tab-content {
+  background: white;
+  padding: 25px;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  min-height: 400px;
+}
+
+/* ===================================
+   INFO CARDS
+   =================================== */
+
+.mmi-info-card {
+  background: linear-gradient(135deg, var(--mmi-info-bg) 0%, #f0f9ff 100%);
+  border-left: 4px solid var(--mmi-info);
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.mmi-info-card h3 {
+  margin: 0 0 12px 0;
+  color: var(--mmi-info-text);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.mmi-info-card p {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--mmi-gray-800);
+}
+
+.mmi-info-card ul {
+  margin: 12px 0 0 0;
+  padding-left: 20px;
+}
+
+.mmi-info-card li {
+  line-height: 1.6;
+  color: var(--mmi-gray-800);
+  margin-bottom: 6px;
+}
+
+/* Info Card Variants */
+.mmi-info-card.warning {
+  background: linear-gradient(135deg, var(--mmi-warning-bg) 0%, #fff9e6 100%);
+  border-left-color: var(--mmi-warning);
+}
+
+.mmi-info-card.warning h3 {
+  color: #e65100;
+}
+
+.mmi-info-card.success {
+  background: linear-gradient(135deg, var(--mmi-success-bg) 0%, #e8f5e9 100%);
+  border-left-color: var(--mmi-success);
+}
+
+.mmi-info-card.success h3 {
+  color: #2e7d32;
+}
+
+.mmi-info-card.error {
+  background: linear-gradient(135deg, var(--mmi-error-bg) 0%, #ffebee 100%);
+  border-left-color: var(--mmi-error);
+}
+
+.mmi-info-card.error h3 {
+  color: #c62828;
+}
+
+/* ===================================
+   CARDS & STAT BOXES
+   =================================== */
+
+.mmi-card {
+  background: linear-gradient(135deg, var(--mmi-card-bg-start) 0%, var(--mmi-card-bg-end) 100%);
+  border: 1px solid var(--mmi-card-border-color);
+  border-radius: var(--mmi-card-radius);
+  padding: var(--mmi-card-padding, 24px);
+  margin: var(--mmi-card-margin, 0 0 20px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.mmi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--mmi-green) 0%, var(--mmi-green-dark) 100%);
+}
+
+.mmi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.12), 0 3px 6px rgba(0,0,0,0.08);
+  border-color: var(--mmi-green-light);
+}
+
+.mmi-card h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f0f0f0;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--mmi-text-primary);
+  letter-spacing: -0.2px;
+}
+
+.mmi-card h3 {
+  margin-top: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--mmi-text-primary);
+}
+
+.mmi-card-body {
+  margin-top: 16px;
+}
+
+.mmi-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.mmi-card-footer {
+  margin: var(--mmi-card-footer-margin, 20px 0 0);
+  padding: var(--mmi-card-footer-padding, 16px 0 0);
+  border-top: 1px solid var(--mmi-card-footer-border-color);
+  display: var(--mmi-card-footer-display, block);
+  flex-wrap: var(--mmi-card-footer-flex-wrap, wrap);
+}
+
+/* ── Flat Card (promoted 2026-09-20) ──────────────────────────────────────
+ * A plain white bordered/shadowed box with NO gradient, no colored top
+ * accent, and no hover-lift — deliberately lighter than `.mmi-card` (which
+ * is a decorative content/summary card). This is the shape for "wrap a
+ * table, a toolbar+table combo, or a settings block in a bordered box and
+ * nothing more" — found independently reinvented, at effectively identical
+ * values (white bg, 1px #dcdcde/#e0e0e0 border, 8px radius, a soft
+ * 0 2px 4-8px shadow), in `mmi-data-pipeline` (`.mmi-supplier-toolbar-card`),
+ * `mmi-cloudflare-integration` (`.mmi-cf-dashboard .form-table`),
+ * `mmi-google-services` (`.stat-card`), and others — the same shape of
+ * fragmentation this suite's Toolbar/Widget Grid/Collapsible Section
+ * components were promoted to fix. First real adopters: `mmi-data-pipeline`
+ * (`.mmi-supplier-toolbar-card` converted) and `mmi-data-health` (its
+ * Overview-tab report table, which had no card wrapper of any kind before
+ * this — the two pages visibly not matching is what surfaced this gap).
+ */
+.mmi-flat-card {
+  background: var(--mmi-flat-card-bg, #fff);
+  border: 1px solid var(--mmi-flat-card-border-color, #dcdcde);
+  border-radius: var(--mmi-flat-card-radius, 8px);
+  box-shadow: var(--mmi-flat-card-shadow, 0 1px 3px rgba(0,0,0,0.06));
+  overflow: hidden;
+}
+
+/* Extension Cards Grid */
+.mmi-extensions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+/* Extension Card - Clean Professional Design */
+.mmi-extension-card {
+  --title-min-height: calc(1.3em * 3); /* allow up to 3-line titles without shifting version down */
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 28px 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  /* Flex column so description grows and version/actions stay vertically uniform */
+  display: flex;
+  flex-direction: column;
+}
+
+.mmi-extension-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, var(--mmi-green) 0%, var(--mmi-green-dark) 100%);
+}
+
+.mmi-extension-card:hover {
+  box-shadow: 0 8px 16px rgba(69,133,44,0.12), 0 3px 6px rgba(0,0,0,0.06);
+  border-color: var(--mmi-green-light);
+}
+
+/* ── Grayed state (coming_soon, deprecated) ────────────────────── */
+
+.mmi-extension-card--grayed {
+  opacity: 0.5;
+  filter: grayscale(70%);
+  pointer-events: none;
+}
+
+.mmi-extension-card--grayed::before {
+  background: linear-gradient(90deg, #9ca3af, #6b7280);
+}
+
+/* ── Section header layout ─────────────────────────────────────── */
+
+.mmi-dashboard-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--mmi-text-primary, #1d2327);
+  margin: 0 0 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* ── Available extensions ──────────────────────────────────────── */
+
+.mmi-section-intro {
+  color: var(--mmi-text-secondary, #6b7280);
+  font-size: 13px;
+  margin: -8px 0 16px;
+}
+
+.mmi-available-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mmi-green, #45852c);
+  color: #fff;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+}
+
+.mmi-extension-card--available {
+  border-style: dashed;
+  border-color: #d1d5db;
+  background: linear-gradient(135deg, #fafafa 0%, #f3f4f6 100%);
+}
+
+.mmi-extension-card--available::before {
+  background: linear-gradient(90deg, #9ca3af, #6b7280);
+}
+
+.mmi-extension-card--available:hover {
+  border-color: var(--mmi-green-light, #6aaa4e);
+  border-style: solid;
+}
+
+.mmi-available-cta {
+  display: inline-block;
+  margin-top: 12px;
+}
+
+/* ── Extension card action buttons ────────────────────────────── */
+
+.mmi-extension-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  /* Push to the bottom of the flex column regardless of content above */
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Deactivate button: muted red tint on hover */
+.mmi-deactivate-btn:hover {
+  color: #b32d2e !important;
+  border-color: #b32d2e !important;
+  background: #fcf0f1 !important;
+}
+
+/* Update button: accent blue */
+.mmi-update-btn {
+  color: #2271b1 !important;
+  border-color: #2271b1 !important;
+}
+
+.mmi-update-btn:hover {
+  background: #f0f6fc !important;
+}
+
+/* ── Tier pills ────────────────────────────────────────────────── */
+
+.mmi-extension-tiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.mmi-tier-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.mmi-tier-pill--free       { background: #e5e7eb; color: #374151; }
+.mmi-tier-pill--pro        { background: #dcfce7; color: #166534; }
+.mmi-tier-pill--vip        { background: #fee2e2; color: #991b1b; }
+.mmi-tier-pill--enterprise { background: #dbeafe; color: #1e40af; }
+
+.mmi-extension-status-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+}
+
+.mmi-extension-badge-active,
+.mmi-extension-badge-inactive {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.mmi-extension-badge-active {
+  background: #45852C;
+  color: white;
+}
+
+.mmi-extension-badge-inactive {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  color: white;
+}
+
+.mmi-extension-badge-update {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #fff;
+  cursor: default;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+/* ── Release-status badges ──────────────────────────────────────────────
+ * Base rule carries no vertical margin — it's used standalone now (mmi-admin's
+ * Extension Manager legend + table cell, AGENTS.md changelog 1.117.0) as well
+ * as stacked under an ACTIVE/INACTIVE badge (mmi-hub's centralized menu,
+ * below). The 6px gap for that stacked case is scoped to its own container
+ * instead of baked into this class — it was, until 1.118.0's fix, and made
+ * the Extension Manager's table rows visibly uneven (this badge sat 6px
+ * lower than its sibling columns, which carry no such margin). */
+.mmi-release-status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+/* Stacked-under-a-badge case only — mmi-hub's centralized menu. */
+.mmi-extension-status-badge .mmi-release-status-badge {
+  margin-top: 6px;
+}
+
+.mmi-release-status-badge--beta        { background: #fef3c7; color: #92400e; }
+.mmi-release-status-badge--coming_soon { background: #ede9fe; color: #5b21b6; }
+.mmi-release-status-badge--hidden      { background: #fee2e2; color: #991b1b; }
+.mmi-release-status-badge--deprecated  { background: #f3f4f6; color: #6b7280; }
+/* Added for mmi-admin's Extension Manager (AGENTS.md changelog 1.117.0) — the
+   component previously had no "shipped and live" or "staff-only" state. Colors
+   match the suite's existing --mmi-success-bg/-text and --mmi-info-bg/-text. */
+.mmi-release-status-badge--released    { background: #d4edda; color: #155724; }
+.mmi-release-status-badge--internal    { background: #e3f2fd; color: #1565c0; }
+
+.mmi-extension-header {
+  margin-bottom: 18px;
+  padding-right: 100px;
+}
+
+.mmi-extension-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--mmi-text-primary);
+  margin: 0 0 8px 0;
+  letter-spacing: -0.3px;
+  line-height: 1.3;
+  min-height: var(--title-min-height);
+}
+
+.mmi-extension-version {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mmi-text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mmi-extension-description {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--mmi-text-secondary);
+  margin: 16px 0 0 0;
+}
+
+/* Stats Grid — the wrapping layout for a row of `.mmi-stat-box` tiles.
+ * Promoted from a per-plugin local rule (2026-09-21): this file previously
+ * carried only the responsive breakpoint overrides below, forcing every
+ * consumer (mmi-admin, mmi-data-health, mmi-google-services,
+ * mmi-reverb-integration) to hand-roll an identical `display: grid` base
+ * rule — see class-ui-styles.php's Stat Tiles doc comment. A plugin with a
+ * genuinely different fixed layout (e.g. an exact 4-column dashboard row)
+ * should keep its own local override rather than force-fit this default. */
+.mmi-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--mmi-stats-grid-min-col-width, 200px), 1fr));
+  gap: var(--mmi-stats-grid-gap, 20px);
+  margin: var(--mmi-stats-grid-margin, 20px 0);
+}
+
+/* Stat Box — a KPI tile, deliberately distinct from `.mmi-card` (a left-
+ * border accent + gradient fill carry the semantic color, never the whole
+ * box) but raised to the same shadow/depth quality as `.mmi-card` so a stat
+ * row doesn't read as a flatter, older component sitting next to real cards.
+ * box-shadow/hover-transform/transition are intentionally not tokenized —
+ * see class-ui-styles.php's Stat Tiles doc comment for why. */
+.mmi-stat-box {
+  background: linear-gradient(135deg, var(--mmi-stat-bg-start, #fafafa) 0%, var(--mmi-stat-bg-end, #f5f5f5) 100%);
+  border: 1px solid var(--mmi-stat-border-generic-color, var(--mmi-card-border-color, #e0e0e0));
+  border-left: 5px solid var(--mmi-stat-border-color, var(--mmi-secondary));
+  padding: var(--mmi-stat-padding, 18px 20px);
+  border-radius: var(--mmi-stat-radius, 8px);
+  min-height: var(--mmi-stat-min-height, 0);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.mmi-stat-box:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.12), 0 3px 8px rgba(0,0,0,0.08);
+}
+
+.mmi-stat-box.success {
+  border-left-color: var(--mmi-success);
+  background: linear-gradient(135deg, var(--mmi-stat-success-bg-start, #f0fdf4) 0%, var(--mmi-stat-success-bg-end, #dcfce7) 100%);
+}
+
+.mmi-stat-box.warning {
+  border-left-color: var(--mmi-warning);
+  background: linear-gradient(135deg, var(--mmi-stat-warning-bg-start, #fffbeb) 0%, var(--mmi-stat-warning-bg-end, #fef3c7) 100%);
+}
+
+.mmi-stat-box.error {
+  border-left-color: var(--mmi-error);
+  background: linear-gradient(135deg, var(--mmi-stat-error-bg-start, #fef2f2) 0%, var(--mmi-stat-error-bg-end, #fee2e2) 100%);
+}
+
+/* WP core's wp-admin/css/common.css styles every `div.error` as an admin
+ * notice — `div.error` (padding 8px 12px, border none + 4px left, no shadow)
+ * and `.wrap div.error` (margin 5px 0 15px; padding/font-size/line-height
+ * again under 782px) both outrank `.mmi-stat-box`'s base rule, so the error
+ * tile rendered shorter-padded, shadowless and offset versus its siblings.
+ * `.inline` (required on this markup — see AGENTS.md) only stops core's JS
+ * relocation, not this CSS. Restore the base box model at a specificity
+ * above `.wrap div.error`. */
+.wrap .mmi-stat-box.error,
+.mmi-stat-box.error {
+  margin: 0;
+  padding: var(--mmi-stat-padding, 18px 20px);
+  border: 1px solid var(--mmi-stat-border-generic-color, var(--mmi-card-border-color, #e0e0e0));
+  border-left: 5px solid var(--mmi-error);
+  font-size: inherit;
+  line-height: inherit;
+}
+.mmi-stat-box.error:not(:hover) {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.mmi-stat-box.info {
+  border-left-color: var(--mmi-info);
+  background: linear-gradient(135deg, var(--mmi-stat-info-bg-start, #eff6ff) 0%, var(--mmi-stat-info-bg-end, #dbeafe) 100%);
+}
+
+.mmi-stat-label {
+  font-size: var(--mmi-stat-label-font-size, 12px);
+  color: var(--mmi-stat-label-color, var(--mmi-text-secondary));
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: var(--mmi-stat-label-margin, 0 0 10px);
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.mmi-stat-value {
+  font-size: var(--mmi-stat-value-font-size, 28px);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--mmi-stat-value-color, var(--mmi-text-primary));
+  line-height: 1.2;
+}
+
+.mmi-stat-meta {
+  font-size: var(--mmi-stat-meta-font-size, 12px);
+  color: var(--mmi-text-muted);
+  margin: var(--mmi-stat-meta-margin, 6px 0 0);
+}
+
+/* VIP Tool Cards - Sleek Modern Design */
+.mmi-vip-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.mmi-vip-tool-card {
+  background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%);
+  padding: 28px 24px;
+  border-radius: 16px;
+  text-align: center;
+  border: 2px solid #e5e7eb;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(69,133,44,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+  position: relative;
+  overflow: hidden;
+}
+
+.mmi-vip-tool-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--mmi-green) 0%, var(--mmi-green-dark) 50%, var(--mmi-green) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+.mmi-vip-tool-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--mmi-green);
+  box-shadow: 0 12px 28px rgba(69,133,44,0.18), 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.mmi-vip-tool-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  line-height: 1;
+  color: var(--mmi-green);
+}
+
+.mmi-vip-tool-card h3 {
+  margin: 0 0 12px 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--mmi-text-primary);
+  letter-spacing: -0.3px;
+}
+
+.mmi-vip-tool-card p {
+  color: var(--mmi-text-secondary);
+  font-size: 14px;
+  margin: 0 0 20px 0;
+  line-height: 1.6;
+  flex-grow: 1;
+}
+
+.mmi-vip-tool-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* Financial Cards - Modern Stats Design */
+.financial-card {
+  background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.financial-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+  border-color: var(--mmi-green-light);
+}
+
+.financial-card .card-header {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--mmi-text-secondary);
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.financial-card .card-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--mmi-text-primary);
+  line-height: 1.2;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.financial-card .card-meta {
+  font-size: 13px;
+  color: var(--mmi-text-muted);
+  font-weight: 500;
+}
+
+.financial-card.positive .card-value {
+  color: var(--mmi-success);
+}
+
+.financial-card.negative .card-value {
+  color: var(--mmi-error);
+}
+
+/* Import Card (for financial imports) */
+.mmi-import-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: all 0.3s ease;
+}
+
+.mmi-import-card:hover {
+  border-color: var(--mmi-green-light);
+  box-shadow: 0 4px 12px rgba(69,133,44,0.12);
+}
+
+.mmi-import-card .card-header {
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.mmi-import-card .card-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--mmi-text-primary);
+}
+
+.mmi-import-card .card-body {
+  padding: 0;
+}
+
+.mmi-import-card .card-body p {
+  margin: 8px 0;
+  line-height: 1.6;
+  color: var(--mmi-text-secondary);
+}
+
+/* Dashboard Stats Cards */
+.dashboard-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.dashboard-stats-row .stat-card {
+  background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: all 0.3s ease;
+}
+
+.dashboard-stats-row .stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.dashboard-stats-row .card-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--mmi-text-secondary);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.dashboard-stats-row .card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--mmi-text-primary);
+  line-height: 1.2;
+}
+
+.dashboard-stats-row .stat-card.synced-products .card-value {
+  color: var(--mmi-green);
+}
+
+.dashboard-stats-row .stat-card.pending-offers .card-value {
+  color: var(--mmi-warning);
+}
+
+/* ===================================
+   STATUS BADGES
+   =================================== */
+
+/* --mmi-badge-padding/-radius/-font-size/-bg/-text-color are Style Manager's
+   Badges group (added 2026-09-20, class-ui-styles.php) — nested var()
+   fallbacks so an unshipped site renders byte-identical to before this
+   group existed. Per-variant colors (.success/.warning/.error/.info below)
+   stay on the shared semantic tokens they already used — those are also
+   consumed by logs/stat-tiles/etc, so they intentionally aren't part of
+   this component-scoped group; changing "what error looks like" suite-wide
+   is a different edit than changing "what a badge looks like". */
+.mmi-badge {
+  display: inline-block;
+  padding: var(--mmi-badge-padding, 3px 8px);
+  border-radius: var(--mmi-badge-radius, 12px);
+  font-size: var(--mmi-badge-font-size, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: var(--mmi-badge-bg, var(--mmi-gray-300, #e5e5e5));
+  color: var(--mmi-badge-text-color, var(--mmi-gray-700, #50575e));
+  white-space: nowrap;
+}
+
+.mmi-badge.success {
+  background: var(--mmi-success-bg);
+  color: var(--mmi-success-text);
+}
+
+.mmi-badge.warning {
+  background: var(--mmi-warning-bg);
+  color: var(--mmi-warning-text);
+}
+
+.mmi-badge.error {
+  background: var(--mmi-error-bg);
+  color: var(--mmi-error-text);
+}
+
+.mmi-badge.info {
+  background: var(--mmi-info-bg);
+  color: var(--mmi-info-text);
+}
+
+/* Larger badge variant */
+.mmi-badge-lg {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+/* ===================================
+   TABLES
+   =================================== */
+
+.mmi-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.mmi-table thead {
+  background: var(--mmi-gray-100);
+}
+
+.mmi-table th {
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--mmi-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--mmi-gray-300);
+}
+
+.mmi-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--mmi-gray-200);
+  color: var(--mmi-text-primary);
+  font-size: 14px;
+}
+
+.mmi-table tbody tr:hover {
+  background: rgba(69, 133, 44, 0.03);
+}
+
+.mmi-table tbody tr:nth-child(even) {
+  background: var(--mmi-gray-50);
+}
+
+.mmi-table tbody tr:nth-child(even):hover {
+  background: rgba(69, 133, 44, 0.05);
+}
+
+.mmi-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Empty table state */
+.mmi-table td.no-data {
+  text-align: center;
+  padding: 40px;
+  color: var(--mmi-text-muted);
+  font-style: italic;
+}
+
+/* ===================================
+   LOGS DISPLAY
+   =================================== */
+
+.mmi-log-container {
+  background: var(--mmi-gray-100);
+  border: 1px solid var(--mmi-gray-400);
+  border-radius: 4px;
+  padding: var(--mmi-log-padding, 15px);
+  max-height: 500px;
+  overflow-y: auto;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+}
+
+.mmi-log-entry {
+  padding: 8px 10px;
+  margin: var(--mmi-log-entry-margin, 0 0 2px);
+  border-left: 3px solid transparent;
+  background: white;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.mmi-log-entry:hover {
+  background: var(--mmi-gray-50);
+}
+
+.mmi-log-entry.success {
+  border-left-color: var(--mmi-success);
+}
+
+.mmi-log-entry.error {
+  border-left-color: var(--mmi-error);
+}
+
+.mmi-log-entry.warning {
+  border-left-color: var(--mmi-warning);
+}
+
+.mmi-log-entry.info {
+  border-left-color: var(--mmi-info);
+}
+
+.mmi-log-timestamp {
+  color: var(--mmi-text-muted);
+  margin-right: 10px;
+  font-weight: 600;
+}
+
+.mmi-log-message {
+  color: var(--mmi-text-primary);
+}
+
+.mmi-log-meta {
+  color: var(--mmi-text-muted);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* Empty log state */
+.mmi-log-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--mmi-text-muted);
+  font-family: var(--mmi-font-family);
+  font-style: italic;
+}
+
+/* ===================================
+   BUTTONS
+   =================================== */
+
+/* Primary button override (MMI Green) */
+.mmi-page .button-primary,
+.mmi-page .button-primary:hover,
+.mmi-page .button-primary:focus,
+.mmi-page .button-primary:active {
+  background: var(--mmi-primary) !important;
+  border-color: var(--mmi-primary) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.mmi-page .button-primary:hover,
+.mmi-page .button-primary:focus {
+  background: var(--mmi-primary-hover) !important;
+  border-color: var(--mmi-primary-hover) !important;
+}
+
+/* Danger button */
+.mmi-page .button-danger {
+  background: var(--mmi-error) !important;
+  border-color: var(--mmi-error) !important;
+  color: white !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.mmi-page .button-danger:hover,
+.mmi-page .button-danger:focus {
+  background: #b32d2e !important;
+  border-color: #b32d2e !important;
+  color: white !important;
+}
+
+/* Success button */
+.mmi-page .button-success {
+  background: var(--mmi-success) !important;
+  border-color: var(--mmi-success) !important;
+  color: white !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.mmi-page .button-success:hover,
+.mmi-page .button-success:focus {
+  background: #008a24 !important;
+  border-color: #008a24 !important;
+  color: white !important;
+}
+
+/* Text-like input/select/textarea focus state — buttons above already get
+   the MMI green treatment; without this, any field a plugin doesn't
+   individually override falls back to WP core's own blue (#2271b1) focus
+   border/box-shadow, which reads as a mismatched, un-branded field sitting
+   next to green buttons in the same form/modal. One shared rule here avoids
+   every plugin needing its own per-field override just to avoid that. */
+.mmi-page input[type="text"]:focus,
+.mmi-page input[type="search"]:focus,
+.mmi-page input[type="email"]:focus,
+.mmi-page input[type="url"]:focus,
+.mmi-page input[type="tel"]:focus,
+.mmi-page input[type="number"]:focus,
+.mmi-page input[type="date"]:focus,
+.mmi-page input[type="time"]:focus,
+.mmi-page input[type="password"]:focus,
+.mmi-page select:focus,
+.mmi-page textarea:focus {
+  border-color: var(--mmi-primary) !important;
+  box-shadow: 0 0 0 1px var(--mmi-primary) !important;
+  outline: none !important;
+}
+
+/* ===================================
+   FLASH NOTICES (TOAST)
+   =================================== */
+
+.mmi-flash-notice {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 6px;
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: mmiFlashIn 0.3s ease-out;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.mmi-flash-notice.success {
+  background: var(--mmi-success-bg);
+  color: var(--mmi-success-text);
+  border: 2px solid var(--mmi-success-border);
+}
+
+.mmi-flash-notice.error {
+  background: var(--mmi-error-bg);
+  color: var(--mmi-error-text);
+  border: 2px solid var(--mmi-error-border);
+}
+
+.mmi-flash-notice.warning {
+  background: var(--mmi-warning-bg);
+  color: var(--mmi-warning-text);
+  border: 2px solid var(--mmi-warning-border);
+}
+
+.mmi-flash-notice.info {
+  background: var(--mmi-info-bg);
+  color: var(--mmi-info-text);
+  border: 2px solid var(--mmi-info-border);
+}
+
+@keyframes mmiFlashIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* ===================================
+   GATED FEATURES (MMI_Feature_Gate)
+   =================================== */
+
+/* Wraps a feature that only fully works with a sibling MMI plugin present.
+   Never display:none/omitted when locked — see AGENTS.md's "Gated Feature
+   Disclosure." .mmi-is-locked dims and disables the real controls beneath;
+   the badge + popover always render regardless of lock state so the DOM
+   position never shifts between locked/unlocked. */
+.mmi-gated-feature {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mmi-gated-feature.mmi-is-locked > :not(.mmi-gate-badge):not(.mmi-gate-popover) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.mmi-gate-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--mmi-radius-full);
+  background: var(--mmi-gray-300);
+  color: var(--mmi-gray-700);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mmi-gate-badge:hover,
+.mmi-gate-badge:focus-visible {
+  background: var(--mmi-gray-400);
+  outline: none;
+}
+
+.mmi-gate-badge .dashicons {
+  font-size: 13px;
+  width: 13px;
+  height: 13px;
+}
+
+/* [hidden] is the only visibility gate — never toggle display directly
+   (AGENTS.md's "[hidden] Attribute vs. a Class That Sets display" rule). */
+.mmi-gate-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--mmi-z-popover);
+  width: 240px;
+  background: var(--mmi-bg-white);
+  border: 1px solid var(--mmi-gray-400);
+  border-radius: var(--mmi-radius-md);
+  box-shadow: var(--mmi-shadow-lg);
+  padding: 12px 14px;
+}
+
+.mmi-gate-popover:not([hidden]) {
+  display: block;
+}
+
+.mmi-gate-popover p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--mmi-text-primary);
+}
+
+.mmi-gate-cta {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ===================================
+   GRID LAYOUTS
+   =================================== */
+
+.mmi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.mmi-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.mmi-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.mmi-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 1200px) {
+  .mmi-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .mmi-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .mmi-grid,
+  .mmi-grid-2,
+  .mmi-grid-3,
+  .mmi-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .mmi-header {
+    padding: 15px 20px;
+  }
+  
+  .mmi-header-title h1 {
+    font-size: 20px;
+  }
+  
+  .mmi-tab-content {
+    padding: 15px;
+  }
+}
+
+/* ===================================
+   UTILITY CLASSES
+   =================================== */
+
+/* Text Alignment */
+.mmi-text-left { text-align: left; }
+.mmi-text-center { text-align: center; }
+.mmi-text-right { text-align: right; }
+
+/* Text Colors */
+.mmi-text-primary { color: var(--mmi-text-primary); }
+.mmi-text-secondary { color: var(--mmi-text-secondary); }
+.mmi-text-muted { color: var(--mmi-text-muted); }
+.mmi-text-success { color: var(--mmi-success); }
+.mmi-text-error { color: var(--mmi-error); }
+.mmi-text-warning { color: var(--mmi-warning); }
+.mmi-text-info { color: var(--mmi-info); }
+
+/* Font Weights */
+.mmi-font-normal { font-weight: 400; }
+.mmi-font-medium { font-weight: 500; }
+.mmi-font-semibold { font-weight: 600; }
+.mmi-font-bold { font-weight: 700; }
+
+/* Margin Utilities */
+.mmi-m-0 { margin: 0; }
+.mmi-mt-xs { margin-top: var(--mmi-space-xs); }
+.mmi-mt-sm { margin-top: var(--mmi-space-sm); }
+.mmi-mt-md { margin-top: var(--mmi-space-md); }
+.mmi-mt-lg { margin-top: var(--mmi-space-lg); }
+.mmi-mt-xl { margin-top: var(--mmi-space-xl); }
+.mmi-mb-xs { margin-bottom: var(--mmi-space-xs); }
+.mmi-mb-sm { margin-bottom: var(--mmi-space-sm); }
+.mmi-mb-md { margin-bottom: var(--mmi-space-md); }
+.mmi-mb-lg { margin-bottom: var(--mmi-space-lg); }
+.mmi-mb-xl { margin-bottom: var(--mmi-space-xl); }
+.mmi-my-sm { margin-top: var(--mmi-space-sm); margin-bottom: var(--mmi-space-sm); }
+.mmi-my-md { margin-top: var(--mmi-space-md); margin-bottom: var(--mmi-space-md); }
+.mmi-my-lg { margin-top: var(--mmi-space-lg); margin-bottom: var(--mmi-space-lg); }
+
+/* Padding Utilities */
+.mmi-p-0 { padding: 0; }
+.mmi-p-sm { padding: var(--mmi-space-sm); }
+.mmi-p-md { padding: var(--mmi-space-md); }
+.mmi-p-lg { padding: var(--mmi-space-lg); }
+.mmi-p-xl { padding: var(--mmi-space-xl); }
+.mmi-px-sm { padding-left: var(--mmi-space-sm); padding-right: var(--mmi-space-sm); }
+.mmi-px-md { padding-left: var(--mmi-space-md); padding-right: var(--mmi-space-md); }
+.mmi-px-lg { padding-left: var(--mmi-space-lg); padding-right: var(--mmi-space-lg); }
+.mmi-py-sm { padding-top: var(--mmi-space-sm); padding-bottom: var(--mmi-space-sm); }
+.mmi-py-md { padding-top: var(--mmi-space-md); padding-bottom: var(--mmi-space-md); }
+.mmi-py-lg { padding-top: var(--mmi-space-lg); padding-bottom: var(--mmi-space-lg); }
+
+/* Display Utilities */
+.mmi-block { display: block; }
+.mmi-inline-block { display: inline-block; }
+.mmi-flex { display: flex; }
+.mmi-inline-flex { display: inline-flex; }
+
+/* Flex Utilities */
+.mmi-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mmi-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mmi-flex-wrap { flex-wrap: wrap; }
+.mmi-flex-nowrap { flex-wrap: nowrap; }
+.mmi-gap-sm { gap: var(--mmi-space-sm); }
+.mmi-gap-md { gap: var(--mmi-space-md); }
+.mmi-gap-lg { gap: var(--mmi-space-lg); }
+
+/* Border Utilities */
+.mmi-border { border: 1px solid var(--mmi-gray-300); }
+.mmi-border-top { border-top: 1px solid var(--mmi-gray-300); }
+.mmi-border-bottom { border-bottom: 1px solid var(--mmi-gray-300); }
+.mmi-rounded { border-radius: 4px; }
+.mmi-rounded-lg { border-radius: 8px; }
+
+/* Shadow Utilities */
+.mmi-shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.mmi-shadow { box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+.mmi-shadow-lg { box-shadow: 0 3px 12px rgba(0,0,0,0.12); }
+
+/* ===================================
+   HELPER CLASSES
+   =================================== */
+
+/* Loading Spinner — see the full canonical definition + rationale further
+   below (search ".mmi-loading — canonical spinner"). Kept as a single
+   definition, not duplicated here — a second, divergent copy of this exact
+   selector used to live at this spot (18x18 vs 20x20, border vs mask) and
+   silently won the cascade over this one by source order alone; see
+   AGENTS.md's "X-Modal Spinner 'Moved' Vertically" incident. */
+
+@keyframes mmiSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Tooltip */
+.mmi-tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+/* --mmi-tooltip-width/-bg/-text-color/-radius/-padding are Style Manager's
+   Tooltips group (added 2026-09-20, class-ui-styles.php) — nested var()
+   fallbacks so an unshipped site renders byte-identical to before this
+   group existed. Centering was `left: 50%; margin-left: -100px` — a fixed
+   half-of-200px offset that only centered correctly at exactly 200px wide,
+   which would have made `tooltip_width` unsafe to expose (same coupling
+   problem as .mmi-toggle-switch's geometry). Switched to
+   `transform: translateX(-50%)`, which centers correctly at any width —
+   verified equivalent at the current 200px default (both resolve to a
+   -100px shift), but now generalizes instead of breaking. */
+.mmi-tooltip-text {
+  visibility: hidden;
+  width: var(--mmi-tooltip-width, 200px);
+  background-color: var(--mmi-tooltip-bg, #1d2327);
+  color: var(--mmi-tooltip-text-color, #fff);
+  text-align: center;
+  border-radius: var(--mmi-tooltip-radius, 6px);
+  padding: var(--mmi-tooltip-padding, 8px);
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mmi-tooltip:hover .mmi-tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Help Icon */
+.mmi-help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--mmi-secondary);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: help;
+  margin-left: 6px;
+}
+
+.mmi-help-icon:hover {
+  background: var(--mmi-secondary-hover);
+}
+
+.mmi-help-icon::before {
+  content: '?';
+}
+
+/* Status Indicators */
+.mmi-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.mmi-status-dot.success {
+  background: var(--mmi-success);
+}
+
+.mmi-status-dot.error {
+  background: var(--mmi-error);
+}
+
+.mmi-status-dot.warning {
+  background: var(--mmi-warning);
+}
+
+.mmi-status-dot.info {
+  background: var(--mmi-info);
+}
+
+/* Divider */
+.mmi-divider {
+  border: 0;
+  border-top: 1px solid var(--mmi-gray-300);
+  margin: 20px 0;
+}
+
+/* ===================================
+   WORDPRESS ADMIN OVERRIDES
+   =================================== */
+
+/* Hide WordPress footer on MMI pages for cleaner UI */
+.mmi-page #wpfooter {
+  display: none !important;
+}
+
+/* WordPress notice compatibility */
+.mmi-page .notice {
+  margin: 20px 0;
+}
+
+/* WordPress button spacing in MMI context */
+.mmi-page .button + .button {
+  margin-left: 8px;
+}
+
+/* ===================================
+   LICENSE TABLE STYLES
+   =================================== */
+.mmi-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--mmi-bg-white);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.mmi-table thead tr {
+    background: var(--mmi-gray-100);
+}
+
+.mmi-table th {
+    padding: 12px 20px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--mmi-text-primary);
+    font-size: 14px;
+}
+
+.mmi-table td {
+    padding: 12px 20px;
+    border-top: 1px solid var(--mmi-gray-300);
+    color: var(--mmi-text-secondary);
+}
+
+.mmi-table tr td:first-child {
+    font-weight: 500;
+}
+
+.mmi-license-key {
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+/* ===================================
+   SECTION WRAPPERS
+   =================================== */
+.mmi-section-title {
+    font-size: 24px;
+    margin-bottom: 16px;
+    color: var(--mmi-text-primary);
+}
+
+.mmi-vip-subtitle {
+    margin-bottom: 30px;
+    font-size: 14px;
+}
+
+.mmi-financial-section {
+    margin-top: 40px;
+}
+
+.mmi-financial-title {
+    margin-bottom: 20px;
+    font-size: 20px;
+    color: var(--mmi-text-primary);
+}
+
+/* ===================================
+   UTILITY CLASSES
+   =================================== */
+
+/* Text Alignment */
+.mmi-text-left   { text-align: left; }
+.mmi-text-center { text-align: center; }
+.mmi-text-right  { text-align: right; }
+
+/* Text Colors */
+.mmi-text-primary { color: var(--mmi-primary); }
+.mmi-text-success { color: var(--mmi-success); }
+.mmi-text-warning { color: var(--mmi-warning); }
+.mmi-text-error   { color: var(--mmi-error); font-weight: 600; }
+.mmi-text-info    { color: var(--mmi-info); }
+.mmi-text-muted   { color: var(--mmi-text-secondary); }
+
+/* Font Weights */
+.mmi-font-normal   { font-weight: var(--mmi-font-weight-normal); }
+.mmi-font-medium   { font-weight: var(--mmi-font-weight-medium); }
+.mmi-font-semibold { font-weight: var(--mmi-font-weight-semibold); }
+.mmi-font-bold     { font-weight: var(--mmi-font-weight-bold); }
+
+/* Display */
+.mmi-block        { display: block; }
+.mmi-inline       { display: inline; }
+.mmi-inline-block { display: inline-block; }
+.mmi-flex         { display: flex; }
+.mmi-grid         { display: grid; }
+.mmi-hidden       { display: none !important; }
+
+/* Flexbox Utilities */
+.mmi-flex-row      { flex-direction: row; }
+.mmi-flex-col      { flex-direction: column; }
+.mmi-flex-wrap     { flex-wrap: wrap; }
+.mmi-items-center  { align-items: center; }
+.mmi-items-start   { align-items: flex-start; }
+.mmi-items-end     { align-items: flex-end; }
+.mmi-justify-center  { justify-content: center; }
+.mmi-justify-between { justify-content: space-between; }
+.mmi-justify-around  { justify-content: space-around; }
+.mmi-gap-sm { gap: var(--mmi-space-sm); }
+.mmi-gap-md { gap: var(--mmi-space-md); }
+.mmi-gap-lg { gap: var(--mmi-space-lg); }
+
+/* Spacing Utilities */
+.mmi-m-0    { margin: 0; }
+.mmi-mt-sm  { margin-top: var(--mmi-space-sm); }
+.mmi-mt-md  { margin-top: var(--mmi-space-md); }
+.mmi-mt-lg  { margin-top: var(--mmi-space-lg); }
+.mmi-mb-sm  { margin-bottom: var(--mmi-space-sm); }
+.mmi-mb-md  { margin-bottom: var(--mmi-space-md); }
+.mmi-mb-lg  { margin-bottom: var(--mmi-space-lg); }
+.mmi-p-sm   { padding: var(--mmi-space-sm); }
+.mmi-p-md   { padding: var(--mmi-space-md); }
+.mmi-p-lg   { padding: var(--mmi-space-lg); }
+
+/* Border Radius */
+.mmi-rounded-sm   { border-radius: var(--mmi-radius-sm); }
+.mmi-rounded-md   { border-radius: var(--mmi-radius-md); }
+.mmi-rounded-lg   { border-radius: var(--mmi-radius-lg); }
+.mmi-rounded-full { border-radius: var(--mmi-radius-full); }
+
+/* Shadows */
+.mmi-shadow-sm { box-shadow: var(--mmi-shadow-sm); }
+.mmi-shadow-md { box-shadow: var(--mmi-shadow-md); }
+.mmi-shadow-lg { box-shadow: var(--mmi-shadow-lg); }
+
+/* Sizing */
+.mmi-w-full { width: 100%; }
+
+/* ===================================
+   RESULT CARDS — colored summary panels
+   (see AGENTS.md 2026-09-04 inline-CSS refactor)
+   =================================== */
+.mmi-result-card {
+    padding: 15px;
+    border-radius: 6px;
+    border-left: 4px solid var(--mmi-gray-300);
+    background: var(--mmi-gray-100);
+    margin-top: 15px;
+}
+.mmi-result-card--success {
+    /* background: #d5f4e6; */
+    border-left-color: var(--mmi-success);
+}
+.mmi-result-card--error {
+    /* background: #fce8e8; */
+    border-left-color: var(--mmi-error);
+}
+.mmi-result-card--warning {
+    /* background: #fff8e6; */
+    border-left-color: var(--mmi-warning);
+}
+
+/* ===================================
+   CODE PILL — inline value badge used in result tables
+   =================================== */
+.mmi-code-pill {
+    background: var(--mmi-gray-100);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* ===================================
+   HINT TEXT — small helper line under a field/label
+   =================================== */
+.mmi-hint-text {
+    display: block;
+    margin-top: 4px;
+    font-weight: var(--mmi-font-weight-normal);
+    font-size: 12px;
+    color: var(--mmi-text-secondary);
+}
+
+/* ===================================
+   METRIC COLUMN — equal-width stat block used in dashboards
+   =================================== */
+.mmi-metric-col {
+    flex: 1;
+}
+
+/* ===================================
+   STATUS PILL — generic colored badge shell
+   Pair with style="--mmi-status-bg:#..;--mmi-status-fg:#.." for dynamic colors
+   =================================== */
+.mmi-status-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: var(--mmi-font-weight-semibold);
+    background: var(--mmi-status-bg, var(--mmi-gray-200));
+    color: var(--mmi-status-fg, var(--mmi-text-primary));
+}
+
+/* ===================================
+   VIP PROCESS CARD
+   =================================== */
+.mmi-vip-process-card {
+    background: var(--mmi-bg-white);
+    border: 1px solid var(--mmi-gray-300);
+    border-radius: 8px;
+    padding: 30px 24px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 30px;
+}
+
+.mmi-process-icon .dashicons {
+    color: var(--mmi-primary);
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+}
+
+/* ===================================
+   DEBUG NOTICE
+   =================================== */
+.mmi-debug-notice {
+    background: var(--mmi-gray-100);
+    border-left: 3px solid var(--mmi-primary);
+    padding: 12px 16px;
+    margin-top: 12px;
+    border-radius: 4px;
+}
+
+.mmi-debug-notice p {
+    margin: 0;
+    color: var(--mmi-text-secondary);
+    font-size: 13px;
+}
+
+/* ===================================
+   ANIMATIONS
+   =================================== */
+
+/* --mmi-animate-fade-distance/-duration are Style Manager's Animations
+ * group (added 2026-09-20, class-ui-styles.php). `.mmi-animate-fadeIn` is
+ * this suite's canonical "soft reveal" for content that appears freshly
+ * inserted into the DOM (an expanded table-detail row, a newly-shown
+ * panel) — a `transition` can't animate this on its own (an element has no
+ * "before" state to transition from the moment it's inserted), so this is
+ * a `@keyframes` animation instead, which plays automatically on insertion
+ * with no JS required beyond adding the class. First real adopter:
+ * mmi-xchange-integration's PO Fulfillment Queue (`.mmi-x-po-order-row`
+ * click → `.mmi-x-po-detail-body` reveal), which previously appeared with
+ * no transition at all — search this file for other freshly-inserted
+ * "detail panel"/"expanded row" content before reaching for a bespoke
+ * fade/slide effect; this is very likely already the right one.
+ */
+@keyframes mmi-fadeIn {
+    from { opacity: 0; transform: translateY(var(--mmi-animate-fade-distance, -10px)); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mmi-slideIn {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
+}
+
+@keyframes mmi-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.6; }
+}
+
+.mmi-animate-fadeIn  { animation: mmi-fadeIn  var(--mmi-animate-fade-duration, 0.3s) ease-out; }
+.mmi-animate-slideIn { animation: mmi-slideIn 0.3s ease-out; }
+.mmi-animate-pulse   { animation: mmi-pulse   2s infinite; }
+
+/* Respect the OS-level "reduce motion" accessibility preference — first use
+ * of this media query anywhere in the suite. Keeps the state change itself
+ * (opacity/position end up correct either way) but removes the motion,
+ * rather than skipping the animation classes' effects entirely, so content
+ * doesn't flash-appear inconsistently with animated content elsewhere on
+ * the same page for a user who hasn't set this preference. */
+@media (prefers-reduced-motion: reduce) {
+    .mmi-animate-fadeIn,
+    .mmi-animate-slideIn,
+    .mmi-animate-pulse {
+        animation-duration: 0.01ms;
+        animation-iteration-count: 1;
+    }
+}
+
+/* ===================================
+   RESPONSIVE UTILITIES
+   =================================== */
+
+@media (max-width: 1400px) {
+    .mmi-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 900px) {
+    .mmi-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .mmi-header,
+    .mmi-page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 768px) {
+    :root {
+        --mmi-space-lg: 15px;
+        --mmi-space-xl: 20px;
+        --mmi-space-2xl: 25px;
+    }
+
+    .mmi-page .wrap .nav-tab-wrapper,
+    .mmi-tabs .nav-tab-wrapper {
+        padding: var(--mmi-space-xs) var(--mmi-space-sm) 0;
+    }
+
+    .mmi-page .wrap .nav-tab,
+    .mmi-tabs .nav-tab {
+        padding: 10px 12px;
+        font-size: var(--mmi-font-base);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SHARED BUTTON SYSTEM — Icon + Text Alignment
+   All MMI buttons that combine an icon with text must use .mmi-action-btn
+   or replicate this flex pattern. NEVER use vertical-align hacks.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Action button: icon + text, always vertically centred ─────── */
+.mmi-action-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    padding: var(--mmi-button-padding, 6px 14px) !important;
+    margin: var(--mmi-button-margin, 0);
+    height: auto !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+}
+
+/* Icons inside action buttons must be a fixed square matching the font size.
+   Use a WP-core-aware selector so this reliably beats `.wp-core-ui .button .dashicons`. */
+.wp-core-ui .button.mmi-action-btn .dashicons,
+.wp-core-ui .button-primary.mmi-action-btn .dashicons,
+.wp-core-ui .button-secondary.mmi-action-btn .dashicons,
+.mmi-action-btn .dashicons,
+.mmi-action-btn .mmi-loading {
+    flex-shrink: 0;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    line-height: 1 !important; /* override WP core 1.9 so icons center in flex buttons */
+    vertical-align: middle;
+}
+
+/* Disabled state (non-loading — e.g. form-level permanently disabled) */
+.mmi-action-btn:disabled,
+.mmi-action-btn[disabled] {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+/* ── Small size variant — namespaced equivalent of WP core's .button-small,
+   for compact icon buttons inside table rows (e.g. taxonomy mapping's
+   skip/clear actions). Never use bare .button-small in MMI plugin markup. */
+.mmi-button-small {
+    padding: 0 8px !important;
+    min-height: 26px;
+    line-height: 2 !important;
+    font-size: 11px;
+}
+
+/* ── Loading state ──────────────────────────────────────────────────
+   Added by JS alongside [disabled] while an async request is in flight.
+   Three-class specificity (0,3,0) beats WP's .wp-core-ui .button-primary:disabled
+   (also 0,3,0) because mmi-suite-common.css loads after WP admin styles,
+   so the cascade wins and brand colour is preserved.
+   ─────────────────────────────────────────────────────────────────── */
+.mmi-page .button-primary.mmi-action-btn.mmi-is-loading,
+.mmi-page .button-primary.mmi-action-btn.mmi-is-loading:disabled,
+.mmi-page .button-primary.mmi-action-btn.mmi-is-loading[disabled] {
+    background: var(--mmi-primary) !important;
+    border-color: var(--mmi-primary) !important;
+    color: #fff !important;
+    opacity: 0.85;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* ── Nav-tab icons: dashicons inside WP .nav-tab links ──────────── */
+/* Replace all style="vertical-align:text-bottom" with this rule.  */
+.nav-tab .dashicons {
+    vertical-align: text-bottom;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    margin-right: 2px;
+}
+
+/* ── Inline validation-message icons: dashicons inside a required-field
+   error message (e.g. mmi-import-pipeline's Step 1 "select a data source"
+   notice) ──────────────────────────────────────────────────────────── */
+.mmi-wizard-source-error .dashicons {
+    vertical-align: text-bottom;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* ── Marketplace order-source badge: MMI_Marketplace_Order_Sources::render_badge().
+   Used wherever an order-source marketplace logo needs to render (Xchange
+   order tables, the WC Orders admin column) — one shared size/fit rule so
+   every marketplace's logo (Reverb today, others later) sits consistently
+   regardless of its native image dimensions. ────────────────────────── */
+.mmi-marketplace-badge {
+    height: 20px;
+    width: auto;
+    max-width: 90px;
+    object-fit: contain;
+    vertical-align: middle;
+}
+
+/* ── .mmi-loading — canonical spinner, one definition for the whole suite ──
+   Renders as a single rotating vector shape via CSS mask (the same icon
+   `.mmi-spinner`'s real inline <svg> uses), not the old border-trick
+   (a circle with one differently-colored border side). The border-trick's
+   four independently-anti-aliased border segments visibly wobbled/bobbed
+   vertically as they rotated, most noticeably at 18px — a mask is one solid
+   shape, so rotating it has nothing to wobble. See AGENTS.md's "X-Modal
+   Spinner 'Moved' Vertically" incident.
+
+   18×18 to match .dashicons so a button's size never changes between idle
+   and loading states. box-sizing: border-box kept for parity with sizing
+   overrides (.mmi-cog-meta-key-loading, the email-preview 16px variants)
+   that only set width/height and expect the mask to scale with them.
+
+   Recolor via `color` (the mask fills with currentColor), never
+   border-color/border-top-color — those properties do nothing here. Default
+   is white, for the common case of sitting on a colored .mmi-action-btn
+   background; override `color` directly for any non-button/light-background
+   context (see .mmi-x-field-loading, .mmi-x-loading-banner .mmi-loading in
+   mmi-xchange-integration for worked examples). */
+.mmi-loading {
+    display: inline-block;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    color: #fff;
+    background-color: currentColor;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 640'%3E%3Cpath d='M286.7 96.1C291.7 113 282.1 130.9 265.2 135.9C185.9 159.5 128.1 233 128.1 320C128.1 426 214.1 512 320.1 512C426.1 512 512.1 426 512.1 320C512.1 233.1 454.3 159.6 375 135.9C358.1 130.9 348.4 113 353.5 96.1C358.6 79.2 376.4 69.5 393.3 74.6C498.9 106.1 576 204 576 320C576 461.4 461.4 576 320 576C178.6 576 64 461.4 64 320C64 204 141.1 106.1 246.9 74.6C263.8 69.6 281.7 79.2 286.7 96.1z'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 640'%3E%3Cpath d='M286.7 96.1C291.7 113 282.1 130.9 265.2 135.9C185.9 159.5 128.1 233 128.1 320C128.1 426 214.1 512 320.1 512C426.1 512 512.1 426 512.1 320C512.1 233.1 454.3 159.6 375 135.9C358.1 130.9 348.4 113 353.5 96.1C358.6 79.2 376.4 69.5 393.3 74.6C498.9 106.1 576 204 576 320C576 461.4 461.4 576 320 576C178.6 576 64 461.4 64 320C64 204 141.1 106.1 246.9 74.6C263.8 69.6 281.7 79.2 286.7 96.1z'/%3E%3C/svg%3E");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    animation: mmiSpin 0.8s linear infinite;
+    /* margin/vertical-align not needed — parent flex handles alignment */
+}
+
+/* Light-background spinner (e.g. secondary/white buttons) — the default
+   white fill above is invisible there. */
+.mmi-action-btn:not(.button-primary) .mmi-loading {
+    color: var(--mmi-primary, #2271b1);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BUTTON APPEARANCE — MMI Secondary & Variant Overrides
+   Scoped to .mmi-page so WP core admin is unaffected.
+   Secondary buttons use white/neutral base with MMI-green hover.
+   Primary buttons already covered by .mmi-page .button-primary above.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Secondary / neutral action button ──────────────────────────── */
+.mmi-page .button.mmi-action-btn:not(.button-primary) {
+    background: #fff !important;
+    border-color: #c3c4c7 !important;
+    color: var(--mmi-text-primary) !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+.mmi-page .button.mmi-action-btn:not(.button-primary):hover,
+.mmi-page .button.mmi-action-btn:not(.button-primary):focus {
+    background: #f0f9ea !important;
+    border-color: var(--mmi-primary) !important;
+    color: var(--mmi-primary-dark) !important;
+    box-shadow: none !important;
+}
+
+/* ── Danger variant ─────────────────────────────────────────────── */
+.mmi-page .button.mmi-action-btn.mmi-action-btn--danger {
+    color: var(--mmi-error) !important;
+    border-color: var(--mmi-error) !important;
+}
+
+.mmi-page .button.mmi-action-btn.mmi-action-btn--danger:hover,
+.mmi-page .button.mmi-action-btn.mmi-action-btn--danger:focus {
+    background: var(--mmi-error-bg) !important;
+    border-color: #b32d2e !important;
+    color: #b32d2e !important;
+}
+
+/* ── Disabled state ─────────────────────────────────────────────── */
+.mmi-page .button.mmi-action-btn:disabled,
+.mmi-page .button.mmi-action-btn[disabled] {
+    background: #f6f7f7 !important;
+    border-color: #dcdcde !important;
+    color: #a7aaad !important;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DARK MODE STUB (future use)
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ===================================
+   DARK MODE STUB (future use)
+   =================================== */
+
+@media (prefers-color-scheme: dark) {
+    /* Uncomment when implementing dark mode:
+    :root {
+        --mmi-bg-primary: #1d2327;
+        --mmi-bg-secondary: #2c3338;
+        --mmi-text-primary: #f0f0f1;
+        --mmi-text-secondary: #a0a5aa;
+        --mmi-border-primary: #3c434a;
+    }
+    */
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DATA TABLES — SHARED STANDARDS
+   Applies to all MMI admin data tables. Column-specific widths and
+   plugin-specific colours remain in each plugin's own CSS file.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Sortable column headers ─────────────────────────────────────── */
+
+.mmi-page th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    white-space: nowrap;
+    padding-right: 24px; /* room for the sort arrow */
+    transition: background 0.15s ease;
+}
+
+.mmi-page th.sortable:hover {
+    background: var(--mmi-gray-200);
+}
+
+/* Default (unsorted) indicator */
+.mmi-page th.sortable::after {
+    content: '\21C5'; /* ⇅ */
+    position: absolute;
+    right: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 13px;
+    opacity: 0.3;
+    line-height: 1;
+}
+
+/* Active ascending */
+.mmi-page th.sorted-asc::after {
+    content: '\25B2'; /* ▲ */
+    opacity: 1;
+    color: var(--mmi-primary);
+}
+
+/* Active descending */
+.mmi-page th.sorted-desc::after {
+    content: '\25BC'; /* ▼ */
+    opacity: 1;
+    color: var(--mmi-primary);
+}
+
+/* ── Scrollable wrapper with sticky thead ────────────────────────── */
+
+/*
+ * Wrap any data table in <div class="mmi-table-scroll-wrapper"> to get:
+ *   • horizontal scroll when columns overflow
+ *   • vertical scroll capped at 70vh so the page doesn't stretch
+ *   • thead rows that stay visible while scrolling
+ *
+ * The max-height is intentionally generous. Tighter overrides can be
+ * applied in plugin-specific CSS files when needed.
+ */
+.mmi-table-scroll-wrapper {
+    overflow-x: auto;
+    max-height: 70vh;
+    overflow-y: auto;
+    border: 1px solid var(--mmi-gray-300);
+    border-radius: 4px;
+}
+
+.mmi-table-scroll-wrapper > table thead th,
+.mmi-table-scroll-wrapper > table thead td {
+    position: sticky;
+    top: 0;
+    z-index: var(--mmi-z-sticky, 200);
+    background: var(--mmi-gray-200);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+/*
+ * Prevent the column-resizer's position:relative from overriding
+ * the sticky positioning we just set on sticky-wrapper headers.
+ */
+.mmi-table-scroll-wrapper > table thead th {
+    position: sticky !important;
+}
+
+/* Ensure the resize handle still renders correctly inside a sticky th */
+.mmi-table-scroll-wrapper > table thead th .mmi-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+}
+
+/* ── Column customize button + modal panel ───────────────────────────────
+ * Moved here from mmi-reverb-integration/assets/css/admin.css (2.2.2) once
+ * mmi-import-pipeline's export preview table adopted the same pattern
+ * (#mmi-export-preview-column-customize-btn) — per CLAUDE.md's CSS
+ * Ownership rule, a class used by more than one plugin belongs here, not in
+ * either plugin's own stylesheet. Reverb's #mmi-column-customize-btn (tab=
+ * products) and #mmi-filter-customize-btn both still use the .mmi-fcp-*
+ * classes below for their popover body.
+ *
+ * Rendered as a true centered modal (fixed + transform-centered, with a
+ * dimmed backdrop) rather than a button-anchored popover — the previous
+ * popover computed its position from the button's on-screen rect via JS,
+ * which meant it had to hide itself on every window scroll (its anchor
+ * point goes stale the instant the page moves) and was constrained to a
+ * narrow effective width to avoid overshooting the viewport edge from
+ * whatever offset the button happened to sit at. mmi-column-customizer.js
+ * manages a shared .mmi-fcp-backdrop element (created once, reused by every
+ * instance) alongside this panel; it is not tied to any single instance. */
+.mmi-column-customize-wrap {
+    position: relative;
+}
+
+.mmi-column-customize-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px !important;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+    line-height: 26px !important;
+    color: #646970 !important;
+    border-color: #c3c4c7 !important;
+    background: #fff !important;
+}
+.mmi-column-customize-btn:hover {
+    color: var(--mmi-primary, #45852C) !important;
+    border-color: var(--mmi-primary, #45852C) !important;
+}
+.mmi-column-customize-btn .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
+.mmi-fcp-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 100000;
+}
+.mmi-fcp-backdrop[hidden] {
+    display: none;
+}
+
+.mmi-column-customize-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Wide enough for import-pipeline's rows (drag handle + toggle + label +
+       output-column input + transform select) to sit comfortably, and no
+       longer capped to "still reads as a popover" — this is a real modal. */
+    width: min(720px, 92vw);
+    max-height: min(640px, 82vh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    z-index: 100001;
+}
+.mmi-column-customize-panel[hidden] {
+    display: none;
+}
+
+/* ── Filter/column customize panel body — shared visual language for any
+   popover built from a header/body/footer of checkbox rows. ────────────── */
+.mmi-fcp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /* Negative margins bleed the header band to the panel's own edges
+       (the panel's padding: 10px 12px would otherwise leave a gap around
+       it) so the brand-colored strip reads as part of the panel chrome,
+       not just a text label with a thin rule under it. */
+    margin: -10px -12px 8px;
+    padding: 9px 12px 8px;
+    background: var(--mmi-bg-light, #f8f9fa);
+    border-bottom: 2px solid var(--mmi-primary, #45852C);
+    border-radius: 6px 6px 0 0;
+}
+.mmi-fcp-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--mmi-primary, #45852C);
+    margin: 0;
+}
+.mmi-fcp-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    color: #646970;
+    padding: 0 2px;
+}
+.mmi-fcp-close:hover { color: #d63638; }
+.mmi-fcp-body {
+    display: flex;
+    flex-direction: column;
+}
+.mmi-fcp-section {
+    border-bottom: 1px solid #f0f0f1;
+    padding: 5px 0;
+}
+.mmi-fcp-section:last-child { border-bottom: none; }
+.mmi-fcp-section-row {
+    font-weight: 700;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    padding: 3px 2px;
+    border-radius: 3px;
+    color: #2c3338;
+}
+.mmi-fcp-section-row:hover { background: #f6f7f7; }
+/* Brand-colored checkbox tick instead of the browser/OS default (usually
+   blue) — accent-color is supported by every browser this admin targets. */
+.mmi-fcp-section-row input[type="checkbox"] { margin: 0; cursor: pointer; accent-color: var(--mmi-primary, #45852C); }
+.mmi-fcp-filters {
+    padding-left: 22px;
+    margin-top: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.mmi-fcp-filter-item {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+    color: #3c434a;
+}
+.mmi-fcp-filter-item:hover { background: #f6f7f7; }
+.mmi-fcp-filter-item input[type="checkbox"] { margin: 0; cursor: pointer; accent-color: var(--mmi-primary, #45852C); }
+.mmi-fcp-footer {
+    padding-top: 8px;
+    border-top: 1px solid #e5e5e5;
+    margin-top: 6px;
+    text-align: right;
+}
+.mmi-fcp-footer .button:hover {
+    color: var(--mmi-primary, #45852C) !important;
+    border-color: var(--mmi-primary, #45852C) !important;
+}
+
+/* ── Column customize panel's own header/body/footer layout ──────────────
+ * Scoped under .mmi-column-customize-panel rather than changed on the bare
+ * .mmi-fcp-header/-body/-footer rules above — those are also shared by the
+ * Filter Settings popover (.mmi-filter-customize-panel, reverb-only, its own
+ * CSS lives in mmi-reverb-integration/assets/css/admin.css), which stays a
+ * small anchored popover and must not inherit this modal's flex/full-bleed
+ * treatment. The panel itself is display:flex/flex-direction:column (see
+ * above); header and footer are pinned (flex-shrink:0), body is the one
+ * scrolling region. */
+.mmi-column-customize-panel .mmi-fcp-header {
+    margin: 0;
+    padding: 14px 20px 12px;
+    border-radius: 8px 8px 0 0;
+    flex-shrink: 0;
+}
+.mmi-column-customize-panel .mmi-fcp-title {
+    font-size: 14px;
+}
+.mmi-column-customize-panel .mmi-fcp-close {
+    font-size: 22px;
+}
+.mmi-column-customize-panel .mmi-fcp-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px 20px;
+}
+.mmi-column-customize-panel .mmi-fcp-footer {
+    flex-shrink: 0;
+    padding: 10px 20px 16px;
+}
+
+/* ── Drag-to-reorder rows (MMIColumnCustomizer, mmi-column-customizer.js) ──
+   Each row is a drag handle + a toggle-switch (.mmi-toggle-switch, not a
+   plain checkbox — reads better and matches every other on/off control in
+   the suite) + a field label, optionally followed by whatever extra
+   per-row controls a caller's renderExtra() appends (e.g. import-pipeline's
+   output-column input + transform select). Reverb's simpler columns panel
+   (label only, no renderExtra) gets the same row shape minus those extras. */
+.mmi-fcp-drag-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 2px;
+    border-radius: 3px;
+}
+/* The toggle-switch is a fixed-size shared component (34×18px) — it must
+   not flex-shrink/grow like a text label would. */
+.mmi-fcp-row-toggle {
+    flex-shrink: 0;
+}
+.mmi-fcp-field-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    color: #3c434a;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mmi-fcp-field-label:hover {
+    color: var(--mmi-primary, #45852C);
+}
+/* Section-header divider between groups (MMIColumnCustomizer's optional
+   groupLabel) — same tinted-background treatment as the export field
+   panel's old .mmi-field-group-row it replaces. Also carries an optional
+   master toggle (.mmi-fcp-group-toggle, a .mmi-toggle-switch) that shows/
+   hides every field in the group at once — checked when every field in
+   the group is visible, unchecked when none are, and indeterminate
+   (see the shared .mmi-toggle-switch input:indeterminate rule) when only
+   some are, matching this suite's existing "master toggle all" convention. */
+.mmi-fcp-group-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--mmi-bg-tertiary, #f6f7f7);
+    padding: 4px 6px;
+    margin: 6px -2px 2px;
+    border-radius: 3px;
+}
+.mmi-fcp-group-row:first-child {
+    margin-top: -2px;
+}
+.mmi-fcp-group-label {
+    flex: 1 1 auto;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fcp-group-toggle {
+    flex-shrink: 0;
+}
+.mmi-fcp-drag-handle {
+    cursor: grab;
+    color: #a7aaad;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.mmi-fcp-drag-handle:hover { color: var(--mmi-primary, #45852C); }
+.mmi-fcp-drag-row.ui-sortable-helper {
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.mmi-fcp-drag-row.ui-sortable-placeholder {
+    visibility: visible !important;
+    background: #f0f6fc;
+    border: 1px dashed #c3c4c7;
+    border-radius: 3px;
+}
+
+/* ── Modal dialog (generic) ───────────────────────────────────────────────
+ * AGENTS.md changelog 1.118.0. The suite had 15 independent modal
+ * implementations across 8 plugins and zero shared one — this is that
+ * component, going forward. Modeled on .mmi-fcp-backdrop/
+ * .mmi-column-customize-panel above (the closest thing to a working
+ * reference: already spans 2 plugins, already gets the [hidden] cascade
+ * rule right, already stacks above WP admin's chrome) but kept as its own
+ * generically-named class rather than renaming .mmi-fcp-* in place, so nothing
+ * already built on that panel had to change. mmi-hub/assets/js/shared/
+ * mmi-modal.js is the JS half — backdrop click, Esc, and a focus trap, none
+ * of which any prior implementation had.
+ *
+ * Usage: a caller renders the markup below (see mmi-modal.js's JSDoc for the
+ * exact shape) with [hidden] set, then calls MMIModal.open(id) /
+ * MMIModal.close(id). Do not toggle display/visibility directly — the [hidden]
+ * attribute is what both this CSS and the JS focus/Esc handling key off of,
+ * per AGENTS.md's "[hidden] Attribute vs. a Class That Sets display" rule. */
+.mmi-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(29, 35, 39, 0.55);
+    z-index: var(--mmi-z-modal-backdrop, 100000);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.mmi-modal-backdrop[hidden] { display: none; }
+
+.mmi-modal {
+    background: #fff;
+    color: var(--mmi-text-primary, #1d2327);
+    border-radius: var(--mmi-modal-radius, var(--mmi-radius-lg, 8px));
+    box-shadow: var(--mmi-shadow-xl, 0 4px 16px rgba(0,0,0,0.15));
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: var(--mmi-z-modal, 100001);
+}
+/* Size modifiers — append alongside .mmi-modal, e.g. class="mmi-modal mmi-modal--small". */
+.mmi-modal--small { max-width: 380px; }
+.mmi-modal--large { max-width: 720px; }
+/* Ported from mmi-reverb-integration's own bespoke modal framework (DEC-01)
+   for dialogs wide enough to need real room for tabular/image content —
+   its own "large" bucket (Orphaned-listing, Image Manager, Test Mapping)
+   was 1000px, well past .mmi-modal--large's 720px. */
+.mmi-modal--xlarge { max-width: 1000px; }
+
+/* --mmi-modal-radius/-header-padding/-header-border-color/-body-padding/
+   -footer-padding/-close-hover-bg are Style Manager's Modals group (added
+   2026-09-20, class-ui-styles.php) — nested var() fallbacks so an unshipped
+   site renders byte-identical to before this group existed. */
+.mmi-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: var(--mmi-modal-header-padding, 16px 20px);
+    border-bottom: 1px solid var(--mmi-modal-header-border-color, var(--mmi-border-primary, #e5e5e5));
+    flex-shrink: 0;
+}
+.mmi-modal-header h1, .mmi-modal-header h2, .mmi-modal-header h3, .mmi-modal-header h4 {
+    margin: 0;
+    font-size: var(--mmi-font-md, 16px);
+    font-weight: var(--mmi-font-semibold, 600);
+}
+.mmi-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--mmi-text-secondary, #646970);
+    padding: 2px 4px;
+    border-radius: var(--mmi-radius-sm, 4px);
+    flex-shrink: 0;
+}
+.mmi-modal-close:hover { background: var(--mmi-modal-close-hover-bg, var(--mmi-bg-dark, #f0f0f0)); color: var(--mmi-text-primary, #1d2327); }
+
+.mmi-modal-body {
+    padding: var(--mmi-modal-body-padding, 18px 20px);
+    font-size: var(--mmi-font-base, 14px);
+    line-height: 1.55;
+    color: #3c434a;
+    overflow-y: auto;
+}
+
+.mmi-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: var(--mmi-modal-footer-padding, 14px 20px);
+    border-top: 1px solid var(--mmi-border-primary, #e5e5e5);
+    flex-shrink: 0;
+}
+
+/* Loading/error placeholder for a .mmi-modal-body whose real content loads
+   via AJAX after the modal opens — ported from mmi-reverb-integration's own
+   bespoke modal framework (DEC-01), the one real feature gap the shared
+   component had relative to it. Usage: replace .mmi-modal-body's contents
+   with <p class="mmi-modal-loading">Loading…</p> while the request is in
+   flight, <p class="mmi-modal-error">…</p> on failure. */
+.mmi-modal-loading {
+    text-align: center;
+    color: var(--mmi-text-secondary, #646970);
+    padding: 40px 20px;
+    font-size: var(--mmi-font-base, 14px);
+}
+.mmi-modal-loading:before {
+    content: '⏳ ';
+    font-size: 18px;
+}
+.mmi-modal-error {
+    color: var(--mmi-error-text, #cc1818);
+}
+
+/* ── Pagination (generic) ──────────────────────────────────────────────────
+ * AGENTS.md changelog 1.118.0. 9 independent implementations across the
+ * suite, zero shared — mmi-import-pipeline alone ran three incompatible ones
+ * at once. This is the "Compact" variant (prev/next + a page label):
+ * smallest footprint, and the right fit for AJAX-repaginated data (a server
+ * fetch per page) — see mmi-hub/assets/js/shared/mmi-pagination.js for the
+ * in-memory-slice variant used with already-loaded data, per this suite's
+ * Data Tables convention of never re-fetching to page data already in hand. */
+/* --mmi-pagination-padding/-gap/-label-color/-btn-bg/-btn-border-color/
+   -btn-radius are Style Manager's Pagination group (added 2026-09-20,
+   class-ui-styles.php) — nested var() fallbacks so an unshipped site
+   renders byte-identical to before this group existed. */
+.mmi-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mmi-pagination-gap, 10px);
+    padding: var(--mmi-pagination-padding, 10px 12px);
+    flex-wrap: wrap;
+    font-variant-numeric: tabular-nums;
+}
+.mmi-pagination-label {
+    font-size: var(--mmi-font-sm, 12px);
+    color: var(--mmi-pagination-label-color, var(--mmi-text-secondary, #646970));
+}
+.mmi-pagination-controls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.mmi-pagination-btn {
+    display: inline-block;
+    background: var(--mmi-pagination-btn-bg, var(--mmi-bg-tertiary, #f6f7f7));
+    border: 1px solid var(--mmi-pagination-btn-border-color, var(--mmi-border-secondary, #ccd0d4));
+    color: #2c3338;
+    font-size: var(--mmi-font-sm, 12px);
+    padding: 4px 9px;
+    border-radius: var(--mmi-pagination-btn-radius, var(--mmi-radius-sm, 4px));
+    cursor: pointer;
+    line-height: 1.4;
+    text-decoration: none;
+}
+.mmi-pagination-btn:hover:not(:disabled):not(.mmi-pagination-btn--disabled) {
+    background: var(--mmi-bg-dark, #f0f0f0);
+    border-color: #8c8f94;
+    color: #2c3338;
+}
+.mmi-pagination-btn:disabled,
+.mmi-pagination-btn--disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Optional First/Last boundary buttons (DEC-07) reuse .mmi-pagination-btn's
+   own shape unchanged — the label text alone ("« First"/"Last »")
+   distinguishes the jump-to-boundary affordance; the extra
+   .mmi-pagination-btn--boundary class exists only as a JS-selector hook.
+   .mmi-pagination-btn--disabled is link mode's equivalent of :disabled — a
+   plain `<span>` (not a form control) has no :disabled pseudo-class at all.
+
+   Optional page-size <select> (DEC-02) */
+.mmi-pagination-size-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--mmi-font-sm, 12px);
+    color: var(--mmi-pagination-label-color, var(--mmi-text-secondary, #646970));
+}
+.mmi-pagination-size {
+    font-size: var(--mmi-font-sm, 12px);
+    padding: 3px 6px;
+    border-radius: var(--mmi-pagination-btn-radius, var(--mmi-radius-sm, 4px));
+    border: 1px solid var(--mmi-pagination-btn-border-color, var(--mmi-border-secondary, #ccd0d4));
+    background: var(--mmi-pagination-btn-bg, var(--mmi-bg-tertiary, #f6f7f7));
+    color: #2c3338;
+}
+
+/* ── Toggle switch ─────────────────────────────────────────────────────
+ * Moved here from mmi-import-pipeline/assets/css/import-settings.css and
+ * mmi-vip/assets/css/admin.css, which each defined their own near-duplicate
+ * copy (a CSS Ownership violation — a class used by more than one plugin
+ * belongs here, not in either plugin's own stylesheet) at 44×24px with a
+ * slightly different checked color (green vs. WP admin blue) and no shared
+ * indeterminate-state rule. Slimmed down at the same time per request: was
+ * 44×24 with an 18px knob, now 34×18 with a 14px knob — still comfortably
+ * clickable, reads less bulky next to normal-sized text and buttons.
+ * Standardized on --mmi-primary for the checked state everywhere (mmi-vip's
+ * toggles were the only ones using WP's blue instead of the suite's brand
+ * color). Indeterminate state (half-filled slider) is for master "toggle
+ * all" switches — see mmi-import-pipeline/assets/js/export-settings.js and
+ * import-settings.js for the checked > 0 && checked < total JS pattern that
+ * sets it via .prop('indeterminate', ...) (no HTML attribute equivalent).
+ */
+.mmi-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 18px;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.mmi-toggle-switch input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+/* --mmi-toggle-track-bg/-knob-bg are Style Manager's Toggles group (added
+   2026-09-20, class-ui-styles.php) — colors only. Width/height/knob-size and
+   the checked/indeterminate transform: translateX() distances are coupled
+   geometry (change one without the other and the knob overshoots or leaves
+   a gap) — not safely exposable as independent fields with this schema's
+   flat per-field editing model, so they stay fixed. The checked-state color
+   already comes from --mmi-primary, the suite's shared brand token — not
+   duplicated here for the same reason Badges doesn't get its own copies of
+   the shared success/warning/error/info tokens. */
+.mmi-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--mmi-toggle-track-bg, #ccc);
+    transition: 0.2s;
+    border-radius: 18px;
+}
+
+.mmi-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--mmi-toggle-knob-bg, #fff);
+    transition: 0.2s;
+    border-radius: 50%;
+}
+
+.mmi-toggle-switch input:checked + .mmi-toggle-slider {
+    background-color: var(--mmi-primary, #45852C);
+}
+
+.mmi-toggle-switch input:checked + .mmi-toggle-slider:before {
+    transform: translateX(16px);
+}
+
+.mmi-toggle-switch input:disabled + .mmi-toggle-slider {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Wrapper label for a permanently-disabled toggle (e.g. fixed-column fields) */
+.mmi-toggle-switch.mmi-toggle-disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Indeterminate state for master "toggle all" switches */
+.mmi-toggle-switch input:indeterminate + .mmi-toggle-slider {
+    background: linear-gradient(90deg, var(--mmi-primary, #45852C) 50%, var(--mmi-toggle-track-bg, #ccc) 50%);
+}
+
+.mmi-toggle-switch input:indeterminate + .mmi-toggle-slider:before {
+    background-color: var(--mmi-toggle-knob-bg, #fff);
+    transform: translateX(8px);
+}
+
+/* ── Toolbar (promoted 2026-09-20) ────────────────────────────────────────
+ * A horizontal row of controls above a table or content area — a run/scan
+ * button, a spinner, filter <select>s, a search box. 20+ plugins had their
+ * own version of this (`.mmi-dh-toolbar`, `.mmi-process-actions`,
+ * `.mmi-supplier-toolbar`, etc. — the September suite-wide audit's largest
+ * fragmentation finding besides pagination), each a near-identical
+ * `display:flex; align-items:center; gap; flex-wrap:wrap` rule. This is the
+ * plain, unwrapped version (matching `.mmi-pagination`'s own precedent of
+ * not baking in card chrome) — a plugin that wants its toolbar inside a
+ * bordered card wraps it in `.mmi-card` itself, same as any other content.
+ * First real adopter: mmi-data-health's Overview tab (`.mmi-dh-toolbar`,
+ * this exact same values), migrated the same session this was promoted.
+ */
+.mmi-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--mmi-toolbar-gap, 12px);
+    padding: var(--mmi-toolbar-padding, 0);
+    margin: var(--mmi-toolbar-margin, 16px 0);
+    flex-wrap: wrap;
+}
+
+/* ── Multi-select dropdown (promoted 2026-09-28 from mmi-reverb-integration) ──
+ * A trigger button that opens a menu of options. Markup: .mmi-multiselect >
+ * button.mmi-ms-trigger (.mmi-ms-label, .mmi-ms-badge, .mmi-ms-caret) +
+ * .mmi-ms-menu[hidden] > .mmi-ms-option (.mmi-ms-opt-label, .mmi-ms-opt-count).
+ * Behavior stays with each consumer: Reverb's filter chips (admin.js), the
+ * shared taxonomy-filter.js (which already emitted this markup while the CSS
+ * lived only in Reverb), and mmi-po's brand picker. Colors are tokens whose
+ * defaults are Reverb's original values, so Reverb renders unchanged.
+ * Variants added for long lists: .mmi-ms-search (filter box at the top of the
+ * menu), .mmi-ms-option--check (a <label> wrapping a checkbox, so the picker
+ * posts with its form), .mmi-multiselect--block (full-width trigger).
+ */
+.mmi-multiselect {
+    position: relative;
+    display: inline-block;
+}
+
+.mmi-ms-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--mmi-ms-border, #c3c4c7);
+    border-radius: 4px;
+    background: #fff;
+    color: #2c3338;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.6;
+    transition: border-color 0.12s ease;
+}
+.mmi-ms-trigger:hover,
+.mmi-multiselect.is-open .mmi-ms-trigger {
+    border-color: var(--mmi-ms-accent, #2271b1);
+    color: var(--mmi-ms-accent, #2271b1);
+}
+.mmi-multiselect.is-open .mmi-ms-trigger {
+    background: var(--mmi-ms-accent-bg, #f0f6fc);
+}
+
+.mmi-ms-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background: var(--mmi-ms-accent, #2271b1);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+.mmi-ms-caret {
+    font-size: 10px;
+    opacity: 0.6;
+    margin-left: 1px;
+}
+
+.mmi-ms-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 180px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--mmi-ms-border, #c3c4c7);
+    border-radius: 5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 1000;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.mmi-ms-menu[hidden],
+.mmi-ms-badge[hidden] {
+    display: none !important;
+}
+
+.mmi-ms-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: #2c3338;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    width: 100%;
+    transition: background 0.1s ease;
+}
+.mmi-ms-option:hover {
+    background: var(--mmi-ms-accent-bg, #f0f6fc);
+    color: var(--mmi-ms-accent, #2271b1);
+}
+.mmi-ms-option.is-selected {
+    background: var(--mmi-ms-accent, #2271b1);
+    color: #fff;
+}
+.mmi-ms-option.is-selected:hover {
+    background: var(--mmi-ms-accent-dark, #135e96);
+}
+.mmi-ms-opt-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mmi-ms-opt-count {
+    font-size: 10px;
+    opacity: 0.65;
+    flex-shrink: 0;
+}
+.mmi-ms-option.is-selected .mmi-ms-opt-count {
+    color: rgba(255,255,255,0.75);
+    opacity: 1;
+}
+
+.mmi-multiselect--block,
+.mmi-multiselect--block .mmi-ms-trigger {
+    display: flex;
+    width: 100%;
+}
+.mmi-multiselect--block .mmi-ms-trigger .mmi-ms-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+}
+.mmi-multiselect--block .mmi-ms-menu {
+    right: 0;
+    max-height: var(--mmi-ms-menu-max, 300px);
+}
+.mmi-ms-search {
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    width: 100%;
+    margin: 0 0 4px;
+    box-sizing: border-box;
+}
+.mmi-ms-option--check {
+    justify-content: flex-start;
+    font-weight: normal;
+}
+.mmi-ms-option--check input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+}
+.mmi-ms-option--check[hidden] {
+    display: none;
+}
+.mmi-ms-option--check:has(input:checked) {
+    background: var(--mmi-ms-accent-bg, #f0f6fc);
+    color: var(--mmi-ms-accent, #2271b1);
+}
+
+
+/* ── Buttons with icons: icon and label on one centered line ─────────────────
+ * WP core sizes button dashicons for its own 40px buttons (line-height 1.9,
+ * vertical-align top on a 20px glyph), so any smaller MMI icon sat low or
+ * high. Every MMI-page button that holds an icon becomes an inline flex row.
+ * Only alignment is forced; the default icon size uses :where() so a
+ * plugin's own size rule (e.g. RTSM header, Reverb toolbar) still wins.
+ * [hidden] / .hidden are excluded so hiding a button keeps working.
+ */
+body.mmi-page .button:not([hidden]):not(.hidden):has(> .dashicons, > .mmi-loading) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+body.wp-core-ui.mmi-page .button > .dashicons,
+body.wp-core-ui.mmi-page .button > .mmi-loading {
+    line-height: 1;
+    vertical-align: middle;
+    position: static;
+    top: auto;
+    margin: 0;
+    flex-shrink: 0;
+}
+:where(body.mmi-page) .button > .dashicons {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+}
+:where(body.mmi-page) .button-small > .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+/* ── Tab navigation with icons (.mmi-page .wrap .nav-tab) ───────────────────
+ * Same fix for tabs: icon and label share one centered line, so the active
+ * tab's highlight sits evenly around both.
+ */
+.mmi-page .wrap .nav-tab:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-page .wrap .nav-tab .dashicons {
+    line-height: 1;
+    vertical-align: middle;
+    margin: 0;
+}
+
+/* ── Toolbar controls: one height for everything in a .mmi-toolbar ──────────
+ * Inputs, selects and buttons in a toolbar all take --mmi-control-height, so a
+ * search box, a filter <select> and a Filter button line up instead of mixing
+ * WP core's 40px buttons with shorter inputs and compact buttons.
+ */
+.mmi-toolbar {
+    --mmi-control-height: 34px;
+}
+body.mmi-page .mmi-toolbar :is(input[type="text"], input[type="search"], input[type="number"], input[type="date"], input[type="email"], input[type="url"], select):not([hidden]) {
+    height: var(--mmi-control-height);
+    min-height: var(--mmi-control-height);
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: calc(var(--mmi-control-height) - 2px);
+    font-size: 13px;
+    margin: 0;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+body.mmi-page .mmi-toolbar .button:not([hidden]):not(.hidden) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: var(--mmi-control-height);
+    min-height: var(--mmi-control-height);
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: 1;
+    margin: 0;
+    box-sizing: border-box;
+}
+body.mmi-page .mmi-toolbar label:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+}
+
+/* ── Widget Grid (promoted 2026-09-20) ────────────────────────────────────
+ * A responsive row of equal-ish card panels below a table — an extension
+ * point for plugin-registered aggregate/summary widgets (e.g.
+ * mmi-data-health's `mmi_data_health_overview_widgets` filter). Distinct
+ * from `.mmi-stats-grid`/`.mmi-stat-box` (single number + label) and from
+ * `.mmi-card` (this suite's general-purpose content card, used standalone
+ * — a widget-grid item is specifically one member of a wrapping flex row).
+ * First real adopter: mmi-data-health's Overview tab (`.mmi-dh-widgets`/
+ * `.mmi-dh-widget`, this exact same values), migrated the same session
+ * this was promoted.
+ */
+.mmi-widget-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mmi-widget-grid-gap, 16px);
+    margin-top: var(--mmi-widget-grid-margin-top, 20px);
+}
+
+.mmi-widget {
+    flex: 1 1 260px;
+    padding: var(--mmi-widget-padding, 12px 16px);
+    background: var(--mmi-widget-bg, var(--mmi-bg-white, #ffffff));
+    border: 1px solid var(--mmi-widget-border-color, var(--mmi-gray-300, #e5e5e5));
+    border-radius: var(--mmi-widget-radius, var(--mmi-radius-md, 6px));
+}
+
+.mmi-widget h3 {
+    margin-top: 0;
+}
+
+/* ── Section Card / Collapsible Section (promoted 2026-09-14) ────────────────
+ * Suite-wide standard for any card-shaped panel — a settings block, a status
+ * card, a process/log viewer — per AGENTS.md's directive to base the MMI-wide
+ * CSS standard on mmi-data-pipeline's own admin.php?page=mmi-data-pipeline
+ * page. Ported verbatim from that plugin's import-preview.css
+ * (.mmi-collapsible-section/.mmi-section-header/.mmi-section-content), which
+ * had been "this plugin's own scope only" since 2026-09-01 pending a second
+ * plugin actually needing it (see this file's own CSS Ownership rule) — that
+ * need arrived when mmi-reverb-integration's Logs tab was found reinventing
+ * an equivalent card look via a hand-rolled inline <style> block with its own
+ * hardcoded colors, one of several suite plugins that had independently
+ * built a "settings section card" (mmi-xchange-integration's
+ * .mmi-x-settings-section, mmi-data-pipeline's .mmi-process-section) rather
+ * than sharing one. New consumers should use these classes directly instead
+ * of adding a fourth bespoke copy.
+ *
+ * Usage: `<div class="mmi-collapsible-section">` wraps a `.mmi-section-header`
+ * (click target — pair with `.mmi-collapse-toggle` for an optional chevron
+ * button) and a `.mmi-section-content`. Add `.collapsed` to the outer element
+ * to hide the content and rotate the toggle chevron; toggle via JS.
+ */
+/* --mmi-section-radius/-header-padding/-header-bg/-header-border-color/
+   -content-padding/-description-color are Style Manager's Collapsible
+   Sections group (added 2026-09-20, class-ui-styles.php) — nested var()
+   fallbacks so an unshipped site renders byte-identical to before this
+   group existed. */
+.mmi-collapsible-section {
+    background: #fff;
+    border-radius: var(--mmi-section-radius, 8px);
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.mmi-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--mmi-section-header-padding, 11px 20px);
+    background: var(--mmi-section-header-bg, #f5f5f5);
+    border-bottom: 2px solid var(--mmi-section-header-border-color, #e0e0e0);
+    cursor: pointer;
+    user-select: none;
+}
+
+.mmi-section-header h3,
+.mmi-section-header h4 {
+    margin: 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mmi-section-content {
+    padding: var(--mmi-section-content-padding, 14px);
+}
+
+.mmi-section-description {
+    margin: 0 0 10px 0;
+    color: var(--mmi-section-description-color, #666666);
+}
+
+.mmi-collapsible-section.collapsed .mmi-section-content {
+    display: none;
+}
+
+.mmi-collapsible-section.collapsed .mmi-collapse-toggle .dashicons {
+    transform: rotate(-90deg);
+}
+
+.mmi-collapse-toggle {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mmi-collapse-toggle .dashicons {
+    transition: transform 0.2s;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+}
+
+.mmi-collapse-toggle:hover {
+    background: rgba(0,0,0,0.05);
+    border-radius: 4px;
+}
+
+/* ── Page Section (promoted 2026-09-28) ─────────────────────────────────────
+ * The suite standard for laying out an admin page's body: every block of
+ * content (a toolbar + table, a settings form, a status panel) sits in its
+ * own padded white card with a grey header band, exactly like
+ * admin.php?page=mmi-data-pipeline's Supplier Data Sources / Import Profiles.
+ * Moved verbatim from mmi-data-pipeline's import-settings.css once
+ * mmi-admin's Product Titles page became the second consumer.
+ *
+ * Usage:
+ *   <div class="mmi-process-section">               (add mmi-collapsible-section
+ *     <div class="mmi-section-header">               + a click handler to make it
+ *       <div>                                          collapsible, as Data Pipeline does)
+ *         <h3 class="mmi-process-section-header"><span class="dashicons …"></span> Title</h3>
+ *         <p class="mmi-process-section-description">One line</p>
+ *       </div>
+ *     </div>
+ *     <div class="mmi-section-content">…</div>
+ *   </div>
+ */
+.mmi-process-section {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    box-sizing: border-box;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    transition: box-shadow 0.2s ease;
+}
+
+.mmi-process-section:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.mmi-process-section-header {
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #1d2327;
+}
+
+.mmi-process-section-header .dashicons {
+    color: #45852C;
+    font-size: 18px;
+}
+
+.mmi-process-section-description {
+    color: #646970;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 16px 0;
+}
+
+/* A section that can't collapse keeps the header band but not its click
+   affordance. */
+.mmi-process-section:not(.mmi-collapsible-section) > .mmi-section-header {
+    cursor: default;
+    user-select: auto;
+}
+
+/* ── Profile Buttons (promoted 2026-09-28) ─────────────────────────────────
+ * mmi-data-pipeline's compact outlined button family (Supplier Data Sources and
+ * Import Profiles toolbars), moved verbatim from its import-settings.css when
+ * mmi-admin's Product Titles adopted it for row actions and bulk buttons.
+ *
+ * Usage: <button class="mmi-btn-profile">, plus --primary (green outline, fills on
+ * hover), --danger (red on hover), .is-active (filled, "open" state). An icon-only
+ * button (like Data Pipeline's #duplicate-profile-btn) is just a dashicon inside,
+ * with a title and aria-label. Group buttons in .mmi-psb-actions; separate groups
+ * with .mmi-psb-divider.
+ */
+.mmi-btn-profile {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border: 1px solid #c3c4c7;
+    background: #fff;
+    color: #3c434a;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.mmi-btn-profile .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.mmi-btn-profile:hover {
+    background: #f0f9ea;
+    border-color: #45852C;
+    color: #2d5a1e;
+}
+
+/* Danger variant — Delete */
+.mmi-btn-profile--danger {
+    color: #8a2424;
+}
+
+.mmi-btn-profile--danger:hover {
+    background: #fdf0f0;
+    border-color: #b32d2e;
+    color: #b32d2e;
+}
+
+/* Primary variant — New Profile */
+.mmi-btn-profile--primary {
+    border-color: #45852C;
+    color: #2d5a1e;
+    font-weight: 600;
+}
+
+.mmi-btn-profile--primary:hover {
+    background: #45852C;
+    color: #fff;
+}
+
+/* Disabled state (2026-08-31) — added when this button family started also
+   being used for actions gated on a selection existing (Fetch Selected
+   needing checked rows, Configure/Preview Data/Delete needing an active
+   supplier row — see pipeline-step-1-acquisition.php). */
+.mmi-btn-profile:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.mmi-btn-profile:disabled:hover {
+    background: #fff;
+    border-color: #c3c4c7;
+    color: #3c434a;
+}
+
+/* Toggle-open state (2026-08-31) — e.g. the Taxonomy Mapping button in
+   pipeline-step-1-acquisition.php, toggled via taxonomy-mapping.js's
+   bindPanelToggle(). Mirrors .mmi-btn-profile--primary:hover's solid-fill
+   look so "currently open" reads clearly against the family's otherwise
+   flat/outlined default. */
+.mmi-btn-profile.is-active {
+    background: #45852C;
+    border-color: #45852C;
+    color: #fff;
+}
+
+.mmi-btn-profile[hidden] {
+    display: none;
+}
+
+/* Inside a toolbar, match the other controls' height (see Toolbar below). */
+body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
+    height: var(--mmi-control-height);
+    box-sizing: border-box;
+}
+
+/* Actions — right cluster. margin-left: auto keeps this pushed to the right
+   even on the Import Pipeline tab, where .mmi-psb-actions is now the only
+   child of .mmi-profile-section-bar (the identity block that used to sit
+   to its left was removed in favor of a static section header). */
+.mmi-psb-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.mmi-psb-divider {
+    display: inline-block;
+    width: 1px;
+    height: 20px;
+    background: #dcdcde;
+    margin: 0 4px;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+/* ── Uniform Table Row System (promoted 2026-09-14) ───────────────────────────
+ * Ported verbatim from mmi-data-pipeline's import-settings.css, where it was
+ * introduced 2026-09-01 to give that plugin's own tables one shared visual
+ * language, deliberately scoped to that plugin only until "a second plugin
+ * actually needs them" (its own code comment). That's now this promotion —
+ * see the Section Card block above for the same trigger.
+ *
+ * Usage: add `mmi-uniform-table` to any <table> (drop WP core's own
+ * `widefat striped`, which otherwise fights this look via its own competing
+ * zebra-stripe/hover rules). Add the `--hoverable` modifier only when a row's
+ * background is purely decorative — never on a table whose row background is
+ * a real data encoding a flat hover color would visually contradict. Add
+ * `mmi-uniform-row--selectable` to a <tr> for a click-to-select +
+ * left-border-accent row.
+ */
+.mmi-uniform-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 13px;
+}
+
+.mmi-uniform-table thead tr {
+    background: var(--mmi-table-head-bg);
+}
+
+.mmi-uniform-table thead th {
+    /* Background set here too, not just on thead tr above — a position:sticky
+       header needs its own opaque background on the sticky element itself,
+       not an inherited one, or scrolled content shows through underneath it. */
+    background: var(--mmi-table-head-bg);
+    padding: var(--mmi-table-cell-padding, 9px 12px);
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mmi-table-head-text);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    border-bottom: 2px solid #ddd;
+    border-right: 1px solid #e5e5e5;
+    white-space: nowrap;
+}
+
+.mmi-uniform-table thead th:last-child {
+    border-right: none;
+}
+
+.mmi-uniform-table tbody tr {
+    border-bottom: 1px solid var(--mmi-table-border-color);
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.mmi-uniform-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.mmi-uniform-table tbody td {
+    padding: var(--mmi-table-cell-padding, 6px 12px);
+    vertical-align: middle;
+    border-right: 1px solid var(--mmi-table-border-color);
+}
+
+.mmi-uniform-table tbody td:last-child {
+    border-right: none;
+}
+
+.mmi-uniform-table--hoverable tbody tr:hover {
+    background: var(--mmi-table-row-hover-bg);
+}
+
+.mmi-uniform-row--selectable {
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+
+.mmi-uniform-row--selectable:focus {
+    outline: 2px solid var(--mmi-primary, #45852C);
+    outline-offset: -2px;
+}
+
+.mmi-uniform-row--selectable.is-active {
+    background: #f0f9ea;
+    border-left-color: var(--mmi-primary, #45852C);
+}
+
+/* ── Label Grid (added 2026-09-29) ──────────────────────────────────────────
+   Stacked "LABEL  [control]" rows whose controls must start at the same x.
+   The label column is max-content: it sizes to the widest label actually
+   rendered (supplier/source names, translated strings, anything data-driven),
+   so there is no hardcoded label min-width to outgrow. That magic number was
+   the recurring bug: Data Pipeline's 54px .supplier-label (PLUGIVERY is
+   wider) and XChange's 220px settings label ("Store-Wide Support Link
+   Override" is wider) both pushed one row's control out of line.
+
+   Markup contract:
+     .mmi-label-grid                 the stack (any element)
+       .mmi-label-grid-row           one row: exactly two children,
+         <label/span>                  column 1 — the label
+         <control or wrapper>          column 2 — the value; put several
+                                       controls in a .mmi-label-grid-value
+       anything else                 (headings, notes, badges) spans both
+                                     columns.
+   A row with a single child (e.g. a checkbox label) spans both columns.
+   Rows hidden with display:none drop out of the column sizing.
+
+   Modifiers:
+     .mmi-label-grid--start   value cells keep their natural width instead of
+                              stretching to fill column 2.
+     .mmi-label-grid--single  one column only — use when every label in the
+                              stack is hidden (e.g. a single-source mode).
+   Spacing: --mmi-label-grid-col-gap (8px) and --mmi-label-grid-row-gap (8px).
+   Rows keep their own padding/border/margin. */
+/* Display rules sit in :where() (zero specificity) so any plugin's own
+   hide rule — .hidden, [hidden], .mmi-hidden, or a local one like Data
+   Pipeline's .mmi-supplier-not-in-profile — still wins over them. */
+:where(.mmi-label-grid) {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-content: start;
+    align-items: center;
+    column-gap: var(--mmi-label-grid-col-gap, 8px);
+    row-gap: var(--mmi-label-grid-row-gap, 8px);
+}
+
+.mmi-label-grid > :not(.mmi-label-grid-row) {
+    grid-column: 1 / -1;
+}
+
+:where(.mmi-label-grid > .mmi-label-grid-row) {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+}
+
+/* Always the last column, so --single (label hidden, one column) still
+   works without the value being auto-placed into a label-sized track. */
+.mmi-label-grid-row > :nth-child(2) {
+    grid-column: -2 / -1;
+    min-width: 0;
+}
+
+.mmi-label-grid-row > :only-child {
+    grid-column: 1 / -1;
+}
+
+.mmi-label-grid--start > .mmi-label-grid-row > :nth-child(2) {
+    justify-self: start;
+}
+
+.mmi-label-grid--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+:where(.mmi-label-grid-value) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mmi-label-grid-col-gap, 8px);
+}
+
+@media (max-width: 782px) {
+    .mmi-label-grid:not(.mmi-label-grid--keep) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .mmi-label-grid:not(.mmi-label-grid--keep) > .mmi-label-grid-row > * {
+        grid-column: 1 / -1;
+    }
+}
+
+/* ── Condition builder ("cb") ─────────────────────────────────────────────────
+   The suite-wide condition builder — MMI_Condition_Builder (markup) +
+   js/shared/mmi-condition-builder.js (behavior). One look everywhere it's
+   inserted: mmi-data-pipeline's Catalog Maintenance, Product Workbench and
+   Field Mapping (profile editor + new-profile wizard) today. The row styles
+   below moved here verbatim from mmi-data-pipeline's rule-builder.css; the
+   shell (head, empty hint, actions, library) follows Catalog Maintenance,
+   the look the owner picked. Never restyle a builder per plugin — change it
+   here. */
+.mmi-cb {
+    display: block;
+}
+
+.mmi-cb-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mmi-cb-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #50575e;
+}
+
+.mmi-cb-empty-hint {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-style: italic;
+    color: #8c8f94;
+}
+
+.mmi-cb-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Secondary dashed button beside Add Condition ("Load saved conditions",
+   Catalog Maintenance's "Show Per-Condition Matches"). */
+.mmi-cb-btn-secondary {
+    background: none;
+    border: 1px dashed #c3c4c7;
+    border-radius: 4px;
+    color: #50575e;
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.5;
+    font-family: inherit;
+    transition: background .12s, border-color .12s, color .12s;
+}
+
+.mmi-cb-btn-secondary:hover,
+.mmi-cb-btn-secondary[aria-expanded="true"] {
+    background: #f0f0f1;
+    border-color: #8c8f94;
+    color: #1d2327;
+}
+
+.mmi-cb-btn-secondary .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 1;
+}
+
+/* Passing notice beside the buttons (e.g. "Loaded 3 conditions from …"). */
+.mmi-cb-notice {
+    font-size: 12px;
+    color: #2c5219;
+    opacity: 0;
+    transition: opacity .2s;
+}
+
+.mmi-cb-notice.is-visible {
+    opacity: 1;
+}
+
+/* "Load saved conditions" — an in-flow panel under the buttons (not a
+   floating popover, which the shared page sections clip). */
+.mmi-cb-library {
+    margin-top: 8px;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    max-width: 760px;
+}
+
+.mmi-cb-library-search {
+    width: 100%;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.mmi-cb-library-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.mmi-cb-library-group {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #50575e;
+    padding: 6px 4px 2px;
+}
+
+.mmi-cb-library-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 4px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.mmi-cb-library-item:last-child {
+    border-bottom: none;
+}
+
+.mmi-cb-library-item:hover {
+    background: #f6f7f7;
+}
+
+.mmi-cb-library-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.mmi-cb-library-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.mmi-cb-library-summary {
+    font-size: 11px;
+    color: #50575e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmi-cb-library-meta {
+    color: #8c8f94;
+}
+
+.mmi-cb-library-empty {
+    margin: 6px 4px;
+    font-size: 12px;
+    font-style: italic;
+    color: #8c8f94;
+}
+
+.mmi-conditions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+/* Single condition row: [Source] [Field] [Operator] [Value] [Remove] */
+.mmi-condition-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.mmi-condition-row .mmi-cond-source,
+.mmi-condition-row .mmi-cond-field,
+.mmi-condition-row .mmi-cond-operator,
+.mmi-condition-row .mmi-cond-value {
+    font-size: 13px;
+    padding: 3px 6px;
+    height: 28px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background-color: #fff;
+    color: #1d2327;
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.mmi-condition-row .mmi-cond-source   { min-width: 110px; flex: 0 1 140px; }
+.mmi-condition-row .mmi-cond-field    { min-width: 110px; flex: 0 1 160px; }
+.mmi-condition-row .mmi-cond-operator { min-width: 110px; flex: 0 1 155px; }
+.mmi-condition-row .mmi-cond-value    { min-width: 100px; flex: 1 1 160px; max-width: 260px; }
+
+/* Value picker for "equals"/"not equals" on a field with known values —
+   same box as the text input it stands in for. */
+.mmi-condition-row .mmi-cond-value-select {
+    min-width: 100px;
+    flex: 1 1 160px;
+    max-width: 260px;
+    height: 28px;
+    padding: 3px 24px 3px 6px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background-color: #fff;
+    color: #1d2327;
+    font-size: 13px;
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.mmi-condition-row .mmi-cond-value-select:focus {
+    border-color: #45852C;
+    box-shadow: 0 0 0 1px #45852C;
+    outline: none;
+}
+
+/* Initial state for an "is empty"/"is not empty" condition's value input —
+   plain display:none, not the shared .mmi-hidden (!important would block
+   the later jQuery .show()/.hide() toggle in import-pipeline-catalog-maintenance.js). */
+.mmi-condition-row .mmi-cond-value.mmi-cond-value--hidden {
+    display: none;
+}
+
+/* Value checklist — the "is any of" / "is none of" multi-select UI shown in
+   place of the plain .mmi-cond-value text input for a Taxonomy/Post Field
+   Meta condition whose real values are boundable (see updateValueVisibility()
+   / loadFieldValuesForChecklist() in rule-builder.js).
+   The panel overlays the page below its trigger (position: absolute inside
+   this box). It used to sit in the row's flow, and since the row centers
+   its items vertically, opening it pushed every other control in the row
+   down ~150px. Positioning is pure CSS relative to this box — not JS-placed
+   or portaled to <body>, which is what caused the Wizard Dropdown Stability
+   clipping bug — so it can't drift from its trigger. */
+.mmi-cond-value-checklist {
+    flex: 1 1 160px;
+    max-width: 260px;
+    position: relative;
+}
+
+.mmi-cvc-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+    font-size: 13px;
+    padding: 3px 6px;
+    height: 28px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background-color: #fff;
+    color: #1d2327;
+    line-height: 1;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.mmi-cvc-trigger:hover,
+.mmi-cvc-trigger:focus {
+    border-color: #45852C;
+    box-shadow: 0 0 0 1px #45852C;
+    outline: none;
+}
+
+.mmi-cvc-trigger .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    color: #8c8f94;
+    flex-shrink: 0;
+}
+
+.mmi-cvc-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmi-cvc-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 100;
+    width: 100%;
+    min-width: 240px;
+    box-sizing: border-box;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 6px;
+}
+
+/* The shared page section clips its content (overflow: hidden), which cut
+   the open panel off at the section's bottom edge. Let it overflow only while
+   a panel is actually open, so nothing else about the section changes. */
+.mmi-process-section:has(.mmi-cvc-panel:not(.mmi-hidden)),
+.mmi-section-content:has(.mmi-cvc-panel:not(.mmi-hidden)) {
+    overflow: visible;
+}
+
+.mmi-cvc-search {
+    width: 100%;
+    font-size: 12px;
+    padding: 4px 6px;
+    height: 26px;
+    border: 1px solid #dcdcde;
+    border-radius: 3px;
+    box-sizing: border-box;
+    margin-bottom: 5px;
+}
+
+.mmi-cvc-search:focus {
+    border-color: #45852C;
+    box-shadow: 0 0 0 1px #45852C;
+    outline: none;
+}
+
+.mmi-cvc-options {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.mmi-cvc-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px;
+    font-size: 13px;
+    color: #1d2327;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.mmi-cvc-option:hover {
+    background: #f5faf0;
+}
+
+.mmi-cvc-option input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.mmi-cvc-option span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmi-cvc-empty {
+    display: block;
+    padding: 6px 4px;
+    font-size: 12px;
+    color: #8c8f94;
+    font-style: italic;
+}
+
+.mmi-condition-row .mmi-cond-source:focus,
+.mmi-condition-row .mmi-cond-field:focus,
+.mmi-condition-row .mmi-cond-operator:focus,
+.mmi-condition-row .mmi-cond-value:focus {
+    border-color: #45852C;
+    box-shadow: 0 0 0 1px #45852C;
+    outline: none;
+}
+
+.mmi-condition-row .mmi-cond-field:disabled,
+.mmi-condition-row .mmi-cond-operator:disabled,
+.mmi-condition-row .mmi-cond-value:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Origin badge — labels which side of the source-data/app-data distinction
+   a condition's currently-picked Source belongs to. Both labels sit in the
+   same grid cell, so the badge is always as wide as the longer one; only the
+   label matching data-origin (set by updateOriginBadge() in JS) is visible.
+   Before a Source is picked the whole badge is hidden but keeps its width,
+   so every row's Field/Operator/Value selects start at the same x. */
+.mmi-condition-row .mmi-cond-origin-badge {
+    display: inline-grid;
+    flex: none;
+    text-align: center;
+}
+
+.mmi-cond-origin-label {
+    grid-area: 1 / 1;
+    visibility: hidden;
+}
+
+.mmi-cond-origin-badge[data-origin="source"] .mmi-cond-origin-label--source,
+.mmi-cond-origin-badge[data-origin="app"] .mmi-cond-origin-label--app {
+    visibility: visible;
+}
+
+.mmi-cond-origin-badge:not([data-origin="source"]):not([data-origin="app"]) {
+    visibility: hidden;
+}
+
+/* A condition missing its Source or Field when Save was clicked — see
+   findIncompleteCondition() in import-pipeline-catalog-maintenance.js. */
+.mmi-condition-row.mmi-cond-incomplete .mmi-cond-source,
+.mmi-condition-row.mmi-cond-incomplete .mmi-cond-field {
+    border-color: #d63638;
+    box-shadow: 0 0 0 1px #d63638;
+}
+
+/* Loading spinner state for cascading selects */
+.mmi-cascade-loading {
+    opacity: 0.65;
+}
+
+/* Remove condition row button */
+.mmi-remove-condition-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 3px 4px;
+    color: #b0b7bf;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    transition: color .12s, background .12s;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.mmi-remove-condition-btn:hover {
+    color: #b91c1c;
+    background: #fef2f2;
+}
+
+.mmi-remove-condition-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 1;
+}
+
+/* Add condition button */
+.mmi-add-condition-btn {
+    background: none;
+    border: 1px dashed #c3c4c7;
+    border-radius: 4px;
+    color: #45852C;
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: background .12s, border-color .12s;
+    line-height: 1.5;
+}
+
+.mmi-add-condition-btn:hover {
+    background: #f0f6ed;
+    border-color: #45852C;
+}
+
+.mmi-add-condition-btn .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 1;
+}
+
+/* Match case — a compact "Aa" toggle after the operator. Keeps its width
+   (visibility, not display) when the operator doesn't compare text, so the
+   Value column still starts at the same x on every row. */
+.mmi-cond-case {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    height: 28px;
+    padding: 0 7px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background: #fff;
+    color: #8c8f94;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.mmi-cond-case input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mmi-cond-case:hover {
+    border-color: #8c8f94;
+    color: #50575e;
+}
+
+.mmi-cond-case:has(input:checked) {
+    border-color: #45852C;
+    background: #f0f6ed;
+    color: #45852C;
+}
+
+.mmi-cond-case:has(input:focus-visible) {
+    box-shadow: 0 0 0 1px #45852C;
+}
+
+.mmi-cond-case.mmi-cond-case--na {
+    visibility: hidden;
+}
+
+/* ── Overlapping condition/filter breakdown ("cbd") ──────────────────────────
+   Suite-wide component for showing possibly-overlapping bucket/reason/
+   condition counts honestly — see AGENTS.md's "Overlapping Filter/Condition
+   Counts" rule. Originally built for mmi-data-pipeline's Custom Rule
+   condition breakdown (Stock_Override_Resolver::get_condition_breakdown());
+   moved here once mmi-reverb-integration's Sync Health panel became a
+   second consumer. One unified table of every record matched by any
+   condition/reason, color-coded per condition via the --cbd-color custom
+   property (injected inline per chip/dot — data, not styling, per this
+   project's CSS custom-property convention) — a shared color on one row
+   means that row satisfies more than one condition. */
+.mmi-cond-breakdown {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #fafafa;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.mmi-cbd-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.mmi-cbd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    color: #1d2327;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.mmi-cbd-chip--result {
+    --cbd-color: #45852C;
+    border-color: #45852C;
+    background: #f0f6ed;
+    color: #2c5219;
+    font-weight: 600;
+}
+
+/* Filterable chip — rendered as a <button data-cbd-filter> by consumers
+   that let a chip click narrow the table to that chip's rows (see
+   mmi-data-pipeline's applyBreakdownFilter()). Active = currently filtering. */
+button.mmi-cbd-chip {
+    font-family: inherit;
+    margin: 0;
+    cursor: pointer;
+}
+
+button.mmi-cbd-chip:hover {
+    border-color: var(--cbd-color, #8c8f94);
+}
+
+button.mmi-cbd-chip:focus-visible {
+    outline: 2px solid var(--cbd-color, #2271b1);
+    outline-offset: 1px;
+}
+
+button.mmi-cbd-chip.is-active {
+    border-color: var(--cbd-color, #2271b1);
+    box-shadow: inset 0 0 0 1px var(--cbd-color, #2271b1);
+    font-weight: 600;
+}
+
+.mmi-cbd-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cbd-color);
+    flex: none;
+}
+
+.mmi-cbd-empty {
+    color: #8c8f94;
+    font-style: italic;
+}
+
+.mmi-cbd-more {
+    color: #8c8f94;
+    font-style: italic;
+    margin-top: 6px;
+}
+
+/* Names the active drill-down scope (e.g. "Price drift") when a consumer
+   passes one — see mmi-reverb-integration's Sync Health overlap panel,
+   which scopes both the sample and .mmi-cbd-more's count to whichever pill
+   is active. This line doesn't sit next to that pill, so it has to say so
+   itself rather than relying on nearby context. */
+.mmi-cbd-scope {
+    font-size: 12px;
+    color: #50575e;
+    margin-bottom: 6px;
+}
+
+.mmi-cbd-table-wrap {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+
+.mmi-cbd-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.mmi-cbd-table th,
+.mmi-cbd-table td {
+    padding: 5px 8px;
+    text-align: left;
+    border-bottom: 1px solid #f0f0f0;
+    line-height: 1.5;
+}
+
+.mmi-cbd-table th {
+    position: sticky;
+    top: 0;
+    background: #f6f7f7;
+    font-weight: 600;
+    color: #50575e;
+}
+
+.mmi-cbd-row--in-result {
+    background: #f0f6ed;
+}
+
+.mmi-cbd-dots {
+    white-space: nowrap;
+}
+
+.mmi-cbd-row-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cbd-color);
+    margin-right: 3px;
+}
+
+/* ===================================
+   DASHBOARD LANDING PAGE (bare 'mmi-dashboard' parent slug)
+   =================================== */
+
+.mmi-dashboard-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.mmi-dashboard-attention {
+    flex: 1 1 340px;
+    max-width: 420px;
+    min-width: 300px;
+}
+
+.mmi-dashboard-plugins {
+    flex: 2 1 480px;
+    min-width: 320px;
+}
+
+.mmi-dashboard-panel.mmi-card {
+    margin-bottom: 0;
+}
+
+.mmi-dashboard-empty {
+    color: var(--mmi-text-secondary);
+    font-size: 13px;
+    margin: 0;
+}
+
+.mmi-dashboard-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mmi-dashboard-alert {
+    border: 1px solid var(--mmi-gray-400);
+    border-left-width: 4px;
+    border-radius: 4px;
+    padding: 12px 14px;
+    background: var(--mmi-bg-white);
+}
+
+.mmi-dashboard-alert--critical {
+    border-left-color: var(--mmi-error);
+}
+
+.mmi-dashboard-alert--warning {
+    border-left-color: var(--mmi-warning);
+}
+
+.mmi-dashboard-alert-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-bottom: 6px;
+}
+
+.mmi-dashboard-alert-pill--critical {
+    background: var(--mmi-error);
+    color: #fff;
+}
+
+.mmi-dashboard-alert-pill--warning {
+    background: var(--mmi-warning);
+    color: var(--mmi-gray-900);
+}
+
+.mmi-dashboard-alert-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mmi-text-primary);
+    margin-bottom: 4px;
+}
+
+.mmi-dashboard-alert-desc {
+    font-size: 12px;
+    color: var(--mmi-text-secondary);
+    margin-bottom: 6px;
+}
+
+.mmi-dashboard-alert-link {
+    font-size: 12px;
+}
+
+.mmi-dashboard-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.mmi-dashboard-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mmi-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+
+.mmi-dashboard-plugin-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--mmi-gray-300);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.mmi-dashboard-plugin-row {
+    border-bottom: 1px solid var(--mmi-gray-300);
+    border-left: 4px solid transparent;
+}
+
+.mmi-dashboard-plugin-row:last-child {
+    border-bottom: none;
+}
+
+.mmi-dashboard-plugin-row--critical {
+    border-left-color: var(--mmi-error);
+}
+
+.mmi-dashboard-plugin-row--warning {
+    border-left-color: var(--mmi-warning);
+}
+
+.mmi-dashboard-plugin-row a {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 14px;
+    text-decoration: none;
+}
+
+.mmi-dashboard-plugin-row a:hover {
+    background: var(--mmi-gray-200);
+}
+
+.mmi-dashboard-plugin-row a:hover .mmi-dashboard-plugin-name {
+    color: var(--mmi-secondary);
+}
+
+.mmi-dashboard-plugin-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mmi-text-primary);
+}
+
+.mmi-dashboard-plugin-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.mmi-trial-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    line-height: 1.6;
+}
+
+.mmi-trial-badge .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+.mmi-trial-badge--active {
+    background: var(--mmi-gray-200);
+    color: var(--mmi-text-secondary);
+}
+
+.mmi-trial-badge--expired {
+    background: var(--mmi-warning);
+    color: var(--mmi-gray-900);
+}
+
+/* .mmi-header-alerts already forces width:100% (Admin Page Shell), so a
+   badge placed there sits on its own row beneath the header title/actions —
+   no extra layout rule needed here beyond the chip's own look. */
+.mmi-header-alerts .mmi-trial-badge {
+    font-size: 12px;
+    padding: 3px 10px;
+}
+
+.mmi-license-panel .mmi-license-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    margin: 0 0 10px;
+}
+
+.mmi-license-status--active {
+    color: var(--mmi-success);
+}
+
+.mmi-license-status--trial {
+    color: var(--mmi-text-primary);
+}
+
+.mmi-license-status--trial_expired,
+.mmi-license-status--expired,
+.mmi-license-status--grace {
+    color: var(--mmi-warning);
+}
+
+.mmi-license-hint {
+    font-size: 12px;
+    color: var(--mmi-text-secondary);
+    margin: 8px 0 0;
+}
+
+.mmi-license-activate-form,
+.mmi-license-deactivate-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mmi-license-form-message {
+    font-size: 12px;
+}
+
+.mmi-license-form-message--error {
+    color: var(--mmi-error);
+}
+
+.mmi-license-form-message--success {
+    color: var(--mmi-success);
+}
+
+.mmi-dashboard-plugin-version {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--mmi-text-secondary);
+}
+
+.mmi-dashboard-plugin-desc {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--mmi-text-secondary);
+}
+
+@media (max-width: 900px) {
+    .mmi-dashboard-attention,
+    .mmi-dashboard-plugins {
+        flex-basis: 100%;
+        max-width: none;
+    }
+}

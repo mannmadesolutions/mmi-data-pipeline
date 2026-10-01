@@ -1,0 +1,578 @@
+/**
+ * Attribute & Variation Mapping Panel Styles
+ * mmi-data-pipeline / attribute-mapping.css
+ */
+
+/* ── Wizard step (Attributes, Step 5) ─────────────────────────────────────── */
+#mmi-wizard-p5 .mmi-panel-content {
+    padding-bottom: 60px;
+}
+
+/* Was a hardcoded style="min-width:160px" on the element — this project's
+   own CSS Architecture rule forbids inline styles. */
+#mmi-attr-discover-supplier {
+    min-width: 160px;
+}
+
+/* ── Wizard sections ──────────────────────────────────────────────────────── */
+/* Spacing tightened 2026-09-12 (compacting pass across every wizard step) —
+   values below were never load-bearing, just generous defaults. */
+.mmi-attr-section {
+    margin-bottom: 16px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.mmi-attr-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    background: #f6f7f7;
+    border-bottom: 1px solid #e0e0e0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.mmi-attr-section-head .mmi-attr-section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #45852C;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.mmi-attr-section-head .mmi-attr-section-num.done {
+    background: #1a7340;
+}
+
+.mmi-attr-section-head strong {
+    flex: 1;
+    font-size: 14px;
+}
+
+.mmi-attr-section-head .mmi-attr-section-status {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+}
+
+.mmi-attr-section-body {
+    padding: 12px 16px;
+    background: #fff;
+}
+
+/* ── Enable toggle row ────────────────────────────────────────────────────── */
+.mmi-attr-enable-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: #f0f6ff;
+    border-radius: 6px;
+    border: 1px solid #c8dcf5;
+    margin-bottom: 14px;
+}
+
+.mmi-attr-enable-row label {
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* The switch itself must never shrink when the row's label text wraps. */
+.mmi-attr-enable-row .mmi-toggle-switch {
+    flex-shrink: 0;
+}
+
+/* ── Info callout ─────────────────────────────────────────────────────────── */
+.mmi-attr-info-box {
+    background: #f0f6ff;
+    border-left: 4px solid #2271b1;
+    border-radius: 0 6px 6px 0;
+    padding: 9px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.mmi-attr-info-box.info-warning {
+    background: #fffbee;
+    border-color: #b8860b;
+}
+
+.mmi-attr-info-box.info-success {
+    background: #edf7ed;
+    border-color: #1a7340;
+}
+
+.mmi-attr-info-box strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+/* ── Product type cards ────────────────────────────────────────────────────── */
+.mmi-product-type-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mmi-pt-card {
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    padding: 11px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+}
+
+.mmi-pt-card:hover {
+    border-color: #45852C;
+    background: #f6faf4;
+}
+
+.mmi-pt-card.selected {
+    border-color: #45852C;
+    background: #f0f6ed;
+}
+
+.mmi-pt-card input[type="radio"] {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+
+.mmi-pt-card-icon {
+    font-size: 22px;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.mmi-pt-card-title {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 3px;
+    display: block;
+}
+
+.mmi-pt-card-desc {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.45;
+}
+
+.mmi-pt-card-example {
+    margin-top: 6px;
+    padding: 5px 8px;
+    background: rgba(0,0,0,0.04);
+    border-radius: 4px;
+    font-size: 11px;
+    color: #666;
+    font-family: monospace;
+}
+
+/* ── Variation mode cards ─────────────────────────────────────────────────── */
+.mmi-variation-mode-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mmi-vm-card {
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    padding: 10px 11px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+}
+
+.mmi-vm-card:hover {
+    border-color: #45852C;
+    background: #f6faf4;
+}
+
+.mmi-vm-card.selected {
+    border-color: #45852C;
+    background: #f0f6ed;
+}
+
+.mmi-vm-card input[type="radio"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.mmi-vm-card-title {
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 4px;
+    padding-right: 24px;
+}
+
+.mmi-vm-card-desc {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.5;
+}
+
+/* ── Field input rows ─────────────────────────────────────────────────────── */
+.mmi-attr-field-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.mmi-attr-field-row label {
+    font-weight: 600;
+    font-size: 13px;
+    min-width: 160px;
+    padding-top: 6px;
+    flex-shrink: 0;
+}
+
+.mmi-attr-field-row .mmi-attr-field-wrap {
+    flex: 1;
+    min-width: 220px;
+}
+
+.mmi-attr-field-row .mmi-attr-field-wrap input[type="text"] {
+    width: 100%;
+    max-width: 360px;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.mmi-attr-field-hint {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    color: #888;
+    font-style: italic;
+}
+
+/* ── Attribute definitions table ──────────────────────────────────────────── */
+.mmi-attr-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.mmi-attr-defs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.mmi-attr-defs-table th {
+    background: #f6f7f7;
+    padding: 9px 12px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    border-bottom: 1px solid #e0e0e0;
+    white-space: nowrap;
+}
+
+.mmi-attr-defs-table td {
+    padding: 8px 10px;
+    vertical-align: top;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.mmi-attr-defs-table tr:last-child td {
+    border-bottom: none;
+}
+
+.mmi-attr-defs-table tr:hover td {
+    background: #fafbfc;
+}
+
+/* Column widths */
+.mmi-attr-defs-table .col-label     { width: 150px; }
+.mmi-attr-defs-table .col-wc-attr   { width: 220px; }
+.mmi-attr-defs-table .col-source    { width: 180px; }
+.mmi-attr-defs-table .col-options   { width: 110px; text-align: center; }
+.mmi-attr-defs-table .col-delete    { width: 40px;  text-align: center; }
+
+.mmi-attr-defs-table input[type="text"],
+.mmi-attr-defs-table select {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+    box-sizing: border-box;
+}
+
+/* WC attribute select with status indicator */
+.mmi-wc-attr-wrap {
+    position: relative;
+}
+
+.mmi-wc-attr-status {
+    display: block;
+    font-size: 10px;
+    margin-top: 3px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    line-height: 1.4;
+}
+
+.mmi-wc-attr-status.registered {
+    background: #d5f5e3;
+    color: #1a7340;
+}
+
+.mmi-wc-attr-status.will-create {
+    background: #fff3cd;
+    color: #7a5c00;
+}
+
+.mmi-wc-attr-status.not-found {
+    background: #fce8e8;
+    color: #b32d2e;
+}
+
+/* New attribute name input (shown when "Create new…" selected) */
+.mmi-new-attr-input-wrap {
+    margin-top: 4px;
+}
+
+.mmi-new-attr-input-wrap input {
+    border-color: #b8860b !important;
+    width: 100%;
+    margin-top: 4px;
+}
+
+/* Size override for the status badge inside the attribute-discovery list —
+   the default .mmi-wc-attr-status is a touch small in this denser context. */
+.mmi-wc-attr-status--discover {
+    font-size: 11px;
+}
+
+/* Source field with browse button */
+.mmi-source-field-wrap {
+    display: flex;
+    gap: 4px;
+}
+
+.mmi-source-field-wrap input {
+    flex: 1;
+    min-width: 0;
+}
+
+.mmi-source-field-wrap .browse-fields-btn {
+    flex-shrink: 0;
+    padding: 4px 8px;
+}
+
+/* Toggle cell: for_variations, visible */
+.mmi-attr-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+}
+
+.mmi-attr-toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #555;
+}
+
+/* ── Action buttons row ───────────────────────────────────────────────────── */
+.mmi-attr-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+/* ── Discover button loading state ────────────────────────────────────────── */
+.mmi-attr-discover-result {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: #f6f9ff;
+    border: 1px solid #c8dcf5;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.mmi-attr-discover-result .mmi-discover-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid #e5ecf8;
+}
+
+.mmi-attr-discover-result .mmi-discover-item:last-child {
+    border-bottom: none;
+}
+
+.mmi-discover-add-btn {
+    margin-left: auto;
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+    height: auto !important;
+}
+
+/* ── Variation field mapping ──────────────────────────────────────────────── */
+.mmi-variation-field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.mmi-vf-item label {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.mmi-vf-item input[type="text"],
+.mmi-vf-item select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.mmi-vf-hint {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin-top: 3px;
+    font-style: italic;
+}
+
+/* ── Preview section ──────────────────────────────────────────────────────── */
+.mmi-attr-preview-wrap {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.mmi-attr-preview-heading {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.mmi-attr-preview-product {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 14px;
+}
+
+.mmi-attr-preview-product-title {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* .mmi-attr-preview-badge was dead CSS with zero markup consumers — the real
+   preview-panel component is .mmi-preview-type-badge (renderAttributePreview()
+   in import-pipeline-attributes.js), which had NO CSS anywhere and rendered
+   unstyled. Now uses the shared .mmi-badge success/info modifiers directly. */
+
+.mmi-attr-preview-attr-list {
+    list-style: none;
+    margin: 0 0 10px 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mmi-attr-preview-attr-list li {
+    background: #f0f0f0;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.mmi-attr-preview-attr-list li strong {
+    color: #333;
+}
+
+.mmi-attr-preview-variations {
+    font-size: 12px;
+    color: #555;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.mmi-attr-empty {
+    text-align: center;
+    padding: 24px;
+    color: #888;
+    font-style: italic;
+    font-size: 13px;
+}
+
+/* ── Disabled overlay (when not enabled) ──────────────────────────────────── */
+.mmi-attr-disabled-overlay {
+    position: relative;
+}
+
+.mmi-attr-disabled-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.6);
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+/* ── Global attribute creation inline form ────────────────────────────────── */
+.mmi-create-attr-inline {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.mmi-create-attr-inline input[type="text"] {
+    flex: 1;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .mmi-product-type-cards,
+    .mmi-variation-mode-cards,
+    .mmi-variation-field-grid {
+        grid-template-columns: 1fr;
+    }
+}

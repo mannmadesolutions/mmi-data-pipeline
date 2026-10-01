@@ -1,0 +1,745 @@
+/**
+ * MMI Data Pipeline — Export Tab Styling
+ *
+ * Declares mmi-pipeline-settings (which itself depends on mmi-suite-common)
+ * as its dependency. Reuses existing shared classes wherever possible
+ * (.mmi-modal-backdrop, .mmi-toggle-switch, .mmi-column-customize-panel,
+ * .mmi-pipeline-status-panel, .mmi-preview-table, .mmi-empty-state) —
+ * only new, export-specific classes are defined here. There is no longer a
+ * standalone field-mapping table/panel on this tab — its Include/Output
+ * Column/Transform controls were folded into the export preview's Columns
+ * popover (see export-preview.js), so .mmi-export-output-column/
+ * .mmi-export-transform below are sized to fit inside that shared popover's
+ * rows, not a wide standalone table.
+ *
+ * @package MannMade\DataPipeline
+ */
+
+.mmi-export-container {
+    margin-top: 16px;
+}
+
+/* Format select, inline in the topbar's run-actions group right next to
+   "Run Export Now" — used to live in its own standalone "Step 2: Run
+   Export" section further down the page, which meant picking a format
+   required scrolling away from the Run button and back. Same select
+   (#mmi-export-format), just relocated; export-settings.js's
+   initRunExport() already reads it by that ID, so no JS change was needed. */
+.mmi-topbar-format-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+.mmi-topbar-format-select {
+    height: 28px;
+    font-size: 12px;
+    padding: 0 6px;
+    border: 1px solid var(--mmi-border-secondary, #c3c4c7);
+    border-radius: var(--mmi-radius-sm, 4px);
+}
+
+/* ── Two-column layout: filters (left) + live preview (right) ────────────
+   Previously the Data Type select, every scope field, and the taxonomy
+   trees stretched to the full width of .mmi-section-content (effectively
+   the whole page) — reasonable for a single short dropdown, but the
+   checkbox trees ended up rendering as an almost page-wide box with a lot
+   of dead space around narrow content. Capping the left column also fixes
+   that without needing a max-width override on every individual field.
+   The right column holds export-preview-table.php, kept beside the scope
+   filters (rather than further down the page) so a filter change is
+   visible immediately beside the control that caused it — see
+   export-settings.js's mmi:pipeline-export-preview-stale event and
+   export-preview.js's listener for the reactivity itself. */
+.mmi-scope-layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 460px) 1fr;
+    gap: 28px;
+    align-items: stretch;
+}
+
+/* align-items: stretch (above) makes this sticky column's rendered height
+   match the grid row's height, which is set by whichever column is taller —
+   usually the filters column, since data types with many taxonomy trees
+   (Length, Edition, Level, Line, etc.) can run several thousand px tall.
+   #mmi-export-preview-wrap's height:100% (below) then fills that same
+   height instead of being capped at one viewport's worth, which used to
+   leave a large blank gap in this column once the filters list ran past the
+   fold. Sticky positioning still keeps the preview visible while the (much
+   longer) filters column scrolls past it. */
+.mmi-scope-layout-preview {
+    position: sticky;
+    top: 32px;
+    min-width: 0; /* allow the preview table's own horizontal scroll container to shrink below its content width inside the grid track */
+    align-self: stretch;
+}
+
+@media (max-width: 960px) {
+    .mmi-scope-layout {
+        grid-template-columns: 1fr;
+    }
+    .mmi-scope-layout-preview {
+        position: static;
+    }
+}
+
+.mmi-preview-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.mmi-preview-summary {
+    color: var(--mmi-text-secondary, #646970);
+    font-size: 13px;
+}
+
+/* Output-column rename input + transform <select>, appended to each row in
+   the Columns popover via MMIColumnCustomizer's renderExtra hook (see
+   export-preview.js) — this is what the old standalone "Step 2: Field
+   Mapping" table's two rightmost columns became once that table was folded
+   into this popover. Compact fixed widths, not flex:1 — the field label
+   already claims the remaining row width. */
+.mmi-export-output-column {
+    width: 110px;
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 3px 6px;
+    height: 24px;
+    border: 1px solid var(--mmi-border-secondary, #c3c4c7);
+    border-radius: var(--mmi-radius-sm, 4px);
+}
+.mmi-export-transform {
+    width: 90px;
+    flex-shrink: 0;
+    font-size: 12px;
+    height: 24px;
+    padding: 0 2px;
+    border: 1px solid var(--mmi-border-secondary, #c3c4c7);
+    border-radius: var(--mmi-radius-sm, 4px);
+}
+
+/* Fills the sticky column's stretched height (see .mmi-scope-layout's
+   align-items:stretch above), which matches whichever of the two columns is
+   taller — not a fixed viewport-relative figure, so a data type with a
+   short filter list gets a shorter preview box and one with a long filter
+   list gets a taller one, instead of every profile being capped at the same
+   one-screen height. The scroll region (.mmi-preview-table-scroll) absorbs
+   all of that space since it's the only flex:1 child — the toolbar/
+   empty-state above it keep their natural height. min-height keeps it
+   usable when the filters column itself is short. */
+#mmi-export-preview-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 420px;
+}
+
+.mmi-preview-table-scroll {
+    flex: 1 1 auto;
+    min-height: 0; /* let a flex child actually shrink to fit instead of overflowing by its content size */
+    overflow: auto;
+    border: 1px solid var(--mmi-border-secondary, #ccd0d4);
+}
+
+.mmi-preview-table-scroll thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+}
+
+/* Export progress bar — PHP/JS inject only the --export-pct data value;
+   this rule owns all visual styling. */
+.mmi-export-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+}
+
+.mmi-export-progress-bar {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--mmi-border-secondary, #ccd0d4);
+    position: relative;
+    overflow: hidden;
+}
+
+.mmi-export-progress-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: var(--export-pct, 0%);
+    background: var(--mmi-primary, #45852C);
+    transition: width 0.3s ease;
+}
+
+/* Same success-banner treatment as .mmi-test-result.success
+   (mmi-suite-common.css) — tinted background, left accent border, rounded
+   corners — instead of bare colored text sitting directly in the topbar
+   row. The Download link is pushed to the row's end via margin-left: auto
+   rather than JS/markup changes, since export-settings.js's renderStatus()
+   still emits icon/text/link as flat siblings. */
+.mmi-export-complete {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--mmi-success-bg, #d4edda);
+    border-left: 3px solid var(--mmi-success, #45852C);
+    border-radius: var(--mmi-radius-md, 6px);
+    color: var(--mmi-success-text, #155724);
+}
+
+.mmi-export-complete .dashicons {
+    color: var(--mmi-success, #45852C);
+}
+
+.mmi-export-complete .button {
+    margin-left: auto;
+}
+
+.mmi-export-aborted,
+.mmi-export-error {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--mmi-error-bg, #f8d7da);
+    border-left: 3px solid var(--mmi-error, #d63638);
+    border-radius: var(--mmi-radius-md, 6px);
+    color: var(--mmi-error-text, #721c24);
+}
+
+/* The Data Type step's scrollable/compact card variant (.mmi-scope-choices--scroll,
+   .mmi-scope-card--compact) moved to import-settings.css — it's shared with
+   the Import wizard's own Data Type step now, and that's the base stylesheet
+   loaded on every pipeline tab, not this one. See the comment there. */
+
+/* Export profile rows reuse .mmi-pgc-mode-badge itself (see
+   import-pipeline.css) unmodified for the data-type badge — that rule
+   reads --badge-raw-color (an "R, G, B" triplet, not a hex string) so PHP
+   must set that exact custom property name for the color to actually
+   apply. The Import side's own mode badges used to set --badge-color (a
+   hex string the rule never read, so the per-mode background silently
+   never applied) — now fixed to set --badge-raw-color with a matching
+   triplet in tab-pipeline.php's $mode_labels and import-settings.js's
+   copies of the same table. */
+
+.mmi-export-history-table td,
+.mmi-export-history-table th {
+    white-space: nowrap;
+}
+
+/* ── Data Type & Scope — brought up to the suite's established
+   "labeled control row" convention (see .mmi-rule-header-group in
+   import-pipeline.css and .mmi-filter-group in import-settings.css):
+   an 11px uppercase caption label above a bordered/radius/focus-ring
+   control. mmi-suite-common.css has no reusable base for this — it only
+   ships dashboard cards — so these rules are scoped locally, matching the
+   literal values the reference components already use rather than the
+   (largely unused elsewhere) --mmi-space-* scale. Scoped by the section's
+   own data-section attribute so it also reaches the Data Type <select>,
+   which lives in tab-export.php just above #mmi-export-scope-fields,
+   not just the per-data-type fields rendered by this partial. */
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field {
+    margin-bottom: 16px;
+}
+
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field:last-child {
+    margin-bottom: 0;
+}
+
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field > label {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--mmi-text-primary, #1d2327);
+}
+
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field > label strong {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field > label .description {
+    margin: 0;
+    font-size: 11px;
+    font-style: italic;
+    color: var(--mmi-text-muted, #999);
+}
+
+/* Checkbox rows (e.g. taxonomy "hide empty terms") don't have a
+   strong/description pair — mirror .mmi-catalog-rule-toggle-row instead
+   of the caption-label treatment above. */
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field:has(> label > input[type="checkbox"]) > label {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field > label input[type="checkbox"] {
+    flex-shrink: 0;
+    margin-top: 3px;
+    accent-color: var(--mmi-primary, #45852C);
+}
+
+.mmi-collapsible-section[data-section="export-scope"] select.widefat,
+.mmi-collapsible-section[data-section="export-scope"] input.widefat {
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--mmi-border-secondary, #c3c4c7) !important;
+    border-radius: var(--mmi-radius-sm, 4px);
+    background-color: #fff;
+    color: var(--mmi-text-primary, #1d2327);
+    line-height: 1.4;
+    box-sizing: border-box;
+    transition: border-color var(--mmi-transition-fast, 0.15s ease),
+                box-shadow var(--mmi-transition-fast, 0.15s ease);
+}
+
+.mmi-collapsible-section[data-section="export-scope"] select.widefat:focus,
+.mmi-collapsible-section[data-section="export-scope"] input.widefat:focus {
+    border-color: var(--mmi-primary, #45852C) !important;
+    box-shadow: 0 0 0 1px var(--mmi-primary, #45852C);
+    outline: none;
+}
+
+/* Most of these fields are short single-select dropdowns or one-line
+   search boxes, not long lists, so letting .widefat stretch to 100% reads
+   as broken rather than intentional. Cap width instead of removing
+   .widefat outright (removing it from ~20 field declarations across every
+   data-type branch in export-scope-fields.php would be far more invasive
+   than scoping an override to this section). Multi-selects keep a wider
+   cap since they hold more content; Deliberately does NOT touch .widefat
+   anywhere else in the plugin. */
+.mmi-collapsible-section[data-section="export-scope"] select.widefat:not([multiple]),
+.mmi-collapsible-section[data-section="export-scope"] input.widefat {
+    max-width: 360px;
+}
+
+.mmi-collapsible-section[data-section="export-scope"] select.widefat[multiple] {
+    max-width: 420px;
+}
+
+.mmi-collapsible-section[data-section="export-scope"] input[type="date"] {
+    max-width: 170px;
+}
+
+/* Date-range pairs ("<input> to <input>") — lay the label on its own
+   line, then let the two inputs + the literal "to" text wrap as a row,
+   matching the compound-field pattern used by .mmi-price-range-inputs
+   in the WC filter bar. */
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field:has(input[type="date"]) {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mmi-collapsible-section[data-section="export-scope"] .mmi-modal-field:has(input[type="date"]) > label {
+    flex-basis: 100%;
+}
+
+/* Section label above the per-data-type filter fields, matching
+   .mmi-catalog-rules-section-title's caption + top-divider convention. */
+.mmi-scope-section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--mmi-border-primary, #e5e5e5);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+.mmi-scope-section-title .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+.mmi-scope-section-title .description {
+    font-size: 11px;
+    font-weight: 400;
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--mmi-text-muted, #999);
+}
+
+/* Multi-select "hold Ctrl/Cmd" usage hint — same visual weight as the
+   existing .description paragraphs already used throughout this panel. */
+.mmi-scope-multi-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    font-style: italic;
+    color: var(--mmi-text-muted, #999);
+}
+
+/* ── Hierarchical taxonomy checkbox tree (Category, etc.) ─────────────────
+   Generalizes the proven indented-checklist pattern from
+   mmi-reverb-integration's .mmi-term-checklist (admin-bulk-updates.css) as
+   a fresh, plugin-scoped component — see class-taxonomy-tree-renderer.php.
+   Fixes the native <select multiple> UX problem this replaced: a single
+   term can now be unchecked with a plain click, no Ctrl/Cmd modifier
+   required, and parent/child relationships are visible via indentation
+   instead of a flat alphabetical list. */
+.mmi-taxonomy-tree {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--mmi-border-secondary, #c3c4c7);
+    border-radius: var(--mmi-radius-sm, 4px);
+    background: #fff;
+}
+
+.mmi-taxonomy-tree ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style: none;
+}
+
+.mmi-taxonomy-tree > ul {
+    padding-left: 0;
+}
+
+.mmi-taxonomy-tree li {
+    margin: 3px 0;
+}
+
+.mmi-taxonomy-tree label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--mmi-text-primary, #1d2327);
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: pointer;
+}
+
+/* Brand-colored checkbox tick instead of the browser/OS default (usually
+   blue) — accent-color is supported by every browser this admin targets. */
+.mmi-taxonomy-tree-checkbox {
+    accent-color: var(--mmi-primary, #45852C);
+}
+
+.mmi-taxonomy-tree label.mmi-taxonomy-tree-parent {
+    font-weight: 600;
+}
+
+.mmi-taxonomy-tree-count {
+    color: var(--mmi-text-muted, #999);
+    font-weight: 400;
+    font-size: 12px;
+}
+
+.mmi-taxonomy-tree-toolbar {
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.mmi-taxonomy-tree-toolbar .button-link {
+    font-size: 12px;
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-taxonomy-tree-toolbar .button-link:hover {
+    color: var(--mmi-primary-hover, #3a6f24);
+}
+
+.mmi-taxonomy-tree-toolbar-sep {
+    color: var(--mmi-text-muted, #999);
+    margin: 0 4px;
+}
+
+/* ── Export preview table: sort / resize / infinite-scroll ────────────────
+   Brings the Step 1 preview up to CLAUDE.md's Data Tables standard (the
+   canonical reference is taxonomy-mapping.js/css's sortable-header +
+   drag-to-resize pattern), scoped to #mmi-export-preview-table so it
+   doesn't affect .mmi-preview-table's other, simpler uses elsewhere in the
+   plugin (e.g. import-pipeline.css's own base rule for the same class). */
+#mmi-export-preview-table {
+    table-layout: fixed;
+    width: auto;
+    min-width: 100%;
+}
+
+/* min-width (not just a plain width) is what actually enables horizontal
+   scrolling here: under table-layout:fixed a column's rendered width is at
+   least its min-width even when that pushes the table's total width past
+   its own 100%-of-container base — which is exactly what should happen
+   once a profile has enough enabled columns (a user can select every
+   field) that they can't all fit legibly. .mmi-preview-table-scroll's
+   existing overflow:auto (further up this file) then picks up the
+   horizontal scrollbar for free — nothing else to change there. Without a
+   min-width, table-layout:fixed just squeezes every column evenly into the
+   container no matter how many there are, and overflow:auto never has
+   anything to actually scroll. */
+#mmi-export-preview-table th {
+    position: relative;
+    cursor: default;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: none;
+    border-right: none;
+    border-bottom: 2px solid var(--mmi-border-secondary, #ccd0d4);
+    font-size: 12px;
+    min-width: 90px;
+}
+
+/* Overrides .mmi-preview-table's base cell rule (import-pipeline.css),
+   which sets white-space:nowrap + text-overflow:ellipsis with no
+   overflow:hidden — under table-layout:fixed that let long values visibly
+   spill past the cell boundary into the next column instead of clipping.
+   Truncation now lives entirely on .mmi-preview-cell-content's line-clamp
+   below; the <td> itself is just a plain container. */
+#mmi-export-preview-table td {
+    padding: 0;
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    vertical-align: top;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    border-bottom: 1px solid var(--mmi-border-secondary, #e5e5e5);
+}
+
+#mmi-export-preview-table tbody tr:hover td {
+    background: var(--mmi-bg-light, #f8f9fa);
+}
+
+/* Default-collapsed to 2 lines with an ellipsis; click toggles full wrap
+   (.is-expanded, applied by export-preview.js's initCellExpand()) so long
+   values (descriptions, raw HTML content columns) stay scannable without
+   permanently hiding data the user needs to read. */
+.mmi-preview-cell-content {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    white-space: normal;
+    cursor: pointer;
+    line-height: 1.4;
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
+.mmi-preview-cell-content.is-expanded {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+}
+
+/* ID/post_title cells (export-preview.js renders these as <a> instead of
+   <div> when a wp-admin edit URL is available) — link out to the record's
+   own edit screen rather than toggling the expand state. */
+.mmi-preview-cell-link {
+    color: var(--mmi-primary, #45852C);
+    text-decoration: none;
+}
+.mmi-preview-cell-link:hover {
+    text-decoration: underline;
+    color: var(--mmi-primary-hover, #3a6f24);
+}
+
+#mmi-export-preview-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+#mmi-export-preview-table th.sortable:hover {
+    background: #ebebeb;
+}
+
+#mmi-export-preview-table th.sort-active {
+    color: var(--mmi-primary, #45852C);
+}
+
+#mmi-export-preview-table .mmi-preview-th-label {
+    display: inline;
+}
+
+/* right: 0, not a negative offset — #mmi-export-preview-table th above has
+   overflow:hidden for its text-ellipsis truncation, which clips any part of
+   this handle drawn outside its own border box down to an unusable sliver. */
+.mmi-export-preview-th-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 10px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    z-index: 3;
+}
+
+.mmi-export-preview-th-resize::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 4px;
+    width: 2px;
+    height: 100%;
+    background: transparent;
+}
+
+.mmi-export-preview-th-resize:hover::before,
+.mmi-export-preview-th-resize.is-resizing::before {
+    background: var(--mmi-primary, #45852C);
+}
+
+.mmi-preview-page-size-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+/* .mmi-empty-state's base style (centered, padded, gray text) already
+   comes from import-pipeline.css, loaded on every admin page of this
+   plugin — this just aligns the optional loading spinner inline with it. */
+#mmi-export-preview-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.mmi-preview-stale-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--mmi-text-muted, #999);
+}
+
+/* Infinite-scroll sentinel — sits below <table> inside the same scroll
+   container so it comes into view (and fires the next batch fetch) exactly
+   when the user nears the bottom, then hides again once that batch lands. */
+.mmi-preview-scroll-sentinel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 0;
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+/* ── Per-taxonomy <details> sections ("all available taxonomies") ────────
+   MMI_Taxonomy_Tree_Renderer::render_all_for_post_type() wraps every
+   non-primary taxonomy in a native <details> so N taxonomies don't turn
+   Step 1 into a wall of checkboxes — no JS needed for expand/collapse. */
+.mmi-taxonomy-tree-details {
+    border: 1px solid var(--mmi-border-primary, #e5e5e5);
+    border-radius: var(--mmi-radius-sm, 4px);
+    padding: 8px 10px;
+}
+
+.mmi-taxonomy-tree-details + .mmi-taxonomy-tree-details {
+    margin-top: 8px;
+}
+
+.mmi-taxonomy-tree-details summary {
+    cursor: pointer;
+    padding: 2px 0;
+}
+
+.mmi-taxonomy-tree-details summary strong {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+.mmi-taxonomy-tree-details[open] summary {
+    margin-bottom: 8px;
+}
+
+.mmi-taxonomy-tree-details .mmi-taxonomy-tree {
+    margin-top: 6px;
+}
+
+/* ── Custom Field Filters (post meta conditions) ──────────────────────────
+   Condition-row builder — same bordered/radius/focus-ring control styling
+   as .mmi-condition-row in import-pipeline.css (stock-override rules),
+   reimplemented with fresh class names since this is a separate feature. */
+.mmi-meta-conditions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.mmi-meta-condition-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.mmi-meta-condition-row .mmi-meta-cond-key,
+.mmi-meta-condition-row .mmi-meta-cond-operator,
+.mmi-meta-condition-row .mmi-meta-cond-value {
+    font-size: 13px;
+    padding: 3px 6px;
+    height: 28px;
+    border: 1px solid var(--mmi-border-secondary, #c3c4c7);
+    border-radius: var(--mmi-radius-sm, 3px);
+    background-color: #fff;
+    color: var(--mmi-text-primary, #1d2327);
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.mmi-meta-condition-row .mmi-meta-cond-key    { min-width: 110px; flex: 0 1 160px; }
+.mmi-meta-condition-row .mmi-meta-cond-operator { min-width: 110px; flex: 0 1 150px; }
+.mmi-meta-condition-row .mmi-meta-cond-value  { min-width: 100px; flex: 1 1 160px; max-width: 220px; }
+
+.mmi-meta-condition-row .mmi-meta-cond-key:focus,
+.mmi-meta-condition-row .mmi-meta-cond-operator:focus,
+.mmi-meta-condition-row .mmi-meta-cond-value:focus {
+    border-color: var(--mmi-primary, #45852C);
+    box-shadow: 0 0 0 1px var(--mmi-primary, #45852C);
+    outline: none;
+}
+
+.mmi-meta-cond-remove {
+    font-size: 16px;
+    line-height: 1;
+    color: var(--mmi-text-muted, #999);
+    padding: 0 4px;
+}
+
+.mmi-meta-cond-remove:hover {
+    color: var(--mmi-error, #d63638);
+}
+

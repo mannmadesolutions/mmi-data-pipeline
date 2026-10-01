@@ -1,0 +1,29 @@
+name: security
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: PHP syntax
+        shell: bash
+        run: |
+          fail=0
+          while IFS= read -r -d '' f; do php -l "$f" >/dev/null || fail=1; done \
+            < <(find . -name '*.php' -not -path './vendor/*' -not -path './.git/*' -print0)
+          exit $fail
+
+      - name: Secret scan (gitleaks, full history)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar xz gitleaks
+          ./gitleaks git . --redact --no-banner

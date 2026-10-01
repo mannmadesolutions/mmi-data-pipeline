@@ -1,0 +1,60 @@
+/* Product Specs editor — product edit screen metabox (MMI_Product_Content_Editor).
+   Runs on a core WooCommerce screen where mmi-suite-common isn't loaded, so it
+   leans on WP core form classes and keeps its own rules minimal. */
+
+.mmi-specs-editor {
+	/* WP admin's own border grey (matches .postbox / form fields). */
+	--mmi-specs-border: #dcdcde;
+	--mmi-specs-radius: 4px;
+}
+
+.mmi-specs-editor h4 {
+	margin: 1.25em 0 0.5em;
+}
+
+.mmi-specs-editor__os-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 12px;
+}
+
+.mmi-specs-editor__os,
+.mmi-specs-editor__checks {
+	border: 1px solid var(--mmi-specs-border);
+	border-radius: var(--mmi-specs-radius);
+	padding: 8px 12px 12px;
+	margin: 0 0 12px;
+	min-width: 0;
+}
+
+.mmi-specs-editor__os legend,
+.mmi-specs-editor__checks legend {
+	font-weight: 600;
+	padding: 0 4px;
+}
+
+.mmi-specs-editor__field {
+	display: block;
+	margin: 8px 0;
+}
+
+.mmi-specs-editor__field > span {
+	display: block;
+	margin-bottom: 4px;
+	font-weight: 500;
+}
+
+.mmi-specs-editor__pair {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.mmi-specs-editor__pair > * {
+	flex: 1 1 200px;
+}
+
+.mmi-specs-editor__check {
+	display: inline-block;
+	margin: 2px 12px 2px 0;
+}

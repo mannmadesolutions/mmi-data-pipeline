@@ -1,0 +1,3206 @@
+/**
+ * Import Pipeline Styles
+ * Single-page unified import workflow — replaces the former 3-step wizard.
+ */
+
+/* Utility: hidden initial state (toggled by JS via show/hide) */
+.mmi-is-hidden {
+    display: none !important;
+}
+
+/* .mmi-data-pipeline-container, .mmi-profile-section, .mmi-psb-* classes,
+   .mmi-profile-cards-grid, .mmi-pgc-* classes, and .mmi-profile-grid-card
+   moved to import-settings.css (loaded on every pipeline tab) — this whole block is
+   shared between the Import and Export tabs (see tab-pipeline.php and
+   tab-export.php), but lived here, which only loads on Import. The Export
+   tab's identical markup rendered completely unstyled as a result. */
+
+/* Active profile name — no longer in topbar; lives directly on the active grid card */
+
+/* Source context classes in acquisition table — deliberately a lighter touch
+   than .mmi-profile-grid-card.is-active (that's a single-selection picker
+   card with nothing else competing for color). This table can highlight
+   multiple rows at once, each already carrying its own colored
+   .mmi-status-badge, so the wash + border here mirror taxonomy-mapping.css's
+   tr.is-mapped pattern instead: a near-imperceptible background and a
+   translucent border-left confined to the first cell, so the accent never
+   competes with the badge's own solid color. */
+.mmi-source-in-profile {
+    background-color: #f9fef9;
+}
+
+/* .mmi-pipeline-topbar and everything under it (topbar rows/actions,
+   .mmi-topbar-standalone, .mmi-topbar-schedule-panel/-table, .mmi-tsched-*,
+   .mmi-schedule-controls, .mmi-schedule-toggle-btn.is-active, .mmi-fetch-badge)
+   moved to import-settings.css — same reason as the profile-section block
+   above: this "Quick-Actions Top Bar" component is shared between the Import
+   and Export tabs (tab-pipeline.php's Data Fetch/Import Profile topbars and
+   tab-export.php's Export topbar all use it), but only loaded on Import. */
+
+/* Catalog Maintenance section's Save Rules / Apply Selected Rule Now footer —
+   rescoped from the retired .mmi-topbar-overrides-panel, which owned the only
+   styling .mmi-panel-footer-actions ever had (no generic unscoped rule exists
+   for this class anywhere else in the plugin). */
+#mmi-catalog-maintenance-section .mmi-panel-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid #e2e4e7;
+}
+
+/* ── Stock override rule compliance column ── */
+.col-compliance {
+    width: 170px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* .mmi-compliance-badge's [data-compliance="high/med/low/none/unavailable"]
+   states (found via this Style Manager pass, not fixed here — out of scope)
+   were built for Stock_Override_Resolver::get_compliance_report() /
+   the mmi_get_custom_rule_compliance AJAX handler (StockOverrideController.php)
+   but that handler is never called from any JS in this plugin — a real,
+   orphaned backend feature. Deleted those 5 dead states' CSS; the only
+   genuinely live state is "match" (previewMatchCount() in
+   import-pipeline-catalog-maintenance.js), now the shared .mmi-badge info
+   modifier — this rule keeps only what a plain <button> needs beyond that
+   (chrome reset, hover, cursor). */
+.mmi-compliance-badge {
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    font-weight: 500;
+    transition: background 0.12s;
+}
+.mmi-compliance-badge:hover {
+    background: #dbeafe;
+}
+.mmi-compliance-badge .mmi-badge-arrow {
+    opacity: 0.55;
+    font-size: 10px;
+    margin-left: 3px;
+}
+
+/* Spinner state while loading badge data */
+.mmi-cpl-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+.mmi-cpl-loading::before {
+    content: '';
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border: 2px solid #dcdcde;
+    border-top-color: #64748b;
+    border-radius: 50%;
+    animation: mmi-cpl-spin 0.65s linear infinite;
+    flex-shrink: 0;
+}
+@keyframes mmi-cpl-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Match Review Modal ─────────────────────────────────────────────────── */
+/* Backdrop is now the shared .mmi-modal-backdrop (mmi-suite-common.css) —
+   was a bespoke #mmi-match-review-modal/.mmi-modal-open class toggle,
+   converted to MMIModal.init()/.open()/.close() (MOD-DPL-01). The dialog's
+   own .mmi-match-modal-* header/body/footer chrome is real and kept as-is. */
+.mmi-match-modal-inner {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+    width: 720px;
+    max-width: calc(100vw - 48px);
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.mmi-match-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid #dcdcde;
+    flex-shrink: 0;
+}
+.mmi-match-modal-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    color: #1d2327;
+}
+.mmi-match-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #50575e;
+    padding: 2px 4px;
+    line-height: 1;
+    border-radius: 3px;
+    font-size: 18px;
+}
+.mmi-match-modal-close:hover { background: #f0f0f1; color: #1d2327; }
+.mmi-match-modal-body {
+    overflow-y: auto;
+    flex: 1;
+}
+.mmi-match-modal-loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: #8c8f94;
+}
+.mmi-match-modal-error {
+    padding: 20px;
+    color: #991b1b;
+}
+.mmi-match-modal-empty {
+    padding: 24px 20px;
+    color: #8c8f94;
+}
+.mmi-match-modal-loading::before {
+    content: '';
+    display: block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid #dcdcde;
+    border-top-color: #64748b;
+    border-radius: 50%;
+    animation: mmi-cpl-spin 0.65s linear infinite;
+    margin: 0 auto 10px;
+}
+.mmi-match-modal-footer {
+    padding: 10px 20px;
+    border-top: 1px solid #dcdcde;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #50575e;
+    gap: 8px;
+}
+.mmi-match-modal-footer .mmi-modal-pager {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-match-modal-footer .button {
+    padding: 0 8px;
+    height: 26px;
+    line-height: 24px;
+    font-size: 12px;
+}
+#mmi-match-modal-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+#mmi-match-modal-table th {
+    position: sticky;
+    top: 0;
+    background: #f6f7f7;
+    border-bottom: 1px solid #dcdcde;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #50575e;
+    white-space: nowrap;
+}
+#mmi-match-modal-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+}
+#mmi-match-modal-table tr:last-child td { border-bottom: none; }
+#mmi-match-modal-table tr:hover td { background: #f9fafb; }
+#mmi-match-modal-table .col-id { width: 52px; color: #8c8f94; font-size: 12px; }
+#mmi-match-modal-table .col-sku { width: 110px; font-family: monospace; font-size: 12px; }
+#mmi-match-modal-table .col-status { width: 100px; }
+#mmi-match-modal-table .col-outcome { width: 110px; }
+.mmi-stock-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 10px;
+    line-height: 1.6;
+}
+/* Color now comes from the shared .mmi-badge success/error/warning variants
+   (mmi-suite-common.css), added alongside in import-pipeline-catalog-maintenance.js. */
+.mmi-outcome-ok  { color: #6b7280; font-size: 12px; }
+.mmi-outcome-chg { color: #1d4ed8; font-size: 12px; font-weight: 600; }
+
+/* ── Custom Rules — Card-based builder (formerly "Stock Override Rules";
+   stock in/out-of-stock forcing is now just two entries in a much larger
+   action set — see MannMade\DataPipeline\Custom_Rule_Actions) ──────────── */
+
+/* Compliance badge in the card header */
+.mmi-rule-compliance {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* Inline progress/status text shown below card header during per-card apply */
+.mmi-rule-apply-status {
+    display: none;
+    font-size: 12px;
+    color: #6b7280;
+    padding: 5px 12px;
+    background: #fafafa;
+    border-bottom: 1px solid #f0f0f0;
+    line-height: 1.5;
+}
+
+/* ── Conditions body ─────────────────────────────────────────────────────── */
+
+.mmi-rule-conditions-body {
+    padding: 10px 12px 10px;
+}
+
+/* Two-step content — "what happens" (the action's own extra settings) above
+   "which products" (the condition list) — kept visually separated so the
+   detail row's two blocks of controls don't read as one undifferentiated
+   group. Their own "① What happens" / "② Which products" captions no longer
+   live here — see .mmi-crb-section-head below, now in the header row's own
+   Type/Scope cells next to the controls each one explains. */
+.mmi-crb-section {
+    margin-bottom: 12px;
+}
+
+.mmi-crb-section:last-child {
+    margin-bottom: 0;
+}
+
+/* "① What happens" / "② Which products" — lives in the header row itself
+   (Type cell / Scope cell, right below the action / supplier+match-logic
+   controls each one explains), hidden until that row's own
+   .mmi-cog-expand-toggle reveals its detail row, toggled in lockstep with
+   it. Spans the full width of its cell — necessary in the Scope cell, whose
+   two <select>s are laid out as a 2-column grid this caption would
+   otherwise only occupy half of. */
+.mmi-crb-section-head {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #50575e;
+}
+
+.mmi-crb-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #45852C;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+
+/* The empty hint, Add Condition, "Load saved conditions" and the breakdown
+   button's dashed style (.mmi-cb-*) live in mmi-suite-common.css's "Condition
+   builder" block — the suite-wide MMI_Condition_Builder. */
+
+/* Per-condition match breakdown (.mmi-cond-breakdown, .mmi-cbd-*) moved to
+   mmi-suite-common.css — mmi-reverb-integration's Sync Health panel is now a
+   second consumer, so per CSS Ownership this can no longer live in one
+   plugin's own stylesheet. See AGENTS.md's "Overlapping Filter/Condition
+   Counts" rule for the pattern these classes render. */
+
+
+/* Shared "currently open" weight for every topbar util-action toggle — the
+   per-button background/border colors above stay distinct, this just adds a
+   consistent, slightly stronger visual signal on top of all of them so it's
+   unmistakable which panel (if any) is open. */
+.mmi-topbar-util-actions .mmi-action-btn.is-active {
+    box-shadow: inset 0 0 0 1px currentColor;
+    font-weight: 700;
+}
+
+
+
+/* Data Sources Card — wraps embedded topbar + status cards + supplier table */
+.mmi-data-sources-card {
+    padding: 0;
+}
+
+.mmi-card-body {
+    padding: 16px 20px 20px;
+}
+
+.mmi-data-sources-card .mmi-pipeline-status-panel:not(:empty) {
+    padding: 10px 20px 0;
+}
+
+.mmi-supplier-section {
+    margin-top: 12px;
+}
+
+/* One bordered white card wrapping the toolbar + table together — the exact
+   same treatment .mmi-profile-section gets in import-settings.css, for
+   visual uniformity between the two "cards" areas at the top of the Import
+   tab. overflow:hidden clips the toolbar's/table's square inner corners to
+   this card's own border-radius, the same way .mmi-profile-section clips
+   .mmi-profile-section-bar + .mmi-profile-cards-grid. The Taxonomy Mapping
+   panel is a sibling AFTER this card, not nested inside it — see the PHP
+   template's own comment for why (autocomplete/resize/expandable-panel
+   clipping risk). */
+/* Renamed to the shared .mmi-flat-card (mmi-suite-common.css) — was a
+   byte-for-byte duplicate of this same plugin's own .mmi-profile-section,
+   and of similar reinventions in mmi-cloudflare-integration/
+   mmi-google-services/others. */
+
+.mmi-supplier-toolbar > div:first-child {
+    flex: 1;
+}
+
+/* The card's top strip — border-bottom divider only (like
+   .mmi-profile-section-bar), not its own separately-bordered/shadowed box;
+   the surrounding .mmi-supplier-toolbar-card already provides that. */
+.mmi-process-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 9px 14px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+/* Fetch Data picker panel (2026-08-31) — nested inside
+   .mmi-supplier-toolbar-card (unlike the Taxonomy Mapping panel, which sits
+   outside it — see that panel's own comment for why), so this uses the same
+   border-top-divider treatment as .mmi-topbar-overrides-panel rather than a
+   second full border/radius/shadow the surrounding card already provides. */
+.mmi-fetch-sources-panel {
+    display: none;
+    border-top: 1px solid #e2e4e7;
+    background: #f8f9fa;
+    padding: 14px 20px;
+}
+
+.mmi-fetch-source-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.mmi-fetch-source-all {
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e2e4e7;
+}
+
+.mmi-fetch-sources-actions {
+    margin-top: 12px;
+}
+
+.mmi-supplier-section .mmi-table-wrapper {
+    overflow-x: auto;
+}
+
+/* ─── Supplier Table Gridlines ──────────────────────────────────────────── *
+ * This table's own header/row/cell/hover/selectable-row rules were the
+ * canonical source the shared .mmi-uniform-table/--hoverable and
+ * .mmi-uniform-row--selectable classes (import-settings.css) were built
+ * from on 2026-09-01, when every other table on this plugin's pages turned
+ * out to have quietly drifted from this one's look. Nothing left here is
+ * unique to this table anymore — see import-settings.css's "Uniform Table
+ * Row System" block and AGENTS.md's changelog for that date.
+ */
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Step Content Panel (fixed, non-sortable — pins below the topbar)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-pipeline-step-content {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    box-sizing: border-box;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+
+/* ─── Legacy 3-step wizard elements (hidden in single-page mode) ─────────── */
+.mmi-pipeline-header,
+.mmi-pipeline-steps,
+.mmi-pipeline-connector,
+.mmi-pipeline-panel:not(.active),
+.mmi-step-navigation {
+    /* These elements are no longer rendered in the single-page layout.
+       Rules kept to prevent any stale markup from showing if a cached view
+       still references these classes. */
+    display: none !important;
+}
+
+/* Pipeline Content Panels — always visible in single-page mode */
+.mmi-pipeline-panel {
+    display: block;
+}
+
+.mmi-pipeline-panel.active {
+    display: block;
+}
+
+/* Pipeline Header - 3-Step Navigation (legacy, kept for CSS ref only) */
+.mmi-pipeline-header {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 30px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.mmi-pipeline-steps {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.mmi-pipeline-step {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+    background: #f5f5f5;
+    border: 2px solid transparent;
+}
+
+.mmi-pipeline-step:hover {
+    background: rgba(69, 133, 44, 0.1);
+    border-color: #45852C;
+    transform: translateY(-2px);
+}
+
+.mmi-pipeline-step.active {
+    background: #45852C;
+    color: #fff;
+    border-color: #2f5c1f;
+    box-shadow: 0 4px 12px rgba(69, 133, 44, 0.3);
+}
+
+.mmi-pipeline-step.completed {
+    background: #d4edda;
+    border-color: #45852C;
+}
+
+.mmi-step-number {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #fff;
+    color: #45852C;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.mmi-pipeline-step.active .mmi-step-number {
+    background: #fff;
+    color: #45852C;
+}
+
+.mmi-step-info {
+    flex: 1;
+}
+
+.mmi-step-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.mmi-step-description {
+    font-size: 13px;
+    opacity: 0.8;
+}
+
+.mmi-pipeline-step.active .mmi-step-description {
+    opacity: 1;
+}
+
+.mmi-pipeline-connector {
+    width: 60px;
+    height: 3px;
+    background: #ddd;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.mmi-pipeline-connector::after {
+    content: '\2192';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+    color: #999;
+}
+
+/* Pipeline Content Panels */
+.mmi-pipeline-content {
+    position: relative;
+}
+
+.mmi-pipeline-panel {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.mmi-pipeline-panel.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Step Navigation Hints */
+.mmi-step-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #eee;
+}
+
+.mmi-step-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    padding: 12px 24px !important;
+}
+
+.mmi-step-nav-spacer {
+    flex: 1;
+}
+
+/* Data Source Configuration */
+.mmi-data-source-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mmi-source-type-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.mmi-source-type-badge.mmi-source-api {
+    background: rgba(69, 133, 44, 0.1);
+    color: #155724;
+}
+
+.mmi-source-type-badge.mmi-source-url {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.mmi-source-type-badge.mmi-source-upload {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.mmi-source-type-badge.mmi-source-dropbox {
+    background: #e7f3ff;
+    color: #0061ff;
+}
+
+.mmi-source-type-badge.mmi-source-gdrive {
+    background: #fef3cd;
+    color: #856404;
+}
+
+.mmi-configure-source-btn {
+    font-size: 12px !important;
+    height: auto !important;
+    padding: 4px 10px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Supplier Table — Row Design
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* All rows are fully readable — no opacity wash on disabled suppliers */
+#mmi-supplier-table tbody tr {
+    opacity: 1;
+}
+
+.mmi-supplier-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mmi-toggle-inline {
+    flex-shrink: 0;
+}
+
+.mmi-row-status-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Status badges — .mmi-status-badge is kept as a selector/JS hook only (see
+   import-pipeline-config.js's updateBadge()); all shape/color now comes from
+   the shared .mmi-badge + success/warning/error/info modifiers directly.
+   Mapping: active→success, configured→warning, unconfigured→bare, error→error,
+   ready→info ("validated but not yet enabled" — closest of the 4 shared states). */
+
+/* Configure button — primary CTA, stands out clearly */
+.mmi-configure-source-btn.button-primary {
+    font-size: 12px !important;
+    height: auto !important;
+    padding: 4px 12px !important;
+    white-space: nowrap;
+}
+
+/* Per-row "has this source been mapped" indicator + quick-assign link
+   (2026-08-31) — a data source can be validated and importing with zero
+   taxonomy aliases ever set for it, with nothing else in this table showing
+   that. Green when at least one value is mapped, amber/warning otherwise. */
+.mmi-taxmap-quick-link {
+    display: inline-flex;
+    justify-content: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid #b8dfc8;
+    border-radius: 3px;
+    color: #1e7e34;
+    font-size: 11px;
+    line-height: 1.6;
+    cursor: pointer;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.mmi-taxmap-quick-link .dashicons {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+}
+
+.mmi-taxmap-quick-link:hover {
+    background: #f0f9f2;
+}
+
+.mmi-taxmap-quick-link.is-unmapped {
+    border-color: #f5cba7;
+    color: #b3690f;
+}
+
+.mmi-taxmap-quick-link.is-unmapped:hover {
+    background: #fdf3e7;
+}
+
+/* Xchange-only Web Assets sub-toggle, inside the Supplier cell (moved here
+   from a standalone banner above the stats grid on 2026-08-31) — a compact
+   secondary row beneath the supplier name, not a full-width call-out. */
+.mmi-source-sub-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.mmi-web-assets-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mmi-source-sub-toggle-label {
+    font-size: 12px;
+    color: #646970;
+}
+
+.mmi-info-icon {
+    font-size: 15px !important;
+    width: 15px;
+    height: 15px;
+    color: #8c8f94;
+    cursor: help;
+}
+
+.mmi-info-icon:hover,
+.mmi-info-icon:focus {
+    color: #2271b1;
+}
+
+/* Last fetch cell — muted when no data */
+.mmi-last-fetch-cell {
+    font-size: 12px;
+    color: #555;
+}
+
+.mmi-last-fetch-cell:empty::before,
+.mmi-last-fetch-cell[data-empty="true"] {
+    color: #bbb;
+}
+
+/* Empty state row */
+.mmi-empty-row td {
+    padding: 40px 20px !important;
+    text-align: center;
+}
+
+.mmi-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #888;
+}
+
+.mmi-empty-state .dashicons {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    color: #ccc;
+}
+
+.mmi-empty-state p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Config Status Indicators
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-config-status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+.mmi-dot-green  { background: #45852C; }
+.mmi-dot-yellow { background: #e5a100; }
+.mmi-dot-red    { background: #dc3545; }
+.mmi-dot-gray   { background: #adb5bd; }
+
+.mmi-config-status-label {
+    font-size: 13px;
+    vertical-align: middle;
+}
+
+.mmi-config-status-hint {
+    cursor: help;
+    color: #999;
+    vertical-align: middle;
+}
+
+.mmi-config-status-hint .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+/* Disabled toggle styling */
+.mmi-toggle-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Configuration Modal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* .mmi-config-modal is now a bare JS-selector hook — the backdrop shape
+   (position:fixed, flex-center, dim background, [hidden] handling) comes
+   from the shared .mmi-modal-backdrop class added alongside it in markup
+   (MOD-DPL-01). The separate .mmi-config-modal-backdrop dimming <div> that
+   used to sit inside it is gone too — it would have doubled up the dim
+   layer now that the shared backdrop's own background covers the same
+   area. */
+
+.mmi-config-modal-dialog {
+    position: relative;
+    background: #fff;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    z-index: 1;
+}
+
+/* The tabbed config modal (#mmi-config-modal) is the only .mmi-config-modal
+   instance with multiple tab panels of varying content length toggled via
+   display:none/block. .mmi-config-modal on the fixed overlay centers this
+   dialog with align-items:center, and max-height (above) only caps growth —
+   it doesn't stop the dialog from shrinking to whatever the ACTIVE tab's
+   content needs. Combined, every tab switch resized the dialog and
+   re-centered it, visibly jumping on screen. A fixed height (not max-height)
+   keeps the dialog the same size across every tab; .mmi-config-modal-body's
+   existing overflow-y:auto (below) handles any tab whose content doesn't
+   fit. Scoped to #mmi-config-modal specifically — the Preview and Add
+   Source dialogs have no tabs and size correctly to their own content. */
+#mmi-config-modal .mmi-config-modal-dialog {
+    height: 85vh;
+}
+
+.mmi-config-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid #ddd;
+}
+
+.mmi-config-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.mmi-config-modal-close {
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    color: #666;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.mmi-config-modal-close:hover {
+    background: #f0f0f0;
+    color: #000;
+}
+
+/* ── Modal Tabs ─────────────────────────────────────────────────────── */
+
+.mmi-config-tabs {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    background: #f9f9f9;
+    padding: 0 24px;
+    gap: 0;
+    overflow-x: auto;
+}
+
+.mmi-config-tab {
+    padding: 12px 18px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.mmi-config-tab:hover {
+    color: #333;
+    background: #f0f0f0;
+}
+
+.mmi-config-tab.active {
+    color: #45852C;
+    border-bottom-color: #45852C;
+    background: #fff;
+}
+
+/* ── Modal Body ─────────────────────────────────────────────────────── */
+
+.mmi-config-modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.mmi-config-tab-content {
+    display: none;
+}
+
+.mmi-config-tab-content.active {
+    display: block;
+}
+
+.mmi-config-field {
+    margin-bottom: 16px;
+}
+
+.mmi-config-field > label {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 5px;
+    color: #333;
+}
+
+.mmi-config-field > label small {
+    font-weight: 400;
+    color: #888;
+}
+
+.mmi-config-field input[type="text"],
+.mmi-config-field input[type="url"],
+.mmi-config-field input[type="password"],
+.mmi-config-field input[type="number"],
+.mmi-config-field select,
+.mmi-config-field textarea {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.mmi-config-field textarea {
+    resize: vertical;
+}
+
+.mmi-config-field input[type="number"] {
+    max-width: 120px;
+}
+
+/* ── Non-HTTP Source Panels (upload / Dropbox / Google Drive) ────────── */
+
+.mmi-source-panel {
+    margin-bottom: 4px;
+}
+
+/* File upload row: filename display + Choose + Remove side-by-side */
+.mmi-upload-field-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mmi-upload-filename-display {
+    flex: 1 1 200px;
+    min-width: 160px;
+    background: #f8f9fa;
+    color: #555;
+    cursor: default;
+}
+
+.mmi-upload-filename-display::placeholder {
+    font-style: italic;
+    color: #aaa;
+}
+
+/* Danger / remove button */
+.mmi-btn-danger {
+    border-color: #cc1818 !important;
+    color: #cc1818 !important;
+    background: #fff !important;
+}
+
+.mmi-btn-danger:hover,
+.mmi-btn-danger:focus {
+    background: #fff0f0 !important;
+    border-color: #a01010 !important;
+    color: #a01010 !important;
+}
+
+.mmi-field-description {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #888;
+}
+
+.mmi-field-description code {
+    background: #f5f5f5;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.mmi-config-description {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 16px;
+}
+
+/* Auth info / credential info */
+.mmi-auth-info {
+    font-size: 13px;
+    color: #666;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.mmi-auth-info .dashicons {
+    vertical-align: text-bottom;
+    color: #2271b1;
+}
+
+.mmi-credential-info {
+    font-size: 12px;
+    color: #888;
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #45852C;
+}
+
+.mmi-credential-info .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: text-bottom;
+    color: #45852C;
+}
+
+/* Auth fields generated by PHP */
+.mmi-auth-field {
+    margin-bottom: 14px;
+}
+
+.mmi-auth-field label {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 5px;
+}
+
+.mmi-auth-input {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+/* ── Endpoint Editor ────────────────────────────────────────────────── */
+
+.mmi-endpoint-row {
+    padding: 14px;
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.mmi-endpoint-fields {
+    display: grid;
+    grid-template-columns: 1fr 2fr 80px 80px 1fr auto auto;
+    gap: 8px;
+    align-items: end;
+}
+
+.mmi-endpoint-row .mmi-config-field {
+    margin-bottom: 0;
+}
+
+.mmi-endpoint-row .mmi-config-field label {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 3px;
+    font-weight: 600;
+}
+
+.mmi-endpoint-row input,
+.mmi-endpoint-row select {
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.mmi-remove-endpoint-btn {
+    margin-bottom: 0 !important;
+    color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    line-height: 1 !important;
+}
+
+.mmi-remove-endpoint-btn:hover {
+    background: #dc3545 !important;
+    color: #fff !important;
+}
+
+#mmi-add-endpoint-btn {
+    margin-top: 8px;
+}
+
+/* ── Key-Value Pairs (custom headers) ───────────────────────────────── */
+
+.mmi-kv-pairs {
+    margin-bottom: 8px;
+}
+
+.mmi-kv-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+}
+
+.mmi-kv-row input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.mmi-kv-remove {
+    flex-shrink: 0;
+    color: #dc3545 !important;
+    border-color: #ddd !important;
+}
+
+/* ── Modal Footer ───────────────────────────────────────────────────── */
+
+.mmi-config-modal-footer {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-top: 1px solid #ddd;
+    background: #f9f9f9;
+    border-radius: 0 0 8px 8px;
+    gap: 12px;
+}
+
+.mmi-config-modal-footer-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mmi-config-modal-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* ── Test Connection Results ────────────────────────────────────────── */
+
+/*
+ * Specificity note: mmi-hub's mmi-suite-common.css defines `.mmi-test-result { display: none }`
+ * for its own toggle-based reveal pattern. We use the ID selector here so our rule wins
+ * regardless of stylesheet load order (ID specificity 0,1,0,0 > class 0,0,1,0).
+ */
+#mmi-test-result,
+.mmi-config-modal-footer .mmi-test-result {
+    display: block; /* override mmi-hub's display:none on .mmi-test-result */
+    font-size: 13px;
+    flex: 1;
+    min-width: 0;
+    overflow: visible;
+    white-space: normal;
+    line-height: 1.4;
+    min-height: 20px; /* always occupies space so the result is never invisible */
+    margin: 0;       /* reset mmi-hub's margin:16px 0 */
+    padding: 0;      /* reset mmi-hub's padding:12px 16px */
+    border-radius: 0;
+    background: none;
+    border: none;
+}
+
+.mmi-test-hint {
+    color: #757575;
+    font-style: italic;
+    font-size: 12px;
+    display: block;
+    margin-top: 3px;
+}
+
+.mmi-test-loading {
+    color: #2271b1;
+}
+
+.mmi-test-success {
+    color: #45852C;
+    font-weight: 600;
+}
+
+.mmi-test-error {
+    color: #dc3545;
+    font-weight: 600;
+    display: block;
+}
+
+/* Wrapper block for the hint that follows an error line */
+.mmi-test-hint-block {
+    display: block;
+    margin-top: 5px;
+}
+
+/* A hint that sits inline right after another status span, instead of the
+   base class's default stacked/block placement. */
+.mmi-test-hint--inline {
+    display: inline;
+    margin-top: 0;
+    margin-left: 8px;
+}
+
+/* Clickable inline links inside hints that jump to a specific config tab */
+.mmi-tab-jump {
+    color: #45852C;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    cursor: pointer;
+    font-style: normal;
+}
+.mmi-tab-jump:hover {
+    color: #3a6f24;
+    text-decoration-style: solid;
+}
+
+/* Compact 4-step setup guide shown when the modal first opens */
+.mmi-test-setup-guide {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 12px;
+    font-size: 11px;
+    color: #555;
+    font-style: normal;
+}
+.mmi-setup-step {
+    white-space: nowrap;
+    color: #555;
+}
+
+.mmi-test-loading {
+    display: block;
+}
+
+.mmi-test-preview {
+    margin-top: 12px;
+}
+
+.mmi-test-preview strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #555;
+}
+
+.mmi-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.mmi-preview-table th,
+.mmi-preview-table td {
+    padding: 5px 8px;
+    border: 1px solid #ddd;
+    text-align: left;
+    max-width: 150px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmi-preview-table th {
+    background: #f5f5f5;
+    font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Inline Notifications (fallback when MMIProductImport not available)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-inline-notification {
+    position: fixed;
+    top: 40px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 200000;
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.3s, transform 0.3s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-width: 400px;
+}
+
+.mmi-inline-notification.visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.mmi-notification-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.mmi-notification-error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.mmi-notification-info    { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+
+/* Collapsible Sections base mechanics (.collapsed hiding .mmi-section-content,
+   the chevron rotation) moved to import-settings.css — export.php uses the
+   identical .mmi-collapsible-section/.mmi-collapse-toggle markup for its own
+   Data Type & Scope / History sections (see tab-export.php), but only had
+   export.css's [data-section="..."] field-styling rules, never the base
+   collapse/rotate mechanic itself. */
+
+/* Import Controls Header */
+.mmi-import-controls-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: #f5f5f5;
+    border-radius: 6px;
+}
+
+.mmi-profile-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+}
+
+.mmi-import-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Empty State */
+.mmi-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.mmi-empty-state .dashicons {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    opacity: 0.3;
+    margin-bottom: 10px;
+}
+
+/* .history-status-badge + @keyframes mmi-pulse moved to import-settings.css
+   (loaded on every tab) — tab-export.php's run-status column uses the
+   identical markup and had picked up a different, incomplete duplicate
+   definition that used to live only in import-settings.css. */
+
+/* Staleness banner — surfaces the same check that drives the email alert
+   directly on the Import History panel, so an all-"Success" table can't look
+   healthy while the underlying schedule has actually gone silent. */
+.mmi-history-stale-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    background: #fcf0f1;
+    border: 1px solid #d63638;
+    border-radius: 4px;
+    color: #8a1f22;
+}
+
+.mmi-history-stale-banner .dashicons {
+    color: #d63638;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.mmi-history-stale-banner p {
+    margin: 0 0 4px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.mmi-history-stale-banner p:last-child {
+    margin-bottom: 0;
+}
+
+/* History filter pills (.mmi-history-filter*) and the hidden-row filter
+   mechanic (.mmi-history-table tbody tr.mmi-hidden) moved to
+   import-settings.css — tab-export.php's own History section uses the
+   identical filter-pill markup and hidden-row mechanic (its table itself
+   already inherits WP core's wp-list-table/widefat/striped styling, so only
+   these MMI-specific bits were ever missing on Export). */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Responsive Adjustments
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media screen and (max-width: 1200px) {
+    .mmi-pipeline-steps {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .mmi-pipeline-connector {
+        width: 100%;
+        height: 40px;
+        background: transparent;
+    }
+
+    .mmi-pipeline-connector::after {
+        content: '\2193';
+        font-size: 24px;
+    }
+
+    .mmi-pipeline-step {
+        width: 100%;
+    }
+
+    .mmi-supplier-fetch-table th:nth-child(3) { width: 200px; }
+
+    .mmi-endpoint-fields {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .mmi-import-controls-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .mmi-import-actions {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .mmi-step-navigation {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .mmi-step-nav-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .mmi-config-modal-dialog {
+        width: 95%;
+        max-width: none;
+        max-height: 90vh;
+    }
+
+    .mmi-config-tabs {
+        padding: 0 12px;
+    }
+
+    .mmi-config-tab {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+
+    .mmi-config-modal-footer {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .mmi-config-modal-footer-left,
+    .mmi-config-modal-footer-right {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .mmi-supplier-unified-table {
+        min-width: 900px;
+    }
+
+    .mmi-data-source-display {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .mmi-endpoint-fields {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .mmi-config-modal-body {
+        padding: 15px;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CSV Mapping Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-csv-supplier-section {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 25px;
+}
+
+.mmi-csv-supplier-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-top: 0;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #eee;
+}
+
+.mmi-csv-file-path {
+    font-size: 13px;
+    color: #666;
+    font-weight: normal;
+    font-family: monospace;
+    background: #f5f5f5;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.mmi-csv-preview-container {
+    margin-bottom: 20px;
+}
+
+.mmi-btn-load-csv-preview {
+    margin-bottom: 10px;
+}
+
+.mmi-csv-preview-table {
+    margin-top: 15px;
+    overflow-x: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.mmi-csv-preview-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.mmi-csv-preview-table th,
+.mmi-csv-preview-table td {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+    font-size: 12px;
+}
+
+.mmi-csv-preview-table th {
+    background: #f5f5f5;
+    font-weight: 600;
+}
+
+.mmi-csv-config-row {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 6px;
+}
+
+.mmi-csv-config-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.mmi-csv-config-label strong {
+    margin-right: 5px;
+}
+
+.mmi-csv-delimiter-select {
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.mmi-csv-mapping-container h4 {
+    margin-top: 25px;
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.mmi-csv-mapping-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+.mmi-csv-mapping-table th,
+.mmi-csv-mapping-table td {
+    padding: 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+}
+
+.mmi-csv-mapping-table th {
+    background: #f5f5f5;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.mmi-csv-mapping-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.mmi-csv-column-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.mmi-csv-column-input:focus {
+    border-color: #45852C;
+    outline: none;
+    box-shadow: 0 0 0 1px #45852C;
+}
+
+.mmi-csv-transform-select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.mmi-csv-preview-value {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+    background: #f5f5f5;
+    padding: 4px 8px;
+    border-radius: 3px;
+    display: inline-block;
+}
+
+.mmi-csv-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.mmi-btn-test-csv-mapping,
+.mmi-btn-auto-detect-columns {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mmi-panel-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99998;
+    display: none;
+}
+
+.mmi-panel-overlay.active {
+    display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Legacy Inline-Replaced Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Pipeline Panel Visibility */
+.mmi-pipeline-panel {
+    display: none;
+}
+
+.mmi-pipeline-panel.active {
+    display: block;
+}
+
+/* Panel Hidden State */
+.mmi-panel-hidden {
+    display: none;
+}
+
+/* CSV Preview Hidden */
+.mmi-csv-preview-hidden {
+    display: none;
+}
+
+/* Autosave Badge */
+/* Now the shared .mmi-badge success modifier (panel-csv-mapping.php) — was
+   duplicated with a second, not-byte-identical definition in
+   import-settings.css, whose own never-triggered .saving/.error modifiers
+   were dead CSS (this badge is static, no JS ever toggles it). */
+.autosave-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 10px;
+}
+
+.autosave-badge .dashicons {
+    font-size: 14px;
+    line-height: 20px;
+}
+
+
+/* Delete button - red trash icon */
+.mmi-delete-source-btn .dashicons-trash {
+    color: #dc3545;
+}
+
+/* .mmi-section-clickable moved to import-settings.css alongside the other
+   collapsible-section mechanics — shared with tab-export.php's collapsible
+   headers. */
+
+/* Form Section Spacing */
+.mmi-form-section-spaced {
+    margin-top: 20px;
+}
+
+/* Logs Section Hidden State */
+.mmi-logs-section-hidden {
+    display: none;
+}
+
+/* Delete button */
+.mmi-delete-source-btn {
+    color: #dc3545 !important;
+    border: solid 1px transparent !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    padding: 0.5rem !important;
+}
+
+.mmi-delete-source-btn:hover {
+    color: #fff !important;
+    border: solid 1px #dc3545 !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    padding: 0.5rem !important;
+}
+
+/* Parsing CSV options */
+.mmi-parsing-csv-options {
+    padding: 16px;
+    margin-top: 12px;
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+}
+
+/* ── Locked Source Type ──────────────────────────────────────────────── */
+
+#cfg-source-type-locked {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.mmi-source-type-lock-note {
+    display: block;
+    margin-top: 5px;
+    color: #777;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.mmi-source-type-lock-note .dashicons {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+    vertical-align: -2px;
+    color: #888;
+}
+
+/* ── Auto-Save Status Indicator ─────────────────────────────────────── */
+
+.mmi-autosave-status {
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.mmi-autosave-pending {
+    color: #888;
+    font-style: italic;
+}
+
+.mmi-autosave-saving {
+    color: #2271b1;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mmi-autosave-saved {
+    color: #45852c;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mmi-autosave-error {
+    color: #cc1818;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mmi-autosave-saving .dashicons,
+.mmi-autosave-saved .dashicons,
+.mmi-autosave-error .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+@keyframes mmi-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+.mmi-spin {
+    animation: mmi-spin 1s linear infinite;
+    display: inline-block;
+}
+
+.mmi-required {
+    color: #c62828;
+    margin-left: 2px;
+}
+
+/* ── Preconfigured API Integration Lock Banner ──────────────────── */
+
+#mmi-preconfigured-lock-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #f0f6ff;
+    border: 1px solid #b0c8f0;
+    border-left: 4px solid #2271b1;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: #1d3557;
+    line-height: 1.5;
+}
+
+#mmi-preconfigured-lock-banner .dashicons-lock {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: #2271b1;
+}
+
+/* Lock note in Add Source modal (below the integration picker) */
+.mmi-add-api-lock-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #555;
+    margin-top: 4px;
+}
+
+.mmi-add-api-lock-note .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    color: #2271b1;
+}
+
+/* ============================================================
+   Mode-aware filter suppression
+   ============================================================ */
+
+/* Hide "Will Create" stat tile when in non-create modes */
+#preview-stats-summary.mmi-no-create-mode .mmi-stat-item:has(.mmi-stat-create) {
+    display: none;
+}
+
+/* ── Sortable Sections (retired) ─────────────────────────────────────────────
+   Drag-to-reorder was removed from the Import Pipeline tab's sections — order
+   is now fixed and sections only collapse/expand. The .mmi-drag-handle /
+   .ui-sortable-helper / .mmi-sortable-placeholder rules that used to live
+   here only ever applied while jQuery UI's .sortable() was active on
+   #mmi-pipeline-sections, which no longer happens. */
+
+/* ── Mode Tags (profile schedule rows) ─────────────────────────────────────── */
+
+/* Mode tags in Import Runs table */
+.mmi-profile-mode-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.mmi-mode-create-and-update { background: #d1fae5; color: #065f46; }
+.mmi-mode-update-only        { background: #dbeafe; color: #1e3a5f; }
+.mmi-mode-availability-sync  { background: #fef3c7; color: #78350f; }
+/* Distinct from create-and-update above — this is a new_only-scoped profile's
+   locked "create only" behavior, not a genuine Create & Update mode. */
+.mmi-mode-new-only-scope     { background: #d1fae5; color: #047857; }
+
+/* ══════════════════════════════════════════════════════════════════
+   INLINE PIPELINE NOTICES
+   Rendered inside the originating section — NOT WP admin notices.
+   ══════════════════════════════════════════════════════════════════ */
+.mmi-pipeline-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px;
+    margin: 0 0 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+    background: #f0f6ff;
+    border-left: 3px solid #2271b1;
+    color: #1d2327;
+}
+
+.mmi-pipeline-notice-success {
+    background: #f0fdf4;
+    border-left-color: #45852C;
+    color: #1d2327;
+}
+
+.mmi-pipeline-notice-error {
+    background: #fef2f2;
+    border-left-color: #d63638;
+    color: #1d2327;
+}
+
+.mmi-pipeline-notice-info {
+    background: #f0f6ff;
+    border-left-color: #2271b1;
+}
+
+.mmi-pipeline-notice-icon {
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.mmi-pipeline-notice-close {
+    margin-left: auto;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0 0 0 8px;
+}
+
+.mmi-pipeline-notice-close:hover {
+    opacity: 1;
+}
+
+/* ─── Catalog Maintenance Section (merged Stock Overrides + Catalog Rules +
+   Update Store Catalog) ─────────────────────────────────────────────────── */
+
+/* Subtle indicator inside the Update Store Catalog button */
+.mmi-catalog-run-indicator {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    background: rgba(255,255,255,.22);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    vertical-align: middle;
+    cursor: default;
+}
+
+/* Fixed-operation row's Status-column toggle — a .mmi-toggle-switch (the same
+   shared slider component as .mmi-section-header-actions' master switches
+   and pipeline-step-1-acquisition.php's per-source toggles), not a plain
+   checkbox, so every on/off control in this section reads consistently.
+   Was a bare checkbox+text <label> (.mmi-cog-toggle-label) until 2026-09-03. */
+.mmi-cog-status-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.mmi-cog-toggle-status-label {
+    font-size: 13px;
+    color: #50575e;
+}
+
+/* A custom rule's Status cell holds both the enable/disable toggle (above)
+   and the live compliance readout (below) — fixed-operation rows only ever
+   have the toggle, so this spacing is scoped to custom-rule rows alone. */
+.mmi-cog-row--custom-rule .mmi-cog-col-status .mmi-cog-status-toggle {
+    margin-bottom: 6px;
+}
+
+/* Disabled custom rule — dimmed in place rather than removed, since it's
+   still fully editable and re-enabling it just flips the toggle back.
+   Controls stay interactive (no pointer-events:none) so a name edit or
+   condition change doesn't require re-enabling first. */
+.mmi-cog-row--custom-rule.mmi-cog-rule-disabled {
+    opacity: 0.55;
+}
+
+/* Inline (not display:block) so this description flows on the same line as
+   .mmi-pgc-name right before it whenever there's room, wrapping like normal
+   text only when the column is genuinely too narrow for both — rather than
+   always forcing a hard line break between them regardless of available
+   width. */
+.mmi-catalog-toggle-desc {
+    font-size: 12px;
+    color: #70767e;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Skipped / active status text in the Status column */
+.mmi-cog-skip-reason {
+    font-size: 12px;
+    color: #aaa;
+    font-style: italic;
+    cursor: help;
+}
+
+.mmi-cog-active-indicator {
+    font-size: 12px;
+    color: #2e7d32;
+}
+
+/* A custom rule row's name cell holds an editable input above the expand
+   toggle. */
+.mmi-cog-row--custom-rule .mmi-cog-col-name {
+    display: block;
+    align-items: center;
+    gap: 8px;
+    width: 90%;
+    padding: 0 12px;
+}
+
+/* Editable custom-rule name — blends in as plain text until hovered/focused,
+   matching the look .mmi-pgc-name (its non-editable equivalent elsewhere in
+   this suite) had before renaming was added. Autosaves only via the shared
+   "Save Rules" button, same as every other control in this row (action,
+   supplier, match-logic selects) — no per-field autosave here. min-width is
+   the real fix for "too narrow to show what's typed": under this table's
+   auto-layout (see .mmi-catalog-ops-grid's own column-width comment), a
+   plain width:100% has no min-content signal of its own to offer the
+   browser's column-width algorithm — the Name column was collapsing to
+   whatever the *narrowest* row's content needed (a wrapping description
+   sentence can shrink to its longest single word), starving this input
+   regardless of how long a name was actually typed into it. min-width
+   gives auto-layout a real floor to size the column against. Qualified
+   with .mmi-catalog-ops-grid .mmi-cog-row--custom-rule (3 classes, not the
+   bare 1-class selector this used to be) for the same reason
+   .mmi-custom-rule-action/.mmi-cog-col-scope select are in
+   import-settings.css: mmi-suite-common.css's shared "COMPACT INPUTS" rule
+   (`body.mmi-page input[type="text"] { font-size: 11px; ... }`, 2 classes
+   + 2 elements) was silently winning the font-size fight against this
+   rule's declared 13px/600-weight regardless of source order, so this
+   input was actually rendering at 11px all along, not the 13px intended —
+   3 classes beats the shared rule's 2 outright, at any element-tier
+   count. */
+.mmi-catalog-ops-grid .mmi-cog-row--custom-rule .mmi-cog-rule-name-input {
+    width: 100%;
+    min-width: 220px;
+    box-sizing: border-box;
+    padding: 1px 4px;
+    margin-bottom: 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    line-height: 1.3;
+}
+
+.mmi-cog-rule-name-input::placeholder {
+    color: #8c8f94;
+    font-weight: 400;
+}
+
+/* Same 3-class prefix as the base rule above: the bare
+   .mmi-cog-rule-name-input:hover/:focus selectors lost to its
+   `background: transparent`, so the field never turned white. */
+.mmi-catalog-ops-grid .mmi-cog-row--custom-rule .mmi-cog-rule-name-input:hover {
+    border-color: #dcdcde;
+    background: #fff;
+}
+
+.mmi-catalog-ops-grid .mmi-cog-row--custom-rule .mmi-cog-rule-name-input:focus {
+    border-color: #2271b1;
+    background: #fff;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+/* Expand/collapse control for a stock-override rule's condition editor */
+.mmi-cog-expand-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    color: #2271b1;
+    cursor: pointer;
+}
+
+.mmi-cog-expand-toggle .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+/* The detail row's inner condition-editor content reuses .mmi-rule-conditions-body
+   / .mmi-conditions-list / .mmi-condition-row styling from the "Conditions body"
+   block below unchanged — only the outer <tr>/<td> wrapper is new. */
+.mmi-cog-detail-row > td {
+    padding: 0 14px 14px !important;
+    background: #fafbfc;
+}
+
+/* When a custom rule's header row is the active/selected one, extend a
+   subtle tint of that selection down into its detail row too — ties the
+   "① What happens" / "② Which products" section headers visually back to
+   the active row they belong to, instead of them reading as floating labels
+   in a plain, disconnected area below a green-highlighted row. Genuinely
+   merging the header and detail into one <tr> isn't possible without
+   breaking table semantics (a colspan="4" detail cell can't coexist with
+   four already-occupied column cells in the same row) — this is the
+   strongest same-DOM-shape equivalent: no border between them and a shared
+   tint, so the two rows read as one seamless block while expanded. */
+.mmi-cog-row--custom-rule.is-active:has(+ .mmi-cog-detail-row:not(.mmi-hidden)) {
+    border-bottom-color: transparent;
+}
+
+.mmi-cog-row--custom-rule.is-active + .mmi-cog-detail-row > td {
+    background: #f5faf0;
+}
+
+#mmi-catalog-rules-save-status {
+    font-size: 13px;
+}
+
+#mmi-catalog-rules-save-status.success { color: #45852C; }
+#mmi-catalog-rules-save-status.error   { color: #c0392b; }
+
+/* ─── Catalog Update Progress Panel ────────────────────────────────────── */
+
+#mmi-catalog-progress-panel {
+    border-top: 1px solid #e2e4e7;
+    background: #fff;
+    padding: 14px 20px;
+}
+
+/* Initial collapsed state — plain display:none, not the shared .mmi-hidden
+   (!important would block product-import.js's later .slideDown()/.slideUp()). */
+#mmi-catalog-progress-panel.mmi-catalog-progress-panel--collapsed {
+    display: none;
+}
+
+.mmi-catalog-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #3c434a;
+}
+
+.mmi-catalog-progress-phases {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mmi-catalog-phase-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: background .15s;
+}
+
+.mmi-catalog-phase-row.mmi-phase-pending  { color: #888; }
+.mmi-catalog-phase-row.mmi-phase-running  { background: #f0f6fc; color: #2271b1; font-weight: 500; }
+.mmi-catalog-phase-row.mmi-phase-done     { color: #2e7d32; }
+.mmi-catalog-phase-row.mmi-phase-error    { color: #c0392b; }
+.mmi-catalog-phase-row.mmi-phase-skipped  { color: #aaa; font-style: italic; }
+
+.mmi-phase-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+}
+
+.mmi-phase-label {
+    flex: 1;
+    white-space: nowrap;
+}
+
+.mmi-phase-detail {
+    font-size: 11px;
+    color: #888;
+    min-width: 80px;
+    text-align: right;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Add New Data Source Wizard Modal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Wider modal for the wizard (replaces mmi-config-modal-small for this modal) */
+.mmi-config-modal-source-wizard {
+    max-width: 1580px;
+}
+
+/* ── Source type tile grid ─────────────────────────────────────────────── */
+
+.mmi-source-type-tiles {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.mmi-source-tile {
+    flex: 1 1 0;
+    min-width: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 8px 12px;
+    background: #f9f9f9;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.mmi-source-tile:hover {
+    border-color: #45852C;
+    background: #f0f7ec;
+    color: #2d5a1c;
+}
+
+.mmi-source-tile.active {
+    border-color: #45852C;
+    background: #eaf4e4;
+    color: #2d5a1c;
+    box-shadow: 0 0 0 3px rgba(69, 133, 44, 0.15);
+}
+
+.mmi-tile-icon {
+    font-size: 22px;
+    line-height: 1;
+    color: inherit;
+}
+
+.mmi-tile-icon.dashicons {
+    width: 22px;
+    height: 22px;
+    font-size: 22px;
+}
+
+.mmi-tile-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* ── Per-type panel spacing ────────────────────────────────────────────── */
+
+.mmi-add-source-panel > .mmi-config-field:first-child {
+    margin-top: 4px;
+}
+
+/* ── File upload drop zone ─────────────────────────────────────────────── */
+
+.mmi-upload-drop-zone {
+    border: 2px dashed #c3c4c7;
+    border-radius: 8px;
+    padding: 2rem 5rem;
+    text-align: center;
+    cursor: pointer;
+    background: #fafafa;
+    transition: border-color 0.2s, background 0.2s;
+    margin: 3rem;
+    min-height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mmi-upload-drop-zone:hover,
+.mmi-upload-drop-zone:focus {
+    border-color: #45852C;
+    background: #f5fbf2;
+    outline: none;
+}
+
+.mmi-upload-drop-zone.mmi-drop-zone-over {
+    border-color: #45852C;
+    background: #eaf4e4;
+    box-shadow: 0 0 0 3px rgba(69, 133, 44, 0.12);
+}
+
+/* Idle state */
+#add-drop-zone-idle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.mmi-drop-icon {
+    font-size: 36px;
+    color: #aaa;
+    width: 36px;
+    height: 36px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.mmi-drop-primary {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+}
+
+.mmi-drop-secondary {
+    font-size: 13px;
+    color: #777;
+    margin: 0;
+}
+
+.mmi-drop-browse-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #45852C;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+    text-decoration: underline;
+}
+
+.mmi-drop-browse-btn:hover {
+    color: #2d5a1c;
+}
+
+.mmi-drop-formats {
+    font-size: 11px;
+    color: #999;
+    margin: 4px 0 0;
+    letter-spacing: 0.03em;
+}
+
+/* Analyzing state */
+#add-drop-zone-analyzing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+/* Result state */
+#add-drop-zone-result {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 0 4px;
+}
+
+.mmi-drop-ok-icon {
+    font-size: 28px;
+    color: #45852C;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+}
+
+.mmi-drop-result-info {
+    flex: 1;
+    text-align: left;
+    min-width: 0;
+}
+
+.mmi-drop-result-info strong {
+    display: block;
+    font-size: 13px;
+    color: #1d2327;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmi-drop-result-meta {
+    font-size: 12px;
+    color: #666;
+}
+
+.mmi-drop-replace-btn {
+    flex-shrink: 0;
+}
+
+/* Error state */
+#add-drop-zone-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.mmi-drop-error-icon {
+    font-size: 28px;
+    color: #dc3545;
+    width: 28px;
+    height: 28px;
+}
+
+/* ── Accepted format pills ─────────────────────────────────────────────── */
+
+.mmi-format-info-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 0 0 12px;
+}
+
+.mmi-format-info-label {
+    font-size: 12px;
+    color: #777;
+    font-weight: 600;
+    margin-right: 2px;
+}
+
+.mmi-format-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #f0f0f1;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+    letter-spacing: 0.04em;
+}
+
+/* Note directly under the format-pills row — zero only the top margin,
+   the shared .mmi-m-0 zeroes every side and this element still needs its
+   normal bottom spacing. */
+.mmi-format-info-note {
+    margin-top: 0;
+}
+
+/* ── Google Drive extracted ID display ─────────────────────────────────── */
+
+.mmi-gdrive-extracted {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #eaf4e4;
+    border: 1px solid #b3d9a3;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #2d5a1c;
+    margin-bottom: 14px;
+}
+
+.mmi-gdrive-extracted .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: #45852C;
+}
+
+.mmi-gdrive-extracted code {
+    background: rgba(255,255,255,0.7);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    word-break: break-all;
+}
+
+/* ── Inline spinner for drop zone analyzing state ──────────────────────── */
+
+.mmi-spinner-inline {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid #ddd;
+    border-top-color: #45852C;
+    border-radius: 50%;
+    animation: mmi-spin 0.7s linear infinite;
+}
+
+@keyframes mmi-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Quick Import Wizard — curated field-mapping rows (Step 2)
+   The wizard's modal shell, breadcrumb, mode cards, primary-key row, and
+   field-selector-group all reuse existing classes (.mmi-wizard-modal,
+   .mmi-mode-cards, .field-selector-group, .primary-key-source-input,
+   .primary-key-wc-select, .pk-match-group) with zero new CSS needed — only
+   the curated vertical row list below is new, since the full Field Mapping
+   panel's table layout doesn't fit a 4-step modal.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-quick-field-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.mmi-quick-field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mmi-quick-field-row label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.mmi-quick-field-label {
+    display: inline-block;
+}
+
+.mmi-quick-field-input {
+    flex: 1;
+}
+
+.mmi-quick-mirror-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 400 !important;
+    color: #646970;
+    cursor: pointer;
+}
+
+.mmi-quick-mirror-input-group {
+    margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Add Data Source — upload data preview (Step 1 drop zone)
+
+   Capped at 5 rows / 10 columns (see DataSourceController.php's
+   mmi_analyze_uploaded_file) and purely informational — not a primary
+   interaction surface, so the sort/resize requirements in this project's
+   Data Tables convention don't apply here; only horizontal scroll is needed
+   since a source file's column values can run long.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-upload-preview {
+    margin-top: 14px;
+}
+
+.mmi-upload-preview-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #646970;
+    margin: 0 0 6px;
+}
+
+.mmi-upload-preview-scroll {
+    overflow-x: auto;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+}
+
+.mmi-upload-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.mmi-upload-preview-table th,
+.mmi-upload-preview-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.mmi-upload-preview-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #1d2327;
+    border-bottom: 1px solid #dcdcde;
+}
+
+.mmi-upload-preview-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Data Source Preview modal (pipeline-step-1-acquisition.php's
+   #mmi-source-preview-modal) — reuses the generic .mmi-config-modal-*
+   shell/table classes above, plus a few of its own for the file picker and
+   loading/empty states.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-source-preview-modal-dialog {
+    max-width: 1100px;
+    width: 92vw;
+}
+
+.mmi-source-preview-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.mmi-source-preview-file-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mmi-source-preview-file-label {
+    font-weight: 600;
+    font-size: 13px;
+    color: #1d2327;
+}
+
+.mmi-source-preview-file-select {
+    padding: 5px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.mmi-source-preview-meta {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #8c8f94;
+}
+
+/* Age of the previewed feed file. Pushed to the right of the toolbar so it
+   reads as a qualifier on the whole table rather than another filename. */
+.mmi-source-preview-freshness {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    font-size: 12px;
+    color: #646970;
+    white-space: nowrap;
+}
+
+.mmi-source-preview-freshness .dashicons {
+    font-size: 15px;
+    width: 15px;
+    height: 15px;
+}
+
+/* Same warning treatment the Sources table uses for a stale feed — one visual
+   language for one fact, wherever the user meets it. */
+.mmi-source-preview-freshness.mmi-freshness-stale {
+    color: #996800;
+    font-weight: 600;
+}
+
+.mmi-source-preview-fetch-status {
+    margin-left: 10px;
+    font-size: 12px;
+    color: #646970;
+}
+
+.mmi-source-preview-fetch-status.mmi-fetch-status-error {
+    color: #996800;
+}
+
+.mmi-source-preview-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 30px 0;
+    justify-content: center;
+    color: #646970;
+}
+
+.mmi-source-preview-loading .spinner {
+    visibility: visible;
+    float: none;
+    margin: 0;
+}
+
+.mmi-source-preview-empty {
+    text-align: center;
+    padding: 30px 10px;
+    color: #646970;
+}
+
+.mmi-source-preview-empty .dashicons {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    color: #c3c4c7;
+    margin-bottom: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   New Profile wizard — Source step rows + inline primary-key quick-set
+
+   The primary-key editor fields themselves (.field-selector-group,
+   .primary-key-source-input, .pk-match-group, .primary-key-wc-select,
+   .primary-key-wc-custom-input) reuse the Primary Key Mapping panel's
+   existing classes verbatim (see the Quick Import comment above) — only the
+   row/status wrapper below is new.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-source-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Sources grouped by type (Upload File, Direct URL, Dropbox, Google Drive,
+   API) — matches the "Add New Data Source" modal's own tile order, so the
+   two surfaces read as one consistent system. Capped to a readable form
+   width — now that the wizard flows at the page's own width instead of a
+   fixed 1500px modal box (see the "Panels flow at the page's own width"
+   note in import-settings.css), a plain checklist row with no content of
+   its own to fill the space was stretching to match whatever width the
+   page happens to be, which read as a single thin row spanning nearly the
+   entire screen. */
+.mmi-source-type-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 640px;
+}
+
+.mmi-source-type-group + .mmi-source-type-group {
+    margin-top: 10px;
+}
+
+.mmi-source-type-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #646970;
+    padding-bottom: 2px;
+}
+
+.mmi-source-row {
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
+.mmi-source-pk-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+.mmi-source-pk-ok {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #2d5a1e;
+}
+
+.mmi-source-pk-ok .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+.mmi-source-pk-missing {
+    color: #646970;
+}
+
+.mmi-source-pk-editor {
+    flex-basis: 100%;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #dcdcde;
+}
+
+/* Source ("this file field") and target ("this WC field") sides of the
+   primary-key relationship, stacked top-to-bottom rather than side by side
+   — each side already has its own label plus, for the target side, several
+   wrapping radio options, so a side-by-side layout left both columns
+   fighting for width and reading as two unrelated controls sitting in
+   opposite corners of the row instead of one pairing that flows downward. */
+.mmi-pk-relationship-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 6px;
+    max-width: 640px;
+}
+
+.mmi-pk-source-col,
+.mmi-pk-target-col {
+    width: 100%;
+    min-width: 0;
+}
+
+/* Rotated to point downward, centered between the two stacked sides. */
+.mmi-pk-relationship-arrow {
+    align-self: center;
+    transform: rotate(90deg);
+    font-size: 16px;
+    color: #8c8f94;
+}
+
+.mmi-pk-field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 3px;
+}
+
+.mmi-pk-match-radios {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+}
+
+.mmi-pk-match-radios label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+    margin: 0;
+}
+
+/* .primary-key-wc-select is a <select> everywhere else (Primary Key Mapping
+   panel) but a native radio input here. WP-Admin doesn't render radios with
+   the OS-native control at all — wp-admin/css/forms.css draws them with
+   appearance:none + its own border/background, then paints the checked
+   state by swapping background/border-color to the theme accent color and
+   overlaying a small white dot via :checked::before. Forcing appearance:auto
+   (an earlier attempt at this fix) broke that entirely — it reverts to a
+   native OS control that doesn't understand WP's :checked::before overlay,
+   so checked and unchecked ended up looking identical. And explicitly
+   resetting border/background here (also tried earlier) wipes out exactly
+   the properties WP's :checked rule needs to paint the fill color, with the
+   same result: no visible difference when you click one.
+   The actual bug was only ever sizing — the shared rule's min-width:150px
+   and border-radius:4px (meant for a dropdown) override WP's intended
+   1rem/50% circle. Fixing only those two leaves WP's own border/background/
+   appearance/:checked handling completely intact, exactly as it works for
+   every other radio in wp-admin. */
+.mmi-pk-match-radios input.primary-key-wc-select {
+    width: 1rem;
+    height: 1rem;
+    min-width: 1rem;
+    border-radius: 50%;
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.mmi-pk-match-radios .primary-key-wc-custom-select,
+.mmi-pk-match-radios .primary-key-wc-custom-input {
+    flex-basis: 100%;
+    margin-top: 6px;
+}
+
+/* "Field in the file" select's Custom/Other fallback (see
+   populatePkFieldSelect() in import-settings.js) wraps below it rather than
+   competing for the same row's width. */
+.mmi-pk-source-col .primary-key-source-custom-input {
+    flex-basis: 100%;
+    margin-top: 6px;
+}
+
+/* Same light pill treatment as .mmi-ep-source-checkbox (import-settings.css)
+   — this is a secondary, infrequently-used action (data-quality review, not
+   a primary wizard step) and previously stood out as a solid green CTA with
+   the same visual weight as Next/Save. .button-primary is deliberately left
+   off the markup so mmi-suite-common.css's solid-green button-primary rule
+   never applies here in the first place, rather than trying to out-specify
+   it. */
+.mmi-source-row .mmi-pk-quality-check-btn {
+    padding: 6px 10px !important;
+    background: #f8f9fa !important;
+    border: 1px solid #dcdcde !important;
+    border-radius: 6px;
+    color: var(--mmi-text-primary, #1d2327) !important;
+    font-size: 12px;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.mmi-source-row .mmi-pk-quality-check-btn:hover,
+.mmi-source-row .mmi-pk-quality-check-btn:focus {
+    background: #f0f9ea !important;
+    border-color: #45852C !important;
+    color: #2d5a1e !important;
+}
+
+.mmi-source-row .mmi-pk-quality-check-btn .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    color: inherit;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   New Profile wizard — Mode cards (Step 4)
+
+   No base .mmi-mode-card/.mmi-mode-cards rule existed anywhere in this
+   codebase before this — only a transition-only override scoped to the Edit
+   Profile modal (import-settings.css) assuming a base rule existed elsewhere.
+   It didn't, so these rendered on pure browser defaults: an unstyled <label>
+   with a block-level radio on its own line above an unstyled icon/title/
+   description stack. Modeled on .mmi-scope-card's established look, but with
+   a visible native radio (kept unhidden, unlike .mmi-scope-card's
+   opacity:0 approach) placed inline with the icon/title per request.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mmi-mode-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mmi-mode-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #fff;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.mmi-mode-card:hover {
+    border-color: #45852C;
+}
+
+.mmi-mode-card.mmi-is-selected {
+    border-color: #45852C;
+    background: #f0f6ed;
+}
+
+/* Kept as a normal, visible native radio — no border/background override, so
+   WP-Admin's own radio/:checked styling (see the primary-key-wc-select fix
+   above) keeps working exactly as it does everywhere else in wp-admin. */
+.mmi-mode-card input[type="radio"] {
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+
+.mmi-mode-card-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.mmi-mode-card-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.mmi-mode-card-title {
+    font-size: 14px;
+}
+
+.mmi-mode-card-desc {
+    flex-basis: 100%;
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: #666;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   New Profile wizard — Field Mapping step (Step 4)
+
+   panel-field-mapping.php's table renders inline here now (previously a
+   separate slide-out panel). .mmi-field-advanced marks rows/group-headers
+   outside the curated set server-side; this just hides them by default and
+   reveals them when the step's "Show Advanced Fields" checkbox is checked.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#mmi-wizard-p4 .mmi-field-advanced {
+    display: none;
+}
+
+#mmi-wizard-p4.mmi-show-advanced-fields .mmi-field-advanced {
+    display: table-row;
+}
+
+/* Advanced-fields switch — its own banded row rather than a checkbox buried
+   in a paragraph of description text, which was easy to miss entirely. */
+.mmi-wizard-advanced-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: #f0f6ec;
+    border: 1px solid #c9dfbb;
+    border-radius: 6px;
+}
+
+.mmi-wizard-advanced-label {
+    font-weight: 600;
+    font-size: 13px;
+    color: #2d5a1e;
+    cursor: pointer;
+    margin: 0;
+}
+
+/* Explains a half-checked group switch caused by advanced fields that are
+   enabled but currently collapsed out of view — see syncGroupToggle(). */
+.mmi-group-advanced-note {
+    margin-left: 10px;
+    padding: 2px 8px;
+    border: 1px solid #d6b45a;
+    border-radius: 10px;
+    background: #fdf6e3;
+    color: #7a5c12;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.mmi-group-advanced-note:hover {
+    background: #f8ecd0;
+    border-color: #c0a04a;
+}
+
+/* ── Stale source data warnings ──────────────────────────────────────────────
+   last_fetch_at reflects when a feed file was actually written (see
+   MMI_Pipeline_Cron::refresh_all_source_counts()), so an old value here means
+   the data really is stale — not merely that nobody looked at it recently. */
+.mmi-stale-sources-notice {
+    margin: 0 0 14px;
+}
+
+.mmi-last-fetch-cell.mmi-fetch-stale {
+    color: #8a6d1f;
+}
+
+/* Now the shared .mmi-badge warning modifier; only positioning/cursor stay local. */
+.mmi-stale-badge {
+    margin-left: 6px;
+    cursor: help;
+}

@@ -1,0 +1,18 @@
+/* Unsaved changes indicator styles */
+.mmi-pipeline-save-buttons button.unsaved-changes {
+    background: #d63638 !important;
+    animation: pulse-warning 2s infinite;
+}
+
+.mmi-pipeline-save-buttons button.unsaved-changes:hover {
+    background: #a62a2a !important;
+}
+
+@keyframes pulse-warning {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(214, 54, 56, 0.3);
+    }
+    50% {
+        box-shadow: 0 2px 20px rgba(214, 54, 56, 0.6);
+    }
+}

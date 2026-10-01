@@ -1,0 +1,187 @@
+/**
+ * MMI Admin Common Styles
+ * 
+ * Shared styles for all MMI admin pages
+ * 
+ * @package MMI_Hub
+ * @since 1.0.7
+ */
+
+/* Common card styles */
+.mmi-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.mmi-card-header {
+    background: linear-gradient(135deg, #2271b1 0%, #135e96 100%);
+    color: #fff;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.mmi-card-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.mmi-card-header .dashicons {
+    font-size: 24px;
+}
+
+.mmi-card-body {
+    padding: 20px;
+}
+
+/* Common button styles */
+.mmi-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    border: none;
+}
+
+.mmi-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.mmi-button-primary {
+    background: #2271b1;
+    color: #fff;
+}
+
+.mmi-button-primary:hover {
+    background: #135e96;
+    color: #fff;
+}
+
+.mmi-button-secondary {
+    background: #f6f7f7;
+    color: #2c3338;
+    border: 1px solid #c3c4c7;
+}
+
+.mmi-button-secondary:hover {
+    background: #fff;
+    border-color: #8c8f94;
+}
+
+.mmi-button-danger {
+    background: #d63638;
+    color: #fff;
+}
+
+.mmi-button-danger:hover {
+    background: #b32d2e;
+}
+
+/* Common status messages */
+.mmi-status {
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin: 10px 0;
+    display: none;
+}
+
+.mmi-status.running {
+    display: block;
+    background: #e7f5fe;
+    color: #135e96;
+    border-left: 4px solid #2271b1;
+}
+
+.mmi-status.success {
+    display: block;
+    background: #e7f7ef;
+    color: #00653c;
+    border-left: 4px solid #45852C;
+}
+
+.mmi-status.error {
+    display: block;
+    background: #fcf0f1;
+    color: #b32d2e;
+    border-left: 4px solid #d63638;
+}
+
+.mmi-status.info {
+    display: block;
+    background: #f0f6fc;
+    color: #1d2327;
+    border-left: 4px solid #72aee6;
+}
+
+/* Common grid layouts */
+.mmi-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.mmi-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.mmi-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.mmi-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+@media screen and (max-width: 1200px) {
+    .mmi-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media screen and (max-width: 782px) {
+    .mmi-grid-2,
+    .mmi-grid-3,
+    .mmi-grid-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Hide WordPress footer on MMI pages */
+body.toplevel_page_mmi-hub #wpfooter,
+body.mmi-hub_page_mmi-vip #wpfooter,
+body.mmi-hub_page_mmi-licenses #wpfooter,
+body.mmi-hub_page_mmi-financial #wpfooter {
+    display: none;
+}
+
+/* Loading spinner */
+.mmi-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(0,0,0,0.1);
+    border-left-color: #2271b1;
+    border-radius: 50%;
+    animation: mmi-spin 0.6s linear infinite;
+}
+
+@keyframes mmi-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
