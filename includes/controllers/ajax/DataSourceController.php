@@ -391,8 +391,17 @@ add_action('wp_ajax_mmi_get_data_source', function () {
         ), ARRAY_A);
 
         foreach ($source['endpoints'] as &$ep) {
-            $ep['request_headers'] = json_decode($ep['request_headers'] ?: '{}', true);
+            $ep['request_headers'] = mmi_ds_mask_headers(json_decode($ep['request_headers'] ?: '{}', true));
         }
+        unset($ep);
+    }
+
+    // Header values that are credentials never reach the browser either.
+    if (!empty($source['configuration']['custom_headers'])) {
+        $source['configuration']['custom_headers'] = mmi_ds_mask_headers($source['configuration']['custom_headers']);
+    }
+    if (!empty($source['auth_config']['custom_headers'])) {
+        $source['auth_config']['custom_headers'] = mmi_ds_mask_headers($source['auth_config']['custom_headers']);
     }
 
     wp_send_json_success($source);
@@ -706,7 +715,7 @@ add_action('wp_ajax_mmi_save_data_source', function () {
         'retries'              => max(0, min(10, (int) ($config['advanced']['retries'] ?? 3))),
         'cache_duration'       => max(0, (int) ($config['advanced']['cache_duration'] ?? 0)),
         'detect_changes'       => !empty($config['advanced']['detect_changes']),
-        'custom_headers'       => mmi_ds_sanitize_headers($config['advanced']['custom_headers'] ?? []),
+        'custom_headers'       => mmi_ds_sanitize_headers(mmi_ds_unmask_headers($config['advanced']['custom_headers'] ?? [], $existing_configuration['custom_headers'] ?? [])),
         // Non-HTTP source fields
         'upload_attachment_id' => max(0, (int) ($connection['upload_attachment_id'] ?? 0)),
         'dropbox_file_path'    => sanitize_text_field($connection['dropbox_file_path'] ?? ''),
@@ -800,7 +809,7 @@ add_action('wp_ajax_mmi_save_data_source', function () {
     $auth_config['credential_keys'] = $credential_keys;
 
     if (!empty($auth['custom_headers'])) {
-        $auth_config['custom_headers'] = mmi_ds_sanitize_headers($auth['custom_headers']);
+        $auth_config['custom_headers'] = mmi_ds_sanitize_headers(mmi_ds_unmask_headers($auth['custom_headers'], $existing_auth['custom_headers'] ?? []));
     }
 
     // Required URL fields (token_url/auth_url/redirect_uri) must never be blanked
@@ -952,6 +961,16 @@ add_action('wp_ajax_mmi_save_data_source', function () {
     // Save endpoints
     $endpoints = $config['endpoints'] ?? [];
     if (!empty($endpoints) && is_array($endpoints)) {
+        // Stored headers by endpoint URL, so a masked value can be restored
+        // after the delete-and-reinsert below.
+        $stored_ep_headers = [];
+        foreach ((array) $wpdb->get_results($wpdb->prepare(
+            "SELECT endpoint_url, request_headers FROM {$endpoints_table} WHERE source_id = %d",
+            $source['id']
+        ), ARRAY_A) as $row) {
+            $stored_ep_headers[$row['endpoint_url']] = json_decode($row['request_headers'] ?: '{}', true) ?: [];
+        }
+
         // Clear existing endpoints
         $wpdb->delete($endpoints_table, ['source_id' => $source['id']]);
 
@@ -964,7 +983,7 @@ add_action('wp_ajax_mmi_save_data_source', function () {
                 'endpoint_name' => sanitize_text_field($ep['endpoint_name'] ?? 'Default'),
                 'endpoint_url' => esc_url_raw($ep['endpoint_url']),
                 'http_method' => sanitize_text_field($ep['http_method'] ?? 'GET'),
-                'request_headers' => !empty($ep['request_headers']) ? wp_json_encode(mmi_ds_sanitize_headers($ep['request_headers'])) : null,
+                'request_headers' => !empty($ep['request_headers']) ? wp_json_encode(mmi_ds_sanitize_headers(mmi_ds_unmask_headers($ep['request_headers'], $stored_ep_headers[esc_url_raw($ep['endpoint_url'])] ?? []))) : null,
                 'response_format' => sanitize_text_field($ep['response_format'] ?? 'json'),
                 'data_root_path' => sanitize_text_field($ep['data_root_path'] ?? ''),
                 'is_primary' => !empty($ep['is_primary']) ? 1 : 0,
@@ -1543,8 +1562,10 @@ add_action('wp_ajax_mmi_test_data_source', function () {
     $headers = mmi_ds_build_auth_headers($supplier_id, $auth_config, $test_cred_overrides);
 
     // Add custom headers
-    $connection_config = $config['connection'] ?? json_decode(($source['configuration'] ?? '{}') ?: '{}', true);
+    $saved_configuration = json_decode(($source['configuration'] ?? '{}') ?: '{}', true) ?: [];
+    $connection_config   = $config['connection'] ?? $saved_configuration;
     if (!empty($connection_config['custom_headers'])) {
+        $connection_config['custom_headers'] = mmi_ds_unmask_headers($connection_config['custom_headers'], $saved_configuration['custom_headers'] ?? []);
         foreach ($connection_config['custom_headers'] as $key => $val) {
             if (!empty($key) && !empty($val)) {
                 $headers[$key] = $val;
@@ -2089,6 +2110,44 @@ function mmi_ds_save_credential(string $field_name, string $value): bool {
 /**
  * Sanitize a headers array
  */
+/**
+ * Header names whose values are credentials (Authorization, X-Api-Key,
+ * Cookie, X-Auth-Token …) — masked before a config reaches the browser.
+ */
+function mmi_ds_is_sensitive_header(string $name): bool {
+    return (bool) preg_match('/auth|token|key|secret|pass|cookie|signature|session|credential|bearer/i', $name);
+}
+
+/** Replace sensitive header values with a fixed bullet mask. */
+function mmi_ds_mask_headers($headers): array {
+    $out = [];
+    foreach ((array) $headers as $name => $value) {
+        $out[$name] = ($value !== '' && $value !== null && mmi_ds_is_sensitive_header((string) $name))
+            ? str_repeat('•', 12)
+            : $value;
+    }
+    return $out;
+}
+
+/**
+ * A submitted bullet mask means "unchanged": put the stored value back. A
+ * mask with no stored value behind it is dropped, never sent as a header.
+ */
+function mmi_ds_unmask_headers($submitted, $stored): array {
+    $stored = (array) $stored;
+    $out    = [];
+    foreach ((array) $submitted as $name => $value) {
+        if (is_string($value) && preg_match('/^\x{2022}+$/u', $value)) {
+            if (isset($stored[$name]) && $stored[$name] !== '') {
+                $out[$name] = $stored[$name];
+            }
+            continue;
+        }
+        $out[$name] = $value;
+    }
+    return $out;
+}
+
 function mmi_ds_sanitize_headers($headers): array {
     if (!is_array($headers)) {
         return [];
