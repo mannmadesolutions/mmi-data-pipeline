@@ -202,7 +202,9 @@ class MMI_Logger {
 			$text
 		) ?? $text;
 
-		// MMI license keys anywhere in free text: keep the last group only.
+		// MMI license keys anywhere in free text (current 4×5 and older 3×4
+		// formats): keep the last group only.
+		$text = preg_replace( '/\bMMI-[A-Z0-9]{4}(?:-[A-Z0-9]{5}){3}-([A-Z0-9]{5})\b/i', 'MMI-****-*****-*****-*****-$1', $text ) ?? $text;
 		$text = preg_replace( '/\bMMI-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-([A-Z0-9]{4})\b/i', 'MMI-****-****-****-$1', $text ) ?? $text;
 
 		return $text;
