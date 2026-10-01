@@ -6,7 +6,7 @@
  *              Import (data acquisition, review, import) and Export (scope,
  *              field mapping, run) workflows, taxonomy mapping, supplier data
  *              sources, scheduling, and post-mortem reporting.
- * Version:     2.43.0
+ * Version:     2.43.1
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.43.0' );
+define( 'MMI_PIPELINE_VERSION', '2.43.1' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -127,6 +127,14 @@ function mmi_data_pipeline_audit( string $action, array $args = [] ): void {
 add_action( 'plugins_loaded', function () {
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-admin.php';
     MMI_Pipeline_Admin::init();
+} );
+
+// Private storage for uploaded supplier feeds. Outside the license gate: a
+// lapsed license must never re-expose a dealer price list or the private
+// folder's name.
+add_action( 'plugins_loaded', function () {
+    require_once MMI_PIPELINE_PATH . 'includes/suppliers/class-pipeline-private-uploads.php';
+    MMI_Pipeline_Private_Uploads::register_hooks();
 } );
 
 // Product Content Registry + its Bricks integration are read-only display of

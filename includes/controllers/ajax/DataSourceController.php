@@ -75,11 +75,11 @@ add_action('wp_ajax_mmi_analyze_uploaded_file', function () {
     require_once ABSPATH . 'wp-admin/includes/file.php';
     require_once ABSPATH . 'wp-admin/includes/media.php';
 
-    // Supplier feeds land in the media library (the upload source fetcher
-    // reads them back by attachment ID), whose files are web-reachable — give
-    // the stored copy a random suffix so its URL can't be guessed from the
-    // supplier's file name. The original name is still used for the
-    // suggested supplier name below.
+    // The attachment ID is the handle the source config and fetcher use; the
+    // file itself is moved into private storage right after upload (see
+    // MMI_Pipeline_Private_Uploads). The random suffix covers the moment
+    // before that move. The original name still feeds the suggested
+    // supplier name below.
     $_FILES['file']['name'] = sanitize_file_name(pathinfo($file_info['name'], PATHINFO_FILENAME))
         . '-' . strtolower(wp_generate_password(12, false, false)) . '.' . $ext;
 
@@ -87,6 +87,13 @@ add_action('wp_ajax_mmi_analyze_uploaded_file', function () {
 
     if (is_wp_error($attachment_id)) {
         wp_send_json_error(['message' => 'Upload failed: ' . $attachment_id->get_error_message()]);
+    }
+
+    // Supplier feeds (dealer costs, contacts) must never be downloadable by URL.
+    $private = MMI_Pipeline_Private_Uploads::privatize((int) $attachment_id);
+    if (is_wp_error($private)) {
+        wp_delete_attachment((int) $attachment_id, true);
+        wp_send_json_error(['message' => 'Upload failed: could not store the file privately (' . $private->get_error_message() . ').']);
     }
 
     mmi_data_pipeline_audit('file.upload', [
