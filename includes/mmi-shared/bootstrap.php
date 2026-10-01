@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.42.0';
+$mmi_shared_lib_this_copy_version = '1.42.1';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -585,6 +585,15 @@ if ( ! function_exists( 'mmi_shared_update_client_bootstrap' ) ) {
 		add_action( 'mmi_license_client_deactivated', [ 'MMI_Plugin_Update_Client', 'purge_cache' ] );
 	}
 	mmi_shared_update_client_bootstrap();
+}
+
+// Outside the function_exists() guard on purpose: the guarded body comes from
+// whichever copy loads first, which may predate this filter. Every copy's
+// top-level code runs, and the winning class is always the newest, so any
+// copy that has this line also guarantees the method exists. Without it,
+// package downloads carry no license key and the server answers 403.
+if ( defined( 'ABSPATH' ) && ! has_filter( 'http_request_args', [ 'MMI_Plugin_Update_Client', 'add_license_header' ] ) ) {
+	add_filter( 'http_request_args', [ 'MMI_Plugin_Update_Client', 'add_license_header' ], 10, 2 );
 }
 
 /**

@@ -197,10 +197,14 @@ class MMI_Plugin_Update_Client {
     /* ── License → download URL ──────────────────────────────────────────── */
 
     /**
-     * Append this site's license_key + domain to a bare catalog download_url,
-     * or return null if no active license covers $slug — the caller must
-     * treat null as "don't offer this update/download", not "offer it
-     * without credentials."
+     * Append this site's domain to a bare catalog download_url, or return
+     * null if no active license covers $slug — the caller must treat null as
+     * "don't offer this update/download", not "offer it without credentials."
+     *
+     * The license key is deliberately NOT in the URL: package URLs are stored
+     * in the update_plugins transient, printed by the upgrader and written to
+     * web-server access logs. add_license_header() sends it as a header on
+     * the download request itself.
      */
     private static function authorize_download_url( string $slug, string $bare_url ): ?string {
         if ( empty( $bare_url ) || ! class_exists( 'MMI_Settings' ) || ! self::is_trusted_package_url( $bare_url ) ) {
@@ -216,9 +220,37 @@ class MMI_Plugin_Update_Client {
         // table's active_domains membership check is a strict string
         // compare, not a normalized one.
         return add_query_arg( [
-            'license_key' => $license['key'],
-            'domain'      => get_site_url(),
+            'domain' => get_site_url(),
         ], $bare_url );
+    }
+
+    /**
+     * http_request_args filter: attach the license key as X-MMI-License-Key
+     * to a package download from the catalog host — and only there. Redirects
+     * are turned off for that request so the header can never be forwarded
+     * to another host.
+     */
+    public static function add_license_header( $args, $url ) {
+        if ( ! is_string( $url ) || ! self::is_trusted_package_url( $url ) ) {
+            return $args;
+        }
+        $parts = wp_parse_url( $url );
+        $route = (string) ( $parts['path'] ?? '' );
+        if ( ! empty( $parts['query'] ) ) {
+            parse_str( $parts['query'], $query );
+            $route .= ' ' . (string) ( $query['rest_route'] ?? '' ); // plain-permalink form
+        }
+        if ( ! preg_match( '#/extensions/([a-z0-9\-]+)/download(?:\s|$)#', $route, $m ) ) {
+            return $args;
+        }
+        $license = self::find_license_for_slug( $m[1] );
+        if ( ! $license || empty( $license['key'] ) ) {
+            return $args;
+        }
+        $args['headers']                      = (array) ( $args['headers'] ?? [] );
+        $args['headers']['X-MMI-License-Key'] = $license['key'];
+        $args['redirection']                  = 0;
+        return $args;
     }
 
     /**
