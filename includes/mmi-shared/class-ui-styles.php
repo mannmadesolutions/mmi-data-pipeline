@@ -303,6 +303,16 @@ class MMI_UI_Styles {
 				'tooltip_radius'     => array( 'type' => 'spacing', 'label' => 'Corner Radius', 'css_var' => '--mmi-tooltip-radius',     'default' => '6px' ),
 				'tooltip_padding'    => array( 'type' => 'spacing', 'label' => 'Padding',       'css_var' => '--mmi-tooltip-padding',    'default' => '8px' ),
 			),
+			// .mmi-statusbar, promoted from mmi-reverb-integration 2026-10-03 (shared lib 1.44.0).
+			'Status Bar'    => array(
+				'statusbar_bg'     => array( 'type' => 'color',   'label' => 'Background',     'css_var' => '--mmi-statusbar-bg',     'default' => '#ffffff' ),
+				'statusbar_text'   => array( 'type' => 'color',   'label' => 'Message Text',   'css_var' => '--mmi-statusbar-text',   'default' => '#1d2327' ),
+				'statusbar_muted'  => array( 'type' => 'color',   'label' => 'Count Text',     'css_var' => '--mmi-statusbar-muted',  'default' => '#646970' ),
+				'statusbar_border' => array( 'type' => 'color',   'label' => 'Border',         'css_var' => '--mmi-statusbar-border', 'default' => '#dcdcde' ),
+				'statusbar_accent' => array( 'type' => 'color',   'label' => 'Accent (edge, spinner, progress)', 'css_var' => '--mmi-statusbar-accent', 'default' => '#45852C', 'note' => 'Complete and error states use the suite success/error colors.' ),
+				'statusbar_track'  => array( 'type' => 'color',   'label' => 'Progress Track', 'css_var' => '--mmi-statusbar-track',  'default' => '#dbe8d5' ),
+				'statusbar_radius' => array( 'type' => 'spacing', 'label' => 'Corner Radius',  'css_var' => '--mmi-statusbar-radius', 'default' => '6px' ),
+			),
 		);
 	}
 

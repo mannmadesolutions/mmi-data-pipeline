@@ -76,7 +76,8 @@ add_action( 'wp_ajax_mmi_load_taxonomy_mappings', function () {
         } elseif ( $tid === -1 ) {
             $name = '__skip__';
         }
-        $row['wc_term_name'] = $name;
+        $row['wc_term_name']    = $name;
+        $row['missing_term_id'] = ( $tid > 0 && strpos( $name, '(deleted term #' ) === 0 ) ? $tid : 0;
     }
     unset( $row );
 
@@ -119,10 +120,48 @@ add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
         }
     }
 
+    // The autocomplete list can be older than the term: one deleted after
+    // it was listed would otherwise be saved as a mapping that never applies.
+    if ( $wc_term_id > 0 ) {
+        $picked = get_term( $wc_term_id, $wc_taxonomy );
+        if ( ! $picked || is_wp_error( $picked ) ) {
+            wp_send_json_error( [
+                'message'      => "Term #{$wc_term_id} no longer exists in {$wc_taxonomy}. It may have been deleted. Search again and pick another term.",
+                'term_missing' => true,
+            ] );
+        }
+    }
+
     $ok = MMI_DB::set_tax_mapping( $supplier, $source_field, $source_value, $wc_taxonomy, $wc_term_id, $auto_create, $profile_id );
 
     if ( ! $ok ) {
         wp_send_json_error( [ 'message' => 'Database write failed' ] );
+    }
+
+    // Existing products with this value get the term now; see
+    // Taxonomy_Mapping_Handler::apply_saved_mapping() for why an import
+    // alone isn't enough. Global mappings only: which profile imported a
+    // product isn't recorded, matching Apply All.
+    $applied = null;
+    if ( $wc_term_id > 0 && $profile_id === '' ) {
+        $own = [];
+        foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $src ) {
+            if ( $src['source_field'] === $source_field && ( $supplier === '' || $src['supplier'] === $supplier ) ) {
+                $own[] = $src['wc_taxonomy'];
+            }
+        }
+        @set_time_limit( 120 );
+        $applied = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::apply_saved_mapping(
+            $supplier, $source_field, $source_value, $wc_taxonomy, $wc_term_id, $own ?: [ $wc_taxonomy ]
+        );
+        if ( $applied['updated'] > 0 ) {
+            mmi_data_pipeline_audit( 'taxonomy.apply', [
+                'object_type' => 'taxonomy_mapping',
+                'object_id'   => $supplier,
+                'outcome'     => 'success',
+                'details'     => [ 'source_field' => $source_field, 'source_value' => $source_value, 'wc_taxonomy' => $wc_taxonomy, 'on_save' => $applied ],
+            ] );
+        }
     }
 
     $term_display = '';
@@ -157,6 +196,7 @@ add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
         'mapping_id'    => $mapping_id,
         'wc_term_id'    => $wc_term_id,
         'wc_term_name'  => $term_display,
+        'applied'       => $applied,
     ] );
 } );
 
@@ -212,14 +252,7 @@ add_action( 'wp_ajax_mmi_get_taxonomy_variations', function () {
             $taxonomy_labels[ $wc_taxonomy ] = $tax_obj ? $tax_obj->labels->singular_name : $wc_taxonomy;
         }
 
-        $wc_term_id  = (int) $row['wc_term_id'];
-        $term_name   = '';
-        if ( $wc_term_id > 0 ) {
-            $t         = get_term( $wc_term_id, $wc_taxonomy );
-            $term_name = ( $t && ! is_wp_error( $t ) ) ? $t->name : "(deleted #$wc_term_id)";
-        } elseif ( $wc_term_id === -1 ) {
-            $term_name = '__skip__';
-        }
+        $term = mmi_taxmap_term_display( (int) $row['wc_term_id'], $wc_taxonomy );
 
         $result[] = [
             'mapping_id'      => (int) $row['id'],
@@ -230,8 +263,9 @@ add_action( 'wp_ajax_mmi_get_taxonomy_variations', function () {
             'wc_taxonomy_label' => $taxonomy_labels[ $wc_taxonomy ],
             'profile_id'      => $row['profile_id'],
             'profile_label'   => $profile_labels[ $row['profile_id'] ] ?? $row['profile_id'],
-            'wc_term_id'      => $wc_term_id,
-            'wc_term_name'    => $term_name,
+            'wc_term_id'      => $term['wc_term_id'],
+            'wc_term_name'    => $term['wc_term_name'],
+            'missing_term_id' => $term['missing_term_id'],
         ];
     }
 
@@ -339,9 +373,14 @@ add_action( 'wp_ajax_mmi_save_taxonomy_alias_rules', function () {
 
     foreach ( $clean as &$rule ) {
         $tid = $rule['wc_term_id'];
+        // wc_term_id is left as saved (the rule panel posts it back); the
+        // missing flag only tells the panel to show the rule as broken.
+        $rule['missing_term_id'] = 0;
         if ( $tid > 0 ) {
             $t = get_term( $tid, $rule['wc_taxonomy'] );
-            $rule['wc_term_name'] = ( $t && ! is_wp_error( $t ) ) ? $t->name : "(deleted #{$tid})";
+            $live = $t && ! is_wp_error( $t );
+            $rule['wc_term_name']    = $live ? $t->name : '';
+            $rule['missing_term_id'] = $live ? 0 : $tid;
         } elseif ( $tid === -1 ) {
             $rule['wc_term_name'] = '__skip__';
         } else {
@@ -420,6 +459,30 @@ function mmi_taxmap_profile_label_map(): array {
  * @param string $wc_taxonomy
  * @return array{global: array<string, array>, variants: array<string, array<int, array>>}
  */
+/**
+ * Display fields for a saved term reference. A term deleted in WooCommerce
+ * after it was mapped comes back as wc_term_id 0 with its old id in
+ * missing_term_id: the mapping no longer does anything at import
+ * (resolve_tax_mapping() drops it), so the table must not show it as
+ * mapped. Before this the deleted id was shown as a term name,
+ * "(deleted #5671)", with a Mapped badge.
+ *
+ * @return array{wc_term_id:int, wc_term_name:string, missing_term_id:int}
+ */
+function mmi_taxmap_term_display( int $term_id, string $taxonomy ): array {
+    if ( $term_id === -1 ) {
+        return [ 'wc_term_id' => -1, 'wc_term_name' => '__skip__', 'missing_term_id' => 0 ];
+    }
+    if ( $term_id > 0 ) {
+        $t = get_term( $term_id, $taxonomy );
+        if ( $t && ! is_wp_error( $t ) ) {
+            return [ 'wc_term_id' => $term_id, 'wc_term_name' => $t->name, 'missing_term_id' => 0 ];
+        }
+        return [ 'wc_term_id' => 0, 'wc_term_name' => '', 'missing_term_id' => $term_id ];
+    }
+    return [ 'wc_term_id' => 0, 'wc_term_name' => '', 'missing_term_id' => 0 ];
+}
+
 function mmi_taxmap_build_mapping_index( string $supplier, string $wc_taxonomy ): array {
     // MMI_DB::get_tax_mappings( '', $wc_taxonomy ) applies NO supplier_id
     // filter at all when the arg is '' (see that method's own
@@ -550,10 +613,25 @@ add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
     foreach ( $counts as $value => $count ) {
         $mapping = $index['global'][ $value ] ?? null;
 
+        // A row redirected to another taxonomy (see
+        // Taxonomy_Mapping_Handler::find_redirect()) is shown under that
+        // taxonomy; the index above only holds this taxonomy's rows.
+        $row_taxonomy    = $wc_taxonomy;
+        $redirected_from = '';
+        if ( ! $mapping ) {
+            $redirect = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::find_redirect(
+                $supplier, $source_field, (string) $value, [ $wc_taxonomy ], '', false
+            );
+            if ( $redirect !== null ) {
+                $mapping         = $redirect;
+                $row_taxonomy    = $redirect['wc_taxonomy'];
+                $redirected_from = $wc_taxonomy;
+            }
+        }
+
         $wc_term_id   = $mapping ? (int) $mapping['wc_term_id'] : 0;
         $auto_create  = $mapping ? (bool) $mapping['auto_create'] : false;
         $mapping_id   = $mapping ? (int) $mapping['id'] : 0;
-        $term_name    = '';
         $via_rule     = false;
 
         if ( $wc_term_id === 0 ) {
@@ -564,32 +642,23 @@ add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
             }
         }
 
-        if ( $wc_term_id > 0 ) {
-            $t         = get_term( $wc_term_id, $wc_taxonomy );
-            $term_name = ( $t && ! is_wp_error( $t ) ) ? $t->name : "(deleted #$wc_term_id)";
-        } elseif ( $wc_term_id === -1 ) {
-            $term_name = '__skip__';
-        }
+        $term       = mmi_taxmap_term_display( $wc_term_id, $row_taxonomy );
+        $wc_term_id = $term['wc_term_id'];
+        $term_name  = $term['wc_term_name'];
 
         // Every profile-specific override for this value, annotated with a
         // readable profile name — the "+ N variations" badge and expandable
         // panel on this row are built from this list client-side.
         $variants = [];
         foreach ( $index['variants'][ $value ] ?? [] as $v_row ) {
-            $v_term_id   = (int) $v_row['wc_term_id'];
-            $v_term_name = '';
-            if ( $v_term_id > 0 ) {
-                $v_t         = get_term( $v_term_id, $wc_taxonomy );
-                $v_term_name = ( $v_t && ! is_wp_error( $v_t ) ) ? $v_t->name : "(deleted #$v_term_id)";
-            } elseif ( $v_term_id === -1 ) {
-                $v_term_name = '__skip__';
-            }
+            $v_term     = mmi_taxmap_term_display( (int) $v_row['wc_term_id'], $wc_taxonomy );
             $variants[] = [
-                'mapping_id'    => (int) $v_row['id'],
-                'profile_id'    => $v_row['profile_id'],
-                'profile_label' => $profile_labels[ $v_row['profile_id'] ] ?? $v_row['profile_id'],
-                'wc_term_id'    => $v_term_id,
-                'wc_term_name'  => $v_term_name,
+                'mapping_id'      => (int) $v_row['id'],
+                'profile_id'      => $v_row['profile_id'],
+                'profile_label'   => $profile_labels[ $v_row['profile_id'] ] ?? $v_row['profile_id'],
+                'wc_term_id'      => $v_term['wc_term_id'],
+                'wc_term_name'    => $v_term['wc_term_name'],
+                'missing_term_id' => $v_term['missing_term_id'],
             ];
         }
 
@@ -607,6 +676,9 @@ add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
             'mapping_id'      => $mapping_id,
             'wc_term_id'      => $wc_term_id,
             'wc_term_name'    => $term_name,
+            'missing_term_id' => $term['missing_term_id'],
+            'redirected_from' => $redirected_from,
+            'row_taxonomy'    => $row_taxonomy,
             'auto_create'     => $auto_create,
             'via_rule'        => $via_rule,
             'source_file'     => $source_file,
@@ -1095,6 +1167,13 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
         }
     }
 
+    // Taxonomies each supplier field feeds directly — anything else saved
+    // for that field is a redirect (see find_redirect()).
+    $own_taxonomies = [];
+    foreach ( $scan as $source ) {
+        $own_taxonomies[ $source['supplier'] . '|' . $source['source_field'] ][] = $source['wc_taxonomy'];
+    }
+
     $result = [];
 
     foreach ( $scan as $source ) {
@@ -1108,10 +1187,27 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
             $gk      = '|' . $source_field . '|' . $value . '|' . $wc_taxonomy;
             $mapping = $global_supplier[ $sk ] ?? $global_any[ $gk ] ?? null;
 
+            // Redirected to another taxonomy: shown, saved and cleared under
+            // that taxonomy (the row's taxonomy select already shows it).
+            $row_taxonomy    = $wc_taxonomy;
+            $redirected_from = '';
+            if ( ! $mapping ) {
+                $redirect = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::find_redirect(
+                    $supplier, $source_field, (string) $value,
+                    $own_taxonomies[ $supplier . '|' . $source_field ], '', false
+                );
+                if ( $redirect !== null ) {
+                    $mapping         = $redirect;
+                    $row_taxonomy    = $redirect['wc_taxonomy'];
+                    $redirected_from = $wc_taxonomy;
+                    $sk              = $supplier . '|' . $source_field . '|' . $value . '|' . $row_taxonomy;
+                    $gk              = '|' . $source_field . '|' . $value . '|' . $row_taxonomy;
+                }
+            }
+
             $wc_term_id  = $mapping ? (int)  $mapping['wc_term_id']  : 0;
             $auto_create = $mapping ? (bool) $mapping['auto_create'] : false;
             $mapping_id  = $mapping ? (int)  $mapping['id']          : 0;
-            $term_name   = '';
             $via_rule    = false;
 
             // No exact mapping — check whether an alias rule covers this value.
@@ -1123,32 +1219,23 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
                 }
             }
 
-            if ( $wc_term_id > 0 ) {
-                $t         = get_term( $wc_term_id, $wc_taxonomy );
-                $term_name = ( $t && ! is_wp_error( $t ) ) ? $t->name : "(deleted #$wc_term_id)";
-            } elseif ( $wc_term_id === -1 ) {
-                $term_name = '__skip__';
-            }
+            $term       = mmi_taxmap_term_display( $wc_term_id, $row_taxonomy );
+            $wc_term_id = $term['wc_term_id'];
+            $term_name  = $term['wc_term_name'];
 
             // Variants can be saved either supplier-specific or supplier-agnostic
             // for the same value — both apply to this row, so both keys are checked.
             $row_variants = array_merge( $variants[ $sk ] ?? [], $variants[ $gk ] ?? [] );
             $variant_list = [];
             foreach ( $row_variants as $v_row ) {
-                $v_term_id   = (int) $v_row['wc_term_id'];
-                $v_term_name = '';
-                if ( $v_term_id > 0 ) {
-                    $v_t         = get_term( $v_term_id, $wc_taxonomy );
-                    $v_term_name = ( $v_t && ! is_wp_error( $v_t ) ) ? $v_t->name : "(deleted #$v_term_id)";
-                } elseif ( $v_term_id === -1 ) {
-                    $v_term_name = '__skip__';
-                }
+                $v_term         = mmi_taxmap_term_display( (int) $v_row['wc_term_id'], $row_taxonomy );
                 $variant_list[] = [
-                    'mapping_id'    => (int) $v_row['id'],
-                    'profile_id'    => $v_row['profile_id'],
-                    'profile_label' => $profile_labels[ $v_row['profile_id'] ] ?? $v_row['profile_id'],
-                    'wc_term_id'    => $v_term_id,
-                    'wc_term_name'  => $v_term_name,
+                    'mapping_id'      => (int) $v_row['id'],
+                    'profile_id'      => $v_row['profile_id'],
+                    'profile_label'   => $profile_labels[ $v_row['profile_id'] ] ?? $v_row['profile_id'],
+                    'wc_term_id'      => $v_term['wc_term_id'],
+                    'wc_term_name'    => $v_term['wc_term_name'],
+                    'missing_term_id' => $v_term['missing_term_id'],
                 ];
             }
 
@@ -1157,12 +1244,14 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
                 // mmi_get_taxonomy_source_values above for why.
                 'source_value'    => (string) $value,
                 'source_field'    => $source_field,
-                'wc_taxonomy'     => $wc_taxonomy,
+                'wc_taxonomy'     => $row_taxonomy,
+                'redirected_from' => $redirected_from,
                 'supplier'        => $supplier,
                 'count'           => $count,
                 'mapping_id'      => $mapping_id,
                 'wc_term_id'      => $wc_term_id,
                 'wc_term_name'    => $term_name,
+                'missing_term_id' => $term['missing_term_id'],
                 'auto_create'     => $auto_create,
                 'via_rule'        => $via_rule,
                 'source_file'     => $json_filename,
@@ -1225,11 +1314,33 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
 
     $file_map = mmi_taxmap_build_supplier_file_map();
 
+    // Taxonomies each supplier field feeds directly, and whether any saved
+    // row for that field points somewhere else (a redirect, see
+    // Taxonomy_Mapping_Handler::find_redirect()).
+    $own_taxonomies = [];
+    foreach ( $all_profiles as $profile ) {
+        $own_taxonomies[ $profile['supplier'] . '|' . $profile['source_field'] ][] = $profile['wc_taxonomy'];
+    }
+    $has_redirects = [];
+    foreach ( $all_saved as $row ) {
+        foreach ( $own_taxonomies as $sf_key => $taxes ) {
+            [ $sup, $field ] = explode( '|', $sf_key, 2 );
+            if ( $row['source_field'] === $field
+                && in_array( $row['supplier_id'], [ $sup, '' ], true )
+                && ! in_array( $row['wc_taxonomy'], $taxes, true )
+                && (int) $row['wc_term_id'] > 0 ) {
+                $has_redirects[ $sf_key ] = true;
+            }
+        }
+    }
+    $redirected = 0;
+
     foreach ( $all_profiles as $profile ) {
         $index_key = $profile['supplier'] . '|' . $profile['source_field'] . '|' . $profile['wc_taxonomy'];
         $mappings  = $mapping_index[ $index_key ] ?? [];
+        $sf_key    = $profile['supplier'] . '|' . $profile['source_field'];
 
-        if ( empty( $mappings ) ) { continue; }
+        if ( empty( $mappings ) && empty( $has_redirects[ $sf_key ] ) ) { continue; }
 
         // Also overlay global ('') mappings
         $gk      = '|' . $profile['source_field'] . '|' . $profile['wc_taxonomy'];
@@ -1281,12 +1392,32 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
             $source_value = $sku_to_value[ $supplier_sku ] ?? null;
             if ( $source_value === null ) { $total_skipped++; continue; }
 
+            // Added to the other taxonomy, never replacing what is there,
+            // and only if that taxonomy is not locked on this product.
+            if ( ! empty( $has_redirects[ $sf_key ] ) ) {
+                $redirect = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::find_redirect(
+                    $profile['supplier'], $profile['source_field'], $source_value, $own_taxonomies[ $sf_key ], ''
+                );
+                if ( $redirect !== null ) {
+                    $locks = MMI_Pipeline_Field_Locks::get( $product_id );
+                    if ( MMI_Pipeline_Field_Locks::in_list( $redirect['wc_taxonomy'], $locks ) ) { $total_skipped++; continue; }
+                    wp_set_object_terms( $product_id, [ (int) $redirect['wc_term_id'] ], $redirect['wc_taxonomy'], true );
+                    $total_updated++;
+                    $redirected++;
+                    continue;
+                }
+            }
+
             $mapped_tid = $mappings[ $source_value ]
                 ?? MMI_DB::match_taxmap_alias_rule( $profile['supplier'], $profile['source_field'], $source_value, $profile['wc_taxonomy'] );
             if ( $mapped_tid === null || $mapped_tid === -1 ) { $total_skipped++; continue; }
 
             $term = get_term( $mapped_tid, $profile['wc_taxonomy'] );
             if ( ! $term || is_wp_error( $term ) ) { $total_skipped++; continue; }
+
+            // A term set by hand (Product Workbench, Product Titles) locks the
+            // field; imports respect that and so must this.
+            if ( MMI_Pipeline_Field_Locks::in_list( $profile['wc_taxonomy'], MMI_Pipeline_Field_Locks::get( $product_id ) ) ) { $total_skipped++; continue; }
 
             wp_set_object_terms( $product_id, [ $mapped_tid ], $profile['wc_taxonomy'] );
             $total_updated++;
@@ -1300,8 +1431,9 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
         'details'     => [ 'scope' => 'all' ],
     ] );
     wp_send_json_success( [
-        'message' => "Applied all taxonomy mappings: {$total_updated} updated, {$total_skipped} skipped",
+        'message' => "Applied all taxonomy mappings: {$total_updated} updated ({$redirected} via redirect), {$total_skipped} skipped",
         'updated' => $total_updated,
         'skipped' => $total_skipped,
+        'redirected' => $redirected,
     ] );
 } );

@@ -115,6 +115,41 @@ jQuery(document).ready(function($) {
         return currentProfile;
     }
 
+    /* ── Field conflicts ─────────────────────────────────────────────── */
+
+    const FIELD_CONFLICT = {
+        ROW:    'tr.field-mapping-row',
+        CELL:   'td.col-woo-field',
+        NOTICE: '.mmi-field-conflict',
+        CLASS:  'mmi-field-conflict notice notice-warning inline',
+    };
+
+    /**
+     * Warn, inside a field's own row, that another import profile or
+     * Catalog Maintenance also writes this field (server:
+     * MMI_Pipeline_Field_Conflicts). Stays until a later save clears it —
+     * it names something to fix, so it must not fade on its own.
+     *
+     * @param {string}   fieldName
+     * @param {string[]} messages  Empty clears the warning.
+     */
+    function renderFieldConflicts(fieldName, messages) {
+        const $row = $(`${FIELD_CONFLICT.ROW}[data-field="${CSS.escape(fieldName)}"]`);
+        $row.find(FIELD_CONFLICT.NOTICE).remove();
+        if (!messages || !messages.length) { return; }
+        const $notice = $('<div>', { class: FIELD_CONFLICT.CLASS, role: 'status' });
+        messages.forEach(function (message) { $notice.append($('<p>').text(message)); });
+        $row.find(FIELD_CONFLICT.CELL).first().append($notice);
+    }
+
+    /** @param {Object<string, string[]>} conflicts field => messages */
+    function renderAllFieldConflicts(conflicts) {
+        $(FIELD_CONFLICT.ROW).find(FIELD_CONFLICT.NOTICE).remove();
+        Object.keys(conflicts || {}).forEach(function (field) {
+            renderFieldConflicts(field, conflicts[field]);
+        });
+    }
+
     // Exposed for import-pipeline-attributes.js (a separate IIFE) so its own
     // autosave resolves the same wizard-scoped profile id instead of only
     // ever reading the page-level #mmi-import-profile dropdown.
@@ -136,11 +171,15 @@ jQuery(document).ready(function($) {
                 property: property,
                 value: value,
                 supplier: supplier,
-                profile: autosaveScopeProfile()
+                profile: autosaveScopeProfile(),
+                // Lets the server spot conflicts for a profile still being
+                // created (no saved sources yet) — see MMI_Pipeline_Field_Conflicts.
+                sources: $('#new-profile-modal').is(':visible') ? JSON.stringify(wizardSelectedSources()) : ''
             },
             success: function(response) {
                 if (response.success) {
                     showAutosaveIndicator('✓ Saved', 'success');
+                    renderFieldConflicts(fieldName, response.data && response.data.conflicts);
                 } else {
                     showAutosaveIndicator('✗ Failed', 'error');
                 }
@@ -604,7 +643,7 @@ jQuery(document).ready(function($) {
 
     function fmConditionsSignature(data) {
         return JSON.stringify([data.match_logic || 'all', data.conditions.map(function(c) {
-            return [c.source, c.field, c.operator, c.value, !!c.case_sensitive];
+            return [c.source, c.field, c.operator, c.value, !!c.case_sensitive, !!c.or];
         })]);
     }
 
@@ -619,6 +658,7 @@ jQuery(document).ready(function($) {
                 operator: String($row.attr('data-saved-operator') || 'equals'),
                 value:    String($row.attr('data-saved-value') || ''),
                 case_sensitive: $row.find('.mmi-cond-case-input').prop('defaultChecked'),
+                or:       conditions.length > 0 && $row.attr('data-saved-or') === '1',
             });
         });
         const $ml = $root.find('.mmi-cb-match-logic option[selected]');
@@ -3657,6 +3697,7 @@ jQuery(document).ready(function($) {
                 // on the id-bearing element itself once did.
                 $('#mmi-wizard-field-mapping-container').html(response.data.html);
                 _wizardFieldMappingPanelLoadedFor = profileId;
+                renderAllFieldConflicts(response.data.conflicts);
 
                 // The Generic Field Mapping panel (non-Product data types,
                 // panel-field-mapping-generic.php) has none of the Product-

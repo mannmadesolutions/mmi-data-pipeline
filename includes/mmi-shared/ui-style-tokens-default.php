@@ -108,4 +108,11 @@ return [
     'tooltip_text_color' => '#ffffff',
     'tooltip_radius' => '6px',
     'tooltip_padding' => '8px',
+    'statusbar_bg' => '#ffffff',
+    'statusbar_text' => '#1d2327',
+    'statusbar_muted' => '#646970',
+    'statusbar_border' => '#dcdcde',
+    'statusbar_accent' => '#45852C',
+    'statusbar_track' => '#dbe8d5',
+    'statusbar_radius' => '6px',
 ];

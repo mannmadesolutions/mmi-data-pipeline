@@ -20,11 +20,25 @@
 
     const SELECTORS = {
         ROOT:               '#mmi-workbench',
+        EDIT_TERMS:         '.mmi-wb-edit-terms',
+        TERM_EDITOR_TR:     '.mmi-wb-term-editor-tr',
+        TERM_SEARCH:        '.mmi-wb-term-search',
+        TERM_OPTION:        '.mmi-wb-term-option',
+        TERM_SAVE:          '.mmi-wb-term-save',
+        TERM_CANCEL:        '.mmi-wb-term-cancel',
+        TERM_NOTICE:        '.mmi-wb-term-notice',
         QUERY:              '#mmi-wb-q',
         QUERY_CASE:         '#mmi-wb-q-case',
         QUERY_IN:           '#mmi-wb-q-in',
         SUPPLIER:           '#mmi-wb-supplier',
         STATUS_CB:          '.mmi-wb-status',
+        STOCK_CB:           '.mmi-wb-stock',
+        HEALTH_CB:          '.mmi-wb-health',
+        HEALTH_MODE:        '#mmi-wb-health-mode',
+        FILTER_MS:          '.mmi-wb-filter',
+        FILTER_TRIGGER:     '.mmi-wb-filter .mmi-ms-trigger',
+        FILTERS_CLEAR:      '#mmi-wb-filters-clear',
+        HEALTH_CHIP:        '.mmi-wb-col-health .mmi-health-chip',
         MATCH_LOGIC:        '#mmi-wb-match-logic',
         CONDITIONS:         '#mmi-wb-conditions',
         FIND_SECTION:       '#mmi-wb-find',
@@ -32,6 +46,11 @@
         SEARCH_BTN:         '#mmi-wb-search',
         RESET_BTN:          '#mmi-wb-reset',
         STALE_NOTE:         '#mmi-wb-stale',
+        SAVE_SEARCH_BTN:    '#mmi-wb-save-search',
+        SAVE_SEARCH_FORM:   '#mmi-wb-save-search-form',
+        SAVE_SEARCH_NAME:   '#mmi-wb-save-search-name',
+        SAVE_SEARCH_OK:     '#mmi-wb-save-search-confirm',
+        SAVE_SEARCH_CANCEL: '#mmi-wb-save-search-cancel',
 
         EMPTY:              '#mmi-wb-empty',
         RESULTS:            '#mmi-wb-results',
@@ -93,13 +112,28 @@
         APPLY_RUNNING:  '<span class="mmi-loading"></span> Applying…',
     };
 
+    // Taxonomies the results table edits in place (Product_Workbench::EDITABLE_TAXONOMIES).
+    const TERM_EDIT = {
+        product_cat:   { label: 'Categories', hierarchical: true },
+        product_brand: { label: 'Brand',      hierarchical: false },
+    };
+    const NOTICE_MS = 6000;
+
     const MESSAGES = {
+        TERMS_LOADING:    'Loading…',
+        TERMS_SEARCH:     'Search %label%…',
+        TERMS_TITLE:      '%label% for “%title%”',
+        TERMS_HINT:       'Saving locks %label% against imports, so the next supplier import keeps your choice. Undo from Recent changes.',
+        TERMS_SAVED:      '%label% saved. Undo it from Recent changes.',
+        TERMS_NO_CAT:     'Choose at least one category.',
+        TERMS_LOCKED:     'Locked against imports',
         NOTHING_SELECTED: 'Nothing selected yet.',
         TARGET_IDS:       '%count% selected product%s% will be checked.',
         TARGET_FILTER:    'All %count% product%s% matching the search will be checked%excl%.',
         CONFIRM_APPLY:    '%summary%\n\nApply to %count% product%s%? You can undo this from Recent changes.',
         CONFIRM_UNDO:     'Undo "%summary%"?\n\nEach product gets its previous value back, unless it has been edited again since.',
         INCOMPLETE:       'Condition %n%: pick a Source and a Field, or remove it.',
+        SAVED_SEARCH:     'Saved “%name%”. Load it from Load saved conditions, here or in Catalog Maintenance.',
         NETWORK:          'Network error — please try again.',
         DONE:             'Done: %changed% changed, %unchanged% already matched%failed%.',
         STOPPED:          'Stopped after %cursor% of %total%. Resume it from Recent changes.',
@@ -122,6 +156,8 @@
         exclude:    new Set(),
         running:    null,   // job id while an apply/undo loop is in progress
         stopRequested: false,
+        checks:     {},     // health check id => {chip, label}, from the last search
+        rowsById:   {},     // the rows on screen, by product id (for the row editor)
     };
     let pager = null;
 
@@ -153,9 +189,16 @@
 
     /* ── Filter ─────────────────────────────────────────────────────────── */
 
+    function checkedValues(selector) {
+        return $(selector + ':checked').map(function() { return this.value; }).get();
+    }
+
     function collectFilter() {
-        const statuses = $(SELECTORS.STATUS_CB + ':checked').map(function() { return this.value; }).get();
+        const statuses = checkedValues(SELECTORS.STATUS_CB);
         return {
+            stock:       checkedValues(SELECTORS.STOCK_CB),
+            health:      checkedValues(SELECTORS.HEALTH_CB),
+            health_mode: $(SELECTORS.HEALTH_MODE).val(),
             q:           $(SELECTORS.QUERY).val().trim(),
             q_case:      $(SELECTORS.QUERY_CASE).is(':checked') ? 1 : 0,
             q_in:        $(SELECTORS.QUERY_IN).val(),
@@ -189,13 +232,80 @@
             const field = $r.find(RB.SELECTORS.COND_FIELD_SEL + ' option:selected').text();
             // Option text without its leading symbol ("= equals" → "equals").
             const op    = $r.find(RB.SELECTORS.COND_OPERATOR_SEL + ' option:selected').text().replace(/^[=≠<>]\s*/, '');
-            const val   = $r.find(RB.SELECTORS.COND_VALUE_SEL).val();
-            parts.push(`${field} ${op} ${val ? `"${val}"` : ''}`.trim());
+            const $pick = $r.find(RB.SELECTORS.COND_VALUE_SELECT + ':not(.' + CSS.HIDDEN + ') option:selected');
+            const val   = $pick.length && $r.find(RB.SELECTORS.COND_OPERATOR_SEL).val() === 'matches_pattern'
+                ? $pick.text() : $r.find(RB.SELECTORS.COND_VALUE_SEL).val();
+            const join  = parts.length && $r.find(RB.SELECTORS.COND_JOIN).attr('aria-pressed') === 'true' ? 'or ' : '';
+            parts.push(`${join}${field} ${op} ${val ? `"${val}"` : ''}`.trim());
         });
         if (parts.length > 1 && f.match_logic === 'any') parts[0] = `Any of: ${parts[0]}`;
         if (f.supplier !== 'all') parts.push(`Supplier: ${$(SELECTORS.SUPPLIER + ' option:selected').text()}`);
         parts.push(f.statuses.map((s) => STATUS_LABELS[s] || s).join(', '));
+        if (f.stock.length) parts.push(f.stock.map((s) => STOCK_LABELS[s] || s).join(', '));
+        if (f.health.length) {
+            const names = f.health.map((id) => $(SELECTORS.HEALTH_CB + '[value="' + id + '"]').closest('label').text().trim());
+            parts.push({ any: 'Fails any of: ', all: 'Fails all of: ', none: 'Passes: ' }[f.health_mode] + names.join(', '));
+        }
         return parts.join(' · ');
+    }
+
+    /* ── Filter dropdowns (shared .mmi-multiselect markup) ───────────────── */
+
+    /** Trigger text: the filter name, the one ticked option, or "Name (n)". */
+    function renderFilterLabel($ms) {
+        const $on   = $ms.find('input[type=checkbox]:checked');
+        const name  = $ms.data('label');
+        const label = $on.length === 1 ? `${name}: ${$on.closest('label').text().trim()}` : name;
+        $ms.find('.mmi-ms-label').text(label);
+        $ms.find('.mmi-ms-badge').text($on.length).prop('hidden', $on.length < 2);
+        $ms.toggleClass('has-value', $on.length > 0);
+    }
+
+    function closeFilterMenus($except) {
+        $(SELECTORS.FILTER_MS).not($except || []).removeClass('is-open')
+            .find('.mmi-ms-menu').prop('hidden', true).end()
+            .find('.mmi-ms-trigger').attr('aria-expanded', 'false');
+    }
+
+    function initFilterMenus() {
+        $(SELECTORS.FILTER_MS).each(function() { renderFilterLabel($(this)); });
+        $(document)
+            .on('click', SELECTORS.FILTER_TRIGGER, function(e) {
+                e.stopPropagation();
+                const $ms  = $(this).closest(SELECTORS.FILTER_MS);
+                const open = !$ms.hasClass('is-open');
+                closeFilterMenus($ms);
+                $ms.toggleClass('is-open', open).find('.mmi-ms-menu').prop('hidden', !open);
+                $(this).attr('aria-expanded', open ? 'true' : 'false');
+            })
+            .on('click', function(e) {
+                if (!$(e.target).closest(SELECTORS.FILTER_MS).length) closeFilterMenus();
+            })
+            .on('keydown', function(e) { if (e.key === 'Escape') closeFilterMenus(); })
+            .on('change', SELECTORS.FILTER_MS + ' input[type=checkbox]', function() {
+                renderFilterLabel($(this).closest(SELECTORS.FILTER_MS));
+            })
+            .on('click', SELECTORS.FILTERS_CLEAR, function() {
+                $(SELECTORS.STOCK_CB + ', ' + SELECTORS.HEALTH_CB).prop('checked', false);
+                $(SELECTORS.STATUS_CB).each(function() { this.checked = this.value === 'publish' || this.value === 'draft'; });
+                $(SELECTORS.HEALTH_MODE).val('any');
+                $(SELECTORS.FILTER_MS).each(function() { renderFilterLabel($(this)); });
+                markStale(true);
+            })
+            // A Health chip filters to products failing that check.
+            .on('click', SELECTORS.HEALTH_CHIP, function() {
+                const id = $(this).data('check');
+                if (!id) return;
+                $(SELECTORS.HEALTH_CB).each(function() { this.checked = this.value === id; });
+                $(SELECTORS.HEALTH_MODE).val('any');
+                renderFilterLabel($('#mmi-wb-health-ms'));
+                search(true);
+            });
+    }
+
+    /** A passing notice beside the condition builder's buttons. */
+    function searchNotice(text) {
+        window.MMIConditionBuilder.showNotice($(SELECTORS.CONDITION_BUILDER), text);
     }
 
     function markStale(stale) {
@@ -208,8 +318,7 @@
         if (fresh) {
             const bad = firstIncompleteCondition();
             if (bad) {
-                showMessage('', '');
-                window.alert(fill(MESSAGES.INCOMPLETE, { n: bad }));
+                searchNotice(fill(MESSAGES.INCOMPLETE, { n: bad }));
                 return;
             }
             state.filter     = collectFilter();
@@ -229,10 +338,10 @@
             filter: state.filter, page: state.page, per_page: state.perPage,
             sort: state.sort, dir: state.dir, fresh: fresh ? 1 : 0,
         }).done(function(resp) {
-            if (!resp.success) { window.alert((resp.data && resp.data.message) || MESSAGES.NETWORK); return; }
+            if (!resp.success) { searchNotice((resp.data && resp.data.message) || MESSAGES.NETWORK); return; }
             renderResults(resp.data);
         }).fail(function() {
-            window.alert(MESSAGES.NETWORK);
+            searchNotice(MESSAGES.NETWORK);
         }).always(function() {
             $btn.prop('disabled', false).removeClass(CSS.IS_LOADING).html(LABELS.SEARCH_IDLE);
             $(SELECTORS.ROWS).removeClass('mmi-wb-loading');
@@ -240,6 +349,9 @@
     }
 
     function renderResults(data) {
+        state.rowsById = {};
+        (data.rows || []).forEach((r) => { state.rowsById[r.id] = r; });
+        state.checks  = data.checks || {};
         state.total   = data.total;
         state.page    = data.page;
         state.pageIds = data.rows.map((r) => r.id);
@@ -287,25 +399,152 @@
 
     function renderRows(rows) {
         if (!rows.length) {
-            $(SELECTORS.ROWS).html('<tr><td colspan="9" class="mmi-wb-empty-cell">No products match.</td></tr>');
+            $(SELECTORS.ROWS).html('<tr><td colspan="11" class="mmi-wb-empty-cell">No products match.</td></tr>');
             return;
         }
-        $(SELECTORS.ROWS).html(rows.map((r) => {
-            const cats   = r.categories.map((c) => `<span class="mmi-wb-term">${esc(c.name)}</span>`).join('') || '<span class="mmi-wb-none">—</span>';
-            const brands = r.brands.map((b) => esc(b.name)).join(', ') || '<span class="mmi-wb-none">—</span>';
-            const status = `<span class="mmi-badge ${r.status === 'publish' ? 'success' : 'warning'} inline">${esc(STATUS_LABELS[r.status] || r.status)}</span>`;
-            return `<tr data-id="${r.id}">
-                <th scope="row" class="check-column"><input type="checkbox" class="mmi-wb-row-cb" value="${r.id}" aria-label="Select ${esc(r.title)}"></th>
-                <td class="mmi-wb-col-title"><a href="${esc(r.edit_url)}" target="_blank" rel="noopener">${esc(r.title)}</a></td>
-                <td class="mmi-wb-col-sku">${esc(r.sku)}</td>
-                <td class="mmi-wb-col-cats">${cats}</td>
-                <td class="mmi-wb-col-brand">${brands}</td>
-                <td class="mmi-wb-col-status">${status}</td>
-                <td class="mmi-wb-col-stock">${esc(STOCK_LABELS[r.stock] || r.stock)}</td>
-                <td class="mmi-wb-col-supplier">${r.supplier === 'all' ? '<span class="mmi-wb-none">—</span>' : esc(r.supplier)}</td>
-                <td class="mmi-wb-col-id"><a href="${esc(r.view_url)}" target="_blank" rel="noopener">${r.id}</a></td>
-            </tr>`;
-        }).join(''));
+        $(SELECTORS.ROWS).html(rows.map(rowHtml).join(''));
+    }
+
+    /** A Categories/Brand cell: its terms, a lock mark, and the edit button. */
+    function termCell(r, taxonomy, terms) {
+        const names = taxonomy === 'product_cat'
+            ? terms.map((t) => `<span class="mmi-wb-term">${esc(t.name)}</span>`).join('')
+            : terms.map((t) => esc(t.name)).join(', ');
+        const lock  = (r.locked || []).indexOf(taxonomy) !== -1
+            ? `<span class="dashicons dashicons-lock mmi-wb-term-lock" title="${MESSAGES.TERMS_LOCKED}" aria-label="${MESSAGES.TERMS_LOCKED}"></span>` : '';
+        const label = TERM_EDIT[taxonomy].label;
+        return `<span class="mmi-wb-term-names">${names || '<span class="mmi-wb-none">—</span>'}</span>${lock}`
+            + `<button type="button" class="mmi-wb-edit-terms" data-tax="${taxonomy}" title="Change ${label.toLowerCase()}" aria-label="Change ${label.toLowerCase()}"><span class="dashicons dashicons-edit"></span></button>`;
+    }
+
+    function rowHtml(r) {
+        const cats   = termCell(r, 'product_cat', r.categories);
+        const brands = termCell(r, 'product_brand', r.brands);
+        const status = `<span class="mmi-badge ${r.status === 'publish' ? 'success' : 'warning'} inline">${esc(STATUS_LABELS[r.status] || r.status)}</span>`;
+        const thumb  = r.thumb ? `<img src="${esc(r.thumb)}" alt="" loading="lazy">` : '<span class="mmi-wb-no-thumb" title="No featured image"></span>';
+        const health = (r.health || []).map((id) => {
+            const c = state.checks[id] || { chip: id, label: id };
+            return `<button type="button" class="mmi-health-chip" data-check="${esc(id)}" title="${esc(c.label)} — click to show only these">${esc(c.chip)}</button>`;
+        }).join('') || '<span class="mmi-wb-health-ok">OK</span>';
+        return `<tr data-id="${r.id}">
+            <th scope="row" class="check-column"><input type="checkbox" class="mmi-wb-row-cb" value="${r.id}" aria-label="Select ${esc(r.title)}"></th>
+            <td class="mmi-wb-col-id"><a href="${esc(r.view_url)}" target="_blank" rel="noopener">${r.id}</a></td>
+            <td class="mmi-wb-col-thumb">${thumb}</td>
+            <td class="mmi-wb-col-title"><a href="${esc(r.edit_url)}" target="_blank" rel="noopener">${esc(r.title)}</a></td>
+            <td class="mmi-wb-col-sku">${esc(r.sku)}</td>
+            <td class="mmi-wb-col-cats">${cats}</td>
+            <td class="mmi-wb-col-brand">${brands}</td>
+            <td class="mmi-wb-col-status">${status}</td>
+            <td class="mmi-wb-col-stock">${esc(STOCK_LABELS[r.stock] || r.stock)}</td>
+            <td class="mmi-wb-col-supplier">${r.supplier === 'all' ? '<span class="mmi-wb-none">—</span>' : esc(r.supplier)}</td>
+            <td class="mmi-wb-col-health">${health}</td>
+        </tr>`;
+    }
+
+    /* ── Row edit: categories / brand ───────────────────────────────────── */
+
+    const termsCache = {}; // taxonomy => [{id, name, depth, path}], tree order
+
+    /** Terms in tree order, each with its depth and "Parent › Child" path. */
+    function termTree(terms, hierarchical) {
+        if (!hierarchical) {
+            return terms.map((t) => ({ id: t.id, name: t.name, depth: 0, path: t.name }));
+        }
+        const kids = {};
+        terms.forEach((t) => { (kids[t.parent || 0] = kids[t.parent || 0] || []).push(t); });
+        const out  = [];
+        const walk = (parent, depth, path) => (kids[parent] || []).forEach((t) => {
+            const p = path ? `${path} › ${t.name}` : t.name;
+            out.push({ id: t.id, name: t.name, depth, path: p });
+            walk(t.id, depth + 1, p);
+        });
+        walk(0, 0, '');
+        return out;
+    }
+
+    function loadTerms(taxonomy) {
+        if (termsCache[taxonomy]) return $.Deferred().resolve(termsCache[taxonomy]).promise();
+        return post('mmi_pipeline_get_taxonomy_terms', { taxonomy }).then(function(resp) {
+            if (!resp.success) return $.Deferred().reject((resp.data && resp.data.message) || MESSAGES.NETWORK).promise();
+            termsCache[taxonomy] = termTree(resp.data.terms || [], TERM_EDIT[taxonomy].hierarchical);
+            return termsCache[taxonomy];
+        });
+    }
+
+    function closeTermEditor() {
+        $(SELECTORS.TERM_EDITOR_TR).remove();
+    }
+
+    /** Open the picker for one product's categories or brand, under its row. */
+    function openTermEditor($btn) {
+        const $tr      = $btn.closest('tr[data-id]');
+        const id       = parseInt($tr.data('id'), 10);
+        const taxonomy = String($btn.data('tax'));
+        const label    = TERM_EDIT[taxonomy].label;
+        const reopen   = $tr.next(SELECTORS.TERM_EDITOR_TR).data('tax') === taxonomy;
+        closeTermEditor();
+        if (reopen) return; // a second click on the same button closes it
+
+        const row      = state.rowsById[id] || {};
+        const current  = (taxonomy === 'product_cat' ? row.categories : row.brands) || [];
+        const selected = new Set(current.map((t) => t.id));
+        const cols     = $(SELECTORS.TABLE).find('thead tr').first().children().length;
+        const $editor  = $(`<tr class="mmi-wb-term-editor-tr" data-tax="${taxonomy}"><td colspan="${cols}"><div class="mmi-wb-term-editor">
+            <div class="mmi-wb-term-editor-head">
+                <strong>${esc(fill(MESSAGES.TERMS_TITLE, { label, title: row.title || `#${id}` }))}</strong>
+                <input type="search" class="mmi-wb-term-search" placeholder="${esc(fill(MESSAGES.TERMS_SEARCH, { label: label.toLowerCase() }))}" aria-label="${esc(fill(MESSAGES.TERMS_SEARCH, { label: label.toLowerCase() }))}">
+                <button type="button" class="button button-primary button-small mmi-wb-term-save">Save</button>
+                <button type="button" class="button-link mmi-wb-term-cancel">Cancel</button>
+            </div>
+            <p class="mmi-wb-term-hint">${esc(fill(MESSAGES.TERMS_HINT, { label: label.toLowerCase() }))}</p>
+            <div class="mmi-wb-term-list" role="group" aria-label="${esc(label)}"><p class="mmi-wb-none">${MESSAGES.TERMS_LOADING}</p></div>
+            <span class="mmi-wb-term-notice" role="status"></span>
+        </div></td></tr>`).data({ id, taxonomy });
+        $tr.after($editor);
+
+        loadTerms(taxonomy).done(function(terms) {
+            // Ticked terms first, so the current choice is visible without scrolling.
+            const ordered = terms.filter((t) => selected.has(t.id)).concat(terms.filter((t) => !selected.has(t.id)));
+            $editor.find('.mmi-wb-term-list').html(ordered.map((t) => `<label class="mmi-wb-term-option" style="--depth: ${selected.has(t.id) ? 0 : t.depth}" title="${esc(t.path)}" data-path="${esc(t.path.toLowerCase())}">
+                <input type="checkbox" value="${t.id}"${selected.has(t.id) ? ' checked' : ''}> <span>${esc(t.name)}</span>${t.depth ? `<span class="mmi-wb-term-path">${esc(t.path.split(' › ').slice(0, -1).join(' › '))}</span>` : ''}
+            </label>`).join(''));
+            $editor.find(SELECTORS.TERM_SEARCH).trigger('focus');
+        }).fail(function(msg) {
+            $editor.find('.mmi-wb-term-list').html(`<p class="mmi-wb-none">${esc(typeof msg === 'string' ? msg : MESSAGES.NETWORK)}</p>`);
+        });
+    }
+
+    function termNotice($editor, text) {
+        $editor.find(SELECTORS.TERM_NOTICE).text(text);
+    }
+
+    function saveTerms($editor) {
+        const id       = $editor.data('id');
+        const taxonomy = $editor.data('taxonomy');
+        const termIds  = $editor.find('.mmi-wb-term-list input:checked').map(function() { return this.value; }).get();
+        if (taxonomy === 'product_cat' && !termIds.length) { termNotice($editor, MESSAGES.TERMS_NO_CAT); return; }
+        const $save = $editor.find(SELECTORS.TERM_SAVE).prop('disabled', true);
+        post('mmi_workbench_set_terms', { product_id: id, taxonomy, term_ids: termIds })
+            .done(function(resp) {
+                if (!resp.success) { termNotice($editor, (resp.data && resp.data.message) || MESSAGES.NETWORK); return; }
+                // Replace the row in place: it stays visible even if it no longer
+                // matches the search, so you can see what you just did.
+                const row  = resp.data.row;
+                state.rowsById[row.id] = row;
+                const $old = $(SELECTORS.ROWS).find(`tr[data-id="${row.id}"]`);
+                const $new = $(rowHtml(row));
+                $old.replaceWith($new);
+                closeTermEditor();
+                renderSelection();
+                const cols    = $(SELECTORS.TABLE).find('thead tr').first().children().length;
+                const $notice = $(`<tr class="mmi-wb-row-notice"><td colspan="${cols}">${esc(fill(MESSAGES.TERMS_SAVED, { label: TERM_EDIT[taxonomy].label }))}</td></tr>`);
+                $new.after($notice);
+                setTimeout(() => $notice.remove(), NOTICE_MS);
+                markStale(true);
+                loadJobs();
+            })
+            .fail(() => termNotice($editor, MESSAGES.NETWORK))
+            .always(() => $save.prop('disabled', false));
     }
 
     function renderSortState() {
@@ -506,6 +745,11 @@
         $(SELECTORS.PREVIEW_OUT).addClass(CSS.HIDDEN).empty();
         showMessage(message, kind);
         loadJobs();
+        // The job is finished with these products: drop the selection, or
+        // ones that no longer match the search stay selected out of sight
+        // and get counted into the next change. A failed run keeps it, so
+        // the same products can be retried.
+        if (kind !== 'error') clearSelection();
         if (state.filter) search(false); // results now show the new values
         renderSelection();
     }
@@ -573,17 +817,74 @@
         }).join(''));
     }
 
+    /* ── Saved searches ─────────────────────────────────────────────────── */
+
+    function toggleSaveForm(open) {
+        $(SELECTORS.SAVE_SEARCH_FORM).toggleClass(CSS.HIDDEN, !open);
+        $(SELECTORS.SAVE_SEARCH_BTN).toggleClass(CSS.HIDDEN, open);
+        if (open) $(SELECTORS.SAVE_SEARCH_NAME).val('').trigger('focus');
+    }
+
+    function saveSearch() {
+        const $root = $(SELECTORS.CONDITION_BUILDER);
+        const bad   = firstIncompleteCondition();
+        if (bad) {
+            searchNotice(fill(MESSAGES.INCOMPLETE, { n: bad }));
+            return;
+        }
+        const name = $(SELECTORS.SAVE_SEARCH_NAME).val().trim();
+        const $ok  = $(SELECTORS.SAVE_SEARCH_OK).prop('disabled', true);
+        post('mmi_workbench_save_search', {
+            label:       name,
+            match_logic: $(SELECTORS.MATCH_LOGIC).val(),
+            conditions:  RB.collectConditions($(SELECTORS.CONDITIONS)),
+        }).done(function(resp) {
+            if (!resp.success) {
+                window.MMIConditionBuilder.showNotice($root, (resp.data && resp.data.message) || MESSAGES.NETWORK);
+                return;
+            }
+            window.MMIConditionBuilder.refreshLibrary();
+            toggleSaveForm(false);
+            window.MMIConditionBuilder.showNotice($root, fill(MESSAGES.SAVED_SEARCH, { name }));
+        }).fail(function() {
+            window.MMIConditionBuilder.showNotice($root, MESSAGES.NETWORK);
+        }).always(function() {
+            $ok.prop('disabled', false);
+        });
+    }
+
     /* ── Init ───────────────────────────────────────────────────────────── */
 
     function init() {
         if (!$(SELECTORS.ROOT).length || !RB) return;
 
+        initFilterMenus();
         RB.updateActionParamsVisibility($(SELECTORS.ACTION_SCOPE));
         RB.loadTaxonomyTerms($(SELECTORS.ACTION_SCOPE).find(RB.SELECTORS.PARAM_GROUP).first(), 'product_cat', '');
         loadJobs();
 
         $(document)
             .on('click', SELECTORS.SEARCH_BTN, () => search(true))
+            .on('click', SELECTORS.EDIT_TERMS, function() { openTermEditor($(this)); })
+            .on('click', SELECTORS.TERM_CANCEL, closeTermEditor)
+            .on('click', SELECTORS.TERM_SAVE, function() { saveTerms($(this).closest(SELECTORS.TERM_EDITOR_TR)); })
+            .on('keydown', SELECTORS.TERM_EDITOR_TR, function(e) {
+                if (e.key === 'Escape') closeTermEditor();
+                if (e.key === 'Enter' && $(e.target).is(SELECTORS.TERM_SEARCH)) { e.preventDefault(); saveTerms($(this)); }
+            })
+            .on('input', SELECTORS.TERM_SEARCH, function() {
+                const q = $(this).val().trim().toLowerCase();
+                $(this).closest(SELECTORS.TERM_EDITOR_TR).find(SELECTORS.TERM_OPTION).each(function() {
+                    $(this).toggleClass(CSS.HIDDEN, q !== '' && String($(this).data('path')).indexOf(q) === -1);
+                });
+            })
+            .on('click', SELECTORS.SAVE_SEARCH_BTN, () => toggleSaveForm(true))
+            .on('click', SELECTORS.SAVE_SEARCH_CANCEL, () => toggleSaveForm(false))
+            .on('click', SELECTORS.SAVE_SEARCH_OK, saveSearch)
+            .on('keydown', SELECTORS.SAVE_SEARCH_NAME, function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); saveSearch(); }
+                if (e.key === 'Escape') { toggleSaveForm(false); }
+            })
             .on('keydown', SELECTORS.QUERY, function(e) { if (e.key === 'Enter') { e.preventDefault(); search(true); } })
             .on('click', SELECTORS.RESET_BTN, function() {
                 $(SELECTORS.QUERY).val('');
@@ -595,7 +896,7 @@
             // Add/Remove/Load saved belong to the shared condition builder;
             // any change there marks the results stale.
             .on(RB.CHANGE_EVENT, SELECTORS.CONDITION_BUILDER, () => markStale(true))
-            .on('input change', [SELECTORS.QUERY, SELECTORS.QUERY_CASE, SELECTORS.QUERY_IN, SELECTORS.SUPPLIER, SELECTORS.STATUS_CB, SELECTORS.MATCH_LOGIC].join(', '), () => markStale(true))
+            .on('input change', [SELECTORS.QUERY, SELECTORS.QUERY_CASE, SELECTORS.QUERY_IN, SELECTORS.SUPPLIER, SELECTORS.STATUS_CB, SELECTORS.STOCK_CB, SELECTORS.HEALTH_CB, SELECTORS.HEALTH_MODE, SELECTORS.MATCH_LOGIC].join(', '), () => markStale(true))
 
             // Category chip → narrow to that category (or to uncategorized).
             .on('click', SELECTORS.FACET, function() {

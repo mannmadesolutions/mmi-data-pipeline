@@ -37,16 +37,21 @@ final class Product_Workbench {
     const FACET_LIMIT      = 40;
 
     /** Every sortable results column (whitelist for the request's `sort`). */
-    const SORTS = [ 'title', 'sku', 'categories', 'brand', 'status', 'stock', 'supplier', 'id', 'modified' ];
+    const SORTS = [ 'title', 'sku', 'categories', 'brand', 'status', 'stock', 'supplier', 'health', 'id', 'modified' ];
 
     const QUICK_SEARCH_IN = [ 'title_sku', 'title', 'sku' ];
+
+    const STOCK_STATUSES = [ 'instock', 'outofstock', 'onbackorder' ];
+
+    /** Health filter modes: fails any / every chosen check, or passes them all. */
+    const HEALTH_MODES = [ 'any', 'all', 'none' ];
 
     /* ── Input ─────────────────────────────────────────────────────────── */
 
     /**
      * Normalize a search filter from request input.
      *
-     * @return array{supplier:string,match_logic:string,conditions:array,statuses:array,q:string,q_case:bool,q_in:string}
+     * @return array{supplier:string,match_logic:string,conditions:array,statuses:array,stock:array,health:array,health_mode:string,q:string,q_case:bool,q_in:string}
      */
     public static function sanitize_filter( array $raw ): array {
         $conditions = [];
@@ -60,12 +65,17 @@ final class Product_Workbench {
             Stock_Override_Resolver::SEARCHABLE_STATUSES,
             array_map( 'sanitize_key', (array) ( $raw['statuses'] ?? [ 'publish' ] ) )
         ) );
-        $q_in = sanitize_key( $raw['q_in'] ?? 'title_sku' );
+        $q_in        = sanitize_key( $raw['q_in'] ?? 'title_sku' );
+        $health_mode = sanitize_key( $raw['health_mode'] ?? 'any' );
         return [
             'supplier'    => sanitize_text_field( $raw['supplier'] ?? 'all' ) ?: 'all',
             'match_logic' => ( $raw['match_logic'] ?? 'all' ) === 'any' ? 'any' : 'all',
             'conditions'  => $conditions,
             'statuses'    => $statuses ?: [ 'publish' ],
+            // Empty = no stock / health filter.
+            'stock'       => array_values( array_intersect( self::STOCK_STATUSES, array_map( 'sanitize_key', (array) ( $raw['stock'] ?? [] ) ) ) ),
+            'health'      => array_values( array_intersect( array_keys( Health_Checks::all() ), array_map( 'sanitize_key', (array) ( $raw['health'] ?? [] ) ) ) ),
+            'health_mode' => in_array( $health_mode, self::HEALTH_MODES, true ) ? $health_mode : 'any',
             'q'           => trim( sanitize_text_field( $raw['q'] ?? '' ) ),
             'q_case'      => ! empty( $raw['q_case'] ) && $raw['q_case'] !== '0',
             'q_in'        => in_array( $q_in, self::QUICK_SEARCH_IN, true ) ? $q_in : 'title_sku',
@@ -76,7 +86,8 @@ final class Product_Workbench {
 
     /**
      * Every product ID matching the filter: the rule-engine conditions AND
-     * the quick search, within the chosen statuses and supplier scope.
+     * the quick search AND the stock / health filters, within the chosen
+     * statuses and supplier scope.
      *
      * @return int[]
      */
@@ -86,6 +97,19 @@ final class Product_Workbench {
             'match_logic' => $filter['match_logic'],
             'conditions'  => $filter['conditions'],
         ], $filter['statuses'] );
+
+        if ( ! empty( $filter['stock'] ) && $ids ) {
+            $stock_ids = Stock_Override_Resolver::find_product_ids( [
+                'supplier'    => 'all',
+                'match_logic' => 'all',
+                'conditions'  => [ [ 'source' => Stock_Override_Resolver::POSTMETA_SOURCE, 'field' => '_stock_status', 'operator' => 'in_list', 'value' => implode( '|', $filter['stock'] ) ] ],
+            ], $filter['statuses'] );
+            $ids = array_values( array_intersect( $ids, $stock_ids ) );
+        }
+
+        if ( ! empty( $filter['health'] ) && $ids ) {
+            $ids = self::filter_by_health( $ids, $filter['health'], $filter['health_mode'] ?? 'any', $filter['statuses'] );
+        }
 
         if ( $filter['q'] === '' ) {
             return $ids;
@@ -112,6 +136,30 @@ final class Product_Workbench {
     }
 
     /**
+     * Narrow $ids by data-health checks: 'any' keeps products failing at
+     * least one chosen check, 'all' those failing every one, 'none' those
+     * passing them all. One catalog match per check, not per product.
+     *
+     * @param  int[]    $ids
+     * @param  string[] $checks
+     * @param  string[] $statuses
+     * @return int[]
+     */
+    private static function filter_by_health( array $ids, array $checks, string $mode, array $statuses ): array {
+        $fails = [];
+        foreach ( $checks as $check_id ) {
+            foreach ( Health_Checks::matching_ids( $check_id, $statuses ) as $id ) {
+                $fails[ $id ] = ( $fails[ $id ] ?? 0 ) + 1;
+            }
+        }
+        $need = count( $checks );
+        return array_values( array_filter( $ids, static function ( $id ) use ( $fails, $mode, $need ) {
+            $n = $fails[ $id ] ?? 0;
+            return $mode === 'all' ? $n === $need : ( $mode === 'none' ? $n === 0 : $n > 0 );
+        } ) );
+    }
+
+    /**
      * One page of results, plus the total and category counts across the
      * whole result set. The sorted ID list is cached per user and filter so
      * paging doesn't re-run the match; Search (fresh = true) always does.
@@ -127,7 +175,9 @@ final class Product_Workbench {
             $ids    = $cached['ids'];
             $facets = $cached['facets'];
         } else {
-            $ids    = self::sort_ids( self::find_ids( $filter ), $sort, $dir );
+            $ids    = $sort === 'health'
+                ? self::sort_ids_by_health( self::find_ids( $filter ), $filter['statuses'], $dir )
+                : self::sort_ids( self::find_ids( $filter ), $sort, $dir );
             $facets = self::category_facets( $ids );
             set_transient( $cache_key, [ 'ids' => $ids, 'facets' => $facets ], self::SEARCH_CACHE_TTL );
         }
@@ -143,6 +193,10 @@ final class Product_Workbench {
             'per_page' => $per_page,
             'rows'     => self::rows( array_slice( $ids, ( $page - 1 ) * $per_page, $per_page ) ),
             'facets'   => $facets,
+            'checks'   => array_map(
+                static fn( $c ) => [ 'chip' => $c['chip'], 'label' => $c['label'] ],
+                Health_Checks::chip_checks()
+            ),
         ];
     }
 
@@ -188,6 +242,19 @@ final class Product_Workbench {
                 return $case ? 'CASE ' . implode( ' ', $case ) . " ELSE '' END" : "''";
             default:           return 'p.post_title';
         }
+    }
+
+    /**
+     * $ids by how many health checks each fails — most problems first when
+     * descending — then by ID, so the order is stable between pages.
+     *
+     * @return int[]
+     */
+    private static function sort_ids_by_health( array $ids, array $statuses, string $dir ): array {
+        $counts = Health_Checks::failure_counts( $ids, $statuses );
+        $sign   = $dir === 'DESC' ? -1 : 1;
+        uksort( $counts, static fn( $a, $b ) => ( ( $counts[ $a ] <=> $counts[ $b ] ) ?: ( $a <=> $b ) ) * $sign );
+        return array_keys( $counts );
     }
 
     /** @return int[] $ids in the requested order, empty values last either way. */
@@ -262,7 +329,16 @@ final class Product_Workbench {
         _prime_post_caches( $ids, false, true );
         update_object_term_cache( $ids, 'product' );
 
+        // Featured images, primed in one pass for the thumbnail column.
+        $thumbs = [];
+        foreach ( $ids as $id ) {
+            $thumbs[ $id ] = (int) get_post_meta( $id, '_thumbnail_id', true );
+        }
+        _prime_post_caches( array_values( array_filter( $thumbs ) ), false, true );
+
+        $failures  = Health_Checks::failures( $ids );
         $brand_tax = taxonomy_exists( 'product_brand' ) ? 'product_brand' : '';
+        $locks     = class_exists( 'MMI_Pipeline_Field_Locks' );
         $rows      = [];
         foreach ( $ids as $id ) {
             $post = get_post( $id );
@@ -279,6 +355,10 @@ final class Product_Workbench {
                 'categories' => self::term_list( $id, 'product_cat' ),
                 'brands'     => $brand_tax ? self::term_list( $id, $brand_tax ) : [],
                 'supplier'   => Stock_Override_Resolver::product_supplier( $id ),
+                'health'     => $failures[ $id ] ?? [],
+                // Which editable taxonomies imports may not overwrite.
+                'locked'     => $locks ? array_values( array_intersect( self::EDITABLE_TAXONOMIES, \MMI_Pipeline_Field_Locks::get( $id ) ) ) : [],
+                'thumb'      => $thumbs[ $id ] ? (string) wp_get_attachment_image_url( $thumbs[ $id ], 'thumbnail' ) : '',
                 'edit_url'   => get_edit_post_link( $id, 'raw' ),
                 'view_url'   => get_permalink( $id ),
             ];
@@ -711,6 +791,10 @@ final class Product_Workbench {
         switch ( $action ) {
             case 'set_taxonomy_term':
                 wp_set_object_terms( $id, array_map( 'intval', $state['terms'] ), $params['taxonomy'], false );
+                // A row edit locked the field; undoing it releases a lock it added.
+                if ( ! empty( $params['locked_here'] ) && class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+                    \MMI_Pipeline_Field_Locks::unlock( $id, $params['taxonomy'] );
+                }
                 break;
 
             case 'set_status_publish':
@@ -773,6 +857,92 @@ final class Product_Workbench {
         clean_post_cache( $id );
     }
 
+    /* ── Row edit: one product's categories or brand ───────────────────── */
+
+    /** Taxonomies the results table can edit in place. */
+    const EDITABLE_TAXONOMIES = [ 'product_cat', 'product_brand' ];
+
+    /**
+     * Set one product's terms in a taxonomy, from the results table. Locks
+     * the field against imports (Field Locks), as Product Titles' category
+     * picker does, so the next supplier import can't put the old terms back,
+     * and records a one-product job so it appears in Recent changes with Undo.
+     *
+     * @param  int[] $term_ids
+     * @return array|\WP_Error The product's refreshed results row.
+     */
+    public static function set_product_terms( int $id, string $taxonomy, array $term_ids ) {
+        if ( ! in_array( $taxonomy, self::EDITABLE_TAXONOMIES, true ) || ! taxonomy_exists( $taxonomy ) ) {
+            return new \WP_Error( 'taxonomy', 'That field can’t be edited here.' );
+        }
+        if ( get_post_type( $id ) !== 'product' ) {
+            return new \WP_Error( 'product', 'Unknown product.' );
+        }
+        $term_ids = array_values( array_unique( array_filter( array_map( 'absint', $term_ids ) ) ) );
+        if ( $taxonomy === 'product_cat' && empty( $term_ids ) ) {
+            return new \WP_Error( 'empty', 'Choose at least one category.' );
+        }
+        foreach ( $term_ids as $term_id ) {
+            if ( ! term_exists( $term_id, $taxonomy ) ) {
+                return new \WP_Error( 'term', 'One of those terms no longer exists. Reload and try again.' );
+            }
+        }
+
+        $params = [ 'taxonomy' => $taxonomy ];
+        $before = self::state( $id, 'set_taxonomy_term', $params );
+        $set    = wp_set_object_terms( $id, $term_ids, $taxonomy, false );
+        if ( is_wp_error( $set ) ) {
+            return $set;
+        }
+        clean_object_term_cache( $id, 'product' );
+        $after = self::state( $id, 'set_taxonomy_term', $params );
+
+        if ( $after != $before ) { // phpcs:ignore Universal.Operators.StrictComparisons -- array value equality.
+            if ( class_exists( 'MMI_Pipeline_Field_Locks' ) && ! \MMI_Pipeline_Field_Locks::is_locked( $id, $taxonomy ) ) {
+                \MMI_Pipeline_Field_Locks::lock( $id, $taxonomy );
+                $params['locked_here'] = true;
+            }
+            wc_delete_product_transients( $id );
+
+            Workbench_Change_Log::ensure_table();
+            $tax   = get_taxonomy( $taxonomy );
+            $title = html_entity_decode( get_the_title( $id ), ENT_QUOTES, 'UTF-8' );
+            $job   = [
+                'id'           => wp_generate_uuid4(),
+                'created_at'   => current_time( 'mysql' ),
+                'user'         => wp_get_current_user()->display_name,
+                'action'       => 'set_taxonomy_term',
+                'params'       => $params,
+                'summary'      => sprintf( '%s → %s', $tax ? $tax->labels->name : $taxonomy, self::describe( $after, 'set_taxonomy_term' ) ),
+                'filter_label' => mb_substr( sprintf( 'Edited in the table: #%d %s', $id, $title ), 0, 200 ),
+                'total'        => 1,
+                'cursor'       => 1,
+                'changed'      => 1,
+                'unchanged'    => 0,
+                'failed'       => 0,
+                'status'       => 'done',
+                'undo_cursor'  => 0,
+                'undone'       => 0,
+                'conflicts'    => 0,
+            ];
+            Workbench_Change_Log::save_job_ids( $job['id'], [ $id ] );
+            Workbench_Change_Log::record( $job['id'], [ [ 'product_id' => $id, 'before' => $before, 'after' => $after ] ] );
+            Workbench_Change_Log::save_job( $job );
+            self::invalidate_search_cache();
+            MMI_Logger::info( "Workbench row edit {$job['id']}: product {$id} {$job['summary']}", [ 'before' => $before['terms'] ], 'sync', 'Product_Workbench' );
+            if ( function_exists( 'mmi_data_pipeline_audit' ) ) {
+                mmi_data_pipeline_audit( 'workbench.edit', [
+                    'object_type' => 'product',
+                    'object_id'   => (string) $id,
+                    'outcome'     => 'success',
+                    'details'     => [ 'taxonomy' => $taxonomy, 'job' => $job['id'] ],
+                ] );
+            }
+        }
+
+        return self::rows( [ $id ] )[0] ?? new \WP_Error( 'product', 'Unknown product.' );
+    }
+
     /** Recent jobs for the Recent Changes table. */
     public static function job_list(): array {
         return array_values( array_map( static function ( $job ) {
@@ -780,4 +950,81 @@ final class Product_Workbench {
             return $job;
         }, Workbench_Change_Log::jobs() ) );
     }
+
+    /* ── Saved searches ────────────────────────────────────────────────── */
+
+    const SAVED_SEARCHES_SETTING = 'mmi_workbench_saved_searches';
+    const SAVED_SEARCH_PREFIX    = 'wb:';
+    const SAVED_SEARCH_DELETE    = 'mmi_workbench_delete_search';
+    const MAX_SAVED_SEARCHES     = 100;
+
+    /** @return array<string,array{label:string,match_logic:string,conditions:array}> slug => search. */
+    private static function saved_searches(): array {
+        $saved = \MMI_DB::get_setting( self::SAVED_SEARCHES_SETTING, [] );
+        return is_array( $saved ) ? $saved : [];
+    }
+
+    /**
+     * Save a search's conditions under a name. Saving under a name already
+     * used replaces that search.
+     *
+     * @return string|\WP_Error The library id ("wb:slug").
+     */
+    public static function save_search( string $label, string $match_logic, array $raw_conditions ) {
+        $label = trim( sanitize_text_field( $label ) );
+        $slug  = sanitize_title( $label );
+        if ( $label === '' || $slug === '' ) {
+            return new \WP_Error( 'name', 'Give the search a name.' );
+        }
+        $conditions = array_values( array_filter( array_map( [ Stock_Override_Resolver::class, 'sanitize_condition' ], $raw_conditions ) ) );
+        if ( empty( $conditions ) ) {
+            return new \WP_Error( 'empty', 'Add at least one condition — a saved search keeps the conditions, not the title/SKU box.' );
+        }
+        $saved = self::saved_searches();
+        if ( ! isset( $saved[ $slug ] ) && count( $saved ) >= self::MAX_SAVED_SEARCHES ) {
+            return new \WP_Error( 'full', sprintf( 'There are already %d saved searches. Delete one first.', self::MAX_SAVED_SEARCHES ) );
+        }
+        $saved[ $slug ] = [
+            'label'       => $label,
+            'match_logic' => $match_logic === 'any' ? 'any' : 'all',
+            'conditions'  => $conditions,
+        ];
+        \MMI_DB::set_setting( self::SAVED_SEARCHES_SETTING, $saved );
+        return self::SAVED_SEARCH_PREFIX . $slug;
+    }
+
+    /** Delete a saved search by its library id. False when there was none. */
+    public static function delete_search( string $id ): bool {
+        if ( strpos( $id, self::SAVED_SEARCH_PREFIX ) !== 0 ) {
+            return false;
+        }
+        $slug  = sanitize_title( substr( $id, strlen( self::SAVED_SEARCH_PREFIX ) ) );
+        $saved = self::saved_searches();
+        if ( ! isset( $saved[ $slug ] ) ) {
+            return false;
+        }
+        unset( $saved[ $slug ] );
+        \MMI_DB::set_setting( self::SAVED_SEARCHES_SETTING, $saved );
+        return true;
+    }
+
+    /** 'mmi_condition_library' contribution: the Workbench's saved searches. */
+    public static function library_sets( array $sets ): array {
+        if ( ! class_exists( 'MMI_DB' ) ) {
+            return $sets;
+        }
+        foreach ( self::saved_searches() as $slug => $search ) {
+            $sets[] = [
+                'id'            => self::SAVED_SEARCH_PREFIX . $slug,
+                'group'         => 'Product Workbench',
+                'label'         => (string) ( $search['label'] ?? $slug ),
+                'match_logic'   => $search['match_logic'] ?? 'all',
+                'conditions'    => (array) ( $search['conditions'] ?? [] ),
+                'delete_action' => self::SAVED_SEARCH_DELETE,
+            ];
+        }
+        return $sets;
+    }
 }
+
+add_filter( 'mmi_condition_library', [ Product_Workbench::class, 'library_sets' ] );

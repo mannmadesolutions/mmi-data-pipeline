@@ -136,9 +136,12 @@ add_action( 'wp_ajax_mmi_save_custom_rules', function () {
     ] );
 
     wp_send_json_success( [
-        'message' => 'Custom rules saved',
-        'count'   => count( $sanitised ),
-        'rules'   => $sanitised,
+        'message'   => 'Custom rules saved',
+        'count'     => count( $sanitised ),
+        'rules'     => $sanitised,
+        // rule index => messages, for rules that write a field an import
+        // profile also maps (see MMI_Pipeline_Field_Conflicts).
+        'conflicts' => (object) MMI_Pipeline_Field_Conflicts::for_custom_rules( $sanitised ),
     ] );
 } );
 
@@ -495,9 +498,21 @@ add_action( 'wp_ajax_mmi_get_custom_rule_source_fields', function () {
             [ 'value' => '__post_status',  'label' => 'Post: Status' ],
         ];
 
-        $common_meta = [ '_sku', '_regular_price', '_sale_price', '_stock_status', '_manage_stock', '_backorders', '_mmi_stock_override' ];
+        // Data-health keys too — images, identifiers, shipping sizes, SEO
+        // and the product content registry's keys — which the 10-product
+        // sample often misses (and never offers _thumbnail_id).
+        $common_meta = [
+            '_sku', '_regular_price', '_sale_price', '_price', '_stock_status', '_manage_stock', '_backorders', '_mmi_stock_override',
+            '_thumbnail_id', '_product_image_gallery', '_global_unique_id', 'mpn', '_virtual', '_downloadable',
+            '_weight', '_length', '_width', '_height', '_supplier_name', '_seopress_titles_desc',
+        ];
+        if ( class_exists( 'MMI_Product_Content_Registry' ) ) {
+            foreach ( MMI_Product_Content_Registry::storable_concepts() as $concept ) {
+                $common_meta[] = MMI_Product_Content_Registry::canonical_key( $concept );
+            }
+        }
         $discovered  = class_exists( 'MMI_Meta_Key_Discovery' ) ? MMI_Meta_Key_Discovery::discover_for_post_type( 'product' ) : [];
-        $meta_keys   = array_unique( array_merge( $common_meta, $discovered ) );
+        $meta_keys   = array_filter( array_unique( array_merge( $common_meta, $discovered ) ) );
         sort( $meta_keys );
 
         foreach ( $meta_keys as $meta_key ) {

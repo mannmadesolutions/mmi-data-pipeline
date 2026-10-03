@@ -6,7 +6,7 @@
  *              Import (data acquisition, review, import) and Export (scope,
  *              field mapping, run) workflows, taxonomy mapping, supplier data
  *              sources, scheduling, and post-mortem reporting.
- * Version:     2.43.2
+ * Version:     2.48.1
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.43.2' );
+define( 'MMI_PIPELINE_VERSION', '2.48.1' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -230,6 +230,7 @@ add_action( 'plugins_loaded', function () {
     // engine and apply any Custom Rule action to the results, with undo.
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-workbench-change-log.php';
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-product-workbench.php';
+    require_once MMI_PIPELINE_PATH . 'includes/workbench/class-health-checks.php';
 
     // Catalog run state + phase runner — the single execution path shared by
     // the "Update Store Catalog" button, the scheduled cron/Action Scheduler
@@ -251,6 +252,10 @@ add_action( 'plugins_loaded', function () {
     // read by the worker, the dynamic importer and Import Preview below.
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-field-locks.php';
     MMI_Pipeline_Field_Locks::init();
+
+    // Two automated writers on one field (profile vs profile, profile vs
+    // Catalog Maintenance) — reported where the conflict is created.
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-field-conflicts.php';
 
     // Pre-flight profile config validator (used before manual/scheduled imports)
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-config-validator.php';

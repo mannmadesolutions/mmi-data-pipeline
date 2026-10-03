@@ -25,6 +25,42 @@ $mmi_wb_statuses  = [
     'pending' => 'Pending',
     'private' => 'Private',
 ];
+$mmi_wb_stock = [
+    'instock'     => 'In stock',
+    'outofstock'  => 'Out of stock',
+    'onbackorder' => 'Backorder',
+];
+$mmi_wb_checks = \MannMade\DataPipeline\Workbench\Health_Checks::all();
+
+/**
+ * Prints a shared .mmi-multiselect checkbox dropdown (behavior in
+ * product-workbench.js). $before is already-escaped markup shown above the
+ * options (e.g. the Health mode picker).
+ *
+ * @param string               $id      Wrapper id.
+ * @param string               $label   Filter name, also the trigger text when nothing is ticked.
+ * @param string               $class   Checkbox class the JS collects.
+ * @param array<string,string> $options value => label.
+ * @param string[]             $checked Values ticked on load.
+ * @param string               $before  Markup above the options.
+ */
+$mmi_wb_multiselect = static function ( string $id, string $label, string $class, array $options, array $checked = [], string $before = '' ): void {
+    ?>
+    <div class="mmi-multiselect mmi-wb-filter" id="<?php echo esc_attr( $id ); ?>" data-label="<?php echo esc_attr( $label ); ?>">
+        <button type="button" class="mmi-ms-trigger" aria-expanded="false" aria-haspopup="true">
+            <span class="mmi-ms-label"><?php echo esc_html( $label ); ?></span>
+            <span class="mmi-ms-badge" hidden></span>
+            <span class="mmi-ms-caret" aria-hidden="true">▼</span>
+        </button>
+        <div class="mmi-ms-menu" hidden>
+            <?php echo $before; // phpcs:ignore WordPress.Security.EscapeOutput -- static markup built by the caller. ?>
+            <?php foreach ( $options as $value => $text ) : ?>
+                <label class="mmi-ms-option mmi-ms-option--check"><input type="checkbox" class="<?php echo esc_attr( $class ); ?>" value="<?php echo esc_attr( $value ); ?>" <?php checked( in_array( $value, $checked, true ) ); ?>> <span class="mmi-ms-opt-label"><?php echo esc_html( $text ); ?></span></label>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php
+};
 
 /**
  * Prints a section's header band.
@@ -84,11 +120,28 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
                     <?php endforeach; ?>
                     <option value="native">No supplier (created here)</option>
                 </select>
-                <span class="mmi-wb-statuses" role="group" aria-label="Status">
-                    <?php foreach ( $mmi_wb_statuses as $mmi_wb_status => $mmi_wb_status_label ) : ?>
-                        <label><input type="checkbox" class="mmi-wb-status" value="<?php echo esc_attr( $mmi_wb_status ); ?>" <?php checked( in_array( $mmi_wb_status, [ 'publish', 'draft' ], true ) ); ?>> <?php echo esc_html( $mmi_wb_status_label ); ?></label>
-                    <?php endforeach; ?>
-                </span>
+            </div>
+
+            <div class="mmi-toolbar mmi-wb-filters" role="group" aria-label="Filters">
+                <span class="mmi-wb-filters-label">Filter</span>
+                <?php
+                $mmi_wb_multiselect( 'mmi-wb-status-ms', 'Status', 'mmi-wb-status', $mmi_wb_statuses, [ 'publish', 'draft' ] );
+                $mmi_wb_multiselect( 'mmi-wb-stock-ms', 'Stock', 'mmi-wb-stock', $mmi_wb_stock );
+                $mmi_wb_multiselect(
+                    'mmi-wb-health-ms',
+                    'Health',
+                    'mmi-wb-health',
+                    array_map( static fn( $c ) => $c['label'], $mmi_wb_checks ),
+                    [],
+                    '<label class="mmi-wb-health-mode">Show products that '
+                    . '<select id="mmi-wb-health-mode" aria-label="Health filter mode">'
+                    . '<option value="any">fail any ticked check</option>'
+                    . '<option value="all">fail every ticked check</option>'
+                    . '<option value="none">pass every ticked check</option>'
+                    . '</select></label>'
+                );
+                ?>
+                <button type="button" class="button-link mmi-wb-filters-clear" id="mmi-wb-filters-clear">Clear filters</button>
             </div>
 
             <?php
@@ -101,6 +154,12 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
                 'empty_hint'  => 'No conditions — the search uses only the fields above.',
                 'context'     => 'workbench',
                 'class'       => 'mmi-wb-conditions',
+                'actions_html' => '<button type="button" class="mmi-cb-btn-secondary" id="mmi-wb-save-search" title="Keep these conditions as a named search, loadable from Load saved conditions here and in Catalog Maintenance"><span class="dashicons dashicons-saved"></span> Save search</button>'
+                    . '<span class="mmi-wb-save-search-form mmi-hidden" id="mmi-wb-save-search-form">'
+                    . '<input type="text" id="mmi-wb-save-search-name" placeholder="Name this search…" aria-label="Search name" maxlength="80">'
+                    . '<button type="button" class="button button-small" id="mmi-wb-save-search-confirm">Save</button>'
+                    . '<button type="button" class="button-link" id="mmi-wb-save-search-cancel">Cancel</button>'
+                    . '</span>',
                 'ids'         => [ 'root' => 'mmi-wb-cb', 'list' => 'mmi-wb-conditions', 'add' => 'mmi-wb-add-condition', 'match_logic' => 'mmi-wb-match-logic' ],
             ] );
             ?>
@@ -133,6 +192,8 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
                         <thead>
                             <tr>
                                 <td class="check-column"><input type="checkbox" id="mmi-wb-select-page" aria-label="Select this page"></td>
+                                <th data-col="id" data-resize-col="id" class="mmi-wb-col-id mmi-wb-sortable">ID <span class="sort-icon"></span></th>
+                                <th class="mmi-wb-col-thumb" data-resize-col="thumb"><span class="screen-reader-text">Image</span></th>
                                 <th data-col="title" data-resize-col="title" class="mmi-wb-col-title mmi-wb-sortable">Product <span class="sort-icon"></span></th>
                                 <th data-col="sku" data-resize-col="sku" class="mmi-wb-col-sku mmi-wb-sortable">SKU <span class="sort-icon"></span></th>
                                 <th data-col="categories" data-resize-col="categories" class="mmi-wb-col-cats mmi-wb-sortable">Categories <span class="sort-icon"></span></th>
@@ -140,7 +201,7 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
                                 <th data-col="status" data-resize-col="status" class="mmi-wb-col-status mmi-wb-sortable">Status <span class="sort-icon"></span></th>
                                 <th data-col="stock" data-resize-col="stock" class="mmi-wb-col-stock mmi-wb-sortable">Stock <span class="sort-icon"></span></th>
                                 <th data-col="supplier" data-resize-col="supplier" class="mmi-wb-col-supplier mmi-wb-sortable">Supplier <span class="sort-icon"></span></th>
-                                <th data-col="id" data-resize-col="id" class="mmi-wb-col-id mmi-wb-sortable">ID <span class="sort-icon"></span></th>
+                                <th data-col="health" data-resize-col="health" class="mmi-wb-col-health mmi-wb-sortable" title="Data-health checks this product fails. Sorting puts the most problems first (descending) or last">Health <span class="sort-icon"></span></th>
                             </tr>
                         </thead>
                         <tbody id="mmi-wb-rows"></tbody>

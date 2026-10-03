@@ -49,17 +49,55 @@
     background: var(--mmi-wb-border);
 }
 
-.mmi-wb-statuses {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
+/* Filter row: Status / Stock / Health dropdowns (shared .mmi-multiselect). */
+.mmi-wb-filters {
+    margin-top: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
-.mmi-wb-statuses label {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+.mmi-wb-filters-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--mmi-gray-600, #646970);
+}
+
+.mmi-wb-filter .mmi-ms-menu {
+    min-width: 240px;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.mmi-wb-filter.has-value .mmi-ms-trigger {
+    border-color: var(--mmi-wb-accent);
+}
+
+.mmi-wb-health-mode {
+    display: block;
+    padding: 6px 10px 8px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--mmi-wb-border);
     white-space: nowrap;
+}
+
+.mmi-wb-health-mode select {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+}
+
+/* Health chips are buttons here: clicking one filters to that check. */
+button.mmi-health-chip {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+button.mmi-health-chip:hover,
+button.mmi-health-chip:focus-visible {
+    border-color: var(--mmi-warning-text);
 }
 
 .mmi-wb-conditions {
@@ -159,14 +197,52 @@
     table-layout: fixed;
 }
 
-.mmi-wb-col-title    { width: 30%; }
-.mmi-wb-col-sku      { width: 11%; }
-.mmi-wb-col-cats     { width: 20%; }
-.mmi-wb-col-brand    { width: 10%; }
-.mmi-wb-col-status   { width: 8%; }
-.mmi-wb-col-stock    { width: 8%; }
-.mmi-wb-col-supplier { width: 7%; }
 .mmi-wb-col-id       { width: 6%; }
+.mmi-wb-col-thumb    { width: 48px; }
+.mmi-wb-col-title    { width: 22%; }
+.mmi-wb-col-sku      { width: 9%; }
+.mmi-wb-col-cats     { width: 15%; }
+.mmi-wb-col-brand    { width: 9%; }
+.mmi-wb-col-status   { width: 8%; }
+.mmi-wb-col-stock    { width: 7%; }
+.mmi-wb-col-supplier { width: 7%; }
+.mmi-wb-col-health   { width: 15%; }
+
+/* Featured image, or an empty square where there is none. */
+td.mmi-wb-col-thumb img,
+.mmi-wb-no-thumb {
+    display: block;
+    width: 36px;
+    height: 36px;
+    border-radius: 3px;
+    object-fit: cover;
+}
+
+.mmi-wb-no-thumb {
+    border: 1px dashed var(--mmi-wb-border);
+}
+
+/* Health chips wrap instead of clipping like other cells. */
+.mmi-wb-table td.mmi-wb-col-health {
+    white-space: normal;
+}
+
+.mmi-wb-health-ok {
+    color: var(--mmi-wb-accent);
+    font-size: 12px;
+}
+
+/* Save search: the name box and its buttons, inline in the builder's actions. */
+.mmi-wb-save-search-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mmi-wb-save-search-form input[type="text"] {
+    width: 200px;
+    height: 28px;
+}
 
 .mmi-wb-table td {
     overflow: hidden;
@@ -196,6 +272,104 @@
 .mmi-wb-sortable.is-active.is-desc .sort-icon::after,
 .mmi-wb-job-sortable.is-active.is-desc .sort-icon::after {
     content: "\2193";
+}
+
+/* ── Row edit: Categories / Brand ──────────────────────────────────────────
+   The ✎ button opens a term picker in a row under the product. */
+.mmi-wb-edit-terms {
+    margin-left: 2px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--mmi-wb-muted);
+    cursor: pointer;
+    vertical-align: middle;
+    opacity: 0.55;
+}
+
+.mmi-wb-edit-terms .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.mmi-wb-table tr:hover .mmi-wb-edit-terms,
+.mmi-wb-edit-terms:focus-visible {
+    opacity: 1;
+    color: var(--mmi-wb-accent);
+}
+
+.mmi-wb-term-lock {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    color: var(--mmi-wb-muted);
+    vertical-align: middle;
+}
+
+.mmi-wb-term-editor-tr > td,
+.mmi-wb-row-notice > td {
+    background: var(--mmi-wb-accent-bg);
+    border-left: 3px solid var(--mmi-wb-accent);
+}
+
+.mmi-wb-term-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mmi-wb-gap);
+    padding: 4px 0;
+}
+
+.mmi-wb-term-editor-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mmi-wb-gap);
+}
+
+.mmi-wb-term-search {
+    flex: 0 1 280px;
+    height: 28px;
+}
+
+.mmi-wb-term-hint {
+    margin: 0;
+    color: var(--mmi-wb-muted);
+    font-size: 12px;
+}
+
+.mmi-wb-term-list {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px 8px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 3px;
+    background: var(--mmi-bg-white, #fff);
+    columns: 3 220px;
+    column-gap: 16px;
+}
+
+.mmi-wb-term-option {
+    display: block;
+    break-inside: avoid;
+    padding: 2px 0 2px calc(var(--depth, 0) * 14px);
+    font-size: 13px;
+}
+
+.mmi-wb-term-path {
+    margin-left: 6px;
+    color: var(--mmi-wb-muted);
+    font-size: 11px;
+}
+
+.mmi-wb-term-notice:not(:empty) {
+    color: var(--mmi-wb-danger);
+    font-size: 12px;
+}
+
+.mmi-wb-row-notice > td {
+    color: var(--mmi-wb-accent);
+    font-size: 12px;
 }
 
 .mmi-wb-term {

@@ -510,6 +510,17 @@
     color: #d63638;
 }
 
+.mmi-taxmap-stat-missing strong {
+    color: var(--mmi-warning-text, #856404);
+}
+
+.mmi-taxmap-stat-missing .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--mmi-warning-border, #ff9800);
+}
+
 .mmi-taxmap-search input[type="search"] {
     font-size: 0.8rem;
     padding: 3px 7px;
@@ -977,6 +988,52 @@ th.sort-active .sort-icon {
 .mmi-taxmap-status.status-skip {
     background: var(--mmi-info-bg, #e3f2fd);
     color: var(--mmi-info-text, #1565c0);
+}
+
+/* Mapped term deleted in WooCommerce: unmapped in effect, flagged apart */
+.mmi-taxmap-status.status-term-missing {
+    background: var(--mmi-warning-bg, #fff3cd);
+    color: var(--mmi-warning-text, #856404);
+    border: 1px solid var(--mmi-warning-border, #ff9800);
+}
+
+.mmi-taxmap-table tr.is-term-missing td:first-child {
+    border-left: 3px solid var(--mmi-warning-border, #ff9800);
+}
+
+.mmi-taxmap-row-note {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.mmi-taxmap-row-note > span {
+    display: block;
+}
+
+.mmi-taxmap-row-note .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
+}
+
+.mmi-taxmap-row-note-missing {
+    color: var(--mmi-warning-text, #856404);
+}
+
+.mmi-taxmap-row-note-redirect {
+    color: var(--mmi-info-text, #1565c0);
+}
+
+.mmi-taxmap-variant-item.is-term-missing .mmi-taxmap-variant-term,
+#mmi-taxmap-variations-panel tr.is-term-missing .col-term {
+    color: var(--mmi-warning-text, #856404);
+    font-style: italic;
+}
+
+.mmi-rule-term-input.is-term-missing {
+    border-color: var(--mmi-warning-border, #ff9800);
 }
 
 /* Row state indicators */

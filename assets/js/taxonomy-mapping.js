@@ -34,6 +34,8 @@
         TOTAL:            '#mmi-taxmap-total',
         MAPPED_COUNT:     '#mmi-taxmap-mapped-count',
         UNMAPPED_COUNT:   '#mmi-taxmap-unmapped-count',
+        MISSING_STAT:     '#mmi-taxmap-stat-missing',
+        MISSING_COUNT:    '#mmi-taxmap-missing-count',
         TABLE:            '#mmi-taxmap-table',
         TBODY:            '#mmi-taxmap-tbody',
         EMPTY:            '#mmi-taxmap-empty',
@@ -192,7 +194,7 @@
     /** Active source filter: { supplier: string, sourceField: string } — both '' means show all */
     let activeFilter = { supplier: '', sourceField: '' };
 
-    /** Active status filter, driven by clicking the Total/Mapped/Unmapped stat — 'all' | 'mapped' | 'unmapped' */
+    /** Active status filter, driven by clicking the Total/Mapped/Unmapped/Deleted-term stat — 'all' | 'mapped' | 'unmapped' | 'term_missing' */
     let statusFilter = 'all';
 
     /** Current sort state: { col: string, dir: 'asc'|'desc' } */
@@ -503,8 +505,11 @@
         $( SELECTORS.VARIATIONS_TABLE ).toggleClass( 'mmi-hidden', rows.length === 0 );
 
         rows.forEach( function ( v ) {
-            const termLabel = v.wc_term_id === -1 ? '(skip)' : ( v.wc_term_name || '—' );
-            const $tr = $( '<tr>' ).attr( 'data-mapping-id', v.mapping_id );
+            const missing   = ( v.missing_term_id || 0 ) > 0;
+            const termLabel = v.wc_term_id === -1 ? '(skip)'
+                : missing ? `Deleted term #${ v.missing_term_id }`
+                : ( v.wc_term_name || '—' );
+            const $tr = $( '<tr>' ).toggleClass( 'is-term-missing', missing ).attr( 'data-mapping-id', v.mapping_id );
             $tr.append( $( '<td class="col-select">' ).append( '<input type="checkbox" class="mmi-taxmap-variations-row-cb">' ) );
             $tr.append( $( '<td class="col-value">' ).text( v.source_value ) );
             $tr.append( $( '<td class="col-supplier">' ).text( v.supplier_id || '— any —' ) );
@@ -894,8 +899,13 @@
         $taxonomy.val( rule.wc_taxonomy || $taxonomy.find( 'option' ).first().val() );
         $tr.append( $( '<td class="col-taxonomy">' ).append( $taxonomy ) );
 
-        const termVal = rule.wc_term_id === -1 ? '(skipped)' : ( rule.wc_term_name || '' );
-        const $term   = $( '<input type="text" class="mmi-taxmap-term-input mmi-rule-term-input" placeholder="Type to search terms…">' )
+        const termVal     = rule.wc_term_id === -1 ? '(skipped)' : ( rule.wc_term_name || '' );
+        const ruleMissing = ( rule.missing_term_id || 0 ) > 0;
+        const $term   = $( '<input type="text" class="mmi-taxmap-term-input mmi-rule-term-input">' )
+            .attr( 'placeholder', ruleMissing
+                ? `Term #${ rule.missing_term_id } was deleted: pick a replacement`
+                : 'Type to search terms…' )
+            .toggleClass( 'is-term-missing', ruleMissing )
             .val( termVal )
             .attr( 'data-term-id', rule.wc_term_id || 0 );
         const $termTd = $( '<td class="col-term">' )
@@ -1100,7 +1110,7 @@
             const newRows = ( resp.data.values || [] ).map( r => ( {
                 ...r,
                 source_field: cfg.sourceField,
-                wc_taxonomy:  cfg.wcTaxonomy,
+                wc_taxonomy:  r.row_taxonomy || cfg.wcTaxonomy,
                 supplier:     cfg.supplier,
             } ) );
 
@@ -1152,23 +1162,31 @@
      * @returns {jQuery}
      */
     function buildRow( row ) {
-        const isMapped  = row.wc_term_id !== 0;
-        const isSkipped = row.wc_term_id === -1;
-        const viaRule   = !! row.via_rule;
+        const isMapped    = row.wc_term_id !== 0;
+        const isSkipped   = row.wc_term_id === -1;
+        const viaRule     = !! row.via_rule;
+        // The saved term was deleted in WooCommerce: the server sends
+        // wc_term_id 0 plus the old id, since imports no longer apply it.
+        const termMissing = ( row.missing_term_id || 0 ) > 0;
 
         const statusClass = isSkipped ? 'status-skip'
             : isMapped ? 'status-mapped' : 'status-unmapped';
         const statusLabel = isSkipped ? 'Skip'
-            : isMapped ? ( viaRule ? 'Mapped (rule)' : 'Mapped' ) : 'Unmapped';
+            : isMapped ? ( viaRule ? 'Mapped (rule)' : 'Mapped' )
+            : termMissing ? 'Term deleted' : 'Unmapped';
 
         const termInputVal = isSkipped ? '' : ( row.wc_term_name || '' );
 
         const $tr = $( '<tr>' )
             .addClass( 'mmi-taxmap-row' )
             .addClass( isSkipped ? 'is-skipped' : isMapped ? 'is-mapped' : 'is-unmapped' )
+            .toggleClass( 'is-term-missing', termMissing )
             .attr( 'data-source-value', row.source_value )
             .attr( 'data-source-field', row.source_field  || '' )
             .attr( 'data-wc-taxonomy',  row.wc_taxonomy   || '' )
+            // The taxonomy this value's field feeds; differs from
+            // data-wc-taxonomy when the row is redirected (bad supplier data).
+            .attr( 'data-home-taxonomy', row.redirected_from || row.wc_taxonomy || '' )
             .attr( 'data-supplier',     row.supplier      || '' )
             .attr( 'data-mapping-id',   row.mapping_id || 0 )
             .attr( 'data-wc-term-id',   row.wc_term_id || 0 )
@@ -1222,10 +1240,11 @@
         applyTaxonomySelectColor( $taxonomySelect, row.wc_taxonomy );
         const $termCell  = $( '<td class="col-target">' ).append( $taxonomySelect );
         const $termInput = $( '<input type="text" class="mmi-taxmap-term-input">' )
-            .attr( 'placeholder', isSkipped ? '(skipped)' : 'Type to search terms…' )
+            .attr( 'placeholder', isSkipped ? '(skipped)' : termMissing ? 'Pick a replacement term…' : 'Type to search terms…' )
             .val( termInputVal )
             .attr( 'disabled', isSkipped );
         $termCell.append( $termInput );
+        $termCell.append( $( '<div class="mmi-taxmap-row-note mmi-hidden">' ) );
 
         // Profile-specific overrides for this value are opt-in and per-value —
         // see buildVariantRow() and the 2026-08-30 redesign entry in
@@ -1247,8 +1266,11 @@
 
         // Status cell
         $tr.append(
-            $( `<td class="col-status"><span class="mmi-taxmap-status ${ statusClass }${ viaRule ? ' status-via-rule' : '' }">${ statusLabel }</span></td>` )
+            $( `<td class="col-status"><span class="mmi-taxmap-status ${ statusClass }${ viaRule ? ' status-via-rule' : '' }${ termMissing ? ' status-term-missing' : '' }">${ statusLabel }</span></td>` )
         );
+        $tr.data( 'missingTermId', termMissing ? row.missing_term_id : 0 );
+        $tr.data( 'autoCreate', !! row.auto_create );
+        updateRowNote( $tr );
 
         // Actions cell — via-rule rows have no flat mapping row to skip/clear here;
         // edit the rule itself in the Alias Rules panel, or type a different term
@@ -1263,7 +1285,7 @@
                     .html( '<span class="dashicons dashicons-minus"></span>' )
             );
         }
-        if ( ( isMapped || isSkipped ) && ! viaRule ) {
+        if ( ( isMapped || isSkipped || termMissing ) && ! viaRule ) {
             $actions.append(
                 $( '<button class="button mmi-action-btn mmi-action-btn--danger mmi-button-small mmi-taxmap-clear-btn" title="Clear mapping">' )
                     .html( '<span class="dashicons dashicons-no-alt"></span>' )
@@ -1332,8 +1354,12 @@
         }
 
         variants.forEach( function ( v ) {
-            const termLabel = v.wc_term_id === -1 ? '(skip)' : ( v.wc_term_name || '—' );
+            const missing   = ( v.missing_term_id || 0 ) > 0;
+            const termLabel = v.wc_term_id === -1 ? '(skip)'
+                : missing ? `Deleted term #${ v.missing_term_id }: pick a replacement or remove`
+                : ( v.wc_term_name || '—' );
             const $li = $( '<li class="mmi-taxmap-variant-item">' )
+                .toggleClass( 'is-term-missing', missing )
                 .attr( 'data-mapping-id', v.mapping_id );
             $li.append( $( '<span class="mmi-taxmap-variant-profile">' ).text( v.profile_label ) );
             $li.append( $( '<span class="dashicons dashicons-arrow-right-alt2">' ) );
@@ -1397,6 +1423,11 @@
             let showByFilter = true;
             if ( statusFilter === 'mapped' )   { showByFilter = isMapped || isSkipped; }
             if ( statusFilter === 'unmapped' ) { showByFilter = isUnmapped;             }
+            if ( statusFilter === 'term_missing' ) {
+                const $variantTr = $tr.next( '.mmi-taxmap-variant-row' );
+                showByFilter = $tr.hasClass( 'is-term-missing' )
+                    || $variantTr.find( '.mmi-taxmap-variant-item.is-term-missing' ).length > 0;
+            }
 
             // Source pill filter
             let showByPill = true;
@@ -1726,11 +1757,16 @@
             $tr.removeClass( 'is-saving' );
             if ( ! resp.success ) {
                 showNotice( 'Save failed: ' + ( resp.data?.message || 'Unknown error' ), 'error' );
+                if ( resp.data?.term_missing ) {
+                    $tr.find( '.mmi-taxmap-term-input' ).val( '' ).trigger( 'focus' );
+                }
                 return;
             }
 
             const savedTermId   = resp.data.wc_term_id;
             const savedTermName = resp.data.wc_term_name;
+            $tr.removeClass( 'is-term-missing' ).data( 'missingTermId', 0 );
+            $tr.find( '.col-status .mmi-taxmap-status' ).removeClass( 'status-term-missing' );
 
             // Update row state. data-mapping-id previously only ever got set
             // from the initial server render — clicking "Clear" on a row
@@ -1758,6 +1794,15 @@
 
             // Update skip/clear buttons in actions cell
             rebuildActionButtons( $tr );
+            updateRowNote( $tr );
+
+            const applied = resp.data.applied;
+            if ( applied && applied.too_many > 0 ) {
+                showNotice( `Saved. ${ applied.too_many } existing products have "${ sourceValue }": too many to update now. Use Apply All to Existing Products.`, 'error' );
+            } else if ( applied && ( applied.updated > 0 || applied.locked > 0 ) ) {
+                const lockedTxt = applied.locked > 0 ? ` ${ applied.locked } skipped (field locked on the product).` : '';
+                showNotice( `Saved. "${ savedTermName }" applied to ${ applied.updated } existing product${ applied.updated === 1 ? '' : 's' }.${ lockedTxt }`, 'success' );
+            }
 
             // Update row in allRows array
             updateAllRowsEntry( supplier, sourceField, sourceValue, savedTermId, savedTermName );
@@ -1810,6 +1855,7 @@
         $tr.find( '.col-status .mmi-taxmap-status' )
            .removeClass( 'status-mapped status-skip' )
            .addClass( 'status-unmapped' ).text( 'Unmapped' );
+        clearMissingState( $tr );
         rebuildActionButtons( $tr );
     }
 
@@ -1948,6 +1994,50 @@
         } );
     }
 
+    /**
+     * The line under a row's term input. Says when the saved term was
+     * deleted (the mapping then does nothing at import) and when the row is
+     * redirected to another taxonomy than its field feeds.
+     *
+     * @param {jQuery} $tr
+     */
+    function updateRowNote( $tr ) {
+        const $note     = $tr.find( '.mmi-taxmap-row-note' );
+        const missingId = $tr.data( 'missingTermId' ) || 0;
+        const rowTax    = $tr.attr( 'data-wc-taxonomy' )   || '';
+        const homeTax   = $tr.attr( 'data-home-taxonomy' ) || '';
+        const parts     = [];
+        // Option text is "Product brands (product_brand)" plus template whitespace.
+        const label     = slug => taxonomyLabel( slug ).replace( /\s+/g, ' ' ).trim().replace( / \([^)]*\)$/, '' );
+
+        if ( missingId > 0 ) {
+            const what = $tr.data( 'autoCreate' )
+                ? `The next import will create a new term named "${ escHtml( $tr.attr( 'data-source-value' ) ) }".`
+                : 'Imports skip this value until you pick a replacement term or clear the mapping.';
+            parts.push(
+                `<span class="mmi-taxmap-row-note-missing"><span class="dashicons dashicons-warning"></span> `
+                + `The mapped term (#${ missingId }) was deleted from ${ escHtml( label( rowTax ) ) }. ${ what }</span>`
+            );
+        }
+        if ( homeTax && rowTax && homeTax !== rowTax && $tr.hasClass( 'is-mapped' ) ) {
+            parts.push(
+                `<span class="mmi-taxmap-row-note-redirect"><span class="dashicons dashicons-randomize"></span> `
+                + `Sent to ${ escHtml( label( rowTax ) ) } instead of ${ escHtml( label( homeTax ) ) }. `
+                + `Imports add this term and leave ${ escHtml( label( homeTax ) ) } unchanged.</span>`
+            );
+        }
+
+        $note.html( parts.join( '' ) ).toggleClass( 'mmi-hidden', parts.length === 0 );
+    }
+
+    /** A new term was saved or the mapping cleared: the row is no longer broken. */
+    function clearMissingState( $tr ) {
+        $tr.removeClass( 'is-term-missing' ).data( 'missingTermId', 0 );
+        $tr.find( '.mmi-taxmap-term-input' ).attr( 'placeholder', 'Type to search terms…' );
+        $tr.find( '.col-status .mmi-taxmap-status' ).removeClass( 'status-term-missing' );
+        updateRowNote( $tr );
+    }
+
     function rebuildActionButtons( $tr ) {
         const isMapped  = $tr.hasClass( 'is-mapped' );
         const isSkipped = $tr.hasClass( 'is-skipped' );
@@ -1962,7 +2052,7 @@
                     .html( '<span class="dashicons dashicons-minus"></span>' )
             );
         }
-        if ( isMapped || isSkipped ) {
+        if ( isMapped || isSkipped || $tr.hasClass( 'is-term-missing' ) ) {
             $cell.append(
                 $( '<button class="button mmi-action-btn mmi-action-btn--danger mmi-button-small mmi-taxmap-clear-btn" title="Clear mapping">' )
                     .html( '<span class="dashicons dashicons-no-alt"></span>' )
@@ -2020,6 +2110,21 @@
         $( SELECTORS.TOTAL ).text( total );
         $( SELECTORS.MAPPED_COUNT ).text( mapped );
         $( SELECTORS.UNMAPPED_COUNT ).text( total - mapped );
+
+        // The deleted-term check: values whose mapping (or one of whose
+        // profile variations) points at a term that no longer exists. Only
+        // shown when there are some.
+        const missing = allRows.filter( rowHasMissingTerm ).length;
+        $( SELECTORS.MISSING_COUNT ).text( missing );
+        $( SELECTORS.MISSING_STAT ).toggleClass( 'mmi-hidden', missing === 0 );
+        if ( missing === 0 && statusFilter === 'term_missing' ) {
+            $( SELECTORS.STAT_FILTER_BTN + '[data-status-filter="all"]' ).trigger( 'click' );
+        }
+    }
+
+    function rowHasMissingTerm( r ) {
+        return ( r.missing_term_id || 0 ) > 0
+            || ( r.variants || [] ).some( v => ( v.missing_term_id || 0 ) > 0 );
     }
 
     function refreshStats() {
@@ -2080,8 +2185,9 @@
             r.source_value === sourceValue
         );
         if ( entry ) {
-            entry.wc_term_id   = termId;
-            entry.wc_term_name = termName;
+            entry.wc_term_id      = termId;
+            entry.wc_term_name    = termName;
+            entry.missing_term_id = 0;
             if ( wcTaxonomy !== undefined ) {
                 entry.wc_taxonomy = wcTaxonomy;
             }

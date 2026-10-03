@@ -101,5 +101,14 @@ add_action( 'wp_ajax_mmi_render_field_mapping_panel', function () {
     include MMI_PIPELINE_PATH . 'admin/views/partials/panel-field-mapping.php';
     $html = ob_get_clean();
 
-    wp_send_json_success( [ 'html' => $html ] );
+    // The wizard always sends its ticked sources. A profile still being
+    // created can already have a saved placeholder row (any autosave makes
+    // one) with no sources, so fall back to what the wizard sent.
+    $wizard_sources = isset( $_POST['sources'] ) ? json_decode( wp_unslash( $_POST['sources'] ), true ) : [];
+    $draft_sources  = is_array( $wizard_sources ) && $wizard_sources ? $wizard_sources : (array) $profile_assigned_sources;
+
+    wp_send_json_success( [
+        'html'      => $html,
+        'conflicts' => (object) MMI_Pipeline_Field_Conflicts::for_profile( $current_profile, $draft_sources ),
+    ] );
 } );

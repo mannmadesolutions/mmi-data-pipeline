@@ -2,7 +2,7 @@
  * MMI Universal Column Resizer
  * 
  * Automatically enables column resizing for all wp-list-table elements
- * Persists column widths to localStorage per-table
+ * Persists column widths to localStorage per-table, keyed by column name
  * 
  * @package MMI
  * @version 1.0.0
@@ -96,8 +96,9 @@
                 }
                 $th.append($handle);
                 
-                // Store column index
+                // Store column index, and the stable key widths are saved under
                 $th.attr('data-column-index', index);
+                $th.attr('data-resize-key', MMI_ColumnResizer.columnKey($th, index));
             });
             
             // Load saved widths
@@ -192,20 +193,27 @@
         },
         
         /**
-         * Save column widths to localStorage
+         * A column's saved-width key: its data-resize-col / data-col name, so
+         * adding, removing or reordering columns never hands one column's
+         * width to another. Unnamed columns fall back to their position.
+         */
+        columnKey: function($th, index) {
+            return String($th.attr('data-resize-col') || $th.attr('data-col') || ('#' + index));
+        },
+
+        /**
+         * Save column widths to localStorage, keyed by column name:
+         * { v: 2, widths: { title: 240, sku: 90, … } }
          */
         saveColumnWidths: function($table, storageKey) {
             const widths = {};
             
-            $table.find('thead th, thead td').each(function() {
-                const index = $(this).data('column-index');
-                if (index !== undefined) {
-                    widths[index] = $(this).outerWidth();
-                }
+            $table.find('thead [data-resize-key]').each(function() {
+                widths[$(this).attr('data-resize-key')] = $(this).outerWidth();
             });
             
             try {
-                localStorage.setItem(storageKey, JSON.stringify(widths));
+                localStorage.setItem(storageKey, JSON.stringify({ v: 2, widths: widths }));
             } catch (e) {
                 console.warn('Could not save column widths:', e);
             }
@@ -219,12 +227,35 @@
                 const savedWidths = localStorage.getItem(storageKey);
                 if (!savedWidths) return;
                 
-                const widths = JSON.parse(savedWidths);
-                
-                $table.find('thead th, thead td').each(function() {
-                    const index = $(this).data('column-index');
-                    if (index !== undefined && widths[index]) {
-                        $(this).css('width', widths[index] + 'px');
+                const saved = JSON.parse(savedWidths);
+                const $cols = $table.find('thead [data-resize-key]');
+                let widths;
+
+                if (saved && saved.v === 2) {
+                    widths = saved.widths || {};
+                } else {
+                    // Pre-v2 widths are keyed by position. They only still fit
+                    // if the table has exactly as many columns as when they were
+                    // saved; otherwise a column was added or removed and every
+                    // width after it would land on the wrong column, so drop them.
+                    const legacy = saved || {};
+                    if (Object.keys(legacy).length !== $cols.length) {
+                        localStorage.removeItem(storageKey);
+                        return;
+                    }
+                    widths = {};
+                    $cols.each(function() {
+                        const index = $(this).data('column-index');
+                        if (legacy[index]) {
+                            widths[$(this).attr('data-resize-key')] = legacy[index];
+                        }
+                    });
+                }
+
+                $cols.each(function() {
+                    const w = widths[$(this).attr('data-resize-key')];
+                    if (w) {
+                        $(this).css('width', w + 'px');
                     }
                 });
             } catch (e) {

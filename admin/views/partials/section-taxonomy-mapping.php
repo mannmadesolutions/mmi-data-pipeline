@@ -106,9 +106,10 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $
     <div class="mmi-taxmap-page-header">
         <p class="mmi-taxmap-applies-note">
             <span class="dashicons dashicons-yes-alt"></span>
-            Every mapping saved here — including Alias Rules — is applied automatically during
-            every import. No separate step is needed: a product whose source value matches a
-            mapping below is assigned the correct WooCommerce term the moment it's imported or updated.
+            Saving a mapping here applies it right away to existing products with that source
+            value (unless the field is locked on the product), and every import applies it to
+            new and changed products. Alias Rules apply at import; use Apply All to Existing
+            Products to push them onto products already in the store.
         </p>
     </div>
 
@@ -349,6 +350,10 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $
         </button>
         <button type="button" class="mmi-taxmap-stat mmi-taxmap-stat-unmapped" data-status-filter="unmapped">
             Unmapped: <strong id="mmi-taxmap-unmapped-count">0</strong>
+        </button>
+        <?php /* Deleted-term check: only shown (by taxonomy-mapping.js) when a mapping points at a term that no longer exists. */ ?>
+        <button type="button" class="mmi-taxmap-stat mmi-taxmap-stat-missing mmi-hidden" id="mmi-taxmap-stat-missing" data-status-filter="term_missing">
+            <span class="dashicons dashicons-warning"></span> Deleted terms: <strong id="mmi-taxmap-missing-count">0</strong>
         </button>
 
         <!-- Search within loaded values -->

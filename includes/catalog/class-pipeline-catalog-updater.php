@@ -7,6 +7,16 @@ class MMI_Pipeline_Catalog_Updater
 {
     use MMI_Updater_Trait;
 
+    /**
+     * Quantity given to a product restored to in stock whose quantity is
+     * missing or zero. Catalog Maintenance owns stock STATUS only; quantity
+     * belongs to the import profiles (Pricing). It is touched here solely
+     * because WooCommerce recalculates a managed-stock product's status from
+     * its quantity on every save, so "instock" with qty 0 flips straight back
+     * to out of stock. A positive quantity is never overwritten.
+     */
+    private const RESTOCK_QUANTITY = '9999';
+
     /** @var string */
     protected $json_dir;
 
@@ -16,6 +26,42 @@ class MMI_Pipeline_Catalog_Updater
         // for why every reader/writer of these files must resolve the same
         // path (they previously didn't; see changelog).
         $this->json_dir = mmi_shared_lib_json_dir();
+    }
+
+    /**
+     * Give products being restored to in stock a usable quantity — only
+     * where theirs is missing, empty or not positive, and never on a
+     * force_outofstock product. Overwriting every restored product's
+     * quantity with 9999 fought the Pricing profile's own _stock mapping:
+     * each hourly import "corrected" ~5,100 products back, re-saving them
+     * all (2026-09-29 → 2026-10-03, ~80k attribute-lookup jobs a day).
+     *
+     * @param string $quoted   Already esc_sql()'d, quoted, comma-joined SKU list.
+     * @param string $sku_meta Meta key holding the supplier SKU.
+     * @return int Products whose quantity was set.
+     */
+    protected function ensure_restock_quantity( string $quoted, string $sku_meta ): int
+    {
+        global $wpdb;
+        $post_ids = $wpdb->get_col( "
+            SELECT DISTINCT pm_sku.post_id
+            FROM {$wpdb->postmeta} pm_sku
+            LEFT JOIN {$wpdb->postmeta} pm_qty
+                ON pm_qty.post_id = pm_sku.post_id AND pm_qty.meta_key = '_stock'
+            WHERE pm_sku.meta_key   = '{$sku_meta}'
+              AND pm_sku.meta_value IN ({$quoted})
+              AND ( pm_qty.meta_id IS NULL OR pm_qty.meta_value = '' OR CAST(pm_qty.meta_value AS DECIMAL(20,4)) <= 0 )
+              AND NOT EXISTS (
+                  SELECT 1 FROM {$wpdb->postmeta} pm_ov
+                  WHERE pm_ov.post_id    = pm_sku.post_id
+                    AND pm_ov.meta_key   = '_mmi_stock_override'
+                    AND pm_ov.meta_value = 'force_outofstock'
+              )
+        " );
+        foreach ( $post_ids as $pid ) {
+            update_post_meta( (int) $pid, '_stock', self::RESTOCK_QUANTITY );
+        }
+        return count( $post_ids );
     }
 
     /**
@@ -534,29 +580,7 @@ class MMI_Pipeline_Catalog_Updater
                       AND pm_status.meta_value != 'instock'
                 ");
                 
-                // Update stock quantity to 9999 for in-stock products
-                $wpdb->query("
-                    UPDATE {$wpdb->postmeta} pm_qty
-                    JOIN {$wpdb->postmeta} pm_sku USING(post_id)
-                    SET pm_qty.meta_value = '9999'
-                    WHERE pm_qty.meta_key   = '_stock'
-                      AND pm_sku.meta_key   = '{$sku_meta}'
-                      AND pm_sku.meta_value IN ({$quoted})
-                ");
-                
-                // Ensure products without existing stock quantity meta get it created
-                // Use update_post_meta instead of add_post_meta to prevent duplicates
-                $post_ids = $wpdb->get_col("
-                    SELECT DISTINCT pm_sku.post_id
-                    FROM {$wpdb->postmeta} pm_sku
-                    LEFT JOIN {$wpdb->postmeta} pm_qty ON pm_sku.post_id = pm_qty.post_id AND pm_qty.meta_key = '_stock'
-                    WHERE pm_sku.meta_key = '{$sku_meta}'
-                      AND pm_sku.meta_value IN ({$quoted})
-                      AND pm_qty.meta_id IS NULL
-                ");
-                foreach ($post_ids as $pid) {
-                    update_post_meta($pid, '_stock', '9999');
-                }
+                $restocked_qty = $this->ensure_restock_quantity($quoted, $sku_meta);
 
                 // Ensure products without existing stock_status meta get it created
                 // Use update_post_meta instead of add_post_meta to prevent duplicates
@@ -583,7 +607,7 @@ class MMI_Pipeline_Catalog_Updater
                     $this->set_catalog_visibility_visible((int) $pid);
                 }
 
-                $this->log("[{$dist}] Marked {$updated} returned products in stock with quantity 9999. SKUs: [" . implode(', ', $eligibleSkusBack) . "]");
+                $this->log("[{$dist}] Marked {$updated} returned products in stock ({$restocked_qty} had no quantity and got " . self::RESTOCK_QUANTITY . "). SKUs: [" . implode(', ', $eligibleSkusBack) . "]");
 
                 // Raw SQL writes above never fire woocommerce_product_set_stock_status,
                 // which mmi-reverb-integration's change detector listens on — queue an
@@ -1366,24 +1390,11 @@ class MMI_Pipeline_Catalog_Updater
                         AND pm_ov.meta_value = 'force_outofstock'
                   )
             " );
-            $wpdb->query( "
-                UPDATE {$wpdb->postmeta} pm_qty
-                JOIN {$wpdb->postmeta} pm_sku USING(post_id)
-                SET pm_qty.meta_value = '9999'
-                WHERE pm_qty.meta_key   = '_stock'
-                  AND pm_sku.meta_key   = '{$sku_meta}'
-                  AND pm_sku.meta_value IN ({$quoted})
-                  AND NOT EXISTS (
-                      SELECT 1 FROM {$wpdb->postmeta} pm_ov
-                      WHERE pm_ov.post_id   = pm_qty.post_id
-                        AND pm_ov.meta_key  = '_mmi_stock_override'
-                        AND pm_ov.meta_value = 'force_outofstock'
-                  )
-            " );
+            $restocked_qty = $this->ensure_restock_quantity( $quoted, $sku_meta );
 
-            // Backfill: create _stock / _stock_status rows for any matched
-            // product that has none at all — the two UPDATEs above only ever
-            // touch rows that already exist, so a product with no such
+            // Backfill: create _stock_status rows for any matched product
+            // that has none at all — the UPDATE above only ever touches rows
+            // that already exist, so a product with no such
             // postmeta was previously silently never given one. Ported from
             // the retired run_internal() (which had this backfill but no
             // override guard); same _mmi_stock_override exclusion as above
@@ -1402,17 +1413,6 @@ class MMI_Pipeline_Catalog_Updater
             $backfillEligible = array_values( array_diff( $eligibleBack, $override_skus ) );
             if ( ! empty( $backfillEligible ) ) {
                 $backfillQuoted = "'" . implode( "','", array_map( 'esc_sql', $backfillEligible ) ) . "'";
-                $post_ids_qty = $wpdb->get_col( "
-                    SELECT DISTINCT pm_sku.post_id
-                    FROM {$wpdb->postmeta} pm_sku
-                    LEFT JOIN {$wpdb->postmeta} pm_qty ON pm_sku.post_id = pm_qty.post_id AND pm_qty.meta_key = '_stock'
-                    WHERE pm_sku.meta_key = '{$sku_meta}'
-                      AND pm_sku.meta_value IN ({$backfillQuoted})
-                      AND pm_qty.meta_id IS NULL
-                " );
-                foreach ( $post_ids_qty as $pid ) {
-                    update_post_meta( (int) $pid, '_stock', '9999' );
-                }
                 $post_ids_status = $wpdb->get_col( "
                     SELECT DISTINCT pm_sku.post_id
                     FROM {$wpdb->postmeta} pm_sku
@@ -1426,7 +1426,7 @@ class MMI_Pipeline_Catalog_Updater
                 }
             }
 
-            $this->log( "[{$supplier}] Restored " . count( $eligibleBack ) . " SKUs to in-stock." );
+            $this->log( "[{$supplier}] Restored " . count( $eligibleBack ) . " SKUs to in-stock ({$restocked_qty} had no quantity and got " . self::RESTOCK_QUANTITY . ")." );
 
             // Restore search visibility — only for products that are in stock now AND still
             // excluded from search. This used to touch every SKU still in the feed (~6k for

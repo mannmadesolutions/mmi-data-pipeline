@@ -196,7 +196,9 @@ if ( ! $mmi_wc_active ) {
                     <th class="mmi-cog-col-status">Status</th>
                 </tr>
             </thead>
-            <tbody id="mmi-catalog-ops-tbody">
+            <?php /* Rules that write a field an import profile also maps — shown
+                 beside each rule by import-pipeline-catalog-maintenance.js. */ ?>
+            <tbody id="mmi-catalog-ops-tbody" data-conflicts="<?php echo esc_attr( wp_json_encode( (object) MMI_Pipeline_Field_Conflicts::for_custom_rules( (array) $mmi_stock_override_rules ) ) ); ?>">
 
             <?php foreach ( $mmi_cog_phases as $mmi_cog_phase ) :
                 if ( $mmi_cog_phase['phase'] === 'feed_sync' ) :

@@ -79,6 +79,8 @@
         DISABLED_NOTICE: '#mmi-cog-disabled-notice',
 
         TYPE_SORT_TH:    '#mmi-cog-type-sort',
+        NAME_CELL:       '.mmi-cog-col-name',
+        CONFLICT_NOTICE: '.mmi-cog-conflict',
         GROUP_DIVIDER:   '.mmi-cog-group-divider',
         FIXED_ROW:       '.mmi-cog-row--fixed',
 
@@ -111,6 +113,7 @@
         IS_LOADING:      'mmi-is-loading',
         IS_ACTIVE:       'is-active',
         RULE_DISABLED:   'mmi-cog-rule-disabled',
+        CONFLICT_NOTICE: 'mmi-cog-conflict notice notice-warning inline',
     };
 
     function ajaxUrl() {
@@ -291,6 +294,7 @@
             postData[`conditions[${j}][operator]`] = cond.operator;
             postData[`conditions[${j}][value]`]    = cond.value;
             if (cond.case_sensitive) postData[`conditions[${j}][case_sensitive]`] = 1;
+            if (cond.or) postData[`conditions[${j}][or]`] = 1;
         });
 
         $.post(ajaxUrl(), postData)
@@ -444,6 +448,7 @@
             postData[`conditions[${j}][operator]`] = cond.operator;
             postData[`conditions[${j}][value]`]    = cond.value;
             if (cond.case_sensitive) postData[`conditions[${j}][case_sensitive]`] = 1;
+            if (cond.or) postData[`conditions[${j}][or]`] = 1;
         });
 
         $.post(ajaxUrl(), postData)
@@ -514,6 +519,7 @@
                 d[`conditions[${j}][operator]`] = cond.operator;
                 d[`conditions[${j}][value]`]    = cond.value;
                 if (cond.case_sensitive) d[`conditions[${j}][case_sensitive]`] = 1;
+                if (cond.or) d[`conditions[${j}][or]`] = 1;
             });
             Object.keys(actionParams).forEach(function(k) {
                 d[`action_params[${k}]`] = actionParams[k];
@@ -614,6 +620,7 @@
             postData['conditions[' + j + '][operator]'] = cond.operator;
             postData['conditions[' + j + '][value]']    = cond.value;
             if (cond.case_sensitive) postData['conditions[' + j + '][case_sensitive]'] = 1;
+            if (cond.or) postData['conditions[' + j + '][or]'] = 1;
         });
 
         $.post(ajaxUrl(), postData)
@@ -770,6 +777,28 @@
         return problem;
     }
 
+    /**
+     * Show, inside each custom rule's own row, any import profile that maps
+     * a field the rule also writes (server: MMI_Pipeline_Field_Conflicts).
+     * Stays until the next save resolves it — it names something to fix.
+     * Inside the row, not a row of its own, so type grouping keeps working.
+     *
+     * @param {Object<string, string[]>} conflicts rule index => messages
+     */
+    function renderRuleConflicts(conflicts) {
+        const $rules = $(SELECTORS.TBODY).find(SELECTORS.CUSTOM_RULE_ROW);
+        $rules.find(SELECTORS.CONFLICT_NOTICE).remove();
+        Object.keys(conflicts || {}).forEach(function(index) {
+            const $cell = $rules.eq(Number(index)).find(SELECTORS.NAME_CELL);
+            if (!$cell.length) return;
+            const $notice = $('<div>', { class: CSS.CONFLICT_NOTICE, role: 'status' });
+            (conflicts[index] || []).forEach(function(message) {
+                $notice.append($('<p>').text(message));
+            });
+            $cell.append($notice);
+        });
+    }
+
     function showRuleProblem($header) {
         activateRow($header);
         $header.next(SELECTORS.DETAIL_ROW).removeClass(CSS.HIDDEN);
@@ -816,6 +845,7 @@
                     customRulesPost[`rules[${i}][conditions][${j}][operator]`] = cond.operator;
                     customRulesPost[`rules[${i}][conditions][${j}][value]`]    = cond.value;
                     if (cond.case_sensitive) customRulesPost[`rules[${i}][conditions][${j}][case_sensitive]`] = 1;
+                    if (cond.or) customRulesPost[`rules[${i}][conditions][${j}][or]`] = 1;
                 });
             });
         }
@@ -825,6 +855,7 @@
                 const catalogOk = catalogResp[0] && catalogResp[0].success;
                 const rulesOk   = customRulesResp[0] && customRulesResp[0].success;
                 if (catalogOk && rulesOk) {
+                    renderRuleConflicts(customRulesResp[0].data && customRulesResp[0].data.conflicts);
                     $btn.html(LABELS.SAVED);
                     $status.text('Saved');
                     updateRunIndicator();
@@ -943,6 +974,10 @@
         MMIModal.init();
         captureOriginalRowOrder();
         bindSectionExpand();
+
+        try {
+            renderRuleConflicts(JSON.parse($(SELECTORS.TBODY).attr('data-conflicts') || '{}'));
+        } catch (e) { /* malformed attribute — no notices, nothing else affected */ }
 
         updateRunIndicator();
 

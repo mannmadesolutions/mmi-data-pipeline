@@ -48,9 +48,12 @@
         LIBRARY_LIST:                 '.mmi-cb-library-list',
         LIBRARY_ITEM:                 '.mmi-cb-library-item',
         LIBRARY_APPLY:                '.mmi-cb-library-apply',
+        LIBRARY_DELETE:               '.mmi-cb-library-delete',
 
+        COND_JOIN:                    '.mmi-cond-join',
         COND_SOURCE_SEL:              '.mmi-cond-source',
         COND_FIELD_SEL:               '.mmi-cond-field',
+        COND_FIELD_CUSTOM:            '.mmi-cond-field-custom',
         COND_OPERATOR_SEL:            '.mmi-cond-operator',
         COND_VALUE_SEL:               '.mmi-cond-value',
         COND_VALUE_SELECT:            '.mmi-cond-value-select',
@@ -75,6 +78,20 @@
     const PICK_OPERATORS       = [ 'equals', 'not_equals' ];
     const LIST_VALUE_DELIMITER = '|';
 
+    // Mirror MMI_Condition_Builder::NO_VALUE_OPERATORS / PATTERNS.
+    const NO_VALUE_OPERATORS = [ 'is_empty', 'is_not_empty', 'term_default_only' ];
+    const PATTERN_OPERATOR   = 'matches_pattern';
+    const PATTERNS = { all_caps: 'ALL CAPS', numeric_only: 'only numbers', brand_not_first: 'doesn’t start with its brand' };
+    // A product's brand only comes with the post field/meta source.
+    const POSTMETA_ONLY_PATTERNS = [ 'brand_not_first' ];
+
+    // Operators that only make sense for one kind of source.
+    const TAXONOMY_ONLY_OPERATORS = [ 'term_default_only' ];
+    const TEXT_ONLY_OPERATORS     = [ 'length_less_than', 'length_greater_than', 'matches_pattern' ];
+
+    // The Field option that reveals a box for typing any meta key.
+    const CUSTOM_FIELD_VALUE = '__mmi_custom_meta_key__';
+
     // Mirror MMI_Condition_Builder::CASE_OPERATORS.
     const CASE_OPERATORS = [ 'equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'in_list', 'not_in_list' ];
 
@@ -82,6 +99,8 @@
         equals: 'equals', not_equals: 'not equals', contains: 'contains', not_contains: 'doesn’t contain',
         starts_with: 'starts with', ends_with: 'ends with', in_list: 'is any of', not_in_list: 'is none of',
         is_empty: 'is empty', is_not_empty: 'is not empty', greater_than: '>', less_than: '<',
+        length_less_than: 'is shorter than', length_greater_than: 'is longer than',
+        term_default_only: 'is only default term', matches_pattern: 'looks like',
     };
 
     const ORIGIN = { SOURCE: 'source', APP: 'app' };
@@ -90,6 +109,8 @@
         HIDDEN:          'mmi-hidden',
         CASCADE_LOADING: 'mmi-cascade-loading',
         CASE_NA:         'mmi-cond-case--na',
+        ROW_OR:          'mmi-condition-row--or',
+        MATCH_ANY:       'mmi-cb--any',
         READY_ATTR:      'data-cb-ready',
     };
 
@@ -245,14 +266,25 @@
                 // "This field's value") picks it for you.
                 const selectField = preservedField || savedField || (fields.length === 1 ? String(typeof fields[0] === 'object' ? fields[0].value : fields[0]) : '');
                 let opts = `<option value="">${fieldPlaceholder(source)}</option>`;
+                let listed = false;
                 fields.forEach(function(f) {
                     // Supplier fields are plain strings (value === label);
                     // WP/WC and static fields are {value, label}.
                     const isObj  = f !== null && typeof f === 'object';
                     const fValue = String(isObj ? f.value : f);
                     const fLabel = isObj ? f.label : f;
+                    if (fValue === selectField) listed = true;
                     opts += '<option value="' + escHtml(fValue) + '"' + (fValue === selectField ? ' selected' : '') + '>' + escHtml(fLabel) + '</option>';
                 });
+                // A saved or loaded field this list doesn't offer (a typed
+                // meta key, a taxonomy hidden from menus) stays selectable
+                // rather than silently dropping the condition.
+                if (selectField && !listed) {
+                    opts += '<option value="' + escHtml(selectField) + '" selected>' + escHtml(selectField) + '</option>';
+                }
+                if (source === POSTMETA_SOURCE) {
+                    opts += `<option value="${CUSTOM_FIELD_VALUE}">Other meta key…</option>`;
+                }
                 $fieldSel.html(opts).prop('disabled', false);
                 if (selectField) {
                     if (savedOperator) {
@@ -305,12 +337,45 @@
         });
     }
 
+    /**
+     * Disable operators the row's source can't evaluate — "is only the
+     * default term" is taxonomy-only; length and pattern checks are for
+     * text — and fall back to equals if the current one just became one.
+     */
+    function syncOperatorOptions($condRow) {
+        const source = $condRow.find(SELECTORS.COND_SOURCE_SEL).val() || '';
+        const isTax  = source === TAXONOMY_SOURCE;
+        const $op    = $condRow.find(SELECTORS.COND_OPERATOR_SEL);
+        $op.find('option').each(function() {
+            this.disabled = isTax ? TEXT_ONLY_OPERATORS.indexOf(this.value) !== -1
+                                  : TAXONOMY_ONLY_OPERATORS.indexOf(this.value) !== -1;
+        });
+        if ($op.find('option:selected').prop('disabled')) {
+            $op.val('equals');
+        }
+    }
+
+    /** The pattern picker for "looks like"; writes into the value input. */
+    function showPatternPicker($condRow, source) {
+        const $valueInput = $condRow.find(SELECTORS.COND_VALUE_SEL);
+        const current     = String($valueInput.val() || '');
+        let opts = '<option value="">Select…</option>';
+        Object.keys(PATTERNS).forEach(function(key) {
+            if (source !== POSTMETA_SOURCE && POSTMETA_ONLY_PATTERNS.indexOf(key) !== -1) return;
+            opts += `<option value="${key}"${key === current ? ' selected' : ''}>${escHtml(PATTERNS[key])}</option>`;
+        });
+        $valueInput.hide();
+        $condRow.find(SELECTORS.COND_VALUE_SELECT).html(opts)
+            .prop('disabled', $valueInput.prop('disabled')).removeClass(CSS.HIDDEN);
+    }
+
     function updateValueVisibility($condRow) {
+        syncOperatorOptions($condRow);
         const op          = $condRow.find(SELECTORS.COND_OPERATOR_SEL).val() || '';
         $condRow.find(SELECTORS.COND_CASE).toggleClass(CSS.CASE_NA, CASE_OPERATORS.indexOf(op) === -1);
         const $valueInput = $condRow.find(SELECTORS.COND_VALUE_SEL);
         const $checklist  = $condRow.find(SELECTORS.COND_VALUE_CHECKLIST);
-        const noValue     = (op === 'is_empty' || op === 'is_not_empty');
+        const noValue     = NO_VALUE_OPERATORS.indexOf(op) !== -1;
 
         $condRow.find(SELECTORS.COND_VALUE_SELECT).addClass(CSS.HIDDEN);
 
@@ -325,6 +390,13 @@
         const field  = $condRow.find(SELECTORS.COND_FIELD_SEL).val()  || '';
         const isApp  = !!(source && field && WP_APP_SOURCES.indexOf(source) !== -1);
 
+        if (op === PATTERN_OPERATOR) {
+            closeChecklist($condRow);
+            $checklist.addClass(CSS.HIDDEN);
+            showPatternPicker($condRow, source);
+            return;
+        }
+
         if (PICK_OPERATORS.indexOf(op) !== -1 && isApp) {
             closeChecklist($condRow);
             $checklist.addClass(CSS.HIDDEN);
@@ -335,7 +407,7 @@
         if (LIST_OPERATORS.indexOf(op) === -1) {
             closeChecklist($condRow);
             $checklist.addClass(CSS.HIDDEN);
-            $valueInput.show().attr('placeholder', 'Value…');
+            $valueInput.show().attr('placeholder', op.indexOf('length_') === 0 ? 'Characters…' : 'Value…');
             return;
         }
 
@@ -502,6 +574,11 @@
             if ($row.find(SELECTORS.COND_CASE_INPUT).is(':checked')) {
                 cond.case_sensitive = 1;
             }
+            // The first row has nothing above it to join, and under "any"
+            // every row is already or'd.
+            if (conditions.length && isOrRow($row) && !rootOf($row).hasClass(CSS.MATCH_ANY)) {
+                cond.or = 1;
+            }
             conditions.push(cond);
         });
         return conditions;
@@ -517,6 +594,16 @@
     }
 
     /* ── Rows ────────────────────────────────────────────────────────────── */
+
+    function isOrRow($condRow) {
+        return $condRow.find(SELECTORS.COND_JOIN).attr('aria-pressed') === 'true';
+    }
+
+    /** Set how a row joins the one above it: "and" (default) or "or". */
+    function setJoin($condRow, or) {
+        $condRow.toggleClass(CSS.ROW_OR, !!or)
+            .find(SELECTORS.COND_JOIN).attr('aria-pressed', or ? 'true' : 'false').text(or ? 'or' : 'and');
+    }
 
     function rowTemplate($list) {
         const own = rootOf($list).children(SELECTORS.ROW_TEMPLATE)[0];
@@ -559,6 +646,9 @@
         }
         let loaded = 0;
         const skipped = [];
+        // Added to a builder that already has rows, an "any" set keeps its
+        // meaning by becoming one or-group: (A or B) and what was there.
+        const groupAny = !replace && matchLogic === 'any' && $list.children(SELECTORS.CONDITION_ROW).length > 0;
         (conditions || []).forEach(function(cond) {
             const $row = appendConditionRow($list);
             if (!$row) return;
@@ -571,6 +661,7 @@
                 return;
             }
             $row.find(SELECTORS.COND_CASE_INPUT).prop('checked', !!cond.case_sensitive);
+            setJoin($row, groupAny ? loaded > 0 : !!cond.or);
             initConditionCascade($row, cond.source, cond.field, cond.operator || 'equals', cond.value || '');
             loaded++;
         });
@@ -595,9 +686,10 @@
 
     let librarySets = null; // one fetch per page view; reopened panels reuse it
 
-    function describeCondition(c) {
-        const noValue = c.operator === 'is_empty' || c.operator === 'is_not_empty';
-        return c.field + ' ' + (OPERATOR_WORDS[c.operator] || c.operator) + (noValue ? '' : ' "' + c.value + '"');
+    function describeCondition(c, i) {
+        const noValue = NO_VALUE_OPERATORS.indexOf(c.operator) !== -1;
+        const value   = c.operator === PATTERN_OPERATOR ? (PATTERNS[c.value] || c.value) : '"' + c.value + '"';
+        return (i > 0 && c.or ? 'or ' : '') + c.field + ' ' + (OPERATOR_WORDS[c.operator] || c.operator) + (noValue ? '' : ' ' + value);
     }
 
     function renderLibrary($root) {
@@ -633,6 +725,7 @@
                 '</div>' +
                 '<button type="button" class="button button-small mmi-cb-library-apply" data-mode="replace" title="Clear this builder\'s conditions and use these">Replace</button>' +
                 '<button type="button" class="button button-small mmi-cb-library-apply" data-mode="add" title="Keep this builder\'s conditions and add these">Add</button>' +
+                (s.deletable ? '<button type="button" class="button-link mmi-cb-library-delete" title="Delete this saved search">Delete</button>' : '') +
             '</div>';
         });
         $list.html(html);
@@ -741,7 +834,9 @@
             })
 
             .on('change', SELECTORS.ROOT + ' ' + SELECTORS.MATCH_LOGIC, function() {
-                notifyChange(rootOf($(this)));
+                const $root = rootOf($(this));
+                $root.toggleClass(CSS.MATCH_ANY, $(this).val() === 'any');
+                notifyChange($root);
             })
 
             .on('change', SELECTORS.COND_SOURCE_SEL, function() {
@@ -762,8 +857,26 @@
                 notifyChange($row);
             })
 
+            .on('click', SELECTORS.COND_JOIN, function() {
+                const $row = $(this).closest(SELECTORS.CONDITION_ROW);
+                setJoin($row, !isOrRow($row));
+                notifyChange($row);
+            })
+
             .on('change', SELECTORS.COND_FIELD_SEL, function() {
                 const $row  = $(this).closest(SELECTORS.CONDITION_ROW);
+                if ($(this).val() === CUSTOM_FIELD_VALUE) {
+                    // Swap in a box for typing the key; Enter or leaving it commits.
+                    $(this).val('');
+                    let $box = $row.find(SELECTORS.COND_FIELD_CUSTOM);
+                    if (!$box.length) {
+                        $box = $('<input type="text" class="mmi-cond-field-custom" placeholder="meta_key, then Enter" aria-label="Meta key">');
+                        $(this).after($box);
+                    }
+                    $(this).addClass(CSS.HIDDEN);
+                    $box.removeClass(CSS.HIDDEN).val('').trigger('focus');
+                    return;
+                }
                 const field = $(this).val() || '';
                 const $op   = $row.find(SELECTORS.COND_OPERATOR_SEL);
                 const $val  = $row.find(SELECTORS.COND_VALUE_SEL);
@@ -779,6 +892,25 @@
                     $row.find(SELECTORS.COND_VALUE_CHECKLIST).addClass(CSS.HIDDEN);
                 }
                 notifyChange($row);
+            })
+
+            .on('keydown', SELECTORS.COND_FIELD_CUSTOM, function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); $(this).trigger('blur'); }
+                if (e.key === 'Escape') { $(this).val('').trigger('blur'); }
+            })
+
+            .on('blur', SELECTORS.COND_FIELD_CUSTOM, function() {
+                const $row = $(this).closest(SELECTORS.CONDITION_ROW);
+                const $sel = $row.find(SELECTORS.COND_FIELD_SEL);
+                // The server stores keys through sanitize_key(); match it here.
+                const key  = String($(this).val() || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                $(this).addClass(CSS.HIDDEN);
+                $sel.removeClass(CSS.HIDDEN);
+                if (!key) return;
+                if (!$sel.find('option').filter(function() { return this.value === key; }).length) {
+                    $sel.find(`option[value="${CUSTOM_FIELD_VALUE}"]`).before(`<option value="${escHtml(key)}">Meta: ${escHtml(key)}</option>`);
+                }
+                $sel.val(key).trigger('change');
             })
 
             .on('change', SELECTORS.COND_OPERATOR_SEL, function() {
@@ -855,6 +987,30 @@
                 showNotice($root, msg);
             })
 
+            .on('click', SELECTORS.LIBRARY_DELETE, function(e) {
+                e.stopPropagation();
+                const $root = rootOf($(this));
+                const set   = (librarySets || [])[parseInt($(this).closest(SELECTORS.LIBRARY_ITEM).data('index'), 10)];
+                if (!set || !set.delete_action) return;
+                const $btn = $(this).prop('disabled', true);
+                const ep   = endpoints($root);
+                $.post(ep.ajaxUrl, { action: set.delete_action, id: set.id, nonce: ep.nonce })
+                    .done(function(response) {
+                        if (response && response.success) {
+                            librarySets.splice(librarySets.indexOf(set), 1);
+                            renderLibrary($root);
+                            showNotice($root, 'Deleted “' + set.label + '”.');
+                        } else {
+                            $btn.prop('disabled', false);
+                            showNotice($root, (response && response.data && response.data.message) || 'Could not delete that saved search.');
+                        }
+                    })
+                    .fail(function() {
+                        $btn.prop('disabled', false);
+                        showNotice($root, 'Network error — please try again.');
+                    });
+            })
+
             // Click outside closes an open checklist / library panel.
             .on('click', function(e) {
                 if (!$(e.target).closest(SELECTORS.COND_VALUE_CHECKLIST).length) {
@@ -884,7 +1040,10 @@
         updateEmptyHint,
         updateOriginBadge,
         updateValueVisibility,
+        setJoin,
         showNotice,
+        /** Drop the cached library so the next "Load saved conditions" refetches it. */
+        refreshLibrary: function() { librarySets = null; },
         splitListValue,
         joinListValue,
     };

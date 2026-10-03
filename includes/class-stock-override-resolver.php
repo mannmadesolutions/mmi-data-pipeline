@@ -21,7 +21,12 @@
  *   ]
  *
  * Supported operators: equals, not_equals, contains, not_contains,
- *   starts_with, ends_with, is_empty, is_not_empty, greater_than, less_than.
+ *   starts_with, ends_with, is_empty, is_not_empty, greater_than, less_than,
+ *   in_list, not_in_list, length_less_than, length_greater_than,
+ *   term_default_only (taxonomy), matches_pattern (see PATTERNS).
+ *
+ * A condition flagged 'or' joins the one before it into a group, so under
+ * match_logic 'all', [A, B(or), C] means (A or B) and C.
  *
  * Empty conditions array = match all products (same as old condition='all').
  *
@@ -47,7 +52,24 @@ class Stock_Override_Resolver {
         'equals', 'not_equals', 'contains', 'not_contains',
         'starts_with', 'ends_with', 'is_empty', 'is_not_empty',
         'greater_than', 'less_than', 'in_list', 'not_in_list',
+        'length_less_than', 'length_greater_than', 'term_default_only', 'matches_pattern',
     ];
+
+    /**
+     * 'matches_pattern' values: a small named set rather than free regex,
+     * so a condition can't be slow or unsafe. brand_not_first needs the
+     * product (its brand terms), so it only matches through the post
+     * field/meta source; a product with no brand never matches it — that
+     * gap is "has no brand", not this one.
+     */
+    const PATTERNS = [
+        'all_caps'        => 'ALL CAPS',
+        'numeric_only'    => 'only numbers',
+        'brand_not_first' => 'doesn’t start with its brand',
+    ];
+
+    /** Taxonomy holding a product's brand, for 'brand_not_first'. */
+    const BRAND_TAXONOMY = 'product_brand';
 
     /**
      * Delimiter joining multiple selected values for the 'in_list'/
@@ -195,10 +217,16 @@ class Stock_Override_Resolver {
             'operator' => $operator,
             'value'    => sanitize_text_field( $cond['value'] ?? '' ),
         ];
-        // Only stored when on, so every rule saved before this option
+        if ( $operator === 'matches_pattern' && ! isset( self::PATTERNS[ $clean['value'] ] ) ) {
+            return null;
+        }
+        // Only stored when on, so every rule saved before these options
         // existed keeps an identical shape.
         if ( ! empty( $cond['case_sensitive'] ) && $cond['case_sensitive'] !== '0' ) {
             $clean['case_sensitive'] = true;
+        }
+        if ( ! empty( $cond['or'] ) && $cond['or'] !== '0' ) {
+            $clean['or'] = true;
         }
         return $clean;
     }
@@ -644,32 +672,17 @@ class Stock_Override_Resolver {
     }
 
     private static function get_ids_by_source_conditions( array $norm ): array {
-        $conditions  = $norm['conditions']  ?? [];
+        $conditions  = array_values( array_filter(
+            $norm['conditions'] ?? [],
+            static fn( $c ) => ( $c['source'] ?? '' ) !== '' && ( $c['field'] ?? '' ) !== ''
+        ) );
         $match_logic = $norm['match_logic'] ?? 'all';
 
-        $sets = [];
-        foreach ( $conditions as $cond ) {
-            $source   = $cond['source']   ?? '';
-            $field    = $cond['field']    ?? '';
-            $operator = $cond['operator'] ?? 'equals';
-            $value    = (string) ( $cond['value'] ?? '' );
-            if ( $source === '' || $field === '' ) {
-                continue;
-            }
-            if ( $source === self::TAXONOMY_SOURCE ) {
-                $sets[] = self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
-            } elseif ( $source === self::POSTMETA_SOURCE ) {
-                $sets[] = self::get_product_ids_by_postmeta_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
-            } else {
-                $sets[] = self::get_product_ids_by_source_field_value( $source, $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
-            }
-        }
-
-        if ( empty( $sets ) ) {
+        if ( empty( $conditions ) ) {
             return [];
         }
 
-        if ( $match_logic === 'any' ) {
+        $union = static function ( array $sets ): array {
             $merged = [];
             foreach ( $sets as $set ) {
                 foreach ( $set as $id ) {
@@ -677,17 +690,59 @@ class Stock_Override_Resolver {
                 }
             }
             return array_keys( $merged );
+        };
+
+        $sets = array_map( [ self::class, 'get_product_ids_for_condition' ], $conditions );
+
+        if ( $match_logic === 'any' ) {
+            return $union( $sets );
         }
 
-        // AND: intersect all sets.
-        $result = $sets[0];
-        for ( $i = 1, $n = count( $sets ); $i < $n; $i++ ) {
-            $result = array_values( array_intersect( $result, $sets[ $i ] ) );
+        // AND across groups; each "or" group is the union of its members.
+        $result = null;
+        foreach ( self::condition_groups( $conditions ) as $group ) {
+            $group_ids = $union( array_map( static fn( $i ) => $sets[ $i ], $group ) );
+            $result    = $result === null ? $group_ids : array_values( array_intersect( $result, $group_ids ) );
             if ( empty( $result ) ) {
                 return [];
             }
         }
         return $result;
+    }
+
+    /** One source-format condition's matching product IDs. */
+    private static function get_product_ids_for_condition( array $cond ): array {
+        $source   = $cond['source'] ?? '';
+        $field    = $cond['field'] ?? '';
+        $operator = $cond['operator'] ?? 'equals';
+        $value    = (string) ( $cond['value'] ?? '' );
+        $case     = ! empty( $cond['case_sensitive'] );
+        if ( $source === self::TAXONOMY_SOURCE ) {
+            return self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, $case );
+        }
+        if ( $source === self::POSTMETA_SOURCE ) {
+            return self::get_product_ids_by_postmeta_condition( $field, $operator, $value, $case );
+        }
+        return self::get_product_ids_by_source_field_value( $source, $field, $operator, $value, $case );
+    }
+
+    /**
+     * Conditions grouped for "all" match logic: a condition flagged 'or'
+     * joins the group of the condition before it, so [A, B(or), C] means
+     * (A or B) and C. One level only — groups don't nest.
+     *
+     * @return list<list<int>> Groups of indices into $conditions.
+     */
+    public static function condition_groups( array $conditions ): array {
+        $groups = [];
+        foreach ( array_values( $conditions ) as $i => $cond ) {
+            if ( $i > 0 && ! empty( $cond['or'] ) ) {
+                $groups[ count( $groups ) - 1 ][] = $i;
+            } else {
+                $groups[] = [ $i ];
+            }
+        }
+        return $groups;
     }
 
     /**
@@ -787,6 +842,28 @@ class Stock_Override_Resolver {
             return array_values( array_filter( self::get_product_ids_by_supplier( 'all' ), static fn( $id ) => ! isset( $excluded[ $id ] ) ) );
         }
 
+        if ( $operator === 'term_default_only' ) {
+            $default = self::default_term_id( $taxonomy );
+            if ( ! $default ) {
+                return [];
+            }
+            global $wpdb;
+            $status_sql = self::status_sql();
+            // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- status_sql() is built from a whitelist.
+            $ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT tr.object_id
+                 FROM {$wpdb->term_relationships} tr
+                 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = %s
+                 INNER JOIN {$wpdb->posts} p ON p.ID = tr.object_id AND p.post_type = 'product' AND {$status_sql}
+                 GROUP BY tr.object_id
+                 HAVING COUNT(*) = 1 AND MAX(tt.term_id) = %d",
+                $taxonomy,
+                $default
+            ) );
+            // phpcs:enable
+            return array_map( 'intval', $ids );
+        }
+
         if ( $operator === 'is_empty' || $operator === 'is_not_empty' ) {
             $ids = get_posts( [
                 'post_type'      => 'product',
@@ -854,7 +931,6 @@ class Stock_Override_Resolver {
      */
     private static function get_product_ids_by_postmeta_condition( string $field, string $operator, string $value, bool $case_sensitive = false ): array {
         global $wpdb;
-        $status_sql = self::status_sql();
         $status_sql_bare = self::status_sql( '' );
 
         if ( $field === '' ) {
@@ -870,31 +946,105 @@ class Stock_Override_Resolver {
             );
             // phpcs:enable
         } else {
-            // Literal postmeta key — LEFT JOIN so a product with no row at all
-            // for this key still appears once with val = NULL (needed for
-            // is_empty/is_not_empty to distinguish "absent" from "empty string",
-            // matching eval_operator()'s existing null-means-absent convention).
-            $rows = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT p.ID, pm.meta_value AS val
-                     FROM {$wpdb->posts} p
-                     LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = %s
-                     WHERE p.post_type = 'product' AND {$status_sql}",
-                    $field
-                ),
-                ARRAY_A
-            );
+            // Literal postmeta key. Products and the key's rows are read
+            // separately: a LEFT JOIN on (post_id, meta_key) walks every meta
+            // row of every product (seconds on a large catalog), while
+            // "WHERE meta_key = %s" uses the meta_key index (~30x faster). A product
+            // with no row still appears once with val = NULL, so is_empty /
+            // is_not_empty can tell "absent" from "empty string" — matching
+            // eval_operator()'s null-means-absent convention.
+            // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $ids = $wpdb->get_col( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND {$status_sql_bare}" );
+            // phpcs:enable
+            $values = [];
+            foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s", $field ), ARRAY_A ) ?: [] as $m ) {
+                $values[ (int) $m['post_id'] ][] = $m['meta_value'];
+            }
+            $rows = [];
+            foreach ( $ids as $id ) {
+                foreach ( $values[ (int) $id ] ?? [ null ] as $val ) {
+                    $rows[] = [ 'ID' => $id, 'val' => $val ];
+                }
+            }
+            unset( $values );
         }
+
+        $brands = ( $operator === 'matches_pattern' && $value === 'brand_not_first' ) ? self::brand_names_by_product() : null;
 
         $matched = [];
         foreach ( $rows as $row ) {
             $val = $row['val'] === null ? null : (string) $row['val'];
-            if ( self::eval_operator( $val, $operator, $value, $case_sensitive ) ) {
+            $hit = $brands === null
+                ? self::eval_operator( $val, $operator, $value, $case_sensitive )
+                : self::brand_not_first( $val, $brands[ (int) $row['ID'] ] ?? [] );
+            if ( $hit ) {
                 $matched[] = (int) $row['ID'];
             }
         }
 
         return array_values( array_unique( $matched ) );
+    }
+
+    /**
+     * The taxonomy's default term — what WordPress assigns when nothing
+     * else is ("Uncategorized" for product_cat). 0 when there is none.
+     */
+    private static function default_term_id( string $taxonomy ): int {
+        return (int) get_option( $taxonomy === 'product_cat' ? 'default_product_cat' : 'default_term_' . $taxonomy, 0 );
+    }
+
+    /**
+     * Every product's brand names in one query, for 'brand_not_first'
+     * over the whole catalog.
+     *
+     * @return array<int,string[]> product ID => brand names.
+     */
+    private static function brand_names_by_product(): array {
+        if ( ! taxonomy_exists( self::BRAND_TAXONOMY ) ) {
+            return [];
+        }
+        global $wpdb;
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT tr.object_id, t.name
+             FROM {$wpdb->term_relationships} tr
+             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = %s
+             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id",
+            self::BRAND_TAXONOMY
+        ), ARRAY_A );
+        $out = [];
+        foreach ( $rows ?: [] as $r ) {
+            $out[ (int) $r['object_id'] ][] = (string) $r['name'];
+        }
+        return $out;
+    }
+
+    /** One product's brand names. */
+    private static function product_brand_names( int $product_id ): array {
+        if ( ! taxonomy_exists( self::BRAND_TAXONOMY ) ) {
+            return [];
+        }
+        $terms = get_the_terms( $product_id, self::BRAND_TAXONOMY );
+        return is_array( $terms ) ? array_map( static fn( $t ) => (string) $t->name, $terms ) : [];
+    }
+
+    /**
+     * True when $text has a brand to start with but starts with none of
+     * them. Words only — case, accents and punctuation are ignored, so
+     * "iZotope - RX 11" starts with "iZotope".
+     */
+    private static function brand_not_first( ?string $text, array $brands ): bool {
+        if ( $text === null || empty( $brands ) ) {
+            return false;
+        }
+        $norm  = static fn( string $s ): string => trim( (string) preg_replace( '/[^a-z0-9]+/', ' ', strtolower( remove_accents( html_entity_decode( $s, ENT_QUOTES, 'UTF-8' ) ) ) ) );
+        $title = $norm( $text ) . ' ';
+        foreach ( $brands as $brand ) {
+            $b = $norm( $brand );
+            if ( $b !== '' && strpos( $title, $b . ' ' ) === 0 ) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -925,11 +1075,13 @@ class Stock_Override_Resolver {
         if ( isset( self::POST_FIELD_MAP[ $field ] ) ) {
             $post = get_post( $product_id );
             $val  = $post ? (string) $post->{ self::POST_FIELD_MAP[ $field ] } : null;
-            return self::eval_operator( $val, $operator, $value, ! empty( $cond['case_sensitive'] ) );
+        } else {
+            $val = metadata_exists( 'post', $product_id, $field ) ? (string) get_post_meta( $product_id, $field, true ) : null;
         }
 
-        $exists = metadata_exists( 'post', $product_id, $field );
-        $val    = $exists ? (string) get_post_meta( $product_id, $field, true ) : null;
+        if ( $operator === 'matches_pattern' && $value === 'brand_not_first' ) {
+            return self::brand_not_first( $val, self::product_brand_names( $product_id ) );
+        }
         return self::eval_operator( $val, $operator, $value, ! empty( $cond['case_sensitive'] ) );
     }
 
@@ -959,17 +1111,26 @@ class Stock_Override_Resolver {
             return false;
         }
 
+        // get_the_terms() reads the object term cache (primed by callers
+        // that check many products, and cleared whenever terms are set), so
+        // this costs no query per product the way wp_get_object_terms() did.
+        $terms = get_the_terms( $product_id, $taxonomy );
+        $terms = is_array( $terms ) ? $terms : [];
+
         if ( $operator === 'is_empty' || $operator === 'is_not_empty' ) {
-            $has_terms = ! empty( wp_get_object_terms( $product_id, $taxonomy, [ 'fields' => 'ids' ] ) );
-            return $operator === 'is_not_empty' ? $has_terms : ! $has_terms;
+            return $operator === 'is_not_empty' ? ! empty( $terms ) : empty( $terms );
+        }
+
+        if ( $operator === 'term_default_only' ) {
+            $default = self::default_term_id( $taxonomy );
+            return $default > 0 && count( $terms ) === 1 && (int) $terms[0]->term_id === $default;
         }
 
         if ( isset( self::NEGATED_OPERATORS[ $operator ] ) ) {
             return ! self::evaluate_taxonomy_condition( $product_id, [ 'operator' => self::NEGATED_OPERATORS[ $operator ] ] + $cond );
         }
 
-        $terms = wp_get_object_terms( $product_id, $taxonomy );
-        if ( is_wp_error( $terms ) || empty( $terms ) ) {
+        if ( empty( $terms ) ) {
             // No terms at all — same "field absent" semantics eval_operator()
             // already applies to a supplier feed record missing this field.
             return self::eval_operator( null, $operator, $value );
@@ -1240,9 +1401,15 @@ class Stock_Override_Resolver {
             $results[] = self::eval_operator( $field_val, $operator, $value, ! empty( $cond['case_sensitive'] ) );
         }
 
-        return $match_logic === 'any'
-            ? in_array( true, $results, true )
-            : ! in_array( false, $results, true );
+        if ( $match_logic === 'any' ) {
+            return in_array( true, $results, true );
+        }
+        foreach ( self::condition_groups( $conditions ) as $group ) {
+            if ( ! in_array( true, array_map( static fn( $i ) => $results[ $i ], $group ), true ) ) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1310,9 +1477,40 @@ class Stock_Override_Resolver {
                     }
                 }
                 return true;
+            case 'length_less_than':
+                return is_numeric( $value ) && self::text_length( $field_val ) < (int) $value;
+            case 'length_greater_than':
+                return is_numeric( $value ) && self::text_length( $field_val ) > (int) $value;
+            case 'matches_pattern':
+                return $field_val !== null && self::matches_pattern( $field_val, $value );
             default:
                 return false;
         }
+    }
+
+    /**
+     * Visible characters in a value: tags stripped, entities decoded,
+     * whitespace trimmed — so "<p> </p>" is 0 long. Absent counts as 0.
+     */
+    private static function text_length( ?string $value ): int {
+        if ( $value === null ) {
+            return 0;
+        }
+        $text = trim( html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES, 'UTF-8' ) );
+        return function_exists( 'mb_strlen' ) ? mb_strlen( $text ) : strlen( $text );
+    }
+
+    /** The named, product-independent patterns (see PATTERNS). */
+    private static function matches_pattern( string $value, string $pattern ): bool {
+        $text = trim( html_entity_decode( $value, ENT_QUOTES, 'UTF-8' ) );
+        switch ( $pattern ) {
+            case 'all_caps':
+                // At least two letters, none lowercase.
+                return preg_match_all( '/\p{L}/u', $text ) >= 2 && ! preg_match( '/\p{Ll}/u', $text );
+            case 'numeric_only':
+                return $text !== '' && (bool) preg_match( '/^[\d\s.\/_-]+$/', $text ) && (bool) preg_match( '/\d/', $text );
+        }
+        return false;
     }
 
     /**

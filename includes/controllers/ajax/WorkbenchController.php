@@ -9,6 +9,9 @@
  *   mmi_workbench_stop    — stop a running job where it is
  *   mmi_workbench_undo    — undo the job's next batch (client loops until undone)
  *   mmi_workbench_jobs    — Recent Changes list
+ *   mmi_workbench_set_terms — set one product's categories or brand from the results table
+ *   mmi_workbench_save_search   — save the conditions as a named search (condition library "wb:")
+ *   mmi_workbench_delete_search — delete one (from the library's Delete)
  *
  * All share the Import tab's nonce and manage_woocommerce capability.
  *
@@ -119,4 +122,49 @@ add_action( 'wp_ajax_mmi_workbench_undo', function () {
 add_action( 'wp_ajax_mmi_workbench_jobs', function () {
     mmi_workbench_ajax_guard();
     wp_send_json_success( [ 'jobs' => Product_Workbench::job_list() ] );
+} );
+
+add_action( 'wp_ajax_mmi_workbench_save_search', function () {
+    mmi_workbench_ajax_guard();
+    // phpcs:disable WordPress.Security.NonceVerification.Missing
+    $label = (string) wp_unslash( $_POST['label'] ?? '' );
+    $logic = sanitize_key( wp_unslash( $_POST['match_logic'] ?? 'all' ) );
+    // phpcs:enable
+    $id = Product_Workbench::save_search( $label, $logic, mmi_workbench_post_array( 'conditions' ) );
+    if ( is_wp_error( $id ) ) {
+        wp_send_json_error( [ 'message' => $id->get_error_message() ] );
+    }
+    mmi_data_pipeline_audit( 'workbench.search.save', [
+        'object_type' => 'workbench_search',
+        'object_id'   => $id,
+        'outcome'     => 'success',
+    ] );
+    wp_send_json_success( [ 'id' => $id ] );
+} );
+
+add_action( 'wp_ajax_' . Product_Workbench::SAVED_SEARCH_DELETE, function () {
+    mmi_workbench_ajax_guard();
+    // phpcs:ignore WordPress.Security.NonceVerification.Missing
+    $id = sanitize_text_field( wp_unslash( $_POST['id'] ?? '' ) );
+    if ( ! Product_Workbench::delete_search( $id ) ) {
+        wp_send_json_error( [ 'message' => 'That saved search no longer exists.' ] );
+    }
+    mmi_data_pipeline_audit( 'workbench.search.delete', [
+        'object_type' => 'workbench_search',
+        'object_id'   => $id,
+        'outcome'     => 'success',
+    ] );
+    wp_send_json_success();
+} );
+
+add_action( 'wp_ajax_mmi_workbench_set_terms', function () {
+    mmi_workbench_ajax_guard();
+    // phpcs:disable WordPress.Security.NonceVerification.Missing
+    $row = Product_Workbench::set_product_terms(
+        absint( $_POST['product_id'] ?? 0 ),
+        sanitize_key( wp_unslash( $_POST['taxonomy'] ?? '' ) ),
+        array_map( 'absint', (array) ( $_POST['term_ids'] ?? [] ) )
+    );
+    // phpcs:enable
+    is_wp_error( $row ) ? wp_send_json_error( [ 'message' => $row->get_error_message() ] ) : wp_send_json_success( [ 'row' => $row ] );
 } );

@@ -346,9 +346,15 @@ class MMI_Pipeline_Admin {
         $rules = MMI_DB::get_taxmap_alias_rules();
         foreach ( $rules as &$rule ) {
             $tid = (int) ( $rule['wc_term_id'] ?? 0 );
+            // A deleted term: name left empty and the old id flagged, so the
+            // rule panel shows the rule as broken (match_taxmap_alias_rule()
+            // already skips it at import).
+            $rule['missing_term_id'] = 0;
             if ( $tid > 0 ) {
-                $t = get_term( $tid, $rule['wc_taxonomy'] ?? '' );
-                $rule['wc_term_name'] = ( $t && ! is_wp_error( $t ) ) ? $t->name : "(deleted #{$tid})";
+                $t    = get_term( $tid, $rule['wc_taxonomy'] ?? '' );
+                $live = $t && ! is_wp_error( $t );
+                $rule['wc_term_name']    = $live ? $t->name : '';
+                $rule['missing_term_id'] = $live ? 0 : $tid;
             } elseif ( $tid === -1 ) {
                 $rule['wc_term_name'] = '__skip__';
             } else {

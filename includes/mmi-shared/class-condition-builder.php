@@ -56,6 +56,23 @@ final class MMI_Condition_Builder {
 		'is_not_empty' => 'is not empty',
 		'greater_than' => '> greater than',
 		'less_than'    => '< less than',
+		'length_less_than'    => 'is shorter than',
+		'length_greater_than' => 'is longer than',
+		'term_default_only'   => 'is only default term',
+		'matches_pattern'     => 'looks like',
+	);
+
+	/** Operators that take no value. */
+	const NO_VALUE_OPERATORS = array( 'is_empty', 'is_not_empty', 'term_default_only' );
+
+	/**
+	 * 'matches_pattern' values — mirrors the evaluating consumer's own list
+	 * (mmi-data-pipeline's Stock_Override_Resolver::PATTERNS).
+	 */
+	const PATTERNS = array(
+		'all_caps'        => 'ALL CAPS',
+		'numeric_only'    => 'only numbers',
+		'brand_not_first' => 'doesn’t start with its brand',
 	);
 
 	const LIBRARY_ACTION = 'mmi_condition_library';
@@ -139,7 +156,8 @@ final class MMI_Condition_Builder {
 		};
 
 		$root_attrs = array(
-			'class'           => trim( 'mmi-cb ' . $args['class'] ),
+			// Under "any", every condition is already or'd: the join toggles hide.
+			'class'           => trim( 'mmi-cb ' . ( 'any' === $args['match_logic'] ? 'mmi-cb--any ' : '' ) . $args['class'] ),
 			'data-cb-context' => (string) $args['context'],
 		);
 		if ( $args['library'] ) {
@@ -235,16 +253,22 @@ final class MMI_Condition_Builder {
 		$value    = (string) ( $cond['value'] ?? '' );
 		$case     = ! empty( $cond['case_sensitive'] );
 		$blank    = empty( $cond );
+		$or       = ! empty( $cond['or'] );
 		// Not .mmi-hidden (display:none !important): the JS toggles this
 		// input with jQuery .show()/.hide(), which !important blocks.
-		$val_hidden = in_array( $operator, array( 'is_empty', 'is_not_empty' ), true ) ? ' mmi-cond-value--hidden' : '';
+		$val_hidden = in_array( $operator, self::NO_VALUE_OPERATORS, true ) ? ' mmi-cond-value--hidden' : '';
 		$case_na    = in_array( $operator, self::CASE_OPERATORS, true ) ? '' : ' mmi-cond-case--na';
 		?>
-		<div class="mmi-condition-row"<?php if ( ! $blank ) : ?>
+		<div class="mmi-condition-row<?php echo $or ? ' mmi-condition-row--or' : ''; ?>"<?php if ( ! $blank ) : ?>
 			 data-saved-source="<?php echo esc_attr( $source ); ?>"
 			 data-saved-field="<?php echo esc_attr( $field ); ?>"
 			 data-saved-operator="<?php echo esc_attr( $operator ); ?>"
-			 data-saved-value="<?php echo esc_attr( $value ); ?>"<?php endif; ?>>
+			 data-saved-value="<?php echo esc_attr( $value ); ?>"
+			 data-saved-or="<?php echo $or ? '1' : '0'; ?>"<?php endif; ?>>
+			<button type="button" class="mmi-cond-join" aria-pressed="<?php echo $or ? 'true' : 'false'; ?>"
+					title="How this condition joins the one above. &quot;or&quot; groups them: A, or B, and C means (A or B) and C.">
+				<?php echo $or ? 'or' : 'and'; ?>
+			</button>
 			<select class="mmi-cond-source" aria-label="Source">
 				<option value="">Source&hellip;</option>
 				<?php self::source_options( $source_groups, $source ); ?>
@@ -293,7 +317,10 @@ final class MMI_Condition_Builder {
 	 * filter. Each contributor appends entries shaped:
 	 *   [ 'id' => unique string, 'group' => 'Catalog Maintenance',
 	 *     'label' => 'Rule name', 'match_logic' => 'all'|'any',
-	 *     'conditions' => list of {source, field, operator, value, case_sensitive?} ]
+	 *     'conditions' => list of {source, field, operator, value, case_sensitive?, or?},
+	 *     'delete_action' => optional AJAX action that deletes this set; the
+	 *       picker then offers Delete and posts {id, nonce} to it, using the
+	 *       builder's cascade nonce ]
 	 *
 	 * @return list<array>
 	 */
@@ -318,6 +345,9 @@ final class MMI_Condition_Builder {
 				if ( ! empty( $cond['case_sensitive'] ) ) {
 					$clean['case_sensitive'] = 1;
 				}
+				if ( ! empty( $cond['or'] ) ) {
+					$clean['or'] = 1;
+				}
 				$conditions[] = $clean;
 			}
 			if ( ! $conditions ) {
@@ -329,6 +359,8 @@ final class MMI_Condition_Builder {
 				'label'       => (string) ( $set['label'] ?? 'Untitled' ),
 				'match_logic' => 'any' === ( $set['match_logic'] ?? 'all' ) ? 'any' : 'all',
 				'conditions'  => $conditions,
+				'deletable'   => ! empty( $set['delete_action'] ),
+				'delete_action' => (string) ( $set['delete_action'] ?? '' ),
 			);
 		}
 		return $out;

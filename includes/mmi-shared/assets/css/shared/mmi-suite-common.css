@@ -4171,6 +4171,29 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
     background: #f6f7f7;
 }
 
+/* ── Health chip ──────────────────────────────────────────────────────────────
+   One small amber tag per data gap on a product ("No brand", "Thin
+   description"), with the full explanation in its title. Product Workbench's
+   Health column and Product Titles' missing-inputs flags. */
+.mmi-health-chip {
+    display: inline-block;
+    margin: 2px 4px 0 0;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: var(--mmi-font-xs, 11px);
+    line-height: 1.5;
+    color: var(--mmi-warning-text);
+    background: var(--mmi-warning-bg);
+    border: 1px solid var(--mmi-warning-border);
+    cursor: help;
+    white-space: nowrap;
+}
+
+.mmi-cb-library-item .mmi-cb-library-delete {
+    font-size: 12px;
+    color: var(--mmi-error);
+}
+
 .mmi-cb-library-text {
     flex: 1 1 auto;
     min-width: 0;
@@ -4220,6 +4243,7 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
 
 .mmi-condition-row .mmi-cond-source,
 .mmi-condition-row .mmi-cond-field,
+.mmi-condition-row .mmi-cond-field-custom,
 .mmi-condition-row .mmi-cond-operator,
 .mmi-condition-row .mmi-cond-value {
     font-size: 13px;
@@ -4237,6 +4261,44 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
 .mmi-condition-row .mmi-cond-field    { min-width: 110px; flex: 0 1 160px; }
 .mmi-condition-row .mmi-cond-operator { min-width: 110px; flex: 0 1 155px; }
 .mmi-condition-row .mmi-cond-value    { min-width: 100px; flex: 1 1 160px; max-width: 260px; }
+
+/* "Other meta key…" swaps the Field select for this box until committed. */
+.mmi-condition-row .mmi-cond-field-custom { min-width: 110px; flex: 0 1 160px; }
+
+/* How a row joins the one above it: "and" (default) or "or". An or-row
+   hangs under the row above, so A, or B, and C reads as it evaluates:
+   (A or B) and C. The first row has nothing above it to join. */
+.mmi-condition-row .mmi-cond-join {
+    flex: 0 0 36px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid #c3c4c7;
+    border-radius: 11px;
+    background: var(--mmi-bg-light);
+    color: var(--mmi-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 20px;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.mmi-condition-row .mmi-cond-join[aria-pressed="true"] {
+    background: var(--mmi-info-bg);
+    border-color: var(--mmi-info-border);
+    color: var(--mmi-info-text);
+}
+
+.mmi-conditions-list > .mmi-condition-row:first-child .mmi-cond-join,
+.mmi-cb--any .mmi-cond-join {
+    visibility: hidden;
+}
+
+.mmi-cb:not(.mmi-cb--any) .mmi-conditions-list > .mmi-condition-row--or:not(:first-child) {
+    margin-left: 18px;
+    padding-left: 8px;
+    border-left: 2px solid var(--mmi-info-border);
+}
 
 /* Value picker for "equals"/"not equals" on a field with known values —
    same box as the text input it stands in for. */
@@ -4266,6 +4328,11 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
    the later jQuery .show()/.hide() toggle in import-pipeline-catalog-maintenance.js). */
 .mmi-condition-row .mmi-cond-value.mmi-cond-value--hidden {
     display: none;
+}
+
+/* Operators the row's source can't evaluate (see syncOperatorOptions()). */
+.mmi-condition-row .mmi-cond-operator option:disabled {
+    color: var(--mmi-text-muted);
 }
 
 /* Value checklist — the "is any of" / "is none of" multi-select UI shown in
@@ -4340,9 +4407,12 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
 
 /* The shared page section clips its content (overflow: hidden), which cut
    the open panel off at the section's bottom edge. Let it overflow only while
-   a panel is actually open, so nothing else about the section changes. */
+   a panel is actually open, so nothing else about the section changes.
+   Same for an open .mmi-multiselect menu (Workbench filters, Reverb, mmi-po). */
 .mmi-process-section:has(.mmi-cvc-panel:not(.mmi-hidden)),
-.mmi-section-content:has(.mmi-cvc-panel:not(.mmi-hidden)) {
+.mmi-section-content:has(.mmi-cvc-panel:not(.mmi-hidden)),
+.mmi-process-section:has(.mmi-multiselect.is-open),
+.mmi-section-content:has(.mmi-multiselect.is-open) {
     overflow: visible;
 }
 
@@ -4976,4 +5046,130 @@ button.mmi-cbd-chip.is-active {
         flex-basis: 100%;
         max-width: none;
     }
+}
+
+/* ── Status bar (.mmi-statusbar; shared lib 1.44.0, 2026-10-03) ─────────────
+   A live progress line for background work: spinner, message, count, actions
+   (Stop / Abort / a link), and a progress track along the bottom edge.
+   Promoted from mmi-reverb-integration's #mmi-sync-statusbar, whose local CSS
+   mixed a light card with dark-theme text, so its message and progress fill
+   rendered white on white. First adopters: Reverb (Products tab full sync) and
+   Product Titles (Review tab, writing accepted titles).
+
+     .mmi-statusbar [.mmi-statusbar--sticky] + one state class:
+         .is-active    work in progress (spinner turns)
+         .is-waiting   queued, not running yet (spinner turns, fill dimmed)
+         .is-complete  finished (success colors, fill full)
+         .is-error     stopped by a failure (error colors)
+       .mmi-statusbar-inner
+         .mmi-statusbar-spinner
+         .mmi-statusbar-text > .mmi-statusbar-message + .mmi-statusbar-count
+         .mmi-statusbar-actions (buttons, links)
+       .mmi-statusbar-track > .mmi-statusbar-fill (set width: N%)
+
+   Hidden until it has a state class, so markup can always be rendered and
+   JS only switches classes. Colors are --mmi-statusbar-* Style Manager
+   tokens (Status Bar group). */
+.mmi-statusbar {
+  display: none;
+  position: relative;
+  margin: 0 0 16px;
+  padding: 10px 16px 0;
+  background: var(--mmi-statusbar-bg, #ffffff);
+  color: var(--mmi-statusbar-text, #1d2327);
+  border: 1px solid var(--mmi-statusbar-border, #dcdcde);
+  border-left: 4px solid var(--mmi-statusbar-accent, var(--mmi-primary, #45852C));
+  border-radius: var(--mmi-statusbar-radius, 6px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+.mmi-statusbar:is(.is-active, .is-waiting, .is-complete, .is-error):not([hidden]):not(.hidden):not(.mmi-hidden) {
+  display: block;
+}
+.mmi-statusbar--sticky {
+  position: sticky;
+  top: 32px; /* below the WP admin bar */
+  z-index: 50;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.mmi-statusbar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-bottom: 10px;
+}
+.mmi-statusbar-spinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid var(--mmi-statusbar-track, #dbe8d5);
+  border-top-color: var(--mmi-statusbar-accent, var(--mmi-primary, #45852C));
+  border-radius: 50%;
+  animation: mmiSpin 0.8s linear infinite;
+}
+.mmi-statusbar-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.mmi-statusbar-message {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mmi-statusbar-text, #1d2327);
+}
+.mmi-statusbar-count {
+  font-size: 12px;
+  color: var(--mmi-statusbar-muted, #646970);
+}
+.mmi-statusbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.mmi-statusbar-track {
+  height: 4px;
+  margin: 0 -16px;
+  background: var(--mmi-statusbar-track, #dbe8d5);
+}
+.mmi-statusbar-fill {
+  height: 100%;
+  width: 0;
+  min-width: 4px;
+  background: var(--mmi-statusbar-accent, var(--mmi-primary, #45852C));
+  transition: width 0.4s ease;
+}
+.mmi-statusbar.is-waiting .mmi-statusbar-fill {
+  opacity: 0.45;
+}
+.mmi-statusbar.is-complete {
+  border-left-color: var(--mmi-success, #45852C);
+}
+.mmi-statusbar.is-complete .mmi-statusbar-spinner {
+  animation: none;
+  border-color: var(--mmi-success, #45852C);
+  background: var(--mmi-success, #45852C);
+}
+.mmi-statusbar.is-complete .mmi-statusbar-fill {
+  width: 100% !important;
+  background: var(--mmi-success, #45852C);
+}
+.mmi-statusbar.is-error {
+  border-left-color: var(--mmi-error, #d63638);
+}
+.mmi-statusbar.is-error .mmi-statusbar-spinner {
+  animation: none;
+  border-color: var(--mmi-error, #d63638);
+}
+.mmi-statusbar.is-error .mmi-statusbar-fill {
+  background: var(--mmi-error, #d63638);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mmi-statusbar-spinner { animation-duration: 2.4s; }
+  .mmi-statusbar-fill { transition: none; }
 }

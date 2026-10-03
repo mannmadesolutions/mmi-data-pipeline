@@ -319,13 +319,19 @@ add_action('wp_ajax_mmi_autosave_field_property', function () {
         wp_send_json_error(['message' => 'Could not save — profile is busy, try again']);
     }
 
+    // Sources ticked in the Create Profile wizard — only used while the
+    // profile has no saved sources yet (see MMI_Pipeline_Field_Conflicts).
+    $draft_sources = json_decode( wp_unslash( $_POST['sources'] ?? '[]' ), true );
+    $conflicts     = MMI_Pipeline_Field_Conflicts::for_profile( $profile, is_array( $draft_sources ) ? $draft_sources : [] );
+
     wp_send_json_success([
         'message' => 'Property saved',
         'field' => $field_name,
         'property' => $property,
         'value' => $value,
         'supplier' => $supplier,
-        'profile' => $profile
+        'profile' => $profile,
+        'conflicts' => $conflicts[ $field_name ] ?? [],
     ]);
 });
 
@@ -1646,8 +1652,9 @@ add_action('wp_ajax_mmi_pipeline_get_taxonomy_terms', function () {
         $out[] = [
             'id'    => (int) $term->term_id,
             'slug'  => $term->slug,
-            'name'  => $term->name,
-            'count' => (int) $term->count,
+            'name'   => $term->name,
+            'count'  => (int) $term->count,
+            'parent' => (int) $term->parent,
         ];
     }
 
