@@ -117,7 +117,8 @@ function build_source_status( string $supplier_id, string $filename ): array {
         'record_count'      => isset( $row['last_fetch_count'] ) ? (int) $row['last_fetch_count'] : null,
         'last_fetch_status' => $row['last_fetch_status'] ?? null,
         'can_fetch'        => $source_type === 'api',
-        'fetching'         => (bool) get_transient( fetch_lock_key( $supplier_id ) ),
+        'fetching'         => (bool) get_transient( fetch_lock_key( $supplier_id ) )
+            || ( class_exists( 'MMI_Pipeline_Cron' ) && \MMI_Pipeline_Cron::is_fetch_running( $supplier_id ) ),
         // Throttler profiles are keyed by supplier ID (MMI_API_Throttler::KNOWN_APIS);
         // an unregistered source falls through to that class's conservative
         // default rather than going unthrottled.
@@ -254,20 +255,17 @@ add_action( 'wp_ajax_mmi_pipeline_fetch_source_now', function () {
         }
     }
 
-    $lock_key = fetch_lock_key( $supplier_id );
-    if ( get_transient( $lock_key ) ) {
+    // One path for every manual fetch (MMI_Pipeline_Cron::queue_manual_fetch()):
+    // XChange's stepped chain or one queued fetch, under the schedule's lock.
+    $queued = \MMI_Pipeline_Cron::queue_manual_fetch( $supplier_id );
+    if ( empty( $queued['started'] ) ) {
         wp_send_json_error( [
-            'code'    => 'already_running',
-            'message' => 'A fetch for this source is already running.',
+            'code'    => ( $queued['reason'] ?? '' ) === 'running' ? 'already_running' : 'unavailable',
+            'message' => ( $queued['reason'] ?? '' ) === 'running'
+                ? 'A fetch for this source is already running.'
+                : 'Action Scheduler is unavailable — cannot queue a fetch.',
         ] );
     }
-
-    if ( ! function_exists( 'as_schedule_single_action' ) ) {
-        wp_send_json_error( [ 'message' => 'Action Scheduler is unavailable — cannot queue a fetch.' ] );
-    }
-
-    set_transient( $lock_key, current_time( 'mysql' ), FETCH_LOCK_TTL );
-    as_schedule_single_action( time(), FETCH_NOW_HOOK, [ $supplier_id ], FETCH_NOW_GROUP );
 
     mmi_data_pipeline_audit( 'source.fetch', [
         'object_type' => 'data_source',

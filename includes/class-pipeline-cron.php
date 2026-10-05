@@ -72,7 +72,26 @@ class MMI_Pipeline_Cron {
 
     /* ── Boot ─────────────────────────────────────────────────────────────── */
 
+    /**
+     * Sources whose fetch runs as a chain of short Action Scheduler steps,
+     * one feed request per step. The scheduled run used to do all of them in
+     * one WP-Cron callback, and the cron runner (scripts/wp-cron.php under
+     * `timeout 45`) killed it partway through whenever vendors + products +
+     * promotions with their 12 s XChange gaps passed 45 s — 2026-10-05 20:35
+     * saved products, died in the wait before promotions, and never recorded
+     * the run.
+     */
+    const STEPPED_SOURCES = [
+        'xchange' => [ 'vendors', 'products', 'promotions' ],
+    ];
+    const STEP_HOOK  = 'mmi_pipeline_source_fetch_step';
+    const STEP_GROUP = 'mmi-pipeline-source-fetch';
+    /** Seconds between steps — XChange allows one request per 12 s. */
+    const STEP_GAP = 13;
+
     public static function init(): void {
+        add_action( self::STEP_HOOK, [ __CLASS__, 'run_source_fetch_step' ], 10, 3 );
+
         // Per-source fetch handlers — register a handler for every schedulable
         // source's OWN cron hook (mirrors the per-profile loop below) so each
         // source can run on its own independent cadence instead of one shared
@@ -1100,8 +1119,8 @@ class MMI_Pipeline_Cron {
     public static function run_scheduled_source_fetch( string $supplier_id ): void {
         MMI_Logger::debug( "Scheduled fetch starting for source \"{$supplier_id}\"", [], 'sync', 'MMI_Pipeline_Cron' );
 
-        $lock_key = 'mmi_source_fetch_lock_' . $supplier_id;
-        if ( MMI_DB::get_job_state( $lock_key ) ) {
+        $lock_key = self::fetch_lock_key( $supplier_id );
+        if ( self::is_fetch_running( $supplier_id ) ) {
             MMI_Logger::info( "Scheduled fetch skipped for \"{$supplier_id}\" — already running", [], 'sync', 'MMI_Pipeline_Cron' );
             return;
         }
@@ -1120,9 +1139,12 @@ class MMI_Pipeline_Cron {
             return;
         }
 
-        MMI_DB::set_job_state( $lock_key, current_time( 'mysql' ), 1800 );
+        if ( self::is_stepped_source( $supplier_id ) ) {
+            self::start_stepped_fetch( $supplier_id, 'cron' );
+            return;
+        }
 
-        $error_key = 'mmi_pipeline_process_error_source_fetch_' . $supplier_id;
+        MMI_DB::set_job_state( $lock_key, current_time( 'mysql' ), 1800 );
 
         try {
             $start_time     = microtime( true );
@@ -1147,49 +1169,218 @@ class MMI_Pipeline_Cron {
                 throw new \RuntimeException( 'No fetch mechanism available for this source (SupplierFetchRunner/Data_Source_Manager not loaded).' );
             }
 
-            $duration  = round( microtime( true ) - $start_time, 2 );
-            $timestamp = current_time( 'mysql' );
+            self::complete_source_fetch( $supplier_id, $start_time, 'cron' );
+        } catch ( \Throwable $e ) {
+            self::fail_source_fetch( $supplier_id, $e );
+        } finally {
+            MMI_DB::delete_job_state( $lock_key );
+        }
+    }
 
-            // Refresh just THIS source's row from its live JSON file — see
-            // refresh_all_source_counts()'s $only_supplier_id doc for why an
-            // unscoped call here would misjudge other, independently-
-            // scheduled sources as newly stale.
-            $source_result = self::refresh_all_source_counts( $start_time, $supplier_id );
-            $result        = $source_result[0] ?? null;
-            $is_stale      = $result && ( $result['status'] ?? '' ) === 'stale';
-            $count         = $result['count'] ?? 0;
+    /* ── Fetch run bookkeeping (shared by the inline and stepped paths) ───── */
 
-            $summary = sprintf(
-                'Data fetch for "%s" completed in %s — %s products',
-                $supplier_id,
-                self::format_duration( $duration ),
-                number_format( $count )
+    public static function fetch_lock_key( string $supplier_id ): string {
+        return 'mmi_source_fetch_lock_' . $supplier_id;
+    }
+
+    private static function fetch_run_key( string $supplier_id ): string {
+        return 'mmi_source_fetch_run_' . $supplier_id;
+    }
+
+    public static function is_stepped_source( string $supplier_id ): bool {
+        return isset( self::STEPPED_SOURCES[ $supplier_id ] ) && function_exists( 'as_schedule_single_action' );
+    }
+
+    /**
+     * One lock for every way a source gets fetched: the schedule, the stepped
+     * chain, and Data Pipeline's "Fetch now" (whose own transient used to be
+     * a separate lock, so a manual fetch could overlap a scheduled one).
+     */
+    public static function is_fetch_running( string $supplier_id ): bool {
+        return (bool) MMI_DB::get_job_state( self::fetch_lock_key( $supplier_id ) )
+            || (bool) get_transient( 'mmi_pipeline_fetch_now_' . $supplier_id );
+    }
+
+    /**
+     * The stepped run in progress, if any:
+     * { run_id, trigger, started, started_at, steps, step_index }.
+     */
+    public static function fetch_run_state( string $supplier_id ): ?array {
+        $run = MMI_DB::get_job_state( self::fetch_run_key( $supplier_id ) );
+        return is_array( $run ) ? $run : null;
+    }
+
+    /**
+     * Starts a stepped fetch: takes the lock and queues the first step. Returns
+     * in milliseconds; the requests happen in the steps.
+     *
+     * @param string $trigger 'cron' (full post-fetch follow-up) or 'manual'
+     *                        (feed files only).
+     * @return array{started:bool, reason?:string, run?:array}
+     */
+    public static function start_stepped_fetch( string $supplier_id, string $trigger ): array {
+        if ( ! self::is_stepped_source( $supplier_id ) ) {
+            return [ 'started' => false, 'reason' => 'unsupported' ];
+        }
+        if ( self::is_fetch_running( $supplier_id ) ) {
+            return [ 'started' => false, 'reason' => 'running', 'run' => self::fetch_run_state( $supplier_id ) ];
+        }
+
+        $steps = self::STEPPED_SOURCES[ $supplier_id ];
+        $run   = [
+            'run_id'     => wp_generate_password( 12, false ),
+            'trigger'    => $trigger === 'manual' ? 'manual' : 'cron',
+            'started'    => microtime( true ),
+            'started_at' => current_time( 'mysql' ),
+            'steps'      => $steps,
+            'step_index' => 0,
+        ];
+        // TTL covers the whole chain with margin; a killed step can't hold
+        // the lock past it.
+        MMI_DB::set_job_state( self::fetch_lock_key( $supplier_id ), $run['started_at'], 15 * MINUTE_IN_SECONDS );
+        MMI_DB::set_job_state( self::fetch_run_key( $supplier_id ), $run, 15 * MINUTE_IN_SECONDS );
+        as_schedule_single_action( time(), self::STEP_HOOK, [ $supplier_id, 0, $run['run_id'] ], self::STEP_GROUP );
+
+        MMI_Logger::info( "Stepped fetch started for \"{$supplier_id}\" ({$run['trigger']}): " . implode( ' → ', $steps ), [], 'sync', 'MMI_Pipeline_Cron' );
+        return [ 'started' => true, 'run' => $run ];
+    }
+
+    /**
+     * Every manual "Fetch now" (Data Pipeline's source table and each
+     * supplier's Catalog tab): the stepped chain for stepped sources, else one
+     * Action Scheduler fetch under the same transient the schedule checks
+     * (is_fetch_running()). Feed files only, no imports.
+     *
+     * @return array{started:bool, reason?:string}
+     */
+    public static function queue_manual_fetch( string $supplier_id ): array {
+        if ( self::is_stepped_source( $supplier_id ) ) {
+            return self::start_stepped_fetch( $supplier_id, 'manual' );
+        }
+        if ( self::is_fetch_running( $supplier_id ) ) {
+            return [ 'started' => false, 'reason' => 'running' ];
+        }
+        if ( ! function_exists( 'as_schedule_single_action' ) ) {
+            return [ 'started' => false, 'reason' => 'unavailable' ];
+        }
+        // Worker + lock TTL: SourceFetchController.php (FETCH_NOW_HOOK).
+        set_transient( 'mmi_pipeline_fetch_now_' . $supplier_id, current_time( 'mysql' ), 300 );
+        as_schedule_single_action( time(), 'mmi_pipeline_fetch_source_now', [ $supplier_id ], self::STEP_GROUP );
+        return [ 'started' => true ];
+    }
+
+    /**
+     * Action Scheduler callback (STEP_HOOK): one request, then queue the next
+     * step STEP_GAP seconds out, or finish the run.
+     */
+    public static function run_source_fetch_step( $supplier_id, $index, $run_id ): void {
+        $supplier_id = (string) $supplier_id;
+        $index       = (int) $index;
+        $run         = self::fetch_run_state( $supplier_id );
+        if ( ! $run || ( $run['run_id'] ?? '' ) !== (string) $run_id ) {
+            MMI_Logger::info( "Stepped fetch step {$index} for \"{$supplier_id}\" dropped — its run is no longer current", [], 'sync', 'MMI_Pipeline_Cron' );
+            return;
+        }
+        $steps = $run['steps'];
+        $step  = $steps[ $index ] ?? null;
+
+        try {
+            if ( $step === null ) {
+                throw new \RuntimeException( "Unknown fetch step {$index}." );
+            }
+            // The updaters echo progress for their CLI origins.
+            ob_start();
+            try {
+                self::run_fetch_part( $supplier_id, $step );
+            } finally {
+                ob_end_clean();
+            }
+
+            if ( isset( $steps[ $index + 1 ] ) ) {
+                $run['step_index'] = $index + 1;
+                MMI_DB::set_job_state( self::fetch_run_key( $supplier_id ), $run, 15 * MINUTE_IN_SECONDS );
+                as_schedule_single_action( time() + self::STEP_GAP, self::STEP_HOOK, [ $supplier_id, $index + 1, $run['run_id'] ], self::STEP_GROUP );
+                return;
+            }
+
+            self::complete_source_fetch( $supplier_id, (float) $run['started'], $run['trigger'] );
+        } catch ( \Throwable $e ) {
+            self::fail_source_fetch( $supplier_id, $e );
+        }
+
+        MMI_DB::delete_job_state( self::fetch_run_key( $supplier_id ) );
+        MMI_DB::delete_job_state( self::fetch_lock_key( $supplier_id ) );
+    }
+
+    private static function run_fetch_part( string $supplier_id, string $step ): void {
+        if ( $supplier_id === 'xchange' ) {
+            if ( $step === 'vendors' ) {
+                ( new MMI_Pipeline_Xchange_Vendors() )->run();
+                return;
+            }
+            ( new MMI_Pipeline_Xchange_Updater() )->run_part( $step );
+            return;
+        }
+        throw new \RuntimeException( "No stepped fetch for \"{$supplier_id}\"." );
+    }
+
+    /**
+     * Everything after a successful fetch: the source's row, activity log,
+     * and — for the schedule only — the duplicate-run window, digest entry,
+     * catalog update and linked imports.
+     */
+    private static function complete_source_fetch( string $supplier_id, float $start_time, string $trigger ): void {
+        $error_key = 'mmi_pipeline_process_error_source_fetch_' . $supplier_id;
+        $duration  = round( microtime( true ) - $start_time, 2 );
+        $timestamp = current_time( 'mysql' );
+
+        // Refresh just THIS source's row from its live JSON file — see
+        // refresh_all_source_counts()'s $only_supplier_id doc for why an
+        // unscoped call here would misjudge other, independently-
+        // scheduled sources as newly stale.
+        $source_result = self::refresh_all_source_counts( $start_time, $supplier_id );
+        $result        = $source_result[0] ?? null;
+        $is_stale      = $result && ( $result['status'] ?? '' ) === 'stale';
+        $count         = $result['count'] ?? 0;
+
+        $summary = sprintf(
+            'Data fetch for "%s" completed in %s — %s products',
+            $supplier_id,
+            self::format_duration( $duration ),
+            number_format( $count )
+        );
+        if ( $is_stale ) {
+            $summary .= ' — WARNING: no new data (updater may be failing or skipped)';
+        }
+
+        MMI_DB::add_activity( $is_stale ? 'fetch_warning' : 'fetch', $summary, [
+            'supplier_id'      => $supplier_id,
+            'duration_seconds' => $duration,
+            'result'           => $result,
+            'plugivery_full'   => (bool) MMI_DB::get_setting( 'mmi_fetch_plugivery_full_auto', false ),
+            'trigger'          => $trigger,
+        ] );
+
+        // A manual "Fetch now" only refreshes the feed files: it doesn't
+        // claim the hour's duplicate-run window or start imports.
+        $is_cron = $trigger === 'cron';
+        if ( $is_cron ) {
+            MMI_DB::set_job_state( 'mmi_source_fetch_done_' . $supplier_id, $timestamp, self::duplicate_fetch_window( $supplier_id ) );
+        }
+        if ( $is_stale ) {
+            self::record_fetch_warning( $supplier_id, self::FETCH_WARNING_NO_NEW_DATA );
+        }
+
+        if ( $is_stale ) {
+            MMI_Logger::error(
+                "Scheduled fetch for \"{$supplier_id}\" produced NO NEW DATA — its updater is failing or being skipped; the feed file on disk was not rewritten.",
+                [ 'result' => $result ], 'sync', 'MMI_Pipeline_Cron'
             );
-            if ( $is_stale ) {
-                $summary .= ' — WARNING: no new data (updater may be failing or skipped)';
-            }
+        } else {
+            MMI_Logger::info( $summary, [ 'result' => $result ], 'sync', 'MMI_Pipeline_Cron' );
+        }
 
-            MMI_DB::add_activity( $is_stale ? 'fetch_warning' : 'fetch', $summary, [
-                'supplier_id'      => $supplier_id,
-                'duration_seconds' => $duration,
-                'result'           => $result,
-                'plugivery_full'   => (bool) $plugivery_full,
-            ] );
-
-            MMI_DB::set_job_state( $done_key, $timestamp, self::duplicate_fetch_window( $supplier_id ) );
-            if ( $is_stale ) {
-                self::record_fetch_warning( $supplier_id, self::FETCH_WARNING_NO_NEW_DATA );
-            }
-
-            if ( $is_stale ) {
-                MMI_Logger::error(
-                    "Scheduled fetch for \"{$supplier_id}\" produced NO NEW DATA — its updater is failing or being skipped; the feed file on disk was not rewritten.",
-                    [ 'result' => $result ], 'sync', 'MMI_Pipeline_Cron'
-                );
-            } else {
-                MMI_Logger::info( $summary, [ 'result' => $result ], 'sync', 'MMI_Pipeline_Cron' );
-            }
-
+        if ( $is_cron ) {
             self::queue_success_notification( [
                 'label'     => 'Data Fetch: ' . $supplier_id,
                 'status'    => $is_stale ? 'partial' : 'success',
@@ -1202,63 +1393,63 @@ class MMI_Pipeline_Cron {
                     [ 'label' => 'Duration', 'value' => self::format_duration( $duration ) ],
                 ],
             ] );
+        }
 
-            // Clear any previously stored fetch-error state — this run succeeded.
-            MMI_DB::delete_setting( $error_key );
-            self::resolve_upstream_outage( $supplier_id );
+        // Clear any previously stored fetch-error state — this run succeeded.
+        MMI_DB::delete_setting( $error_key );
+        self::resolve_upstream_outage( $supplier_id );
 
-            // Schedule Catalog Update to run 5 minutes after ANY source's
-            // fetch completes. Avoids scheduling a duplicate if another
-            // source's fetch already queued one.
-            if ( 'disabled' !== MMI_DB::get_setting( 'mmi_schedule_catalog_update', 'sixhourly' ) && ! wp_next_scheduled( 'mmi_scheduled_catalog_update' ) ) {
-                wp_schedule_single_event( time() + 300, 'mmi_scheduled_catalog_update' );
-                MMI_Logger::info( 'Catalog update scheduled in 5 min after cron fetch', [], 'sync', 'MMI_Pipeline_Cron' );
+        // Schedule Catalog Update to run 5 minutes after ANY source's
+        // fetch completes. Avoids scheduling a duplicate if another
+        // source's fetch already queued one.
+        if ( $is_cron && 'disabled' !== MMI_DB::get_setting( 'mmi_schedule_catalog_update', 'sixhourly' ) && ! wp_next_scheduled( 'mmi_scheduled_catalog_update' ) ) {
+            wp_schedule_single_event( time() + 300, 'mmi_scheduled_catalog_update' );
+            MMI_Logger::info( 'Catalog update scheduled in 5 min after cron fetch', [], 'sync', 'MMI_Pipeline_Cron' );
+        }
+
+        // Fetch → Import Linking (see the "Fetch → Import Linking" section
+        // above): a profile explicitly linked to THIS source dispatches
+        // its own scheduled import right now rather than waiting for its
+        // independent clock — which no longer exists for a linked
+        // profile, since linking clears it (link_profile_to_source()).
+        // Skipped when this fetch was stale ($is_stale) — no point
+        // re-running an import against data that didn't actually change.
+        // run_scheduled_profile_import() is the exact same dispatcher the
+        // profile's own WP-Cron hook would have called; it owns its own
+        // lock/skip-gate/Action-Scheduler-batch handling, so calling it
+        // here needs no extra safety logic of its own.
+        if ( $is_cron && ! $is_stale ) {
+            foreach ( self::get_profiles_linked_to_source( $supplier_id ) as $linked_profile_id ) {
+                MMI_Logger::info(
+                    "Fetch–import link triggered: \"{$linked_profile_id}\" after \"{$supplier_id}\" fetch",
+                    [], 'sync', 'MMI_Pipeline_Cron'
+                );
+                self::run_scheduled_profile_import( $linked_profile_id );
             }
+        }
+    }
 
-            // Fetch → Import Linking (see the "Fetch → Import Linking" section
-            // above): a profile explicitly linked to THIS source dispatches
-            // its own scheduled import right now rather than waiting for its
-            // independent clock — which no longer exists for a linked
-            // profile, since linking clears it (link_profile_to_source()).
-            // Skipped when this fetch was stale ($is_stale) — no point
-            // re-running an import against data that didn't actually change.
-            // run_scheduled_profile_import() is the exact same dispatcher the
-            // profile's own WP-Cron hook would have called; it owns its own
-            // lock/skip-gate/Action-Scheduler-batch handling, so calling it
-            // here needs no extra safety logic of its own.
-            if ( ! $is_stale ) {
-                foreach ( self::get_profiles_linked_to_source( $supplier_id ) as $linked_profile_id ) {
-                    MMI_Logger::info(
-                        "Fetch–import link triggered: \"{$linked_profile_id}\" after \"{$supplier_id}\" fetch",
-                        [], 'sync', 'MMI_Pipeline_Cron'
-                    );
-                    self::run_scheduled_profile_import( $linked_profile_id );
-                }
-            }
-
-        } catch ( \Throwable $e ) {
-            MMI_Logger::error( "Scheduled fetch error for \"{$supplier_id}\": " . $e->getMessage(), [], 'sync', 'MMI_Pipeline_Cron' );
-            MMI_DB::add_activity( 'fetch_error', "Data fetch for \"{$supplier_id}\" failed: " . $e->getMessage() );
-            MMI_DB::set_setting( $error_key, [
-                'message' => $e->getMessage(),
-                'time'    => current_time( 'mysql' ),
-                'process' => 'Data Fetch: ' . $supplier_id,
+    private static function fail_source_fetch( string $supplier_id, \Throwable $e ): void {
+        $error_key = 'mmi_pipeline_process_error_source_fetch_' . $supplier_id;
+        MMI_Logger::error( "Scheduled fetch error for \"{$supplier_id}\": " . $e->getMessage(), [], 'sync', 'MMI_Pipeline_Cron' );
+        MMI_DB::add_activity( 'fetch_error', "Data fetch for \"{$supplier_id}\" failed: " . $e->getMessage() );
+        MMI_DB::set_setting( $error_key, [
+            'message' => $e->getMessage(),
+            'time'    => current_time( 'mysql' ),
+            'process' => 'Data Fetch: ' . $supplier_id,
+        ] );
+        if ( self::is_upstream_unavailable_error( $e->getMessage() ) ) {
+            // The supplier's own API is down (HALT mode, connection reset,
+            // 5xx). Nothing on this site can fix that, and the previous feed
+            // file stays in use, so this goes through the grace window
+            // rather than an immediate "action required" email.
+            self::record_upstream_outage( $supplier_id, $e->getMessage() );
+        } else {
+            MMI_DB::delete_setting( self::upstream_outage_key( $supplier_id ) );
+            self::send_failure_alert( 'Data Fetch: ' . $supplier_id, $e->getMessage(), [
+                [ 'label' => 'Source',    'value' => $supplier_id ],
+                [ 'label' => 'Last Feed', 'value' => self::describe_source_feed_age( $supplier_id ) ],
             ] );
-            if ( self::is_upstream_unavailable_error( $e->getMessage() ) ) {
-                // The supplier's own API is down (HALT mode, connection reset,
-                // 5xx). Nothing on this site can fix that, and the previous feed
-                // file stays in use, so this goes through the grace window
-                // rather than an immediate "action required" email.
-                self::record_upstream_outage( $supplier_id, $e->getMessage() );
-            } else {
-                MMI_DB::delete_setting( self::upstream_outage_key( $supplier_id ) );
-                self::send_failure_alert( 'Data Fetch: ' . $supplier_id, $e->getMessage(), [
-                    [ 'label' => 'Source',    'value' => $supplier_id ],
-                    [ 'label' => 'Last Feed', 'value' => self::describe_source_feed_age( $supplier_id ) ],
-                ] );
-            }
-        } finally {
-            MMI_DB::delete_job_state( $lock_key );
         }
     }
 

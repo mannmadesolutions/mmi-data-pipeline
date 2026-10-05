@@ -3498,6 +3498,135 @@ div.wrap div.mmi-header p,
     color: var(--mmi-ms-accent, #2271b1);
 }
 
+/* ===================================
+   FILTER SECTIONS & PILLS
+   Promoted from mmi-reverb-integration (Products tab) on 2026-10-05 so the
+   supplier Catalog tabs (mmi-data-pipeline feed-catalog) share the look.
+     .mmi-filters-section > .mmi-filters-row
+       > .mmi-filter-section > .mmi-filter-section-heading + .mmi-filter-section-body
+         > .mmi-filter-group > .mmi-filter-label + .mmi-filter-pills > .mmi-pill[.active]
+   Long lists use .mmi-multiselect inside a section body. Scoped to
+   .mmi-filters-section: Data Pipeline's Review & Compare and Google Services
+   use some of these class names with their own styles.
+   =================================== */
+.mmi-filters-section {
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+/* Filters Row — stacked sections */
+.mmi-filters-section .mmi-filters-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 12px;
+}
+
+/* Filter section row */
+.mmi-filters-section .mmi-filter-section {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 6px 0;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.mmi-filters-section .mmi-filter-section:last-child {
+    border-bottom: none;
+}
+
+/* Section heading (left column label) */
+.mmi-filters-section .mmi-filter-section-heading {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #a7aaad;
+    white-space: nowrap;
+    width: 118px;
+    min-width: 118px;
+    padding-right: 10px;
+    border-right: 2px solid #e8e8e9;
+    margin-right: 14px;
+    flex-shrink: 0;
+    line-height: 1.3;
+}
+
+/* Section filter controls */
+.mmi-filters-section .mmi-filter-section-body {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+}
+
+/* Pill Filter Group */
+.mmi-filters-section .mmi-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.mmi-filters-section .mmi-filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #50575e;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.mmi-filters-section .mmi-filter-pills {
+    display: flex;
+    gap: 4px;
+}
+
+.mmi-filters-section .mmi-pill {
+    display: inline-block;
+    padding: 4px 11px;
+    border: 1px solid #c3c4c7;
+    border-radius: 20px;
+    background: #fff;
+    color: #2c3338;
+    font-size: 12px;
+    font-weight: 400;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.6;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.mmi-filters-section .mmi-pill:hover {
+    border-color: rgba(69, 133, 44, 0.1);
+    color: #3a3a3a;
+    background: rgba(69, 133, 44, 0.1);
+}
+
+.mmi-filters-section .mmi-pill.active {
+    background: var(--mmi-primary, #45852C);
+    border-color: var(--mmi-primary, #45852C);
+    color: #fff;
+}
+
+.mmi-filters-section .mmi-pill.active:hover {
+    background: var(--mmi-primary, #45852C);
+    border-color: var(--mmi-primary, #45852C);
+    color: #c4c4c4;
+}
+
+/* ── Pill count badge ────────────────────────────────────────────────────── */
+.mmi-filters-section .mmi-pill-count {
+    font-size: 10px;
+    color: #8c8f94;
+    font-weight: 400;
+}
+.mmi-filters-section .mmi-pill.active .mmi-pill-count {
+    color: rgba(255,255,255,0.75);
+}
+
 
 /* ── Buttons with icons: icon and label on one centered line ─────────────────
  * WP core sizes button dashicons for its own 40px buttons (line-height 1.9,

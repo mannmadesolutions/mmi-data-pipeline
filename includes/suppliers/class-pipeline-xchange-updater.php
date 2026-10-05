@@ -113,6 +113,38 @@ class MMI_Pipeline_Xchange_Updater
     }
 
     /**
+     * One feed file per call, for the stepped fetch
+     * (MMI_Pipeline_Cron::run_source_fetch_step()): each file gets its own
+     * short Action Scheduler action, so no single run outlives the 45 s cron
+     * runner the way products + promotions together did. Same 10-minute
+     * freshness skip as run(), per file.
+     *
+     * @param string $part 'products' or 'promotions'.
+     * @return bool True when the file was rewritten.
+     * @throws Exception
+     */
+    public function run_part(string $part): bool
+    {
+        $files = ['products' => 'xchange-products.json', 'promotions' => 'xchange-promotions.json'];
+        if (!isset($files[$part])) {
+            throw new InvalidArgumentException("Unknown XChange feed part '{$part}'.");
+        }
+
+        $file = $this->json_dir . '/' . $files[$part];
+        if (file_exists($file) && time() - filemtime($file) < 600) {
+            $this->log("{$files[$part]} is under 10 minutes old - skipping to avoid rate limit");
+            return false;
+        }
+
+        $data = $this->fetch_with_retry(function () use ($part) {
+            $tok = $this->fetch_timed_token();
+            return $part === 'products' ? $this->fetch_products($tok) : $this->fetch_promotions($tok);
+        }, $part);
+        $this->save_json($data, $files[$part]);
+        return true;
+    }
+
+    /**
      * Fetch with retry logic for rate-limited API calls
      *
      * @param callable $fetchFunction Function to call that returns data

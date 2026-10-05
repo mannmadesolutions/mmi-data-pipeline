@@ -68,7 +68,13 @@ class MMI_Pipeline_SkuPort_Updater {
             ];
 
             foreach ($endpoints as $type => $url) {
+                // HTTPClient only throttles XChange URLs itself.
+                if (class_exists('MMI_API_Throttler')) {
+                    \MMI_API_Throttler::throttle('skuport');
+                }
                 $data = $this->http->getJson($url, [
+                    // Well under the 45 s cron runner even if SkuPort hangs.
+                    'timeout' => 20,
                     'headers' => [
                         'Accept'        => 'application/skuport-v2+json',
                         'Authorization' => 'Basic ' . base64_encode("{$this->creds['username']}:{$this->creds['password']}"),

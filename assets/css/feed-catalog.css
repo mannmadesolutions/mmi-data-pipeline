@@ -1,0 +1,325 @@
+/* Supplier feed catalog (MMI_Pipeline_Feed_Catalog / feed-catalog.js).
+   Shared by the XChange, SkuPort and Plugivery Catalog tabs. */
+
+/* ── Freshness strip ───────────────────────────────────────────────────── */
+.mmi-fc-fresh {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 4px;
+    background: #fff;
+}
+.mmi-fc-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+}
+.mmi-fc-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+.mmi-fc-age {
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-file--fresh .mmi-fc-dot { background: var(--mmi-success, #45852C); }
+.mmi-fc-file--aging .mmi-fc-dot { background: var(--mmi-warning, #dba617); }
+.mmi-fc-file--old .mmi-fc-dot,
+.mmi-fc-file--missing .mmi-fc-dot { background: var(--mmi-error, #d63638); }
+.mmi-fc-file--old .mmi-fc-age,
+.mmi-fc-file--missing .mmi-fc-age { color: var(--mmi-error-text, #721c24); }
+.mmi-fc-fresh-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+.mmi-fc-fetch-state {
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+    text-align: right;
+}
+.mmi-fc-extra {
+    margin-left: 8px;
+}
+.mmi-fc-extra.is-busy {
+    color: var(--mmi-info-text, #1565c0);
+}
+.mmi-fc-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    vertical-align: -2px;
+    border: 2px solid var(--mmi-info-bg, #e3f2fd);
+    border-top-color: var(--mmi-info, #2196f3);
+    border-radius: 50%;
+    animation: mmiSpin 0.8s linear infinite;
+}
+.mmi-fc-error {
+    color: var(--mmi-error-text, #721c24);
+    font-weight: 600;
+}
+
+/* ── Filters: the shared "Filter sections & pills" layout ─────────────── */
+.mmi-fc-filters {
+    margin-bottom: 14px;
+}
+.mmi-fc-filters .mmi-filters-row {
+    margin-bottom: 0;
+}
+.mmi-fc-q {
+    min-width: 280px;
+}
+.mmi-fc-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-facet:empty {
+    display: none;
+}
+.mmi-fc-ms .mmi-ms-menu {
+    min-width: 240px;
+    max-height: 360px;
+}
+.mmi-fc-ms .mmi-ms-option[hidden],
+.mmi-fc-ms .mmi-ms-search[hidden] {
+    display: none;
+}
+
+/* ── Table: as tall as the page size, no inner scroll box. The header row
+   sticks below the admin bar while the page scrolls, so no ancestor may
+   clip overflow — the shared .mmi-process-section does. ──────────────── */
+.mmi-process-section.mmi-fc {
+    overflow: visible;
+}
+.mmi-fc-table-wrap {
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 4px;
+    /* Never pushes the page sideways (e.g. after a column is dragged wide).
+       clip, unlike hidden/auto, isn't a scroll container, so the sticky
+       header still sticks to the page. */
+    overflow-x: clip;
+}
+.mmi-fc-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #fff;
+}
+/* .mmi-fc prefix: outranks the shared `.mmi-page th.sortable` (position:
+   relative), which would otherwise switch the sticky header off. */
+.mmi-fc .mmi-fc-table thead th {
+    position: sticky;
+    top: var(--wp-admin--admin-bar--height, 32px);
+    z-index: 2;
+    padding: 8px 10px;
+    background: var(--mmi-gray-100, #f6f7f7);
+    box-shadow: inset 0 -1px 0 var(--mmi-gray-300, #dcdcde);
+    text-align: left;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Sort arrows: the shared th.sortable / .sorted-asc / .sorted-desc. */
+.mmi-fc-table tbody td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--mmi-gray-200, #f0f0f1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mmi-fc-row {
+    cursor: pointer;
+}
+.mmi-fc-row:hover > td {
+    background: var(--mmi-gray-50, #f9f9f9);
+}
+.mmi-fc-row.is-open > td {
+    background: var(--mmi-info-bg, #e3f2fd);
+}
+.mmi-fc-tbody.mmi-fc-loading {
+    opacity: 0.55;
+    transition: opacity 0.15s;
+}
+.mmi-fc-empty {
+    padding: 24px !important;
+    text-align: center;
+    color: var(--mmi-text-secondary, #646970);
+}
+/* Padding counted inside each column's width: Chromium otherwise adds it
+   (and th.sortable's 24px arrow room) on top of the percentage. */
+.mmi-fc .mmi-fc-table th,
+.mmi-fc .mmi-fc-table td {
+    box-sizing: border-box;
+}
+/* Percent widths so the table always fits its box; Product takes the rest
+   (at least 27% with 11 columns). Long values end in an ellipsis. */
+.mmi-fc-col-sku     { width: 7%; }
+.mmi-fc-col-code    { width: 7%; }
+.mmi-fc-col-product { width: auto; }
+.mmi-fc-col-text    { width: 9%; }
+.mmi-fc-col-money   { width: 6%; }
+.mmi-fc-col-date    { width: 7%; }
+.mmi-fc-col-promo   { width: 8%; }
+.mmi-fc-col-site    { width: 8%; }
+.mmi-fc-td-money {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.mmi-fc-product {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.mmi-fc-thumb {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    object-fit: cover;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 3px;
+}
+.mmi-fc-thumb--none {
+    background: var(--mmi-gray-100, #f0f0f1);
+}
+.mmi-fc-name {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.mmi-fc-name span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mmi-fc-sub {
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-muted {
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc .mmi-fc-pager--top {
+    margin-bottom: 10px;
+}
+.mmi-fc .mmi-fc-pager--bottom {
+    margin-top: 10px;
+}
+/* "Per page" sits next to "Page X of Y"; the page buttons go right. */
+.mmi-fc .mmi-pagination {
+    justify-content: flex-start;
+}
+.mmi-fc .mmi-pagination-size-label {
+    order: 1;
+}
+.mmi-fc .mmi-pagination-controls {
+    order: 2;
+    margin-left: auto;
+}
+
+/* ── Row details ───────────────────────────────────────────────────────── */
+.mmi-fc-detail-row > td {
+    padding: 0 !important;
+    background: #fff;
+    white-space: normal !important;
+}
+.mmi-fc-detail {
+    padding: 16px 20px;
+}
+.mmi-fc-detail-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--mmi-gray-300, #dcdcde);
+}
+.mmi-fc-detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+.mmi-fc-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 14px;
+}
+.mmi-fc-gallery img {
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 4px;
+    background: #fff;
+}
+.mmi-fc-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 20px;
+}
+.mmi-fc-block {
+    margin-bottom: 14px;
+}
+.mmi-fc-block h4 {
+    margin: 0 0 6px;
+}
+.mmi-fc-block img {
+    max-width: 100%;
+    height: auto;
+}
+.mmi-fc-block ul {
+    margin: 0 0 0 18px;
+    list-style: disc;
+}
+.mmi-fc-mini {
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.mmi-fc-mini th,
+.mmi-fc-mini td {
+    padding: 3px 12px 3px 0;
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+}
+.mmi-fc-mini tbody th {
+    white-space: nowrap;
+    color: var(--mmi-text-secondary, #646970);
+    font-weight: 400;
+}
+.mmi-fc-fields {
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mmi-gray-300, #dcdcde);
+}
+.mmi-fc-fields > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--mmi-text-secondary, #646970);
+}
+
+@media (max-width: 960px) {
+    .mmi-fc-columns {
+        grid-template-columns: 1fr;
+    }
+}

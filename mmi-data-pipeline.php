@@ -7,7 +7,7 @@
  *              custom post types and taxonomies — with guided field mapping,
  *              taxonomy mapping, supplier data sources, scheduling and run
  *              reports. CSV, JSON and XML.
- * Version:     2.49.4
+ * Version:     2.52.5
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.49.4' );
+define( 'MMI_PIPELINE_VERSION', '2.52.5' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -318,6 +318,10 @@ add_action( 'plugins_loaded', function () {
     // suite-wide even though they're always present.
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-cron.php';
     MMI_Pipeline_Cron::init();
+
+    // Supplier feed catalogs: the base each supplier plugin's Catalog tab
+    // extends (they register on init when this class exists).
+    require_once MMI_PIPELINE_PATH . 'includes/catalog-browser/class-pipeline-feed-catalog.php';
 
     // Export scheduling/recurrence — structural sibling of the above, export direction.
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-export-cron.php';
