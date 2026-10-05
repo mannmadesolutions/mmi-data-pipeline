@@ -6,7 +6,7 @@
  *              Import (data acquisition, review, import) and Export (scope,
  *              field mapping, run) workflows, taxonomy mapping, supplier data
  *              sources, scheduling, and post-mortem reporting.
- * Version:     2.48.1
+ * Version:     2.49.3
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.48.1' );
+define( 'MMI_PIPELINE_VERSION', '2.49.3' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );

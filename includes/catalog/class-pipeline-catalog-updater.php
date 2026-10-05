@@ -103,6 +103,43 @@ class MMI_Pipeline_Catalog_Updater
     }
 
     /**
+     * Copy _stock_status and _stock from postmeta into WooCommerce's wc_product_meta_lookup
+     * for these products. The raw SQL / update_post_meta() stock writes in this class skip
+     * WC_Product::save(), so the lookup table (which the shop's stock filters, sorting and
+     * other plugins' queries read) kept the old value: 44 products sat "instock" in postmeta
+     * but "outofstock" in the lookup (2026-10-04). Same SQL as WooCommerce's own
+     * wc_update_product_lookup_tables_column(), limited to the given IDs.
+     *
+     * @param int[] $product_ids Product IDs whose stock meta was just written.
+     */
+    protected function sync_stock_lookup(array $product_ids): void
+    {
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $product_ids))));
+        if (!$ids || empty($wpdb->wc_product_meta_lookup)) {
+            return;
+        }
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $in = implode(',', $chunk);
+            $wpdb->query("
+                UPDATE {$wpdb->wc_product_meta_lookup} lookup_table
+                JOIN {$wpdb->postmeta} meta ON lookup_table.product_id = meta.post_id AND meta.meta_key = '_stock_status'
+                SET lookup_table.stock_status = meta.meta_value
+                WHERE lookup_table.product_id IN ({$in})
+                  AND NOT (lookup_table.stock_status <=> meta.meta_value)
+            ");
+            $wpdb->query("
+                UPDATE {$wpdb->wc_product_meta_lookup} lookup_table
+                LEFT JOIN {$wpdb->postmeta} meta1 ON lookup_table.product_id = meta1.post_id AND meta1.meta_key = '_manage_stock'
+                LEFT JOIN {$wpdb->postmeta} meta2 ON lookup_table.product_id = meta2.post_id AND meta2.meta_key = '_stock'
+                SET lookup_table.stock_quantity = meta2.meta_value
+                WHERE meta1.meta_value = 'yes' AND lookup_table.product_id IN ({$in})
+                  AND NOT (lookup_table.stock_quantity <=> CAST(meta2.meta_value AS DECIMAL(19,4)))
+            ");
+        }
+    }
+
+    /**
      * Set product catalog visibility to exclude from search (shop only).
      * WooCommerce visibility: 'visible' = shop+search, 'catalog' = shop only, 'search' = search only, 'hidden' = neither
      *
@@ -606,6 +643,7 @@ class MMI_Pipeline_Catalog_Updater
                 foreach ($ids_back_instock as $pid) {
                     $this->set_catalog_visibility_visible((int) $pid);
                 }
+                $this->sync_stock_lookup($ids_back_instock);
 
                 $this->log("[{$dist}] Marked {$updated} returned products in stock ({$restocked_qty} had no quantity and got " . self::RESTOCK_QUANTITY . "). SKUs: [" . implode(', ', $eligibleSkusBack) . "]");
 
@@ -906,6 +944,7 @@ class MMI_Pipeline_Catalog_Updater
                 update_post_meta($postId, '_stock', '0');
             }
         }
+        $this->sync_stock_lookup(array_merge($product_ids_to_update, $missingStatusIds ?? [], $missingQtyIds ?? []));
         $this->log(__METHOD__ . ": Marked " . count($filtered_skus) . " SKUs as out of stock. SKUs: [" . implode(', ', $filtered_skus) . "]");
 
         // Raw SQL writes above never fire woocommerce_product_set_stock_status,
@@ -1062,6 +1101,8 @@ class MMI_Pipeline_Catalog_Updater
             clean_post_cache( $id ); // Release object-cache entries to free RAM.
             $stats['changed']++;
         }
+
+        $this->sync_stock_lookup( $touched_ids );
 
         if ( $stats['deferred'] ) {
             $this->log( "Canonical rules: time budget reached — {$stats['deferred']} product(s) left for the next run" );
@@ -1446,6 +1487,11 @@ class MMI_Pipeline_Catalog_Updater
             foreach ( $ids_back_instock as $pid ) {
                 $this->set_catalog_visibility_visible( (int) $pid );
             }
+
+            $this->sync_stock_lookup( $wpdb->get_col( "
+                SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+                WHERE meta_key = '{$sku_meta}' AND meta_value IN ({$quoted})
+            " ) );
         }
 
         return ['gone' => count( $skusGone ), 'back' => count( $eligibleBack )];

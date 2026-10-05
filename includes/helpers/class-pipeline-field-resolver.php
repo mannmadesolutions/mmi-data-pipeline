@@ -42,6 +42,36 @@ class MMI_Pipeline_Field_Resolver {
     private static array $hierarchy_settings = [];
 
     /**
+     * Field Mapping's "When a value isn't in Taxonomy Mapping" setting
+     * (tax_unmapped). 'skip' leaves the product's terms as they are, 'match'
+     * assigns an existing term with that ID/slug/name, 'create' also creates
+     * a missing term (the old behavior for every taxonomy).
+     */
+    public const UNMAPPED_SKIP   = 'skip';
+    public const UNMAPPED_MATCH  = 'match';
+    public const UNMAPPED_CREATE = 'create';
+
+    /**
+     * Taxonomies whose values are decided by the Taxonomy Mapping tab (the
+     * Field Mapping panel shows them as "resolved directly by Taxonomy
+     * Mapping"). They default to 'skip': before 2.49.0 an unmapped
+     * Xchange value such as "Software / 3D Audio" was created as a new
+     * category on every import. Same list as panel-field-mapping.php's
+     * $mmi_taxonomy_mapping_only_fields.
+     */
+    public const TAXONOMY_MAPPING_ONLY = [ 'product_brand', 'product_cat' ];
+
+    /**
+     * Effective tax_unmapped setting per taxonomy for the current request,
+     * registered by init_hierarchy_settings() next to the hierarchy
+     * settings. Read by resolve_term_ids_smart(): a term is only ever
+     * created for a taxonomy whose setting is 'create'.
+     *
+     * @var array<string, string>
+     */
+    private static array $unmapped_policies = [];
+
+    /**
      * Per-request cache of MMI_DB::get_tax_mappings() results, keyed by
      * "{supplier}|{wc_taxonomy}" — resolve_taxonomy_via_alias_table() is
      * called once per item during preview/import (potentially thousands of
@@ -89,8 +119,13 @@ class MMI_Pipeline_Field_Resolver {
      */
     public static function init_hierarchy_settings( array $field_mappings ): void {
         self::$hierarchy_settings = [];
+        self::$unmapped_policies  = [];
 
         foreach ( $field_mappings as $field_name => $mapping ) {
+            if ( is_array( $mapping ) && ( $mapping['type'] ?? '' ) === 'taxonomy' ) {
+                $policy_taxonomy = ( strpos( (string) $field_name, 'tax:' ) === 0 ) ? substr( (string) $field_name, 4 ) : (string) $field_name;
+                self::$unmapped_policies[ $policy_taxonomy ] = self::unmapped_term_policy( $policy_taxonomy, $mapping );
+            }
             if ( empty( $mapping['tax_hierarchical'] ) ) {
                 continue;
             }
@@ -109,6 +144,67 @@ class MMI_Pipeline_Field_Resolver {
                 'assign_all_levels' => empty( $mapping['tax_hierarchical_leaf_only'] ),
             ];
         }
+    }
+
+    /**
+     * The tax_unmapped setting of one taxonomy field mapping, with its
+     * default when unset: 'skip' for TAXONOMY_MAPPING_ONLY taxonomies,
+     * 'create' (unchanged behavior) for every other taxonomy.
+     *
+     * @param string $taxonomy Real taxonomy slug (no 'tax:' prefix).
+     * @param array  $mapping  The field's effective mapping.
+     */
+    public static function unmapped_term_policy( string $taxonomy, array $mapping ): string {
+        $policy = (string) ( $mapping['tax_unmapped'] ?? '' );
+        if ( in_array( $policy, [ self::UNMAPPED_SKIP, self::UNMAPPED_MATCH, self::UNMAPPED_CREATE ], true ) ) {
+            return $policy;
+        }
+        return in_array( $taxonomy, self::TAXONOMY_MAPPING_ONLY, true ) ? self::UNMAPPED_SKIP : self::UNMAPPED_CREATE;
+    }
+
+    /**
+     * Whether resolve_term_ids_smart() may create a missing term in this
+     * taxonomy: only when the loaded profile's setting for it is 'create'.
+     * A TAXONOMY_MAPPING_ONLY taxonomy no loaded profile configures is never
+     * created; any other taxonomy keeps the old create-on-miss behavior.
+     */
+    public static function term_creation_allowed( string $taxonomy ): bool {
+        if ( isset( self::$unmapped_policies[ $taxonomy ] ) ) {
+            return self::$unmapped_policies[ $taxonomy ] === self::UNMAPPED_CREATE;
+        }
+        return ! in_array( $taxonomy, self::TAXONOMY_MAPPING_ONLY, true );
+    }
+
+    /**
+     * Term IDs for a taxonomy value that Taxonomy Mapping did not resolve,
+     * following the field's tax_unmapped setting. The one fallback every
+     * import path uses after resolve_taxonomy_via_alias_table() comes back
+     * empty.
+     *
+     * @param string $taxonomy           Real taxonomy slug.
+     * @param array  $mapping            The field's effective mapping.
+     * @param mixed  $raw_value          Mapped (or constant) value.
+     * @param bool   $is_constant        A constant is a term the admin picked
+     *                                   in Field Mapping, so 'skip' still
+     *                                   matches it (never creates it).
+     * @param bool   $explicitly_skipped Taxonomy Mapping marks this value Skip.
+     * @return int[]|null null = leave the product's terms as they are.
+     */
+    public static function resolve_unmapped_term_ids( string $taxonomy, array $mapping, $raw_value, bool $is_constant = false, bool $explicitly_skipped = false ): ?array {
+        if ( $explicitly_skipped || $raw_value === null || $raw_value === '' || $raw_value === [] ) {
+            return null;
+        }
+
+        $policy = self::unmapped_term_policy( $taxonomy, $mapping );
+        if ( $policy === self::UNMAPPED_SKIP ) {
+            if ( ! $is_constant ) {
+                return null;
+            }
+            $policy = self::UNMAPPED_MATCH;
+        }
+
+        $term_ids = self::resolve_term_ids_smart( $taxonomy, $raw_value, $policy === self::UNMAPPED_CREATE );
+        return $term_ids ?: null;
     }
 
     /**
@@ -1196,7 +1292,9 @@ class MMI_Pipeline_Field_Resolver {
      * @return int[] Resolved term ID(s); empty when no alias rows exist for
      *               this supplier+taxonomy or none match the item's value.
      */
-    public static function resolve_taxonomy_via_alias_table( string $supplier, array $item, string $wc_taxonomy, string $profile_id = '' ): array {
+    public static function resolve_taxonomy_via_alias_table( string $supplier, array $item, string $wc_taxonomy, string $profile_id = '', ?bool &$explicitly_skipped = null ): array {
+        $explicitly_skipped = false;
+
         // Per-source Taxonomy Mapping toggle (2026-08-31) — a supplier with
         // this off is treated exactly like one with zero alias rows ever
         // built (empty return, same as the natural "nothing configured"
@@ -1260,6 +1358,8 @@ class MMI_Pipeline_Field_Resolver {
             $term_id = self::$resolved_tax_mapping_cache[ $cache_key2 ];
             if ( $term_id && $term_id > 0 ) {
                 $term_ids[] = $term_id;
+            } elseif ( $term_id === -1 ) {
+                $explicitly_skipped = true;
             }
         }
 
@@ -1343,7 +1443,7 @@ class MMI_Pipeline_Field_Resolver {
             return (int) $existing[0]->term_id;
         }
 
-        if ( ! $create_missing || ! taxonomy_exists( $taxonomy ) ) {
+        if ( ! $create_missing || ! taxonomy_exists( $taxonomy ) || ! self::term_creation_allowed( $taxonomy ) ) {
             return 0;
         }
 
@@ -1399,7 +1499,7 @@ class MMI_Pipeline_Field_Resolver {
             return (int) $by_name->term_id;
         }
 
-        if ( ! $create_missing || ! taxonomy_exists( $taxonomy ) ) {
+        if ( ! $create_missing || ! taxonomy_exists( $taxonomy ) || ! self::term_creation_allowed( $taxonomy ) ) {
             return 0;
         }
 

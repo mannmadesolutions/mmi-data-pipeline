@@ -1304,7 +1304,12 @@
                                         <td>${f.raw_value ? this.escapeHtml(String(f.raw_value)) : '<em class="mmi-value-null">empty</em>'}</td>
                                         <td>${f.mapped
                                             ? `<span class="mmi-tax-resolution mmi-tax-resolution--mapped">✓ ${this.escapeHtml(f.mapped_terms || '')}</span>`
-                                            : '<span class="mmi-tax-resolution mmi-tax-resolution--unmapped">✗ Unmapped</span>'}
+                                            : `<span class="mmi-tax-resolution mmi-tax-resolution--unmapped">✗ Unmapped</span> ${this.escapeHtml(({
+                                                skipped: 'marked Skip: left as is',
+                                                skip:    'left as is',
+                                                match:   'an existing term with this name is used',
+                                                create:  'a new term is created',
+                                            })[f.unmapped_policy] || '')}`}
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -2455,6 +2460,22 @@
             // pending to compare here — treat it the same as no data at all.
             if (fieldData.enabled === false) {
                 return '<span class="mmi-value-null">—</span>';
+            }
+
+            // Not in Taxonomy Mapping and the field is set to leave terms as
+            // they are: the import writes nothing here (class-import-preview.php).
+            if (fieldData.unmapped !== undefined && fieldData.unmapped !== null && fieldData.unmapped !== '') {
+                const keptVal = (fieldData.current === null || fieldData.current === undefined || fieldData.current === '')
+                    ? '<span class="mmi-value-null">none</span>'
+                    : this.escapeHtml(String(fieldData.current));
+                return `
+                    <div class="mmi-field-comparison">
+                        <div class="mmi-field-value">
+                            <div class="mmi-field-val" title="${this.escapeHtml(String(fieldData.unmapped))}: not in Taxonomy Mapping, left as is. Map it in the Taxonomy Mapping tab.">${keptVal}</div>
+                            <span class="mmi-tax-resolution mmi-tax-resolution--unmapped">✗ Unmapped: ${this.escapeHtml(String(fieldData.unmapped))}</span>
+                        </div>
+                    </div>
+                `;
             }
 
             // Build editable source value HTML. The title carries the raw

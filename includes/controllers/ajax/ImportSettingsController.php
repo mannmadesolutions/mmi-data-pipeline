@@ -79,7 +79,7 @@ add_action('wp_ajax_mmi_autosave_field_property', function () {
         'use_constant_value', 'constant_value', 'source', 'file',
         'transform', 'transform_params', 'conditions', 'condition_match_logic', 'condition_fallback_enabled',
         'condition_fallback_value', 'tax_hierarchical', 'tax_hierarchical_leaf_only',
-        'tax_hierarchical_delim', 'type', 'group', 'image_array_mode',
+        'tax_hierarchical_delim', 'tax_unmapped', 'type', 'group', 'image_array_mode',
     ];
     if ( ! in_array( $property, $known_properties, true ) ) {
         wp_send_json_error(['message' => 'Invalid property']);
@@ -242,6 +242,17 @@ add_action('wp_ajax_mmi_autosave_field_property', function () {
             case 'tax_hierarchical':
             case 'tax_hierarchical_leaf_only':
                 $mappings[$field_name][$property] = isset( $value ) ? (bool) $value : false;
+                break;
+
+            case 'tax_unmapped':
+                // "When a value isn't in Taxonomy Mapping" — see
+                // MMI_Pipeline_Field_Resolver::unmapped_term_policy().
+                $unmapped = sanitize_key( (string) $value );
+                if ( in_array( $unmapped, [ MMI_Pipeline_Field_Resolver::UNMAPPED_SKIP, MMI_Pipeline_Field_Resolver::UNMAPPED_MATCH, MMI_Pipeline_Field_Resolver::UNMAPPED_CREATE ], true ) ) {
+                    $mappings[$field_name]['tax_unmapped'] = $unmapped;
+                } else {
+                    unset( $mappings[$field_name]['tax_unmapped'] );
+                }
                 break;
 
             case 'image_array_mode':

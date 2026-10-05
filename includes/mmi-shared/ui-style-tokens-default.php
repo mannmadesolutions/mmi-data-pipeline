@@ -115,4 +115,8 @@ return [
     'statusbar_accent' => '#45852C',
     'statusbar_track' => '#dbe8d5',
     'statusbar_radius' => '6px',
+    'process_actions_gap' => '12px',
+    'process_actions_padding' => '9px 14px',
+    'process_actions_border_color' => '#e0e0e0',
+    'process_actions_justify' => 'flex-start',
 ];

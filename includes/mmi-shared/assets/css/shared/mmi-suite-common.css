@@ -219,9 +219,13 @@ body.mmi-page,
    broad font-family rule (including .mmi-page *, theme admin CSS, or third-party
    plugins) can override WordPress's .dashicons { font: ... dashicons } rule.
    Using .wrap (WP's universal admin content wrapper) + !important ensures all
-   dashicons render correctly on every MMI admin page. */
+   dashicons render correctly on every MMI admin page. body.mmi-page covers what
+   a page appends outside .wrap (mmi-admin's Style Inspector panel, body-level
+   overlays), which `.mmi-page *` otherwise leaves on the text font (empty boxes). */
 .wrap .dashicons,
-.wrap .dashicons::before {
+.wrap .dashicons::before,
+body.mmi-page .dashicons,
+body.mmi-page .dashicons::before {
   font-family: dashicons !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -734,6 +738,25 @@ div.wrap div.mmi-header p,
 
 .mmi-info-card.error h3 {
   color: #c62828;
+}
+
+/* WP core styles every `div.error` as an admin notice (`.notice, div.error`:
+ * white background, 1px grey border, 4px left border, margin 5px 15px 2px,
+ * padding 1px 12px; `.wrap div.error` again), and those outrank
+ * `.mmi-info-card`'s own box model — the error variant rendered with notice
+ * padding and a grey frame, out of line with its warning/success siblings
+ * (found on mmi-rtsm's Diagnostics "How to Interpret Results" grid,
+ * 2026-10-04). `.inline` (required on this markup — AGENTS.md) only stops
+ * core's JS relocation, not this CSS. Same restore as .mmi-stat-box.error. */
+.wrap .mmi-info-card.error,
+.mmi-info-card.error {
+  margin: 20px 0;
+  padding: 20px;
+  border: 0;
+  border-left: 4px solid var(--mmi-error);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  font-size: inherit;
+  line-height: inherit;
 }
 
 /* ===================================
@@ -3289,8 +3312,9 @@ div.wrap div.mmi-header p,
 /* ── Toolbar (promoted 2026-09-20) ────────────────────────────────────────
  * A horizontal row of controls above a table or content area — a run/scan
  * button, a spinner, filter <select>s, a search box. 20+ plugins had their
- * own version of this (`.mmi-dh-toolbar`, `.mmi-process-actions`,
- * `.mmi-supplier-toolbar`, etc. — the September suite-wide audit's largest
+ * own version of this (`.mmi-dh-toolbar`, `.mmi-supplier-toolbar`, etc.;
+ * `.mmi-process-actions` was later promoted separately as a card's top
+ * strip, see Process Actions) — the September suite-wide audit's largest
  * fragmentation finding besides pagination), each a near-identical
  * `display:flex; align-items:center; gap; flex-wrap:wrap` rule. This is the
  * plain, unwrapped version (matching `.mmi-pagination`'s own precedent of
@@ -3864,6 +3888,223 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
     margin: 0 4px;
     flex-shrink: 0;
     align-self: center;
+}
+
+/* ── Process Actions (promoted 2026-10-04) ─────────────────────────────────
+ * The action strip across the top of a card or table: a row of Profile
+ * Buttons (above), groups split by .mmi-psb-divider, with its own padding
+ * and a bottom divider. Moved verbatim from mmi-data-pipeline's
+ * import-pipeline.css (Supplier Data Sources toolbar, Process Logs header)
+ * at the user's request so every plugin can use it; values are tokens
+ * (Style Manager → "Process Actions"). mmi-admin's admin.css carried a
+ * second, different, unused .mmi-process-actions — deleted.
+ *
+ * vs .mmi-toolbar: the toolbar is a plain unbordered row of form controls;
+ * this is a card's top strip. Put it as the first child of a card
+ * (.mmi-flat-card etc.) whose border/radius frame it.
+ *
+ *   <div class="mmi-process-actions">
+ *     <button class="mmi-btn-profile mmi-btn-profile--primary">…</button>
+ *     <span class="mmi-psb-divider" aria-hidden="true"></span>
+ *     <button class="mmi-btn-profile">…</button>
+ *   </div>
+ */
+.mmi-process-actions:not([hidden]):not(.hidden) {
+    display: flex;
+}
+.mmi-process-actions {
+    align-items: center;
+    justify-content: var(--mmi-process-actions-justify, flex-start);
+    gap: var(--mmi-process-actions-gap, 12px);
+    padding: var(--mmi-process-actions-padding, 9px 14px);
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--mmi-process-actions-border-color, #e0e0e0);
+}
+
+/* ── Button style per element type (shared lib 1.45.0, 2026-10-04) ──────────
+ * Style Manager → "Button Styles" picks which shared button family the plain
+ * WordPress `.button`s inside each container render as, suite-wide, without
+ * editing any plugin's markup. Each non-default choice ships as a token and
+ * becomes a body class `mmi-btnstyle-{type}--{style}`
+ * (MMI_UI_Styles::button_style_body_classes(), added by
+ * mmi_shared_assets_body_class()). mmi-admin's Style Inspector toggles the
+ * same classes live, so a style can be tried on a real page first; the
+ * Style Manager preview puts them on its preview pane instead of <body>.
+ *
+ * Element types — keep in step with MMI_UI_Styles::BUTTON_ROLES:
+ *   toolbar .mmi-toolbar · section-header .mmi-section-header ·
+ *   header-actions .mmi-header-actions · modal-footer .mmi-modal-footer
+ * Styles: wp (no rule here: WordPress core), action (.mmi-action-btn look),
+ * profile (.mmi-btn-profile look; .button-primary → --primary,
+ * .button-danger → --danger). .button-link(-delete) is never restyled.
+ *
+ * !important: the families being replaced set their colors with
+ * !important (.mmi-page .button-primary, .mmi-action-btn), so these must too.
+ * Height is left alone so toolbar buttons keep --mmi-control-height.
+ */
+
+/* Action button */
+:is(
+    .mmi-btnstyle-toolbar--action .mmi-toolbar,
+    .mmi-btnstyle-section-header--action .mmi-section-header,
+    .mmi-btnstyle-header-actions--action .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--action .mmi-modal-footer
+) .button:not(.button-link):not(.button-link-delete) {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--action .mmi-toolbar,
+    .mmi-btnstyle-section-header--action .mmi-section-header,
+    .mmi-btnstyle-header-actions--action .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--action .mmi-modal-footer
+) .button:not(.button-primary):not(.button-danger):not(.button-link):not(.button-link-delete) {
+    background: #fff !important;
+    border-color: #c3c4c7 !important;
+    color: var(--mmi-text-primary, #1d2327) !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--action .mmi-toolbar,
+    .mmi-btnstyle-section-header--action .mmi-section-header,
+    .mmi-btnstyle-header-actions--action .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--action .mmi-modal-footer
+) .button:not(.button-primary):not(.button-danger):not(.button-link):not(.button-link-delete):is(:hover, :focus) {
+    background: #f0f9ea !important;
+    border-color: var(--mmi-primary, #45852C) !important;
+    color: var(--mmi-primary-dark, #2d5a1e) !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--action .mmi-toolbar,
+    .mmi-btnstyle-section-header--action .mmi-section-header,
+    .mmi-btnstyle-header-actions--action .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--action .mmi-modal-footer
+) .button.button-danger:not(.button-link):not(.button-link-delete) {
+    background: #fff !important;
+    color: var(--mmi-error, #d63638) !important;
+    border-color: var(--mmi-error, #d63638) !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--action .mmi-toolbar,
+    .mmi-btnstyle-section-header--action .mmi-section-header,
+    .mmi-btnstyle-header-actions--action .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--action .mmi-modal-footer
+) .button.button-danger:not(.button-link):not(.button-link-delete):is(:hover, :focus) {
+    background: var(--mmi-error-bg, #fcf0f1) !important;
+    border-color: #b32d2e !important;
+    color: #b32d2e !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--action .mmi-toolbar,
+    .mmi-btnstyle-section-header--action .mmi-section-header,
+    .mmi-btnstyle-header-actions--action .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--action .mmi-modal-footer
+) .button:not(.button-link):not(.button-link-delete):disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+/* Profile (compact outline) */
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button:not(.button-link):not(.button-link-delete) {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 10px !important;
+    border: 1px solid #c3c4c7 !important;
+    border-radius: 4px !important;
+    background: #fff !important;
+    color: #3c434a !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    line-height: 1.4 !important;
+    white-space: nowrap;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button:not(.button-link):not(.button-link-delete) .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button:not(.button-link):not(.button-link-delete):is(:hover, :focus) {
+    background: #f0f9ea !important;
+    border-color: #45852C !important;
+    color: #2d5a1e !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button.button-primary:not(.button-link):not(.button-link-delete) {
+    border-color: #45852C !important;
+    color: #2d5a1e !important;
+    font-weight: 600;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button.button-primary:not(.button-link):not(.button-link-delete):is(:hover, :focus) {
+    background: #45852C !important;
+    color: #fff !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button.button-danger:not(.button-link):not(.button-link-delete) {
+    color: #8a2424 !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button.button-danger:not(.button-link):not(.button-link-delete):is(:hover, :focus) {
+    background: #fdf0f0 !important;
+    border-color: #b32d2e !important;
+    color: #b32d2e !important;
+}
+:is(
+    .mmi-btnstyle-toolbar--profile .mmi-toolbar,
+    .mmi-btnstyle-section-header--profile .mmi-section-header,
+    .mmi-btnstyle-header-actions--profile .mmi-header-actions,
+    .mmi-btnstyle-modal-footer--profile .mmi-modal-footer
+) .button:not(.button-link):not(.button-link-delete):disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #fff !important;
+    border-color: #c3c4c7 !important;
+    color: #3c434a !important;
 }
 
 /* ── Uniform Table Row System (promoted 2026-09-14) ───────────────────────────

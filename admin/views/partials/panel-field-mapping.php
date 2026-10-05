@@ -947,7 +947,27 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                         <?php
                             endif;
                         endif;
+                        // What an import does with a value that has no Taxonomy
+                        // Mapping row or alias rule. Defaults (no saved setting):
+                        // leave as is for categories/brands, create for every
+                        // other taxonomy — MMI_Pipeline_Field_Resolver::
+                        // unmapped_term_policy().
+                        if ($mapping['type'] === 'taxonomy' && $mmi_tax_slug !== ''):
+                            $mmi_tax_unmapped = MMI_Pipeline_Field_Resolver::unmapped_term_policy($mmi_tax_slug, $mapping);
                         ?>
+                            <div class="mmi-tax-hierarchy-settings mmi-tax-unmapped-setting">
+                                <label class="mmi-field-label" title="A value with no row in the Taxonomy Mapping tab and no alias rule. Unmapped values are listed under Unmapped in the Taxonomy Mapping tab; mapping one there updates the products that have it.">
+                                    When a value isn't in Taxonomy Mapping
+                                    <select class="mmi-tax-unmapped-policy"
+                                            data-field="<?php echo esc_attr($field_name); ?>"
+                                            name="field_mappings[<?php echo esc_attr($field_name); ?>][tax_unmapped]">
+                                        <option value="skip" <?php selected($mmi_tax_unmapped, 'skip'); ?>>Leave the product's terms as they are</option>
+                                        <option value="match" <?php selected($mmi_tax_unmapped, 'match'); ?>>Use an existing term with the same name</option>
+                                        <option value="create" <?php selected($mmi_tax_unmapped, 'create'); ?>>Create a new term</option>
+                                    </select>
+                                </label>
+                            </div>
+                        <?php endif; ?>
                         </td>
                         <?php if (in_array($field_name, $mmi_taxonomy_mapping_only_fields, true)): ?>
                         <td class="col-transform">

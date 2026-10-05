@@ -1003,7 +1003,12 @@
                 $( SELECTORS.RULES_TBODY ).append( buildRuleRow( rule ) );
             } );
             updateRulesBadge();
-            showNotice( 'Alias rules saved', 'success' );
+            showNotice(
+                resp.data.apply_queued
+                    ? 'Alias rules saved. Existing products matched by a rule are being updated in the background.'
+                    : 'Alias rules saved',
+                'success'
+            );
 
             // Re-scan so the main table reflects values now covered by rules.
             scanAllSources( true );
@@ -1797,7 +1802,9 @@
             updateRowNote( $tr );
 
             const applied = resp.data.applied;
-            if ( applied && applied.too_many > 0 ) {
+            if ( applied && applied.too_many > 0 && applied.queued ) {
+                showNotice( `Saved. ${ applied.too_many } existing products have "${ sourceValue }": they are being updated in the background.`, 'success' );
+            } else if ( applied && applied.too_many > 0 ) {
                 showNotice( `Saved. ${ applied.too_many } existing products have "${ sourceValue }": too many to update now. Use Apply All to Existing Products.`, 'error' );
             } else if ( applied && ( applied.updated > 0 || applied.locked > 0 ) ) {
                 const lockedTxt = applied.locked > 0 ? ` ${ applied.locked } skipped (field locked on the product).` : '';
@@ -1913,6 +1920,10 @@
                 wc_term_name:  resp.data.wc_term_name,
             } );
             refreshVariantDisplay( $mainTr );
+            // Products do not record which profile imported them, so a
+            // profile-only mapping is never applied to existing products
+            // (neither on save nor by Apply All).
+            showNotice( `Saved for ${ profileLabel } only. Existing products are not updated by a profile-only mapping; products that profile creates or updates from now on get it.`, 'success' );
         } )
         .fail( function ( xhr ) {
             $variantTr.removeClass( 'is-saving' );

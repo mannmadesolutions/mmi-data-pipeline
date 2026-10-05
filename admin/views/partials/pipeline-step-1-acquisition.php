@@ -178,6 +178,44 @@ $status_badge_map = [
             </div>
         <?php endif; ?>
 
+        <?php
+        // Fetch warnings from the last 24 hours: what the daily digest's
+        // "Completed with Warnings" badge on Data Fetch refers to. A source's
+        // last_fetch_status is overwritten by its next run, so the stale
+        // notice above alone showed nothing by the time the digest arrived.
+        $mmi_fetch_warnings = method_exists( 'MMI_Pipeline_Cron', 'get_recent_fetch_warnings' )
+            ? MMI_Pipeline_Cron::get_recent_fetch_warnings()
+            : [];
+        $mmi_source_names = [];
+        foreach ( $all_sources as $mmi_src ) {
+            $mmi_source_names[ $mmi_src['supplier_id'] ] = $mmi_src['supplier_name'] ?? $mmi_src['supplier_id'];
+        }
+        ?>
+        <?php if ( ! empty( $mmi_fetch_warnings ) ) : ?>
+            <div class="notice notice-warning mmi-fetch-warnings-notice">
+                <p><strong>⚠ Data Fetch warnings in the last 24 hours.</strong>
+                    <?php esc_html_e( 'These are the warnings behind "Completed with Warnings" in the daily digest.', 'mmi-data-pipeline' ); ?></p>
+                <ul class="ul-disc">
+                    <?php foreach ( $mmi_fetch_warnings as $mmi_sid => $mmi_reasons ) : ?>
+                        <?php foreach ( $mmi_reasons as $mmi_reason => $mmi_w ) : ?>
+                            <li>
+                                <strong><?php echo esc_html( $mmi_source_names[ $mmi_sid ] ?? $mmi_sid ); ?></strong>:
+                                <?php
+                                echo esc_html( sprintf(
+                                    /* translators: 1: warning reason, 2: number of runs, 3: time of the latest one */
+                                    _n( '%1$s (%2$d run, at %3$s)', '%1$s (%2$d runs, latest at %3$s)', $mmi_w['count'], 'mmi-data-pipeline' ),
+                                    $mmi_reason,
+                                    $mmi_w['count'],
+                                    wp_date( 'M j, g:i a', $mmi_w['last'] )
+                                ) );
+                                ?>
+                            </li>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
         <?php /* Toolbar + table share one bordered white card, matching
              .mmi-profile-section's exact treatment (see import-settings.css)
              for visual uniformity between the two "cards" areas at the top

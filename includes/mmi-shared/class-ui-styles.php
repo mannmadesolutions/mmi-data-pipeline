@@ -303,6 +303,13 @@ class MMI_UI_Styles {
 				'tooltip_radius'     => array( 'type' => 'spacing', 'label' => 'Corner Radius', 'css_var' => '--mmi-tooltip-radius',     'default' => '6px' ),
 				'tooltip_padding'    => array( 'type' => 'spacing', 'label' => 'Padding',       'css_var' => '--mmi-tooltip-padding',    'default' => '8px' ),
 			),
+			// .mmi-process-actions, promoted from mmi-data-pipeline 2026-10-04 (shared lib 1.44.2).
+			'Process Actions' => array(
+				'process_actions_gap'          => array( 'type' => 'spacing', 'label' => 'Gap',            'css_var' => '--mmi-process-actions-gap',          'default' => '12px' ),
+				'process_actions_padding'      => array( 'type' => 'spacing', 'label' => 'Padding',        'css_var' => '--mmi-process-actions-padding',      'default' => '9px 14px' ),
+				'process_actions_border_color' => array( 'type' => 'color',   'label' => 'Bottom Divider', 'css_var' => '--mmi-process-actions-border-color', 'default' => '#e0e0e0' ),
+				'process_actions_justify'      => array( 'type' => 'select',  'label' => 'Alignment',      'css_var' => '--mmi-process-actions-justify',      'default' => 'flex-start', 'options' => array( 'flex-start' => 'Left', 'center' => 'Center', 'flex-end' => 'Right', 'space-between' => 'Spread' ) ),
+			),
 			// .mmi-statusbar, promoted from mmi-reverb-integration 2026-10-03 (shared lib 1.44.0).
 			'Status Bar'    => array(
 				'statusbar_bg'     => array( 'type' => 'color',   'label' => 'Background',     'css_var' => '--mmi-statusbar-bg',     'default' => '#ffffff' ),
@@ -313,7 +320,72 @@ class MMI_UI_Styles {
 				'statusbar_track'  => array( 'type' => 'color',   'label' => 'Progress Track', 'css_var' => '--mmi-statusbar-track',  'default' => '#dbe8d5' ),
 				'statusbar_radius' => array( 'type' => 'spacing', 'label' => 'Corner Radius',  'css_var' => '--mmi-statusbar-radius', 'default' => '6px' ),
 			),
+			// Which button family the plain `.button`s inside each shared container
+			// render as (shared lib 1.45.0, 2026-10-04). Not CSS values: each
+			// non-default choice becomes a body class, see button_style_body_classes().
+			'Button Styles' => self::button_style_fields(),
 		);
+	}
+
+	/**
+	 * Button families a container's buttons can render as. 'wp' is WordPress
+	 * core's own look (no override); the others restyle `.button` /
+	 * `.button-primary` to match a shared family without touching markup.
+	 * The CSS for each lives in mmi-suite-common.css → "Button style per element type".
+	 */
+	const BUTTON_STYLES = array(
+		'wp'      => 'WordPress',
+		'action'  => 'Action',
+		'profile' => 'Profile',
+	);
+
+	/**
+	 * Containers ("element types") whose buttons follow a Button Styles choice.
+	 * Keep the selectors in step with mmi-suite-common.css → "Button style per
+	 * element type"; mmi-admin's Style Inspector reads this list to find them
+	 * on a live page.
+	 */
+	const BUTTON_ROLES = array(
+		'toolbar'        => array( 'label' => 'Toolbars',               'selector' => '.mmi-toolbar' ),
+		'section-header' => array( 'label' => 'Section headers',        'selector' => '.mmi-section-header' ),
+		'header-actions' => array( 'label' => 'Page header actions',    'selector' => '.mmi-header-actions' ),
+		'modal-footer'   => array( 'label' => 'Modal footers',          'selector' => '.mmi-modal-footer' ),
+	);
+
+	/** Token key for a role's Button Styles choice, e.g. button_style_toolbar. */
+	public static function button_style_token( string $role ): string {
+		return 'button_style_' . str_replace( '-', '_', $role );
+	}
+
+	private static function button_style_fields(): array {
+		$fields = array();
+		foreach ( self::BUTTON_ROLES as $role => $meta ) {
+			$fields[ self::button_style_token( $role ) ] = array(
+				'type'        => 'select',
+				'label'       => $meta['label'],
+				'css_var'     => '--mmi-button-style-' . $role,
+				'default'     => 'wp',
+				'options'     => self::BUTTON_STYLES,
+				'button_role' => $role,
+			);
+		}
+		return $fields;
+	}
+
+	/**
+	 * Body classes for every non-default Button Styles choice in $tokens, e.g.
+	 * `mmi-btnstyle-toolbar--profile`. mmi_shared_assets_body_class() adds these
+	 * for the published tokens on every MMI admin page.
+	 */
+	public static function button_style_body_classes( array $tokens ): array {
+		$classes = array();
+		foreach ( array_keys( self::BUTTON_ROLES ) as $role ) {
+			$style = $tokens[ self::button_style_token( $role ) ] ?? 'wp';
+			if ( 'wp' !== $style && isset( self::BUTTON_STYLES[ $style ] ) ) {
+				$classes[] = 'mmi-btnstyle-' . $role . '--' . $style;
+			}
+		}
+		return $classes;
 	}
 
 	/** Flat key => default, derived from the schema above. */

@@ -475,6 +475,12 @@ jQuery(document).ready(function($) {
         autosaveFieldProperty(fieldName, 'tax_hierarchical_delim', $input.val());
     });
     
+    // Auto-save: "When a value isn't in Taxonomy Mapping" (tax_unmapped)
+    $(document).on('change', '.mmi-tax-unmapped-policy', function() {
+        const $select = $(this);
+        autosaveFieldProperty($select.data('field'), 'tax_unmapped', $select.val());
+    });
+
     // Auto-save: "Only assign the leaf term" toggle
     $(document).on('change', '.mmi-tax-hierarchy-leaf-only', function() {
         const $checkbox = $(this);

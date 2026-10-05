@@ -497,7 +497,8 @@ class MMI_Import_Preview {
                 $raw_value        = MMI_Pipeline_Field_Resolver::resolve_field_value($item, $source_field, $config['transform'] ?? 'none', $transform_params);
             }
 
-            $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table($supplier, $item, $field_name, $profile);
+            $alias_skipped  = false;
+            $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table($supplier, $item, $field_name, $profile, $alias_skipped);
             $tax_obj        = get_taxonomy($field_name);
 
             $result[] = [
@@ -507,6 +508,11 @@ class MMI_Import_Preview {
                 'raw_value'    => $this->normalize_taxonomy_display_value($raw_value),
                 'mapped'       => !empty($alias_term_ids),
                 'mapped_terms' => !empty($alias_term_ids) ? $this->terms_display_from_ids($alias_term_ids, $field_name) : null,
+                // What an import does with it when unmapped — the field's
+                // "When a value isn't in Taxonomy Mapping" setting.
+                'unmapped_policy' => $alias_skipped
+                    ? 'skipped'
+                    : MMI_Pipeline_Field_Resolver::unmapped_term_policy($field_name, is_array($config) ? $config : []),
             ];
         }
 
@@ -1289,8 +1295,9 @@ class MMI_Import_Preview {
             // configured at all (e.g. product_brand), so they must be checked
             // BEFORE the empty-source skip below, otherwise alias-only fields
             // would never appear in the preview at all.
+            $preview_alias_skipped = false;
             $alias_term_ids = $is_taxonomy_field
-                ? MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $item, $field_name, $profile )
+                ? MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $item, $field_name, $profile, $preview_alias_skipped )
                 : [];
             
             $preview_constant_value = MMI_Pipeline_Field_Mapping_Defaults::resolve_constant($field_config, $supplier);
@@ -1342,6 +1349,21 @@ class MMI_Import_Preview {
                     : $this->normalize_taxonomy_display_value( $source_value );
             }
 
+            // A value Taxonomy Mapping does not resolve, on a field set to
+            // leave terms as they are (the default for categories and brands):
+            // the import writes nothing, so show the current value plus an
+            // "Unmapped" note instead of a pending change to the raw value.
+            $tax_unmapped = null;
+            if ( $is_taxonomy_field && empty( $alias_term_ids ) && $preview_constant_value === null
+                && $source_value !== '' && $source_value !== null ) {
+                $preview_taxonomy = ( strpos( $field_name, 'tax:' ) === 0 ) ? substr( $field_name, 4 ) : $field_name;
+                if ( $preview_alias_skipped
+                    || MMI_Pipeline_Field_Resolver::unmapped_term_policy( $preview_taxonomy, $field_config ) === MMI_Pipeline_Field_Resolver::UNMAPPED_SKIP ) {
+                    $tax_unmapped = (string) $source_value;
+                    $source_value = $current_value ?? '';
+                }
+            }
+
             // Whether the REAL import would actually write this field for this
             // supplier — mirrors class-product-import-worker.php's own
             // per-supplier gate exactly, including its default: an absent
@@ -1370,6 +1392,7 @@ class MMI_Import_Preview {
                 // disabled one — import-preview.js already handles that state.
                 'enabled' => $field_enabled && ! $field_locked,
                 'locked'  => $field_locked,
+                'unmapped' => $tax_unmapped,
             ];
         }
         
@@ -1421,7 +1444,15 @@ class MMI_Import_Preview {
             // Taxonomy Mapping alias rows take priority over the raw passthrough,
             // same as the preview-column loop above.
             if ( ( $config['type'] ?? '' ) === 'taxonomy' || taxonomy_exists( $wc_field ) ) {
-                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $item, $wc_field, $profile );
+                $alias_skipped  = false;
+                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $item, $wc_field, $profile, $alias_skipped );
+                $real_taxonomy  = ( strpos( $wc_field, 'tax:' ) === 0 ) ? substr( $wc_field, 4 ) : $wc_field;
+                if ( empty( $alias_term_ids ) && ! empty( $new_value )
+                    && MMI_Pipeline_Field_Mapping_Defaults::resolve_constant( $config, $supplier ) === null
+                    && ( $alias_skipped || MMI_Pipeline_Field_Resolver::unmapped_term_policy( $real_taxonomy, $config ) === MMI_Pipeline_Field_Resolver::UNMAPPED_SKIP ) ) {
+                    // Unmapped and left as is by the import: not a change.
+                    continue;
+                }
                 $new_value      = ! empty( $alias_term_ids )
                     ? $this->terms_display_from_ids( $alias_term_ids, $wc_field )
                     : $this->normalize_taxonomy_display_value( $new_value );

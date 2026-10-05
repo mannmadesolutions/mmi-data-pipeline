@@ -1105,6 +1105,21 @@ class MMI_Pipeline_Cron {
             MMI_Logger::info( "Scheduled fetch skipped for \"{$supplier_id}\" — already running", [], 'sync', 'MMI_Pipeline_Cron' );
             return;
         }
+        // Duplicate-trigger guard. This site has more than one cron runner
+        // (scripts/wp-cron.php plus the RunCloud panel's
+        // `wp cron event run --due-now`, which ignores the doing_cron lock),
+        // so the same due event can fire twice. A second run that starts
+        // just after the first released $lock_key re-reads the feed file the
+        // first run wrote seconds earlier, and the stale check below then
+        // reported "no new data". That was every "Completed with Warnings"
+        // Data Fetch in the 2026-10-05 digest (8 false xchange warnings).
+        $done_key = 'mmi_source_fetch_done_' . $supplier_id;
+        $done_at  = MMI_DB::get_job_state( $done_key );
+        if ( $done_at ) {
+            MMI_Logger::info( "Scheduled fetch skipped for \"{$supplier_id}\" — a fetch already completed at {$done_at} (duplicate cron trigger)", [], 'sync', 'MMI_Pipeline_Cron' );
+            return;
+        }
+
         MMI_DB::set_job_state( $lock_key, current_time( 'mysql' ), 1800 );
 
         $error_key = 'mmi_pipeline_process_error_source_fetch_' . $supplier_id;
@@ -1161,6 +1176,11 @@ class MMI_Pipeline_Cron {
                 'plugivery_full'   => (bool) $plugivery_full,
             ] );
 
+            MMI_DB::set_job_state( $done_key, $timestamp, self::duplicate_fetch_window( $supplier_id ) );
+            if ( $is_stale ) {
+                self::record_fetch_warning( $supplier_id, self::FETCH_WARNING_NO_NEW_DATA );
+            }
+
             if ( $is_stale ) {
                 MMI_Logger::error(
                     "Scheduled fetch for \"{$supplier_id}\" produced NO NEW DATA — its updater is failing or being skipped; the feed file on disk was not rewritten.",
@@ -1173,6 +1193,7 @@ class MMI_Pipeline_Cron {
             self::queue_success_notification( [
                 'label'     => 'Data Fetch: ' . $supplier_id,
                 'status'    => $is_stale ? 'partial' : 'success',
+                'warning'   => $is_stale ? self::FETCH_WARNING_NO_NEW_DATA : '',
                 'queued_at' => $timestamp,
                 'duration'  => self::format_duration( $duration ),
                 'summary'   => [
@@ -2028,6 +2049,7 @@ class MMI_Pipeline_Cron {
         self::queue_success_notification( [
             'label'     => sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ),
             'status'    => $totals['failed'] > 0 ? 'partial' : 'success',
+            'warning'   => $totals['failed'] > 0 ? 'Some items failed' : '',
             'queued_at' => $timestamp,
             'duration'  => self::format_duration( $duration ),
             'summary'   => [
@@ -2103,6 +2125,7 @@ class MMI_Pipeline_Cron {
         self::queue_success_notification( [
             'label'     => 'Catalog Import (Manual)',
             'status'    => $failed > 0 ? 'partial' : 'success',
+            'warning'   => $failed > 0 ? 'Some items failed' : '',
             'queued_at' => $timestamp,
             'duration'  => self::format_duration( $duration ),
             'summary'   => [
@@ -2121,6 +2144,9 @@ class MMI_Pipeline_Cron {
      * @param array $entry {
      *   label:    string   — human-readable process name
      *   status:   string   — 'success' | 'partial'
+     *   warning:  string   — (optional) why a 'partial' run was partial; the
+     *                        digest lists it so "Completed with Warnings"
+     *                        always says what the warnings were
      *   queued_at: string  — MySQL datetime
      *   duration: string   — formatted duration
      *   summary:  array    — [{label, value, highlight?}]
@@ -2687,17 +2713,26 @@ class MMI_Pipeline_Cron {
                     'first_ts' => null,
                     'last_ts'  => null,
                     'stats'    => [],   // stat_label => [ sum, last_value, summable, highlight ]
+                    'warnings' => [],   // reason => [ count, last_ts ]
                 ];
             }
 
             $g = &$groups[ $lbl ];
             $g['runs']++;
 
+            $ts = ! empty( $entry['queued_at'] ) ? strtotime( $entry['queued_at'] ) : null;
+
             if ( ( $entry['status'] ?? 'success' ) === 'partial' ) {
                 $g['status'] = 'partial';
+                // Entries queued before 'warning' existed have no reason.
+                $reason = (string) ( $entry['warning'] ?? '' ) ?: 'Warning';
+                $w      = $g['warnings'][ $reason ] ?? [ 'count' => 0, 'last_ts' => null ];
+                $w['count']++;
+                if ( $ts && ( $w['last_ts'] === null || $ts > $w['last_ts'] ) ) {
+                    $w['last_ts'] = $ts;
+                }
+                $g['warnings'][ $reason ] = $w;
             }
-
-            $ts = ! empty( $entry['queued_at'] ) ? strtotime( $entry['queued_at'] ) : null;
             if ( $ts ) {
                 if ( $g['first_ts'] === null || $ts < $g['first_ts'] ) {
                     $g['first_ts'] = $ts;
@@ -2800,6 +2835,9 @@ class MMI_Pipeline_Cron {
                     $g['runs'] === 1 ? '' : 's',
                     implode( ', ', $stat_bits )
                 );
+                if ( ! empty( $g['warnings'] ) ) {
+                    $lines[] = '    Warnings: ' . self::describe_group_warnings( $g );
+                }
             }
             foreach ( $stale_listeners as $sl ) {
                 $lines[] = sprintf(
@@ -2904,6 +2942,9 @@ class MMI_Pipeline_Cron {
 
                 // Stable banner (only shown when multiple runs produced zero activity)
                 $stable_row = ( $is_stable && $runs > 1 ) ? MMI_Email_Templates::render_stable_banner( 'Catalog Stable &mdash; No Changes Made Across All Runs' ) : '';
+                if ( ! empty( $g['warnings'] ) ) {
+                    $stable_row = self::render_digest_warning_row( self::describe_group_warnings( $g ) ) . $stable_row;
+                }
 
                 // Stat cells — summable stats show their total; snapshot stats show last value.
                 // Total cell count determines which one is last (no trailing border on it).
@@ -2945,10 +2986,14 @@ class MMI_Pipeline_Cron {
             $has_source_stat  = false;
             $stat_label_order = [];
             $any_multi_run    = false;
+            $any_warnings     = false;
             $family_status    = 'success';
             foreach ( $members as $m ) {
                 if ( $m['group']['status'] === 'partial' ) {
                     $family_status = 'partial';
+                }
+                if ( ! empty( $m['group']['warnings'] ) ) {
+                    $any_warnings = true;
                 }
                 if ( $m['group']['runs'] > 1 ) {
                     $any_multi_run = true;
@@ -2973,6 +3018,9 @@ class MMI_Pipeline_Cron {
             if ( $any_multi_run ) {
                 $columns[] = 'Runs Today';
             }
+            if ( $any_warnings ) {
+                $columns[] = 'Warnings';
+            }
 
             $rows = [];
             foreach ( $members as $m ) {
@@ -2995,6 +3043,9 @@ class MMI_Pipeline_Cron {
 
                 if ( $any_multi_run ) {
                     $cells['Runs Today'] = (string) $g['runs'];
+                }
+                if ( $any_warnings ) {
+                    $cells['Warnings'] = ! empty( $g['warnings'] ) ? self::describe_group_warnings( $g ) : '—';
                 }
 
                 $rows[] = [ 'cells' => $cells ];
@@ -3028,6 +3079,89 @@ class MMI_Pipeline_Cron {
 
         wp_mail( $admin_email, $subject, $body, [ 'Content-Type: text/html; charset=UTF-8' ] );
         MMI_Logger::info( "Daily digest sent: {$total_runs} run(s) across {$unique_types} process type(s)", [], 'sync', 'MMI_Pipeline_Cron' );
+    }
+
+    /**
+     * One line naming what a digest group's warnings were, e.g.
+     * "No new data: 8 of 29 runs (last 11:36 am)".
+     */
+    private static function describe_group_warnings( array $g ): string {
+        $parts = [];
+        foreach ( $g['warnings'] as $reason => $w ) {
+            $count = $g['runs'] > 1
+                ? sprintf( '%d of %d runs', $w['count'], $g['runs'] )
+                : '';
+            $last  = $w['last_ts'] ? 'last ' . wp_date( 'g:i a', $w['last_ts'] ) : '';
+            $tail  = implode( ', ', array_filter( [ $count, $last ] ) );
+            $parts[] = $reason . ( $tail !== '' ? " ({$tail})" : '' );
+        }
+        return implode( '; ', $parts );
+    }
+
+    /** Warning line inside a single process card (same shape as the stable banner). */
+    private static function render_digest_warning_row( string $text ): string {
+        return '<tr><td colspan="12" style="padding:6px 12px;font-size:11px;color:' . esc_attr( MMI_Email_Templates::token( 'text_dark' ) ) . ';background:' . esc_attr( MMI_Email_Templates::token( 'bg_panel' ) ) . ';">'
+            . '&#9888; ' . esc_html( $text ) . '</td></tr>';
+    }
+
+    /* ── Fetch warnings (dashboard) ───────────────────────────────────────── */
+
+    /** Reason text for a fetch that left the feed file unchanged. ASCII only (wp_mmi is latin1). */
+    const FETCH_WARNING_NO_NEW_DATA = 'No new data: feed file not rewritten';
+
+    const FETCH_WARNINGS_SETTING = 'mmi_pipeline_recent_fetch_warnings';
+
+    /**
+     * How long after a completed fetch a re-trigger of the same source counts
+     * as a duplicate: 5 minutes, or half the source's interval when shorter.
+     */
+    private static function duplicate_fetch_window( string $supplier_id ): int {
+        $schedule  = wp_get_schedule( 'mmi_pipeline_source_fetch_' . $supplier_id );
+        $schedules = wp_get_schedules();
+        $interval  = ( $schedule && isset( $schedules[ $schedule ]['interval'] ) )
+            ? (int) $schedules[ $schedule ]['interval']
+            : HOUR_IN_SECONDS;
+        return max( 60, min( 5 * MINUTE_IN_SECONDS, intdiv( $interval, 2 ) ) );
+    }
+
+    /**
+     * Keep a 24-hour record of fetch warnings. A source's last_fetch_status
+     * is overwritten by its next run, so without this the dashboard showed
+     * nothing by the time the digest reported "Completed with Warnings".
+     */
+    private static function record_fetch_warning( string $supplier_id, string $reason ): void {
+        $log = MMI_DB::get_setting( self::FETCH_WARNINGS_SETTING, [] );
+        if ( ! is_array( $log ) ) {
+            $log = [];
+        }
+        $log[]  = [ 'source' => $supplier_id, 'at' => time(), 'reason' => $reason ];
+        $cutoff = time() - DAY_IN_SECONDS;
+        $log    = array_values( array_filter( $log, static fn( $w ) => (int) ( $w['at'] ?? 0 ) >= $cutoff ) );
+        MMI_DB::set_setting( self::FETCH_WARNINGS_SETTING, array_slice( $log, -200 ) );
+    }
+
+    /**
+     * Fetch warnings from the last 24 hours, grouped by source then reason.
+     *
+     * @return array<string, array<string, array{count:int, last:int}>>
+     */
+    public static function get_recent_fetch_warnings(): array {
+        $log = MMI_DB::get_setting( self::FETCH_WARNINGS_SETTING, [] );
+        if ( ! is_array( $log ) ) {
+            return [];
+        }
+        $cutoff = time() - DAY_IN_SECONDS;
+        $out    = [];
+        foreach ( $log as $w ) {
+            $at = (int) ( $w['at'] ?? 0 );
+            if ( $at < $cutoff || empty( $w['source'] ) ) {
+                continue;
+            }
+            $reason = (string) ( $w['reason'] ?? 'Warning' );
+            $cur    = $out[ $w['source'] ][ $reason ] ?? [ 'count' => 0, 'last' => 0 ];
+            $out[ $w['source'] ][ $reason ] = [ 'count' => $cur['count'] + 1, 'last' => max( $cur['last'], $at ) ];
+        }
+        return $out;
     }
 
     /* ── Data helpers ─────────────────────────────────────────────────────── */

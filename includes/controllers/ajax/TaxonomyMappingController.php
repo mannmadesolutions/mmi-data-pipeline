@@ -154,6 +154,18 @@ add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
         $applied = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::apply_saved_mapping(
             $supplier, $source_field, $source_value, $wc_taxonomy, $wc_term_id, $own ?: [ $wc_taxonomy ]
         );
+        // More products than the on-save limit: finish in the background
+        // instead of asking for Apply All.
+        if ( $applied['too_many'] > 0 ) {
+            $applied['queued'] = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::schedule_heal( [
+                'mode'         => 'value',
+                'supplier_id'  => $supplier,
+                'source_field' => $source_field,
+                'source_value' => $source_value,
+                'wc_taxonomy'  => $wc_taxonomy,
+                'term_id'      => $wc_term_id,
+            ] );
+        }
         if ( $applied['updated'] > 0 ) {
             mmi_data_pipeline_audit( 'taxonomy.apply', [
                 'object_type' => 'taxonomy_mapping',
@@ -389,7 +401,11 @@ add_action( 'wp_ajax_mmi_save_taxonomy_alias_rules', function () {
     }
     unset( $rule );
 
-    wp_send_json_success( [ 'message' => 'Alias rules saved', 'rules' => $clean ] );
+    // Existing products whose stored value only a rule resolves get the
+    // term in the background (Taxonomy_Mapping_Handler::run_heal()).
+    $queued = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::schedule_heal( [ 'mode' => 'rules' ] );
+
+    wp_send_json_success( [ 'message' => 'Alias rules saved', 'rules' => $clean, 'apply_queued' => $queued ] );
 } );
 
 /* ── Find-or-create a WC term (used by the Alias Rules term picker) ──────── */

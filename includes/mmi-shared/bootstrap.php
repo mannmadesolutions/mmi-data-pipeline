@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.44.0';
+$mmi_shared_lib_this_copy_version = '1.45.1';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -969,6 +969,15 @@ if ( ! function_exists( 'mmi_shared_assets_body_class' ) ) {
 		$page = isset( $_GET['page'] ) ? sanitize_key( $_GET['page'] ) : '';
 		if ( strncmp( $page, 'mmi-', 4 ) === 0 ) {
 			$classes .= ' mmi-page';
+			// Style Manager "Button Styles": one class per element type whose
+			// buttons ship as a non-WordPress family (mmi-suite-common.css →
+			// "Button style per element type").
+			if ( class_exists( 'MMI_UI_Styles' ) && method_exists( 'MMI_UI_Styles', 'button_style_body_classes' ) ) {
+				$btn_classes = MMI_UI_Styles::button_style_body_classes( MMI_UI_Styles::published_tokens() );
+				if ( $btn_classes ) {
+					$classes .= ' ' . implode( ' ', $btn_classes );
+				}
+			}
 		}
 		return $classes;
 	}

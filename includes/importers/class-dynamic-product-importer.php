@@ -743,7 +743,7 @@ class MMI_Dynamic_Product_Importer {
             // profile mapping _virtual's constant '1' against WooCommerce's
             // stored 'yes' otherwise never matches, so every such product
             // gets needlessly re-saved on every scheduled run).
-            $update_result = $this->product_crud->update_product($product_id, $product_data, $field_types);
+            $update_result = $this->product_crud->update_product($product_id, $this->resolve_crud_taxonomy_terms($item, $product_data), $field_types);
             $this->stats['stock_updated'] += $update_result['stock_updated_count'];
             if ($update_result['status'] !== 'unchanged') {
                 $this->stats['updated']++;
@@ -787,7 +787,7 @@ class MMI_Dynamic_Product_Importer {
             }
 
             // Create new product
-            $create_result = $this->product_crud->create_product($product_data);
+            $create_result = $this->product_crud->create_product($this->resolve_crud_taxonomy_terms($item, $product_data));
             $product_id    = $create_result['product_id'];
             $this->stats['stock_updated'] += $create_result['stock_updated_count'];
             if ($product_id) {
@@ -866,6 +866,45 @@ class MMI_Dynamic_Product_Importer {
     /**
      * Map product data using field mappings from database
      */
+    /**
+     * The mapped data Product_CRUD_Manager writes, with product_cat and
+     * product_tag already resolved to term IDs: Taxonomy Mapping first, then
+     * the field's "When a value isn't in Taxonomy Mapping" setting
+     * (MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids()). A value
+     * that resolves to nothing is dropped, so an existing product keeps its
+     * terms and a new one gets WooCommerce's default category.
+     *
+     * Before 2.49.0 the CRUD manager turned the raw value into terms itself
+     * (map_categories(), creating any it could not find) and
+     * apply_taxonomy_mappings() replaced them with the mapped term after
+     * save, leaving an empty "Software / 3D Audio"-style category behind for
+     * every value.
+     *
+     * Returns a copy: $product_data itself still carries the raw value, which
+     * the hash gate and apply_taxonomy_mappings() (stores it as _mmi_src_*,
+     * so a later mapping save can reach the product) both need.
+     */
+    protected function resolve_crud_taxonomy_terms( array $item, array $product_data ): array {
+        foreach ( [ 'product_cat', 'product_tag' ] as $taxonomy ) {
+            if ( ! array_key_exists( $taxonomy, $product_data ) ) {
+                continue;
+            }
+            $mapping = is_array( $this->field_mappings[ $taxonomy ] ?? null ) ? $this->field_mappings[ $taxonomy ] : [];
+            $skipped = false;
+            $term_ids = \MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $this->supplier_name, $item, $taxonomy, $this->profile, $skipped );
+            if ( empty( $term_ids ) ) {
+                $is_constant = \MMI_Pipeline_Field_Mapping_Defaults::resolve_constant( $mapping, $this->supplier_name ) !== null;
+                $term_ids    = \MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids( $taxonomy, $mapping, $product_data[ $taxonomy ], $is_constant, $skipped );
+            }
+            if ( empty( $term_ids ) ) {
+                unset( $product_data[ $taxonomy ] );
+                continue;
+            }
+            $product_data[ $taxonomy ] = array_values( array_unique( array_map( 'intval', $term_ids ) ) );
+        }
+        return $product_data;
+    }
+
     protected function map_product_data($item) {
         $product_data = [];
         
@@ -1309,7 +1348,7 @@ class MMI_Dynamic_Product_Importer {
         }
 
         // Apply standard fields to the parent
-        $this->product_crud->apply_fields_to_product( $product, $parent_data );
+        $this->product_crud->apply_fields_to_product( $product, $this->resolve_crud_taxonomy_terms( $base_item, $parent_data ) );
 
         // Collect all unique variation attribute values across the group
         $var_attr_defs = array_filter(

@@ -345,6 +345,196 @@ class Taxonomy_Mapping_Handler {
         return $out;
     }
 
+    /** Action Scheduler hook for the background pass below. */
+    public const HEAL_HOOK = 'mmi_pipeline_taxmap_heal';
+
+    /** Action Scheduler group, shared with the export batches. */
+    public const HEAL_GROUP = 'mmi-data-pipeline';
+
+    /** Seconds one heal action works before handing the rest to the next. */
+    private const HEAL_BUDGET_SECONDS = 40;
+
+    /**
+     * Queue a background pass that gives existing products the term Taxonomy
+     * Mapping now resolves for their stored source value, for the two cases
+     * saving a mapping row cannot cover itself:
+     *  - mode 'rules': an alias rule was saved. Only values with no saved row
+     *    at any tier (so resolved by a rule, if at all) are applied; a saved
+     *    row was already applied when it was saved.
+     *  - mode 'value': one saved row matched more products than
+     *    apply_saved_mapping()'s on-save limit.
+     * An import leaves an unmapped category unassigned (see
+     * MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids()), so this and
+     * the on-save apply are what file those products once the value is mapped.
+     *
+     * @param array $args ['mode' => 'rules'] or ['mode' => 'value',
+     *                    'supplier_id', 'source_field', 'source_value',
+     *                    'wc_taxonomy', 'term_id'].
+     * @return bool Whether an action is queued (already-queued counts).
+     */
+    public static function schedule_heal( array $args ): bool {
+        if ( ! function_exists( 'as_enqueue_async_action' ) ) {
+            return false;
+        }
+        if ( function_exists( 'as_has_scheduled_action' ) && as_has_scheduled_action( self::HEAL_HOOK, [ $args ], self::HEAL_GROUP ) ) {
+            return true;
+        }
+        $priority = defined( 'MMI_PIPELINE_AS_PRIORITY_BATCH' ) ? MMI_PIPELINE_AS_PRIORITY_BATCH : 10;
+        return (bool) as_enqueue_async_action( self::HEAL_HOOK, [ $args ], self::HEAL_GROUP, false, $priority );
+    }
+
+    /**
+     * Action Scheduler callback for schedule_heal().
+     *
+     * @param array $args See schedule_heal(); 'rules' mode also carries 'cursor'.
+     */
+    public static function run_heal( $args ): void {
+        $args = is_array( $args ) ? $args : [];
+        @set_time_limit( 120 );
+
+        if ( ( $args['mode'] ?? '' ) === 'value' ) {
+            $own = self::own_taxonomies_for( (string) ( $args['supplier_id'] ?? '' ), (string) ( $args['source_field'] ?? '' ) );
+            $out = self::apply_saved_mapping(
+                (string) ( $args['supplier_id'] ?? '' ),
+                (string) ( $args['source_field'] ?? '' ),
+                (string) ( $args['source_value'] ?? '' ),
+                (string) ( $args['wc_taxonomy'] ?? '' ),
+                (int) ( $args['term_id'] ?? 0 ),
+                $own ?: [ (string) ( $args['wc_taxonomy'] ?? '' ) ],
+                PHP_INT_MAX
+            );
+            self::log_heal( 'value', $out, $args );
+            return;
+        }
+
+        if ( ( $args['mode'] ?? '' ) !== 'rules' ) {
+            return;
+        }
+
+        $work   = self::rule_resolved_values();
+        $cursor = max( 0, (int) ( $args['cursor'] ?? 0 ) );
+        $start  = microtime( true );
+        $total  = [ 'updated' => 0, 'already' => 0, 'locked' => 0, 'too_many' => 0 ];
+
+        for ( $i = $cursor, $n = count( $work ); $i < $n; $i++ ) {
+            if ( microtime( true ) - $start > self::HEAL_BUDGET_SECONDS ) {
+                self::log_heal( 'rules', $total, [ 'cursor' => $cursor, 'stopped_at' => $i, 'of' => $n ] );
+                self::schedule_heal( [ 'mode' => 'rules', 'cursor' => $i ] );
+                return;
+            }
+            $w   = $work[ $i ];
+            $out = self::apply_saved_mapping( $w['supplier_id'], $w['source_field'], $w['source_value'], $w['wc_taxonomy'], $w['term_id'], $w['own'], PHP_INT_MAX );
+            foreach ( $total as $k => $v ) {
+                $total[ $k ] = $v + (int) ( $out[ $k ] ?? 0 );
+            }
+        }
+
+        self::log_heal( 'rules', $total, [ 'cursor' => $cursor, 'of' => count( $work ) ] );
+    }
+
+    /**
+     * Every (source, value) that existing products carry in _mmi_src_{field}
+     * and that only an alias rule resolves: no saved row for the value at any
+     * tier, and a rule pointing at a live term. Sorted so a 'rules' pass can
+     * resume from a cursor.
+     *
+     * @return array<int, array{supplier_id:string, source_field:string, source_value:string, wc_taxonomy:string, term_id:int, own:string[]}>
+     */
+    private static function rule_resolved_values(): array {
+        global $wpdb;
+
+        if ( ! class_exists( '\\MMI_Pipeline_Field_Mapping_Defaults' ) ) {
+            return [];
+        }
+
+        $saved = [];
+        foreach ( \MMI_DB::get_tax_mappings() as $row ) {
+            $saved[ $row['supplier_id'] . '|' . $row['source_field'] . '|' . $row['wc_taxonomy'] . '|' . mb_strtolower( (string) $row['source_value'] ) ] = true;
+        }
+
+        $work = [];
+        $seen = [];
+        foreach ( \MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $src ) {
+            $supplier = (string) $src['supplier'];
+            $field    = (string) $src['source_field'];
+            $taxonomy = (string) $src['wc_taxonomy'];
+            $key      = $supplier . '|' . $field . '|' . $taxonomy;
+            if ( isset( $seen[ $key ] ) ) {
+                continue;
+            }
+            $seen[ $key ] = true;
+
+            $values = $wpdb->get_col( $wpdb->prepare(
+                "SELECT DISTINCT m.meta_value FROM {$wpdb->postmeta} m
+                 JOIN {$wpdb->postmeta} s ON s.post_id = m.post_id AND s.meta_key = %s
+                 WHERE m.meta_key = %s AND m.meta_value <> ''
+                 ORDER BY m.meta_value",
+                '_mmi_supplier_sku_' . $supplier,
+                '_mmi_src_' . str_replace( '+', '_', $field )
+            ) );
+
+            $own = self::own_taxonomies_for( $supplier, $field );
+            foreach ( $values as $value ) {
+                $value = (string) $value;
+                $lower = mb_strtolower( $value );
+                if ( isset( $saved[ $supplier . '|' . $field . '|' . $taxonomy . '|' . $lower ] )
+                    || isset( $saved[ '|' . $field . '|' . $taxonomy . '|' . $lower ] ) ) {
+                    continue;
+                }
+                $term_id = \MMI_DB::match_taxmap_alias_rule( $supplier, $field, $value, $taxonomy );
+                if ( $term_id === null || $term_id <= 0 ) {
+                    continue;
+                }
+                $work[] = [
+                    'supplier_id'  => $supplier,
+                    'source_field' => $field,
+                    'source_value' => $value,
+                    'wc_taxonomy'  => $taxonomy,
+                    'term_id'      => (int) $term_id,
+                    'own'          => $own ?: [ $taxonomy ],
+                ];
+            }
+        }
+
+        return $work;
+    }
+
+    /**
+     * Taxonomies a supplier's source field feeds directly, same derivation
+     * as the on-save apply in TaxonomyMappingController.php.
+     *
+     * @return string[]
+     */
+    private static function own_taxonomies_for( string $supplier_id, string $source_field ): array {
+        if ( ! class_exists( '\\MMI_Pipeline_Field_Mapping_Defaults' ) ) {
+            return [];
+        }
+        $own = [];
+        foreach ( \MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $src ) {
+            if ( $src['source_field'] === $source_field && ( $supplier_id === '' || $src['supplier'] === $supplier_id ) ) {
+                $own[] = (string) $src['wc_taxonomy'];
+            }
+        }
+        return array_values( array_unique( $own ) );
+    }
+
+    private static function log_heal( string $mode, array $out, array $context ): void {
+        \MMI_Logger::info(
+            "Taxonomy Mapping background apply ({$mode}): {$out['updated']} updated, {$out['already']} already set, {$out['locked']} locked",
+            array_merge( $out, $context ),
+            'sync',
+            'Taxonomy_Mapping_Handler'
+        );
+        if ( (int) ( $out['updated'] ?? 0 ) > 0 && function_exists( 'mmi_data_pipeline_audit' ) ) {
+            mmi_data_pipeline_audit( 'taxonomy.apply', [
+                'object_type' => 'taxonomy_mapping',
+                'object_id'   => (string) ( $context['supplier_id'] ?? 'rules' ),
+                'outcome'     => 'success',
+                'details'     => [ 'background' => $mode, 'result' => $out ],
+            ] );
+        }
+    }
+
     /**
      * Find a saved mapping that sends a source value to a different taxonomy
      * than the one its field feeds: the Taxonomy Mapping table's per-row
@@ -426,3 +616,5 @@ class Taxonomy_Mapping_Handler {
         return null;
     }
 }
+
+add_action( Taxonomy_Mapping_Handler::HEAL_HOOK, [ Taxonomy_Mapping_Handler::class, 'run_heal' ] );

@@ -296,15 +296,26 @@ class Product_Import_Worker {
                 // (get_tax_mappings()/resolve_tax_mapping()'s $wc_taxonomy), so a
                 // dynamic 'tax:{slug}' field name never matched any alias row here
                 // before this was fixed.
-                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $data, $real_taxonomy, $options['profile'] ?? 'default' );
+                $alias_skipped  = false;
+                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $data, $real_taxonomy, $options['profile'] ?? 'default', $alias_skipped );
+
+                // A value Taxonomy Mapping does not resolve follows the field's
+                // "When a value isn't in Taxonomy Mapping" setting; null leaves
+                // the product's terms as they are (never a new term from the
+                // raw value unless that setting is "Create a new term").
+                $unmapped_ids = empty( $alias_term_ids )
+                    ? MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids( $real_taxonomy, $mapping, $raw_value, $is_constant, $alias_skipped )
+                    : null;
 
                 if ( $is_native_taxonomy ) {
                     if ( ! empty( $alias_term_ids ) ) {
                         self::set_taxonomy_field_ids( $product, $real_taxonomy, $alias_term_ids );
                         $display_value = self::terms_display_from_ids( $alias_term_ids, $real_taxonomy );
+                    } elseif ( $unmapped_ids !== null ) {
+                        self::set_taxonomy_field_ids( $product, $real_taxonomy, $unmapped_ids );
+                        $display_value = self::terms_display_from_ids( $unmapped_ids, $real_taxonomy );
                     } else {
-                        self::set_taxonomy_field( $product, $real_taxonomy, $raw_value );
-                        $display_value = self::normalize_taxonomy_display_value( $raw_value );
+                        $display_value = $old;
                     }
                 } else {
                     // Non-native taxonomies (e.g. "Distribution", any other custom
@@ -314,15 +325,13 @@ class Product_Import_Worker {
                     // apply_non_native_taxonomy_aliases()'s docblock). Queue the
                     // resolved term IDs and apply them once the product is saved,
                     // below.
-                    $term_ids = ! empty( $alias_term_ids )
-                        ? $alias_term_ids
-                        : ( empty( $raw_value ) ? [] : MMI_Pipeline_Field_Resolver::resolve_term_ids_smart( $real_taxonomy, $raw_value, true ) );
+                    $term_ids = ! empty( $alias_term_ids ) ? $alias_term_ids : ( $unmapped_ids ?? [] );
 
                     if ( ! empty( $term_ids ) ) {
                         $pending_non_native_terms[ $real_taxonomy ] = $term_ids;
                         $display_value                              = self::terms_display_from_ids( $term_ids, $real_taxonomy );
                     } else {
-                        $display_value = '';
+                        $display_value = $old;
                     }
                 }
 
@@ -654,7 +663,9 @@ class Product_Import_Worker {
     /**
      * Assign real taxonomy terms to a product for a mapped taxonomy field
      * (product_cat/product_tag), auto-detecting whether each entry is a term
-     * ID, slug, or name via MMI_Pipeline_Field_Resolver::resolve_term_ids_smart() —
+     * ID, slug, or name via MMI_Pipeline_Field_Resolver::resolve_term_ids_smart()
+     * (which only creates a missing term where the field's tax_unmapped
+     * setting is 'create'; update_product() now uses resolve_unmapped_term_ids()) —
      * same resolution the legacy Product_CRUD_Manager::map_categories() path
      * uses. set_category_ids()/set_tag_ids() are WC_Product CRUD props applied
      * via wp_set_object_terms() on $product->save(), so this is safe to call
@@ -733,7 +744,14 @@ class Product_Import_Worker {
                 // $real_taxonomy, not $field_name — see the matching fix/comment
                 // in update_product(); the alias table is keyed by the real
                 // taxonomy slug.
-                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $data, $real_taxonomy, $options['profile'] ?? 'default' );
+                $alias_skipped  = false;
+                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $data, $real_taxonomy, $options['profile'] ?? 'default', $alias_skipped );
+                if ( empty( $alias_term_ids )
+                    && ( $alias_skipped || MMI_Pipeline_Field_Resolver::unmapped_term_policy( $real_taxonomy, $mapping ) === MMI_Pipeline_Field_Resolver::UNMAPPED_SKIP ) ) {
+                    // update_product() leaves these terms as they are, so an
+                    // unmapped value is no reason to save.
+                    continue;
+                }
                 $new_value      = ! empty( $alias_term_ids )
                     ? self::terms_display_from_ids( $alias_term_ids, $real_taxonomy )
                     : self::normalize_taxonomy_display_value( $new_value );
