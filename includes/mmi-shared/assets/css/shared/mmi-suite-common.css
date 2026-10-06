@@ -4302,6 +4302,22 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
     border-right: none;
 }
 
+/* Buttons inside table rows. WordPress 7 core buttons have min-height: 40px
+   and a 38px line-height; .mmi-action-btn's height:auto doesn't undo
+   min-height, so every row holding a button was 40px+ per button. Row
+   buttons take --mmi-table-button-height (28px) instead. The size exclusions
+   sit in :where() so the selector stays (0,2,2): enough to beat
+   .wp-core-ui .button, low enough for plugin size rules to win. */
+.mmi-uniform-table tbody td {
+    --mmi-button-padding: var(--mmi-table-button-padding, 4px 10px);
+}
+.mmi-uniform-table tbody td .button:where(:not(.button-small, .button-large, .button-hero)) {
+    min-height: var(--mmi-table-button-height, 28px);
+    line-height: calc(var(--mmi-table-button-height, 28px) - 2px);
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
 .mmi-uniform-table--hoverable tbody tr:hover {
     background: var(--mmi-table-row-hover-bg);
 }

@@ -208,6 +208,8 @@ class MMI_UI_Styles {
 				'table_border_color'  => array( 'type' => 'color',   'label' => 'Row Border',         'css_var' => '--mmi-table-border-color',   'default' => '#f0f0f0' ),
 				'table_row_hover_bg'  => array( 'type' => 'color',   'label' => 'Row Hover Background', 'css_var' => '--mmi-table-row-hover-bg', 'default' => '#f6f9f2' ),
 				'table_cell_padding'  => array( 'type' => 'spacing', 'label' => 'Cell Padding',       'css_var' => '--mmi-table-cell-padding',   'default' => '9px 12px', 'note' => 'Also used for header cells; body cells currently fall back to 6px 12px until this is shipped.' ),
+				'table_button_height'  => array( 'type' => 'spacing', 'label' => 'Row Button Height',  'css_var' => '--mmi-table-button-height',  'default' => '28px', 'note' => 'Buttons inside table rows; WordPress core buttons are 40px.' ),
+				'table_button_padding' => array( 'type' => 'spacing', 'label' => 'Row Button Padding', 'css_var' => '--mmi-table-button-padding', 'default' => '4px 10px' ),
 			),
 			'Buttons'       => array(
 				'button_padding' => array( 'type' => 'spacing', 'label' => 'Padding', 'css_var' => '--mmi-button-padding', 'default' => '6px 14px' ),
