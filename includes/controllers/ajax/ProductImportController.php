@@ -1061,6 +1061,9 @@ class ProductImportController {
                             'key'      => $item_key !== null && $item_key !== '' ? (string) $item_key : '(unknown)',
                             'title'    => is_string($item_title) ? mb_substr($item_title, 0, 120) : '',
                             'reason'   => mb_substr($e->getMessage(), 0, 300),
+                            // The store product the key matched — lets Run Insights
+                            // say which product the import was updating.
+                            'product_id' => (int) ($import_options['resolved_product_id'] ?? 0),
                         ];
                     }
 

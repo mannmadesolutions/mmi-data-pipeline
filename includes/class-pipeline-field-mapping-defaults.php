@@ -1040,4 +1040,59 @@ class MMI_Pipeline_Field_Mapping_Defaults {
 
         return $result;
     }
+
+    /**
+     * What Taxonomy Mapping lists and scans: get_taxonomy_source_fields() plus
+     * each template source's brand/category fields that no import profile
+     * maps yet (mmi_ds_get_preconfigured_templates()'s taxonomy_fields),
+     * flagged 'suggested' => true.
+     *
+     * Without these, a source only appeared in Taxonomy Mapping after a
+     * profile already imported its brand/category field, so its aliases could
+     * not be set up before that import ran. Kept apart from
+     * get_taxonomy_source_fields() on purpose: that list also drives applying
+     * mappings to existing products, which must stay limited to fields an
+     * import actually writes.
+     *
+     * @return array<int, array{supplier:string, source_field:string, wc_taxonomy:string, label:string, suggested:bool}>
+     */
+    public static function get_taxonomy_mapping_sources(): array {
+        $result = array_map(
+            static fn( array $row ): array => $row + [ 'suggested' => false ],
+            self::get_taxonomy_source_fields()
+        );
+        if ( ! function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_get_preconfigured_templates' ) || ! class_exists( '\\MMI_Pipeline_Admin' ) ) {
+            return $result;
+        }
+
+        $seen = [];
+        foreach ( $result as $row ) {
+            $seen[ $row['supplier'] . '|' . $row['wc_taxonomy'] ] = true;
+        }
+
+        $templates = \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_get_preconfigured_templates();
+        foreach ( \MMI_Pipeline_Admin::get_configured_suppliers() as $supplier_id => $info ) {
+            if ( ! ( $info['taxonomy_mapping_enabled'] ?? true ) ) {
+                continue;
+            }
+            foreach ( (array) ( $templates[ $supplier_id ]['taxonomy_fields'] ?? [] ) as $field ) {
+                // A profile mapping this taxonomy for the source (any field) wins.
+                if ( isset( $seen[ $supplier_id . '|' . $field['wc_taxonomy'] ] ) ) {
+                    continue;
+                }
+                $seen[ $supplier_id . '|' . $field['wc_taxonomy'] ] = true;
+                $tax_obj  = get_taxonomy( $field['wc_taxonomy'] );
+                $result[] = [
+                    'supplier'     => (string) $supplier_id,
+                    'source_field' => (string) $field['source_field'],
+                    'wc_taxonomy'  => (string) $field['wc_taxonomy'],
+                    'label'        => ( $info['supplier_name'] ?? ucfirst( $supplier_id ) ) . ' — '
+                        . ( $tax_obj && $tax_obj->label ? $tax_obj->label : $field['wc_taxonomy'] )
+                        . ' (not imported yet)',
+                    'suggested'    => true,
+                ];
+            }
+        }
+        return $result;
+    }
 }

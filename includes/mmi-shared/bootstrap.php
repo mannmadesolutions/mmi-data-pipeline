@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.45.2';
+$mmi_shared_lib_this_copy_version = '1.46.2';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -223,6 +223,9 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_Guest_Customer_Converter' => 'class-guest-customer-converter.php',
 	'MMI_Plugin_Update_Client' => 'class-plugin-update-client.php',
 	'MMI_Software_Fulfillment' => 'class-software-fulfillment.php',
+	'MMI_Supplier_Promotion' => 'class-supplier-promotion.php',
+	'MMI_Supplier_Admin' => 'class-supplier-admin.php',
+	'MMI_Supplier_Rule_Pack' => 'class-supplier-rule-pack.php',
 	'MMI_Feature_Gate'   => 'class-feature-gate.php',
 	'MMI_License_UI'     => 'class-license-ui.php',
 	'MMI_License_Gate'   => 'class-license-gate.php',

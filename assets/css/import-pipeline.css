@@ -2796,6 +2796,31 @@
     font-weight: 600;
 }
 
+/* Record search (renderSourcePreviewRows() in import-pipeline.js). */
+.mmi-source-preview-search:not(.mmi-is-hidden) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+.mmi-source-preview-search .dashicons { color: var(--mmi-text-secondary, #646970); }
+.mmi-source-preview-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 480px;
+}
+.mmi-source-preview-search-field-label { color: var(--mmi-text-secondary, #646970); }
+.mmi-source-preview-search-field { max-width: 220px; }
+.mmi-upload-preview-table td.mmi-source-preview-hit {
+    background: var(--mmi-warning-bg, #fcf9e8);
+    font-weight: 600;
+}
+.mmi-upload-preview-table td.mmi-source-preview-no-match {
+    padding: 16px;
+    color: var(--mmi-text-secondary, #646970);
+    font-style: italic;
+}
+
 .mmi-source-preview-fetch-status {
     margin-left: 10px;
     font-size: 12px;

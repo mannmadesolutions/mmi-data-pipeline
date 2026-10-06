@@ -14,11 +14,10 @@
 
     const nonce = (window.mmiImportSettings && window.mmiImportSettings.nonce) || '';
 
-    // Preconfigured API integration templates (matches PHP mmi_ds_get_preconfigured_templates)
-    const preconfiguredApiTemplates = {
-        xchange: { label: 'Xchange', supplierName: 'Xchange' },
-        skuport: { label: 'SkuPort',        supplierName: 'SkuPort' },
-    };
+    // Preconfigured API integration templates — localized from PHP
+    // (mmi_ds_preconfigured_templates_for_js()), the one list; this file
+    // used to keep its own copy, which never gained Plugivery.
+    const preconfiguredApiTemplates = (window.mmiImportSettings && window.mmiImportSettings.preconfiguredTemplates) || {};
 
     // Supplier name lookup for preconfigured templates (convenience shorthand)
     const preconfiguredNames = Object.fromEntries(
@@ -41,6 +40,25 @@
         freshnessText: '#mmi-source-preview-freshness-text',
         fetchBtn:      '#mmi-source-preview-fetch-btn',
         fetchStatus:   '#mmi-source-preview-fetch-status',
+        searchWrap:    '.mmi-source-preview-search',
+        searchInput:   '#mmi-source-preview-search-input',
+        searchField:   '#mmi-source-preview-search-field',
+        count:         '#mmi-source-preview-count',
+        head:          '#mmi-source-preview-head',
+        body:          '#mmi-source-preview-body',
+        backBtn:       '#mmi-source-preview-back-btn',
+        backLabel:     '.mmi-source-preview-back-label',
+        hitClass:      'mmi-source-preview-hit',
+    };
+
+    // Source preview search: rows shown without a search, the most matches
+    // rendered at once, how many records are scanned for the field list, and
+    // the typing pause before filtering (client-side only — no request).
+    const SOURCE_PREVIEW_SEARCH = {
+        SAMPLE_SIZE:      15,
+        MAX_RESULTS:      50,
+        FIELD_SCAN_LIMIT: 200,
+        DEBOUNCE_MS:      200,
     };
 
     const SOURCE_PREVIEW_LABELS = {
@@ -55,6 +73,12 @@
         noNewData:    'Fetch returned no new data and this feed is still stale — check the sync log.',
         timedOut:     'Still running after several minutes. Close this and check the Sources table.',
         unavailable:  'Could not reach the server to queue a fetch.',
+        sample:       '(first %shown% of %total% records)',
+        matches:      '(%matches% matching of %total% records%capped%)',
+        capped:       ', showing the first %shown%',
+        noMatches:    'No records match “%query%”%field%.',
+        inField:      ' in %field%',
+        backToRun:    'Back to Run #%id%',
     };
 
     // ─── Endpoint row template ──────────────────────────────────────────────
@@ -201,6 +225,23 @@
             });
             $(document).on('change', '#mmi-source-preview-file-select', function() {
                 self.loadSourcePreviewData($(this).data('supplier'), $(this).val());
+            });
+
+            let sourceSearchTimer = null;
+            $(document).on('input', SOURCE_PREVIEW_SELECTORS.searchInput, function() {
+                clearTimeout(sourceSearchTimer);
+                sourceSearchTimer = setTimeout(() => self.renderSourcePreviewRows(), SOURCE_PREVIEW_SEARCH.DEBOUNCE_MS);
+            });
+            $(document).on('change', SOURCE_PREVIEW_SELECTORS.searchField, function() {
+                self.renderSourcePreviewRows();
+            });
+            $(document).on('click', SOURCE_PREVIEW_SELECTORS.backBtn, function() {
+                const runId = $(this).data('run-id');
+                self.stopSourceFetchPolling();
+                self.closeModal('#mmi-source-preview-modal');
+                if (runId && window.MMIRunInsights) {
+                    window.MMIRunInsights.open(runId);
+                }
             });
 
             // Tab switching
@@ -914,8 +955,27 @@
         // real field names) without ever leaving this tab, and without any
         // new backend reporting endpoint.
 
-        openSourcePreviewModal: function(supplier, supplierName) {
+        /**
+         * @param {string} supplier
+         * @param {string} supplierName
+         * @param {{search?: string, returnRunId?: number}} [opts] search pre-fills
+         *        the record search; returnRunId shows a "Back to Run #N" button
+         *        (set when opened from Run Insights).
+         */
+        openSourcePreviewModal: function(supplier, supplierName, opts) {
             const self = this;
+            opts = opts || {};
+
+            this.sourcePreviewItems    = [];
+            this.sourcePreviewHaystack = null;
+            $(SOURCE_PREVIEW_SELECTORS.searchInput).val(opts.search || '');
+            $(SOURCE_PREVIEW_SELECTORS.searchField).val('');
+            $(SOURCE_PREVIEW_SELECTORS.searchWrap).addClass('mmi-is-hidden');
+            const $back = $(SOURCE_PREVIEW_SELECTORS.backBtn).data('run-id', opts.returnRunId || 0)
+                .toggleClass('mmi-is-hidden', !opts.returnRunId);
+            if (opts.returnRunId) {
+                $back.find(SOURCE_PREVIEW_SELECTORS.backLabel).text(SOURCE_PREVIEW_MESSAGES.backToRun.replace('%id%', opts.returnRunId));
+            }
 
             $('#mmi-source-preview-title').text('Preview: ' + (supplierName || supplier));
             $('#mmi-source-preview-meta').text('');
@@ -995,25 +1055,13 @@
                     return;
                 }
 
-                const sampleSize = 15;
-                const sample = items.slice(0, sampleSize);
-
-                // Column set = union of every sampled record's own top-level
-                // keys (not a deep recursive scan — this is a raw "what does a
-                // record look like" preview, not a field-mapping picker).
-                const columns = [];
-                sample.forEach(function (item) {
-                    if (item && typeof item === 'object') {
-                        Object.keys(item).forEach(function (k) {
-                            if (columns.indexOf(k) === -1) { columns.push(k); }
-                        });
-                    }
-                });
-
-                const preview = renderUploadPreview(columns, sample);
-                $('#mmi-source-preview-head').html(preview.headHtml);
-                $('#mmi-source-preview-body').html(preview.bodyHtml);
-                $('#mmi-source-preview-count').text('(first ' + sample.length + ' of ' + items.length.toLocaleString() + ' records)');
+                // Keep every record (not just the shown sample) so the search
+                // box can find any record in the file.
+                self.sourcePreviewItems    = items;
+                self.sourcePreviewHaystack = null;
+                self.populateSourceSearchFields(items);
+                $(SOURCE_PREVIEW_SELECTORS.searchWrap).removeClass('mmi-is-hidden');
+                self.renderSourcePreviewRows();
                 $('#mmi-source-preview-meta').text(filename);
                 $('#mmi-source-preview-loading').addClass('mmi-is-hidden');
                 $('#mmi-source-preview-wrap').removeClass('mmi-is-hidden');
@@ -1060,6 +1108,111 @@
                 const url   = mtime ? (basePath + '&v=' + mtime) : basePath;
                 $.ajax({ url: url, dataType: 'json', cache: true }).then(renderFrom, onFeedMissing);
             });
+        },
+
+        // ─── Source Preview Search ──────────────────────────────────────
+
+        /** Field picker = top-level keys seen in the first records of the file. */
+        populateSourceSearchFields: function(items) {
+            const $select  = $(SOURCE_PREVIEW_SELECTORS.searchField);
+            const selected = $select.val();
+            const fields   = [];
+            items.slice(0, SOURCE_PREVIEW_SEARCH.FIELD_SCAN_LIMIT).forEach(function (item) {
+                if (item && typeof item === 'object') {
+                    Object.keys(item).forEach(function (k) {
+                        if (fields.indexOf(k) === -1) { fields.push(k); }
+                    });
+                }
+            });
+            $select.find('option:not(:first)').remove();
+            fields.forEach(f => $select.append($('<option>').attr('value', f).text(f)));
+            $select.val(fields.indexOf(selected) !== -1 ? selected : '');
+        },
+
+        /** A record's searchable text for one field, or the whole record. */
+        sourceRecordText: function(item, field) {
+            const val = field ? (item && typeof item === 'object' ? item[field] : undefined) : item;
+            if (val === undefined || val === null) { return ''; }
+            if (typeof val === 'object') {
+                try { return JSON.stringify(val).toLowerCase(); } catch (e) { return ''; }
+            }
+            return String(val).toLowerCase();
+        },
+
+        /**
+         * Render the sample (no search) or the matching records (search).
+         * Exact value matches sort first, so searching a SKU shows that
+         * record before records that merely contain it (1232-2 before 1232-20).
+         */
+        renderSourcePreviewRows: function() {
+            const self  = this;
+            const items = this.sourcePreviewItems || [];
+            const query = String($(SOURCE_PREVIEW_SELECTORS.searchInput).val() || '').trim().toLowerCase();
+            const field = $(SOURCE_PREVIEW_SELECTORS.searchField).val() || '';
+            let rows;
+
+            if (!query) {
+                rows = items.slice(0, SOURCE_PREVIEW_SEARCH.SAMPLE_SIZE);
+                $(SOURCE_PREVIEW_SELECTORS.count).text(SOURCE_PREVIEW_MESSAGES.sample
+                    .replace('%shown%', rows.length).replace('%total%', items.length.toLocaleString()));
+            } else {
+                // Whole-record text is built once per loaded file, on first search.
+                if (!field && !this.sourcePreviewHaystack) {
+                    this.sourcePreviewHaystack = items.map(item => self.sourceRecordText(item, ''));
+                }
+                const exact = [];
+                const partial = [];
+                items.forEach(function (item, i) {
+                    const text = field ? self.sourceRecordText(item, field) : self.sourcePreviewHaystack[i];
+                    if (text.indexOf(query) === -1) { return; }
+                    const values = field ? [text]
+                        : (item && typeof item === 'object' ? Object.keys(item).map(k => self.sourceRecordText(item, k)) : [text]);
+                    (values.indexOf(query) !== -1 ? exact : partial).push(item);
+                });
+                const matches = exact.concat(partial);
+                rows = matches.slice(0, SOURCE_PREVIEW_SEARCH.MAX_RESULTS);
+                $(SOURCE_PREVIEW_SELECTORS.count).text(SOURCE_PREVIEW_MESSAGES.matches
+                    .replace('%matches%', matches.length.toLocaleString())
+                    .replace('%total%', items.length.toLocaleString())
+                    .replace('%capped%', matches.length > rows.length ? SOURCE_PREVIEW_MESSAGES.capped.replace('%shown%', rows.length) : ''));
+            }
+
+            // Column set = union of the shown records' own top-level keys (not
+            // a deep recursive scan — this is a raw "what does a record look
+            // like" preview, not a field-mapping picker).
+            const columns = [];
+            rows.forEach(function (item) {
+                if (item && typeof item === 'object') {
+                    Object.keys(item).forEach(function (k) {
+                        if (columns.indexOf(k) === -1) { columns.push(k); }
+                    });
+                }
+            });
+
+            const preview = renderUploadPreview(columns, rows);
+            $(SOURCE_PREVIEW_SELECTORS.head).html(preview.headHtml);
+
+            if (query && !rows.length) {
+                const msg = SOURCE_PREVIEW_MESSAGES.noMatches
+                    .replace('%query%', query)
+                    .replace('%field%', field ? SOURCE_PREVIEW_MESSAGES.inField.replace('%field%', field) : '');
+                $(SOURCE_PREVIEW_SELECTORS.body).html($('<tr>').append($('<td>').addClass('mmi-source-preview-no-match').text(msg)));
+                return;
+            }
+
+            $(SOURCE_PREVIEW_SELECTORS.body).html(preview.bodyHtml);
+
+            if (query) {
+                const fieldIndex = field ? columns.indexOf(field) : -1;
+                $(SOURCE_PREVIEW_SELECTORS.body).find('tr').each(function () {
+                    $(this).children('td').each(function (i) {
+                        if (fieldIndex !== -1 && i !== fieldIndex) { return; }
+                        if ($(this).text().toLowerCase().indexOf(query) !== -1) {
+                            $(this).addClass(SOURCE_PREVIEW_SELECTORS.hitClass);
+                        }
+                    });
+                });
+            }
         },
 
         // ─── Source Freshness & On-Demand Fetch ─────────────────────────

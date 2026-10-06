@@ -322,7 +322,7 @@
                     return v ? `<span title="${esc(v)}">${esc(String(v).slice(0, 10))}</span>` : '—';
                 case 'promo':
                     return r.promo
-                        ? `${money(r.promo.price, r.currency)} <span class="mmi-badge ${r.promo.state === 'active' ? 'success' : 'info'}" title="${esc(r.promo.name)}: ${esc(r.promo.start)} to ${esc(r.promo.end || 'open')}">${r.promo.state === 'active' ? 'now' : 'from ' + esc(r.promo.start)}</span>`
+                        ? `${money(r.promo.price, r.currency)} <span class="mmi-badge ${r.promo.state === 'active' ? 'success' : 'info'}" title="${esc(r.promo.name ? r.promo.name + ': ' : '')}${esc(r.promo.start || 'now')} to ${esc(r.promo.end || 'open')}">${r.promo.state === 'active' ? 'now' : 'from ' + esc(r.promo.start)}</span>`
                         : '—';
                 case 'site':
                     return r.site_id
@@ -386,15 +386,39 @@
             const imagesNote = d.images_note ? `<p class="mmi-fc-muted">${esc(d.images_note)}</p>` : '';
             const text = d.text.map((t) => `<div class="mmi-fc-block"><h4>${esc(t.label)}</h4>${t.html}</div>`).join('');
             const lists = d.lists.map((l) => `<div class="mmi-fc-block"><h4>${esc(l.label)}</h4><ul>${l.items.map((i) => `<li>${i}</li>`).join('')}</ul></div>`).join('');
-            const promos = d.promos.length
-                ? `<div class="mmi-fc-block"><h4>Promotions</h4><table class="mmi-fc-mini"><thead><tr><th>Promotion</th><th>Promo cost</th><th>Regular</th><th>From</th><th>To</th><th>State</th></tr></thead><tbody>${d.promos.map((p) => `<tr><td>${esc(p.name || '—')}${p.code ? ` <span class="mmi-fc-sub">${esc(p.code)}</span>` : ''}</td><td>${money(p.price)}</td><td>${money(p.regular)}</td><td>${esc(p.start || '')}</td><td>${esc(p.end || '')}</td><td>${esc(p.state || '')}</td></tr>`).join('')}</tbody></table></div>`
-                : '';
+            const promos = this.promosHtml(d.promos);
             const fields = Object.entries(d.fields).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
             const main = text || lists ? `${text}` : '<p class="mmi-fc-muted">No description in this feed.</p>';
             return `<div class="mmi-fc-detail-head"><strong>${esc(d.product)}</strong><span class="mmi-fc-sub">${esc(d.sku)}</span><div class="mmi-fc-detail-actions">${site}</div></div>
                 ${gallery}${imagesNote}
-                <div class="mmi-fc-columns"><div>${main}</div><div>${lists}${promos}</div></div>
+                <div class="mmi-fc-columns"><div>${main}</div><div>${lists}</div></div>
+                ${promos}
                 <details class="mmi-fc-fields"><summary>Every feed field</summary><table class="mmi-fc-mini"><tbody>${fields}</tbody></table></details>`;
+        },
+
+        // Promotions in the shared shape (MMI_Pipeline_Feed_Catalog::promotions()),
+        // full width. A column every promotion leaves empty is left out, so
+        // one table serves every supplier's feed.
+        promosHtml: function (promos) {
+            if (!promos.length) {
+                return '';
+            }
+            const states = { active: ['success', 'Running'], upcoming: ['info', 'Upcoming'], ended: ['', 'Ended'] };
+            const cols = [
+                ['Promotion', (p) => p.name || p.code, (p) => `${esc(p.name)}${p.code ? ` <span class="mmi-fc-sub">${esc(p.code)}</span>` : ''}`],
+                ['State', (p) => p.state, (p) => `<span class="mmi-badge ${states[p.state]?.[0] || ''}">${esc(states[p.state]?.[1] || p.state)}</span>`],
+                ['From', (p) => p.start, (p) => esc(p.start)],
+                ['To', (p) => p.end, (p) => esc(p.end)],
+                ['Promo cost', (p) => p.cost !== null, (p) => money(p.cost)],
+                ['Regular cost', (p) => p.regular_cost !== null, (p) => money(p.regular_cost)],
+                ['Promo MAP', (p) => p.map !== null, (p) => money(p.map)],
+                ['Regular MAP', (p) => p.regular_map !== null, (p) => money(p.regular_map)],
+            ].filter(([, has]) => promos.some(has));
+            const money_col = (label) => /cost|MAP/.test(label) ? ' class="mmi-fc-td-money"' : '';
+            return `<div class="mmi-fc-block mmi-fc-promos"><h4>Promotions</h4><table class="mmi-fc-mini">
+                <thead><tr>${cols.map(([label]) => `<th${money_col(label)}>${label}</th>`).join('')}</tr></thead>
+                <tbody>${promos.map((p) => `<tr>${cols.map(([label, , cell]) => `<td${money_col(label)}>${cell(p)}</td>`).join('')}</tr>`).join('')}</tbody>
+            </table></div>`;
         },
 
         // ── Freshness strip + Fetch now ─────────────────────────────────────

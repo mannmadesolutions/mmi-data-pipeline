@@ -115,6 +115,36 @@ class MMI_Dynamic_Product_Importer {
     protected $failures = [];
 
     /**
+     * Note one failed record for the run's history row (capped at
+     * MAX_FAILURE_DETAILS). product_id is the store product the key matched,
+     * if any, so Run Insights can say which product the import was updating
+     * when it failed; title helps an admin recognise the record.
+     *
+     * @param array      $item The source record (or the first row of a variable group).
+     * @param \Throwable $e
+     * @param string|null $key Overrides the key read from $item (variable groups).
+     */
+    protected function record_failure( $item, \Throwable $e, ?string $key = null ): void {
+        if ( count( $this->failures ) >= self::MAX_FAILURE_DETAILS ) {
+            return;
+        }
+        $item = is_array( $item ) ? $item : [];
+        if ( $key === null ) {
+            $raw = \MMI_Pipeline_Field_Resolver::get_nested_value( $item, $this->primary_key_source );
+            $key = ( $raw !== null && $raw !== '' && is_scalar( $raw ) ) ? (string) $raw : '';
+        }
+        $title = $item['name'] ?? $item['title'] ?? $item['product_name'] ?? '';
+
+        $this->failures[] = array_filter( [
+            'supplier'   => $this->supplier_name,
+            'key'        => $key !== '' ? $key : '(unknown)',
+            'title'      => is_string( $title ) ? mb_substr( $title, 0, 120 ) : '',
+            'reason'     => mb_substr( $e->getMessage(), 0, 300 ),
+            'product_id' => $key !== '' && is_array( $this->resolved_product_ids ) ? (int) ( $this->resolved_product_ids[ $key ] ?? 0 ) : 0,
+        ], static fn( $v ) => $v !== '' && $v !== 0 );
+    }
+
+    /**
      * Log messages
      */
     protected $log_entries = [];
@@ -439,20 +469,16 @@ class MMI_Dynamic_Product_Importer {
                 gc_collect_cycles();
             }
 
+            // \Throwable, not \Exception: a PHP Error (TypeError, ValueError)
+            // on one bad record must skip that record like any other failure,
+            // not escape to run_profile_import_batch()'s batch-level catch,
+            // which stops the rest of this supplier's feed for the run.
             try {
                 $this->process_item($item, $promotions, $index + 1, $total);
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $this->stats['errors']++;
                 $this->log("ERROR processing item {$index}: " . $e->getMessage(), 'error');
-
-                if ( count( $this->failures ) < self::MAX_FAILURE_DETAILS ) {
-                    $item_key = \MMI_Pipeline_Field_Resolver::get_nested_value( $item, $this->primary_key_source );
-                    $this->failures[] = [
-                        'supplier' => $this->supplier_name,
-                        'key'      => ( $item_key !== null && $item_key !== '' ) ? (string) $item_key : '(unknown)',
-                        'reason'   => mb_substr( $e->getMessage(), 0, 300 ),
-                    ];
-                }
+                $this->record_failure( $item, $e );
             }
 
             // Time-budget check — stop this call early regardless of $limit so a
@@ -1226,9 +1252,10 @@ class MMI_Dynamic_Product_Importer {
                 $this->stats['processed']++;
                 try {
                     $this->process_item( $item, $promotions, $index + 1, count( $items ) );
-                } catch ( \Exception $e ) {
+                } catch ( \Throwable $e ) {
                     $this->stats['errors']++;
                     $this->log( 'ERROR: ' . $e->getMessage(), 'error' );
+                    $this->record_failure( $item, $e );
                 }
             }
             return $this->get_results();
@@ -1252,9 +1279,10 @@ class MMI_Dynamic_Product_Importer {
             $this->stats['processed']++;
             try {
                 $this->process_variable_group( $parent_key, $group_items, $promotions, ++$index, $total );
-            } catch ( \Exception $e ) {
+            } catch ( \Throwable $e ) {
                 $this->stats['errors']++;
                 $this->log( "ERROR processing group '{$parent_key}': " . $e->getMessage(), 'error' );
+                $this->record_failure( $group_items[0] ?? [], $e, (string) $parent_key );
             }
         }
 
@@ -1287,9 +1315,10 @@ class MMI_Dynamic_Product_Importer {
                 }
                 $primary_value = (string) \MMI_Pipeline_Field_Resolver::get_nested_value( $item, $this->primary_key_source );
                 $this->process_variable_group( $primary_value, $variants, $promotions, $index + 1, $total, $item );
-            } catch ( \Exception $e ) {
+            } catch ( \Throwable $e ) {
                 $this->stats['errors']++;
                 $this->log( 'ERROR: ' . $e->getMessage(), 'error' );
+                $this->record_failure( $item, $e );
             }
         }
 

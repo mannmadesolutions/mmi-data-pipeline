@@ -958,6 +958,7 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
             <table class="mmi-history-table mmi-uniform-table mmi-uniform-table--hoverable" id="mmi-history-table">
                 <thead>
                     <tr>
+                        <th>ID</th>
                         <th>Date &amp; Time</th>
                         <th>Profile</th>
                         <th>Duration</th>
@@ -1027,8 +1028,16 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
 
                         // ── Date formatting ──────────────────────────────────
                         $display_date = wp_date( 'M j, Y g:i a', strtotime( $entry['started_at'] ) );
+
+                        // Any run with failures or a run-level problem opens
+                        // Run Insights (import-run-insights.js) from its badge.
+                        $has_insights = $err_count > 0 || in_array( $badge_class, [ 'partial', 'error', 'aborted' ], true );
+                        if ( $has_insights ) {
+                            $badge_title = trim( $badge_title . ' Click for details.' );
+                        }
                     ?>
                         <tr data-profile="<?php echo esc_attr( $entry_profile_id ); ?>">
+                            <td><?php echo (int) $entry['id']; ?></td>
                             <td>
                                 <abbr title="<?php echo esc_attr( $entry['started_at'] ); ?>">
                                     <?php echo esc_html( $display_date ); ?>
@@ -1041,10 +1050,17 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
                             <td><?php echo number_format( $entry['skipped'] ?? 0 ); ?></td>
                             <td><?php echo number_format( $entry['errors'] ?? 0 ); ?></td>
                             <td>
+                                <?php if ( $has_insights ) : ?>
+                                <button type="button" class="history-status-badge mmi-badge <?php echo esc_attr( $badge_class ); ?> mmi-run-insights-open"
+                                    data-history-id="<?php echo (int) $entry['id']; ?>" title="<?php echo esc_attr( $badge_title ); ?>">
+                                    <?php echo esc_html( $display_status ); ?> <span class="dashicons dashicons-search" aria-hidden="true"></span>
+                                </button>
+                                <?php else : ?>
                                 <span class="history-status-badge mmi-badge <?php echo esc_attr( $badge_class ); ?>"
                                     <?php if ( $badge_title ) : ?>title="<?php echo esc_attr( $badge_title ); ?>"<?php endif; ?>>
                                     <?php echo esc_html( $display_status ); ?>
                                 </span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

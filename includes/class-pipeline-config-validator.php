@@ -290,9 +290,17 @@ class MMI_Pipeline_Config_Validator {
             return $issues;
         }
 
-        // Case C: field is enabled for one or more suppliers — each one needs
-        // either a per-source constant or a non-empty 'source', or
-        // update_product() will `continue` past it for that supplier.
+        // Case C: field is enabled for one or more suppliers. A supplier with
+        // neither a per-source constant nor a non-empty 'source' is simply
+        // off for this field: update_product() `continue`s past it, and the
+        // wizard shows it unmapped. Owner rule: a field with no source mapped
+        // is disabled, and there is no separate on/off switch to fix. So that
+        // is only an issue for a critical field on a create-capable profile
+        // (new products would miss a title/SKU/price), never a warning to
+        // "review" for an optional field. An 'enabled' => true inherited from
+        // DEFAULTS (a field added after the profile was saved) used to warn
+        // for every assigned supplier the default has no source for
+        // (2026-10-06, _mmi_linux_requirements on New Products).
         $source       = $mapping['source'] ?? null;
         $missing_for  = [];
         $not_found_for = []; // supplier => mapped source string not present in that supplier's actual feed
@@ -329,10 +337,9 @@ class MMI_Pipeline_Config_Validator {
             }
         }
 
-        if ( ! empty( $missing_for ) ) {
-            $severity = ( $is_critical_field && $is_create_capable ) ? 'critical' : 'warning';
+        if ( ! empty( $missing_for ) && $is_critical_field && $is_create_capable ) {
             $issues[] = [
-                'severity' => $severity,
+                'severity' => 'critical',
                 'field'    => $field_name,
                 'message'  => sprintf(
                     "'%s' is enabled for %s but has no source field mapped for %s — values will be left blank/empty.",
@@ -559,7 +566,10 @@ class MMI_Pipeline_Config_Validator {
             return $memo[ $memo_key ] = [];
         }
 
-        $cache_key = 'mmi_pl_fidx_' . md5( $memo_key . '|' . filemtime( $file ) );
+        // 'fidx2': indexes built before every record was scanned (2.53.2) are
+        // missing optional fields; a new key retires them without waiting for a
+        // feed re-fetch.
+        $cache_key = 'mmi_pl_fidx2_' . md5( $memo_key . '|' . filemtime( $file ) );
         $cached    = get_transient( $cache_key );
         if ( is_array( $cached ) ) {
             return $memo[ $memo_key ] = $cached;
@@ -688,11 +698,8 @@ class MMI_Pipeline_Config_Validator {
 
         $records = array_values( $records );
 
-        // Field NAMES only — extract_field_names() samples up to 10 records,
-        // which is fine here for the same reason it's fine in
-        // get_available_fields(): a feed's field shape is consistent across
-        // rows, so this only needs to discover which paths exist, not
-        // collect their values.
+        // Field NAMES only — extract_field_names() scans every record for
+        // which paths exist; this doesn't need their values.
         $candidate_fields = [];
         self::extract_field_names( $records, '', $candidate_fields );
 
@@ -1117,9 +1124,9 @@ class MMI_Pipeline_Config_Validator {
 
         $is_list = array_keys( $node ) === range( 0, count( $node ) - 1 );
         if ( $is_list ) {
-            // Sample the first few records only — a supplier feed's item
-            // shape is consistent across rows; scanning more buys nothing
-            // but slower decoding.
+            // Nested lists (a record's own sub-parts) are sampled — they are
+            // short and their items share a shape. Record lists are not; see
+            // the record-list branch below.
             $items = array_slice( $node, 0, 10 );
 
             // A list reached at the file's own root, or one key below it
@@ -1143,8 +1150,16 @@ class MMI_Pipeline_Config_Validator {
             // upstream — those get discriminator/positional per-item
             // addressing below so each item's fields are individually,
             // reliably selectable.
+            //
+            // Every record is scanned here, not a sample: optional fields
+            // appear in only some records. xchange-web-assets.json has
+            // requirements.linux in 81 of 3,217 records and none of the
+            // first 10, so a 10-record sample left it out of the wizard's
+            // field picker and this validator's index (2026-10-06). Keys
+            // only, so a full 5,000-record feed takes about 0.05 s; both
+            // callers cache the result by file mtime.
             if ( strpos( $prefix, '.' ) === false ) {
-                foreach ( $items as $item ) {
+                foreach ( $node as $item ) {
                     self::extract_field_names( $item, $prefix, $fields, $samples );
                 }
                 return;

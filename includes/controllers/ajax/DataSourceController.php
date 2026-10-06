@@ -633,6 +633,10 @@ add_action('wp_ajax_mmi_add_data_source', function () {
         }
     }
 
+    if ($template_insert !== null) {
+        mmi_ds_complete_template_setup($supplier_id);
+    }
+
     $source = $wpdb->get_row($wpdb->prepare(
         "SELECT * FROM {$table} WHERE supplier_id = %s",
         $supplier_id
@@ -842,6 +846,13 @@ add_action('wp_ajax_mmi_save_data_source', function () {
         $auth_config['header_name'] = sanitize_text_field($auth['header_name'] ?? 'X-API-Key');
     } elseif ($auth_type === 'api_key_query') {
         $auth_config['param_name'] = sanitize_text_field($auth['param_name'] ?? 'api_key');
+    }
+
+    // A template's fixed auth params are not shown in the modal, so nothing
+    // posted can be trusted for them; the template decides.
+    $save_template = mmi_ds_template_for_source(['supplier_id' => $supplier_id, 'configuration' => $configuration]);
+    foreach ((array) ($save_template['auth_params'] ?? []) as $fixed_key => $fixed_value) {
+        $auth_config[$fixed_key] = $fixed_value;
     }
 
     // HMAC specific
@@ -2293,6 +2304,17 @@ function mmi_ds_render_auth_fields_html(string $auth_type, array $fields): strin
  *
  * @return array<string, array>
  */
+/*
+ * Template keys beyond connection/auth (2026-10-06):
+ *   auth_params            — auth settings the integration fixes (not credentials);
+ *                            enforced on setup and save, hidden in the Configure modal.
+ *   distribution_term_slug — Distribution term for the source's products when a
+ *                            profile does not map Distribution itself.
+ *   taxonomy_fields        — the feed fields that hold brand/category, offered in
+ *                            Taxonomy Mapping before any profile maps them.
+ * mmi_ds_complete_template_setup() applies all of them, so a source row created
+ * any way (Add Data Source, a script, an older version) ends up fully set up.
+ */
 function mmi_ds_get_preconfigured_templates(): array {
     return [
 
@@ -2332,6 +2354,11 @@ function mmi_ds_get_preconfigured_templates(): array {
                 ],
             ],
             'data_root_path' => 'products',
+            'distribution_term_slug' => 'x',
+            'taxonomy_fields' => [
+                [ 'source_field' => 'brand',                         'wc_taxonomy' => 'product_brand' ],
+                [ 'source_field' => 'master_category+sub_category', 'wc_taxonomy' => 'product_cat' ],
+            ],
         ],
 
         // ── SkuPort ──────────────────────────────────────────────────────
@@ -2371,6 +2398,10 @@ function mmi_ds_get_preconfigured_templates(): array {
                 ],
             ],
             'data_root_path' => '',
+            'distribution_term_slug' => 's',
+            'taxonomy_fields' => [
+                [ 'source_field' => 'developer', 'wc_taxonomy' => 'product_brand' ],
+            ],
         ],
 
         // ── Plugivery ────────────────────────────────────────────────────
@@ -2389,9 +2420,129 @@ function mmi_ds_get_preconfigured_templates(): array {
             'credential_keys'     => [
                 'api_key' => 'plugivery-api-token',
             ],
+            // The token goes in ?token= (MMI_Pipeline_Plugivery_Updater::request()).
+            // Fixed by the integration, so the Configure modal does not ask for it.
+            'auth_params'    => [
+                'param_name' => 'token',
+            ],
             'endpoints'      => [],
             'data_root_path' => '',
+            'distribution_term_slug' => 'p',
+            'taxonomy_fields' => [
+                [ 'source_field' => 'brand_name', 'wc_taxonomy' => 'product_brand' ],
+                [ 'source_field' => 'cat_name',   'wc_taxonomy' => 'product_cat' ],
+            ],
         ],
 
     ];
 }
+
+/**
+ * The template a data source row was created from, or null for a custom
+ * source. Rows created before preconfigured_template was recorded match by
+ * supplier_id, the same fallback the Configure modal uses.
+ *
+ * @param array $source Row from wp_mmi_data_sources (configuration raw or decoded).
+ */
+function mmi_ds_template_for_source(array $source): ?array {
+    $configuration = is_array($source['configuration'] ?? null)
+        ? $source['configuration']
+        : (json_decode((string) ($source['configuration'] ?? ''), true) ?: []);
+    $name = (string) ($configuration['preconfigured_template'] ?? '') ?: (string) ($source['supplier_id'] ?? '');
+    return mmi_ds_get_preconfigured_templates()[$name] ?? null;
+}
+
+/**
+ * Bring a template source's row up to its template: everything Add Data
+ * Source sets, plus the template's fixed auth params and Distribution term.
+ * Fills what is missing and never overwrites a value the admin set, except
+ * auth_params, which the integration fixes.
+ *
+ * Idempotent. Called after Add Data Source creates a template source, and by
+ * MMI_Pipeline_Migration for rows that already exist (Plugivery was inserted
+ * by a script on 2026-09-25 and never got these).
+ *
+ * @return string[] What was filled in (empty when nothing changed).
+ */
+function mmi_ds_complete_template_setup(string $supplier_id): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'mmi_data_sources';
+
+    $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE supplier_id = %s", $supplier_id), ARRAY_A);
+    $tpl = $row ? mmi_ds_template_for_source($row) : null;
+    if (!$tpl) {
+        return [];
+    }
+
+    $configuration = json_decode((string) ($row['configuration'] ?? ''), true) ?: [];
+    $auth          = json_decode((string) ($row['auth_config'] ?? ''), true) ?: [];
+    $filled        = [];
+    $update        = [];
+
+    if (empty($configuration['preconfigured_template'])) {
+        $configuration['preconfigured_template'] = $tpl['supplier_id'];
+        $update['configuration'] = wp_json_encode($configuration);
+        $filled[] = 'preconfigured_template';
+    }
+
+    $auth_before = $auth;
+    if (empty($auth['type']) || $auth['type'] === 'none') {
+        $auth['type'] = $tpl['auth_type'];
+        $filled[] = 'auth type';
+    }
+    foreach ((array) ($tpl['credential_keys'] ?? []) as $param => $vault_key) {
+        if (empty($auth['credential_keys'][$param])) {
+            $auth['credential_keys'][$param] = $vault_key;
+            $filled[] = "credential key {$param}";
+        }
+    }
+    if (empty($auth['credential_tab'])) {
+        $auth['credential_tab'] = 'Credentials & API Keys';
+    }
+    foreach ((array) ($tpl['auth_params'] ?? []) as $param => $value) {
+        if (($auth[$param] ?? null) !== $value) {
+            $auth[$param] = $value;
+            $filled[] = "auth {$param}";
+        }
+    }
+    if ($auth !== $auth_before) {
+        $update['auth_config'] = wp_json_encode($auth);
+    }
+
+    if (empty($row['distribution_term_slug']) && !empty($tpl['distribution_term_slug'])) {
+        $update['distribution_term_slug'] = $tpl['distribution_term_slug'];
+        $filled[] = 'distribution term ' . $tpl['distribution_term_slug'];
+    }
+
+    if ($update) {
+        $update['updated_at'] = current_time('mysql');
+        $wpdb->update($table, $update, ['supplier_id' => $supplier_id]);
+        \MMI_Logger::info(
+            "Data source {$supplier_id}: completed template setup (" . implode(', ', $filled) . ')',
+            [],
+            'general',
+            'MMI_Data_Source_Setup'
+        );
+    }
+    return $filled;
+}
+
+/**
+ * Template list for the admin JS and the Add Data Source picker — the one
+ * list both read, instead of each keeping its own copy (Plugivery was missing
+ * from both copies, so it could never be added from the UI).
+ *
+ * @return array<string, array{label:string, supplierName:string, fixedAuthKeys:string[]}>
+ */
+function mmi_ds_preconfigured_templates_for_js(): array {
+    $out = [];
+    foreach (mmi_ds_get_preconfigured_templates() as $id => $tpl) {
+        $out[$id] = [
+            'label'         => $tpl['supplier_name'],
+            'supplierName'  => $tpl['supplier_name'],
+            'fixedAuthKeys' => array_keys((array) ($tpl['auth_params'] ?? [])),
+        ];
+    }
+    return $out;
+}
+

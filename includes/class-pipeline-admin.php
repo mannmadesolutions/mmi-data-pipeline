@@ -147,6 +147,23 @@ class MMI_Pipeline_Admin {
         self::enqueue_style( 'mmi-pipeline-settings',
             'assets/css/import-settings.css', [ 'mmi-suite-common' ] );
 
+        /* ── Run Insights + page notices (every tab — main.php renders both) ── */
+
+        // On the Import tab it loads after the pipeline core, so a deep link
+        // (?source_preview=) can open the source preview that core owns.
+        self::enqueue_script( 'mmi-pipeline-run-insights',
+            'assets/js/import-run-insights.js',
+            'import' === $current_tab ? [ 'jquery', 'mmi-modal', 'mmi-escape-html', 'mmi-pipeline-core' ] : [ 'jquery', 'mmi-modal', 'mmi-escape-html' ] );
+        wp_localize_script( 'mmi-pipeline-run-insights', 'mmiRunInsights', [
+            'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+            'nonce'         => wp_create_nonce( 'mmi_pipeline_nonce' ),
+            'importTabUrl'  => admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=import' ),
+            'supplierNames' => array_map(
+                static fn( $source ) => (string) ( $source['supplier_name'] ?? '' ),
+                self::get_configured_suppliers()
+            ),
+        ] );
+
         /* ── Product Workbench tab ─────────────────────────────────────── */
 
         if ( 'workbench' === $current_tab ) {
@@ -413,6 +430,10 @@ class MMI_Pipeline_Admin {
                 'xchange-promotions.json' => 'Promotions',
                 'xchange-web-assets.json' => 'Web Assets (Enrichment)',
             ],
+            'plugivery' => [
+                'plugivery-products.json'   => 'Products',
+                'plugivery-promotions.json' => 'Promotions',
+            ],
         ];
     }
 
@@ -617,6 +638,9 @@ class MMI_Pipeline_Admin {
                 'enabled'      => [ 'class' => 'success', 'label' => 'Active' ],
             ],
             'configuredSuppliers' => $configured_suppliers,
+            // The one integration list (DataSourceController.php) — the JS
+            // used to keep its own copy, which never gained Plugivery.
+            'preconfiguredTemplates' => function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_preconfigured_templates_for_js' ) ? \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_preconfigured_templates_for_js() : [],
             // The same canonical per-supplier file-option map known_supplier_json_files()
             // provides server-side, localized so import-pipeline-sources.js's
             // client-side "add a source without reloading" row-injection path

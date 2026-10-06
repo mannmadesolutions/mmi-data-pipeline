@@ -61,6 +61,7 @@
                     // preconfigured_template key was introduced are also locked.
                     const tpl = config.preconfigured_template ||
                         (preconfiguredNames.hasOwnProperty(supplierId) ? supplierId : '');
+                    self._configTemplate = tpl;
                     const managedByXchange = !!s.managed_by_xchange_plugin;
 
                     // Reset modal tabs: preconfigured → auth tab only; custom → all tabs from Connection
@@ -204,8 +205,11 @@
                     const fmt = file.format || 'json';
                     const isCsvFmt   = (fmt === 'csv' || fmt === 'tsv');
                     const isExcelFmt = (fmt === 'excel' || fmt === 'numbers');
-                    $('#cfg-response-format').val(fmt).trigger('change');
-                    // Manually sync visibility in case trigger doesn't fire during loading
+                    // .val() only, no .trigger('change'): the modal's input/change
+                    // autosave listener caught that event, so merely opening
+                    // Configure saved (and rebuilt) the source's row. The lines
+                    // below do everything the change handler would.
+                    $('#cfg-response-format').val(fmt);
                     $('.mmi-parsing-csv-options').toggle(isCsvFmt);
                     $('.mmi-parsing-excel-options').toggle(isExcelFmt);
                     $('#cfg-format-note-excel').toggle(fmt === 'excel');
@@ -281,6 +285,17 @@
                         if (readOnly) {
                             $('#mmi-auth-fields-container').find('input, select, textarea').prop('disabled', true);
                         }
+
+                        // Settings the integration fixes (e.g. Plugivery's token
+                        // parameter name) are not the admin's to enter: hide them
+                        // and drop [required] so Test Connection is not blocked
+                        // on a field the server ignores (the template wins on save).
+                        const tplInfo = (window.mmiImportSettings && window.mmiImportSettings.preconfiguredTemplates || {})[self._configTemplate] || {};
+                        (tplInfo.fixedAuthKeys || []).forEach(function(key) {
+                            $(`#mmi-auth-fields-container [data-key="${key}"]`)
+                                .prop('required', false)
+                                .closest('.mmi-auth-field').addClass('mmi-is-hidden');
+                        });
                     }
                 },
                 complete: function() {

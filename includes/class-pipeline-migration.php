@@ -38,12 +38,50 @@ class MMI_Pipeline_Migration {
     const FLAG_V3_TAX_MAPPINGS_PROFILE_ID = 'mmi_pipeline_migration_v3_tax_mappings_profile_id_done';
 
     /**
+     * Template setup level applied to existing template data sources. Bump
+     * TEMPLATE_SETUP_VERSION when mmi_ds_get_preconfigured_templates() gains
+     * something existing rows need, and the next admin load applies it.
+     */
+    const FLAG_TEMPLATE_SETUP    = 'mmi_pipeline_template_setup_version';
+    const TEMPLATE_SETUP_VERSION = 1;
+
+    /**
      * Hook into plugins_loaded (priority 20, after MMI_DB is available).
      */
     public static function init(): void {
         add_action( 'plugins_loaded', [ __CLASS__, 'maybe_run' ], 20 );
         add_action( 'plugins_loaded', [ __CLASS__, 'maybe_run_v2_distribution_term' ], 20 );
         add_action( 'plugins_loaded', [ __CLASS__, 'maybe_run_v3_tax_mappings_profile_id' ], 20 );
+        // admin_init, not plugins_loaded: DataSourceController.php (which
+        // defines mmi_ds_complete_template_setup()) loads on plugins_loaded 20.
+        add_action( 'admin_init', [ __CLASS__, 'maybe_complete_template_sources' ] );
+    }
+
+    /**
+     * Run mmi_ds_complete_template_setup() over every existing data source
+     * created from a template. A source added any way other than Add Data
+     * Source (Plugivery was inserted by a script) skipped that setup, and the
+     * v2 Distribution backfill above only ever ran once, before it existed.
+     */
+    public static function maybe_complete_template_sources(): void {
+        if ( (int) MMI_Settings::get( self::FLAG_TEMPLATE_SETUP, 0 ) >= self::TEMPLATE_SETUP_VERSION ) {
+            return;
+        }
+        // DataSourceController.php is namespaced; its functions are not global.
+        if ( ! function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_complete_template_setup' ) ) {
+            return; // Controllers not loaded on this request — try again later.
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'mmi_data_sources';
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+            return;
+        }
+
+        foreach ( (array) $wpdb->get_col( "SELECT supplier_id FROM {$table}" ) as $supplier_id ) {
+            \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_complete_template_setup( (string) $supplier_id );
+        }
+        MMI_Settings::set( self::FLAG_TEMPLATE_SETUP, self::TEMPLATE_SETUP_VERSION );
     }
 
     /**

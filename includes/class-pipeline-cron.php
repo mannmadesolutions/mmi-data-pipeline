@@ -1860,7 +1860,7 @@ class MMI_Pipeline_Cron {
                     'sync',
                     'MMI_Pipeline_Cron'
                 );
-                MMI_DB::append_import_history( [
+                $abandoned_history_id = MMI_DB::append_import_history( [
                     'supplier_id'  => implode( ',', array_keys( $previous_state['per_supplier'] ?? [] ) ),
                     'profile_id'   => $profile_id,
                     'started_at'   => $previous_state['started_at'],
@@ -1890,9 +1890,10 @@ class MMI_Pipeline_Cron {
                 // only emails; without this, main.php's notice banner (which reads this
                 // exact key) never shows anything for an abandoned run.
                 MMI_DB::set_setting( 'mmi_pipeline_process_error_profile_' . $profile_id, [
-                    'message' => $abandoned_message,
-                    'time'    => current_time( 'mysql' ),
-                    'process' => sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ),
+                    'message'    => $abandoned_message,
+                    'time'       => current_time( 'mysql' ),
+                    'process'    => sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ),
+                    'history_id' => (int) $abandoned_history_id,
                 ] );
 
                 // The dead run's batch actions may still be sitting in the Action
@@ -2180,7 +2181,7 @@ class MMI_Pipeline_Cron {
         $timestamp  = current_time( 'mysql' );
         $duration   = max( 0, strtotime( $timestamp ) - strtotime( $started_at ) );
 
-        MMI_DB::append_import_history( [
+        $history_id = MMI_DB::append_import_history( [
             'supplier_id'  => implode( ',', array_keys( $per_supplier ) ),
             'profile_id'   => $profile_id,
             'started_at'   => $started_at,
@@ -2258,10 +2259,16 @@ class MMI_Pipeline_Cron {
         // anywhere on the Data Pipeline page, only a same-day digest email queue
         // entry that could be hours away.
         if ( $totals['failed'] > 0 ) {
+            // history_id + totals let the notice say what actually happened
+            // (most records imported, a few skipped) and open this run's
+            // Run Insights, instead of reading as if the whole import failed.
             MMI_DB::set_setting( 'mmi_pipeline_process_error_profile_' . $profile_id, [
-                'message' => $error_detail !== '' ? $error_detail : "{$totals['failed']} item(s) failed to import",
-                'time'    => $timestamp,
-                'process' => sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ),
+                'message'    => $error_detail !== '' ? $error_detail : "{$totals['failed']} item(s) failed to import",
+                'time'       => $timestamp,
+                'process'    => sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ),
+                'history_id' => (int) $history_id,
+                'partial'    => true,
+                'totals'     => $totals,
             ] );
         } else {
             MMI_DB::delete_setting( 'mmi_pipeline_process_error_profile_' . $profile_id );

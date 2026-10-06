@@ -1178,6 +1178,66 @@ th.sort-active .sort-icon {
     height: 0.85rem;
 }
 
+/* ── Create-term name editor ─────────────────────────────────────────────
+ * Opened by the row's "+" button (openCreateEditor() in taxonomy-mapping.js)
+ * so the name can be fixed (e.g. all-caps feed values) before the term is
+ * created. Replaces the term search input while open. */
+
+.mmi-taxmap-table tr.is-creating-term .mmi-taxmap-term-input {
+    display: none;
+}
+
+.mmi-taxmap-create-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.mmi-taxmap-create-name {
+    width: 100%;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border: 1px solid var(--mmi-primary, #45852C);
+    border-radius: 3px;
+}
+
+.mmi-taxmap-create-name:focus {
+    box-shadow: 0 0 0 1px var(--mmi-primary, #45852C);
+    outline: none;
+}
+
+/* Case buttons are .mmi-taxmap-pill (the source filter pills' style); the
+   active pill marks the casing the name is already in. */
+.mmi-taxmap-create-case {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.mmi-taxmap-create-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.mmi-taxmap-create-hint {
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--mmi-gray-700, #50575e);
+}
+
+.mmi-taxmap-create-hint:empty {
+    display: none;
+}
+
+.mmi-taxmap-create-hint[data-type="existing"] {
+    color: var(--mmi-info-text, #1565c0);
+}
+
+.mmi-taxmap-create-hint[data-type="error"] {
+    color: var(--mmi-error-text, #8a1f1f);
+}
+
 /* ── Responsive adjustments ─────────────────────────────────────────────── */
 
 @media screen and (max-width: 900px) {

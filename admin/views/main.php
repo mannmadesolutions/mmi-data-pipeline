@@ -52,16 +52,10 @@ if ( isset( $_GET['pipeline_tab'] ) && 'duplicates' === $_GET['pipeline_tab'] ) 
 // Every profile is checked (not just whichever one ?profile= happens to name) —
 // a scheduled profile import runs with no browser context at all, so scoping
 // this to only the currently-viewed profile meant a failure notice only ever
-// appeared if a user happened to land on that exact profile's URL. Global
-// process errors (Supplier Fetch, Catalog Import) are always shown.
-$_mmi_profile_error_candidates = [];
-foreach ( array_keys( MMI_DB::get_profiles() ) as $_mmi_err_profile_id ) {
-    $_mmi_profile_error_candidates[] = MMI_DB::get_setting( 'mmi_pipeline_process_error_profile_' . $_mmi_err_profile_id );
-}
-$_mmi_pipeline_errors = array_filter( array_merge( $_mmi_profile_error_candidates, [
-    MMI_DB::get_setting( 'mmi_pipeline_process_error_supplier_fetch' ),
-    MMI_DB::get_setting( 'mmi_pipeline_process_error_catalog_import' ),
-] ), fn( $e ) => ! empty( $e ) && is_array( $e ) );
+// appeared if a user happened to land on that exact profile's URL. Each
+// source's own Data Fetch error is checked too (it was stored per source but
+// never shown). See MMI_Pipeline_Run_Insights::get_page_notices().
+$_mmi_pipeline_errors = class_exists( 'MMI_Pipeline_Run_Insights' ) ? MMI_Pipeline_Run_Insights::get_page_notices() : [];
 
 // Real top-level tab bar: Import / Export. Duplicate Products was a
 // first-class tab of its own (tab-duplicate-products.php) until 2026-09-02,
@@ -146,15 +140,56 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
         <?php MMI_License_UI::render_panel( 'mmi-data-pipeline', 'Data Pipeline' ); ?>
     <?php endif; ?>
 
-    <?php foreach ( $_mmi_pipeline_errors as $_mmi_err ) : ?>
-        <div class="notice notice-error">
+    <?php
+    // Each notice says what happened and offers the tool to investigate it:
+    // a partial import opens Run Insights for that run (which records failed,
+    // why, and which products are involved); a fetch failure opens that
+    // source's preview (file age + Fetch Now). A run where most records
+    // imported is a warning, not an error. Dismiss clears the stored notice;
+    // the next run sets it again if the problem is still there.
+    foreach ( $_mmi_pipeline_errors as $_mmi_err_key => $_mmi_err ) :
+        $_mmi_err_kind    = $_mmi_err['kind'] ?? 'global';
+        $_mmi_err_partial = ! empty( $_mmi_err['partial'] );
+        $_mmi_err_counts  = $_mmi_err['counts'] ?? null;
+        $_mmi_err_time    = ! empty( $_mmi_err['time'] ) ? wp_date( 'M j \a\t g:i a', strtotime( $_mmi_err['time'] ) ) : '';
+        $_mmi_insights_url = ! empty( $_mmi_err['history_id'] )
+            ? admin_url( 'admin.php?' . http_build_query( [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'run_insights' => (int) $_mmi_err['history_id'] ] ) )
+            : '';
+    ?>
+        <div class="notice <?php echo $_mmi_err_partial ? 'notice-warning' : 'notice-error'; ?> mmi-process-notice" data-error-key="<?php echo esc_attr( $_mmi_err_key ); ?>">
             <p>
-                <strong><?php echo esc_html( $_mmi_err['process'] ?? 'Pipeline Process' ); ?> failed</strong>
-                &mdash; <?php echo esc_html( $_mmi_err['message'] ?? 'Unknown error' ); ?>
-                <?php if ( ! empty( $_mmi_err['time'] ) ) : ?>
-                    <em>(<?php echo esc_html( wp_date( 'M j \a\t g:i a', strtotime( $_mmi_err['time'] ) ) ); ?>)</em>
+                <strong><?php echo esc_html( $_mmi_err['process'] ?? 'Pipeline Process' ); ?></strong>
+                <?php if ( $_mmi_err_partial && $_mmi_err_counts ) : ?>
+                    finished, but <?php echo esc_html( number_format( $_mmi_err_counts['errors'] ) ); ?> record<?php echo 1 === $_mmi_err_counts['errors'] ? ' was' : 's were'; ?> skipped because of errors.
+                    Every other record was processed: <?php echo esc_html( number_format( $_mmi_err_counts['imported'] ) ); ?> created,
+                    <?php echo esc_html( number_format( $_mmi_err_counts['updated'] ) ); ?> updated,
+                    <?php echo esc_html( number_format( $_mmi_err_counts['skipped'] ) ); ?> unchanged or skipped.
+                <?php else : ?>
+                    failed &mdash; <?php echo esc_html( $_mmi_err['message'] ?? 'Unknown error' ); ?>
                 <?php endif; ?>
-                &mdash; <a href="<?php echo esc_url( admin_url( 'admin.php?page=mmi-data-pipeline' ) ); ?>">Check Data Pipeline</a>
+                <?php if ( $_mmi_err_time ) : ?>
+                    <em>(<?php echo esc_html( $_mmi_err_time ); ?>)</em>
+                <?php endif; ?>
+            </p>
+            <?php if ( ! empty( $_mmi_err['reasons'] ) ) : ?>
+                <ul class="mmi-process-notice-reasons">
+                    <?php foreach ( $_mmi_err['reasons'] as $_mmi_reason ) : ?>
+                        <li><?php echo esc_html( $_mmi_reason['reason'] ); ?> <span class="mmi-process-notice-count">&times;<?php echo esc_html( number_format( $_mmi_reason['count'] ) ); ?></span></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            <p class="mmi-process-notice-actions">
+                <?php if ( $_mmi_insights_url ) : ?>
+                    <a href="<?php echo esc_url( $_mmi_insights_url ); ?>" class="button button-primary mmi-action-btn mmi-run-insights-open" data-history-id="<?php echo esc_attr( (int) $_mmi_err['history_id'] ); ?>">
+                        <span class="dashicons dashicons-search"></span> Investigate <?php echo $_mmi_err_partial ? 'failed records' : 'this run'; ?>
+                    </a>
+                <?php elseif ( 'fetch' === $_mmi_err_kind ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?' . http_build_query( [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'source_preview' => $_mmi_err['supplier_id'] ] ) ) ); ?>"
+                       class="button button-primary mmi-action-btn mmi-source-preview-open" data-supplier="<?php echo esc_attr( $_mmi_err['supplier_id'] ); ?>" data-supplier-name="<?php echo esc_attr( $_mmi_err['supplier_name'] ); ?>">
+                        <span class="dashicons dashicons-visibility"></span> Check source data
+                    </a>
+                <?php endif; ?>
+                <button type="button" class="button mmi-action-btn mmi-process-notice-dismiss" data-error-key="<?php echo esc_attr( $_mmi_err_key ); ?>">Dismiss</button>
             </p>
         </div>
     <?php endforeach; ?>
@@ -185,4 +220,6 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
             break;
     }
     ?>
+
+    <?php include __DIR__ . '/partials/modal-run-insights.php'; ?>
 </div><!-- .wrap -->

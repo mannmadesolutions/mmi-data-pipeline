@@ -901,7 +901,9 @@ function mmi_taxmap_get_raw_source_scan( bool $force_refresh ): array {
     // get_taxonomy_source_fields()'s own docblock and the 2026-08-30 taxonomy/
     // data-source integration work in AGENTS.md for why this replaced the
     // previous hardcoded array.
-    $scan_profiles = MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields();
+    // get_taxonomy_mapping_sources(): also scans a template source's
+    // brand/category fields before any profile imports them.
+    $scan_profiles = MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources();
     $file_map      = mmi_taxmap_build_supplier_file_map();
 
     // Cache JSON file reads — each file is loaded at most once

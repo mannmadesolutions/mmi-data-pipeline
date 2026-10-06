@@ -7,7 +7,7 @@
  *              custom post types and taxonomies — with guided field mapping,
  *              taxonomy mapping, supplier data sources, scheduling and run
  *              reports. CSV, JSON and XML.
- * Version:     2.52.5
+ * Version:     2.56.1
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.52.5' );
+define( 'MMI_PIPELINE_VERSION', '2.56.1' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -359,6 +359,7 @@ add_action( 'plugins_loaded', function () {
         'ExportController.php',
         'QuickImportController.php',
         'WorkbenchController.php',
+        'RunInsightsController.php',
     ];
     foreach ( $pipeline_controllers as $ctrl ) {
         require_once MMI_PIPELINE_PATH . 'includes/controllers/ajax/' . $ctrl;

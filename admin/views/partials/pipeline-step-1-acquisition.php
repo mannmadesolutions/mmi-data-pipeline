@@ -874,6 +874,20 @@ $status_badge_map = [
                     <span id="mmi-source-preview-freshness-text"></span>
                 </span>
             </div>
+            <?php /* Searches every record in the file (not just the rows shown),
+                 entirely in the browser — the whole feed is already loaded to
+                 render the preview. Used directly, and pre-filled by Run
+                 Insights' "View source record" to show one failed record. */ ?>
+            <div class="mmi-source-preview-search mmi-is-hidden" role="search">
+                <span class="dashicons dashicons-search" aria-hidden="true"></span>
+                <label for="mmi-source-preview-search-input" class="screen-reader-text">Search records</label>
+                <input type="search" id="mmi-source-preview-search-input" class="mmi-source-preview-search-input"
+                       placeholder="Search every record: SKU, name, any value&hellip;" autocomplete="off">
+                <label for="mmi-source-preview-search-field" class="mmi-source-preview-search-field-label">in</label>
+                <select id="mmi-source-preview-search-field" class="mmi-source-preview-search-field">
+                    <option value="">All fields</option>
+                </select>
+            </div>
             <div id="mmi-source-preview-loading" class="mmi-source-preview-loading">
                 <span class="spinner is-active"></span> Loading sample records&hellip;
             </div>
@@ -903,6 +917,10 @@ $status_badge_map = [
                 <span id="mmi-source-preview-fetch-status" class="mmi-source-preview-fetch-status"></span>
             </div>
             <div class="mmi-config-modal-footer-right">
+                <?php /* Shown only when opened from Run Insights' "View source record". */ ?>
+                <button type="button" class="button mmi-action-btn mmi-is-hidden" id="mmi-source-preview-back-btn">
+                    <span class="dashicons dashicons-arrow-left-alt2"></span> <span class="mmi-source-preview-back-label">Back to run</span>
+                </button>
                 <button type="button" class="button mmi-action-btn" id="mmi-source-preview-close-btn">Close</button>
             </div>
         </div>
@@ -1099,10 +1117,22 @@ $status_badge_map = [
             <div class="mmi-add-source-panel mmi-is-hidden" id="add-panel-api">
                 <div class="mmi-config-field">
                     <label for="add-api-integration">API Integration <span class="mmi-required">*</span></label>
+                    <?php
+                    // From the one template list (mmi_ds_get_preconfigured_templates()),
+                    // not a hardcoded pair — Plugivery was missing here, so it could
+                    // only ever be added by a script. One instance per integration:
+                    // an integration that already has a source is listed but disabled.
+                    $mmi_added_source_ids = array_column( $all_sources, 'supplier_id' );
+                    ?>
                     <select id="add-api-integration">
                         <option value="" disabled selected>— Select an integration —</option>
-                        <option value="xchange">Xchange</option>
-                        <option value="skuport">SkuPort</option>
+                        <?php foreach ( ( function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_get_preconfigured_templates' ) ? \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_get_preconfigured_templates() : [] ) as $mmi_tpl_id => $mmi_tpl ) :
+                            $mmi_tpl_added = in_array( $mmi_tpl['supplier_id'], $mmi_added_source_ids, true );
+                        ?>
+                            <option value="<?php echo esc_attr( $mmi_tpl_id ); ?>"<?php disabled( $mmi_tpl_added ); ?>>
+                                <?php echo esc_html( $mmi_tpl['supplier_name'] . ( $mmi_tpl_added ? ' (already added)' : '' ) ); ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                     <small class="mmi-field-description">
                         <span class="dashicons dashicons-lock"></span>

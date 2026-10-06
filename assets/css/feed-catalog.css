@@ -123,7 +123,9 @@
 }
 /* .mmi-fc prefix: outranks the shared `.mmi-page th.sortable` (position:
    relative), which would otherwise switch the sticky header off. */
-.mmi-fc .mmi-fc-table thead th {
+/* Child combinators throughout: the detail row nests small tables
+   (.mmi-fc-mini) that must not pick up these one-line, clipped cells. */
+.mmi-fc .mmi-fc-table > thead > tr > th {
     position: sticky;
     top: var(--wp-admin--admin-bar--height, 32px);
     z-index: 2;
@@ -139,7 +141,7 @@
     text-overflow: ellipsis;
 }
 /* Sort arrows: the shared th.sortable / .sorted-asc / .sorted-desc. */
-.mmi-fc-table tbody td {
+.mmi-fc-table > tbody > tr > td {
     padding: 8px 10px;
     border-bottom: 1px solid var(--mmi-gray-200, #f0f0f1);
     white-space: nowrap;
@@ -295,12 +297,22 @@
     border-collapse: collapse;
     font-size: 12px;
 }
+.mmi-fc-promos .mmi-fc-mini {
+    width: 100%;
+}
+.mmi-fc-mini thead th {
+    font-weight: 600;
+    border-bottom: 1px solid var(--mmi-gray-300, #dcdcde);
+}
 .mmi-fc-mini th,
 .mmi-fc-mini td {
     padding: 3px 12px 3px 0;
     text-align: left;
     vertical-align: top;
     word-break: break-word;
+}
+.mmi-fc-mini .mmi-fc-td-money {
+    text-align: right;
 }
 .mmi-fc-mini tbody th {
     white-space: nowrap;

@@ -87,7 +87,9 @@ $mmi_taxmap_taxonomy_icons = [
     'product_tag'   => 'dashicons-tag',
 ];
 $preset_views = [];
-foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $mmi_tv_row ) {
+// get_taxonomy_mapping_sources() also lists a template source's brand/category
+// fields before any profile imports them, so aliases can be set up first.
+foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources() as $mmi_tv_row ) {
     $preset_views[] = [
         'key'          => $mmi_tv_row['supplier'] . '-' . $mmi_tv_row['wc_taxonomy'],
         'label'        => $mmi_tv_row['label'],
@@ -95,6 +97,7 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $
         'source_field' => $mmi_tv_row['source_field'],
         'wc_taxonomy'  => $mmi_tv_row['wc_taxonomy'],
         'icon'         => $mmi_taxmap_taxonomy_icons[ $mmi_tv_row['wc_taxonomy'] ] ?? 'dashicons-networking',
+        'suggested'    => ! empty( $mmi_tv_row['suggested'] ),
     ];
 }
 ?>
@@ -126,6 +129,7 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $
                     class="mmi-taxmap-pill"
                     data-filter-supplier="<?php echo esc_attr( $preset['supplier'] ); ?>"
                     data-filter-field="<?php echo esc_attr( $preset['source_field'] ); ?>"
+                    <?php if ( $preset['suggested'] ) : ?>title="No import profile maps this field yet. Mappings saved here are used once a profile maps it in Field Mapping."<?php endif; ?>
                 >
                     <span class="dashicons <?php echo esc_attr( $preset['icon'] ); ?>"></span>
                     <?php echo esc_html( $preset['label'] ); ?>

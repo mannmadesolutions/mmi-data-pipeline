@@ -1449,6 +1449,108 @@ select.field-transform {
 .history-status-badge.in-progress { background: var(--mmi-info-bg); color: var(--mmi-info-text); animation: mmi-pulse 2s infinite; }
 .history-status-badge.unknown     { background: #f0f0f0; color: #888;    }
 
+/* A badge for a run with failures or a run-level problem is a <button> that
+   opens Run Insights (import-run-insights.js). Reset the button chrome so it
+   keeps the badge look, and show it is clickable. */
+button.history-status-badge {
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+button.history-status-badge .dashicons {
+    font-size: 13px;
+    width: 13px;
+    height: 13px;
+}
+button.history-status-badge:hover { text-decoration: underline; filter: brightness(0.96); }
+button.history-status-badge:focus-visible { outline: 2px solid var(--mmi-primary, #2271b1); outline-offset: 2px; }
+
+/* ── Data Pipeline page notices (main.php) ─────────────────────────────── */
+.mmi-process-notice-reasons {
+    margin: 0 0 6px 18px;
+    list-style: disc;
+}
+.mmi-process-notice-count { color: var(--mmi-text-secondary, #646970); }
+.mmi-process-notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+/* ── Run Insights modal (partials/modal-run-insights.php) ──────────────── */
+.mmi-run-insights-meta {
+    margin: 0 0 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-run-insights .mmi-run-insights-stats {
+    --mmi-stats-grid-min-col-width: 160px;
+    --mmi-stats-grid-gap: 12px;
+    --mmi-stats-grid-margin: 0 0 16px;
+}
+.mmi-run-insights .mmi-stat-box:hover { transform: none; }
+.mmi-run-insights-callout { margin: 0 0 14px; }
+.mmi-run-insights-heading {
+    margin: 18px 0 8px;
+    font-size: var(--mmi-font-base, 14px);
+}
+.mmi-run-insights-table-wrap {
+    overflow: auto;
+    max-height: 240px;
+    border: 1px solid var(--mmi-border-primary, #e5e5e5);
+    border-radius: var(--mmi-radius-sm, 4px);
+}
+.mmi-run-insights-table-wrap--tall { max-height: 52vh; }
+.mmi-run-insights-table-wrap .mmi-uniform-table {
+    border: none;
+    border-radius: 0;
+}
+.mmi-run-insights-table-wrap .mmi-uniform-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.mmi-run-insights-table-wrap .mmi-run-insights-failures tbody td { vertical-align: top; }
+.mmi-run-insights-failed-cell {
+    color: var(--mmi-warning-text, #8a6100);
+    font-weight: 600;
+}
+.mmi-run-insights-key code { white-space: nowrap; }
+.mmi-run-insights-muted {
+    color: var(--mmi-text-secondary, #646970);
+    font-size: var(--mmi-font-sm, 12px);
+}
+.mmi-run-insights-problem p { margin: 6px 0 0; }
+.mmi-run-insights-reason {
+    margin-top: 4px;
+    font-family: Menlo, Consolas, monospace;
+    font-size: var(--mmi-font-sm, 12px);
+}
+.mmi-run-insights-fix { color: var(--mmi-text-primary, #1d2327); }
+.mmi-run-insights-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 0 0 10px;
+}
+.mmi-run-insights-reasons li { margin: 0; }
+.mmi-run-insights-products { margin: 0; }
+.mmi-run-insights-products li {
+    margin: 0 0 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.mmi-run-insights-products li:last-child { margin-bottom: 0; }
+.mmi-run-insights-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.mmi-run-insights-tag { text-transform: none; letter-spacing: 0; }
+.mmi-run-insights-actions { white-space: nowrap; }
 /* Action Buttons */
 .mmi-action-buttons {
     display: flex;

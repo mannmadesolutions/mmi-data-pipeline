@@ -1532,9 +1532,19 @@ jQuery(document).ready(function($) {
                     else if (notes.aborted)        { badgeTitle = 'Stopped by user.'; }
                     else if (status === 'In Progress') { badgeTitle = 'Import is currently running.'; }
 
+                    // Same rule as tab-pipeline.php: failures or a run-level
+                    // problem make the badge open Run Insights.
+                    const hasInsights = errors > 0 || ['partial', 'error', 'aborted'].indexOf(badgeClass) !== -1;
+                    if (hasInsights) { badgeTitle = (badgeTitle + ' Click for details.').trim(); }
+
                     const titleAttr = badgeTitle ? ' title="' + escAttr(badgeTitle) + '"' : '';
+                    const badgeHtml = hasInsights
+                        ? '<button type="button" class="history-status-badge mmi-badge ' + badgeClass + ' mmi-run-insights-open" data-history-id="' + escAttr(entry.id) + '"' + titleAttr + '>'
+                            + esc(displayStatus) + ' <span class="dashicons dashicons-search" aria-hidden="true"></span></button>'
+                        : '<span class="history-status-badge mmi-badge ' + badgeClass + '"' + titleAttr + '>' + esc(displayStatus) + '</span>';
 
                     return '<tr data-profile="' + escAttr(profileId) + '">'
+                         + '<td>' + esc(entry.id) + '</td>'
                          + '<td><abbr title="' + escAttr(entry.started_at || '') + '">' + esc(formatDate(entry.started_at)) + '</abbr></td>'
                          + '<td>' + esc(profileName) + '</td>'
                          + '<td>' + esc(duration) + '</td>'
@@ -1542,7 +1552,7 @@ jQuery(document).ready(function($) {
                          + '<td>' + fmtNum(updated) + '</td>'
                          + '<td>' + fmtNum(skipped) + '</td>'
                          + '<td>' + fmtNum(errors) + '</td>'
-                         + '<td><span class="history-status-badge mmi-badge ' + badgeClass + '"' + titleAttr + '>' + esc(displayStatus) + '</span></td>'
+                         + '<td>' + badgeHtml + '</td>'
                          + '</tr>';
                 });
 
@@ -3023,12 +3033,18 @@ jQuery(document).ready(function($) {
         });
 
         // A saved value that isn't one of these real fields (a mapping that
-        // predates this feed, or the feed has since changed) has nothing to
-        // select here — it falls back to the blank placeholder rather than
-        // a synthetic option, and MMI_Pipeline_Config_Validator's pre-flight
-        // check still flags it before an import/schedule run relies on it.
+        // predates this feed, or the feed has since changed) stays selected
+        // as its own labelled option. The importer still reads it, so the
+        // row must keep showing it as mapped. Blanking it here (as this used
+        // to) made the wizard say "Not mapped" while the pre-run check warned
+        // about a mapping the user could neither see nor clear (2026-10-06,
+        // requirements.linux on New Products). Picking "— Select a field —"
+        // clears it like any other source.
         const matchExists = currentValue && fields.some(function (f) { return f.name === currentValue; });
-        $select.val(matchExists ? currentValue : '');
+        if (currentValue && !matchExists) {
+            $select.append($('<option></option>').val(currentValue).text(currentValue + ' — not in current feed'));
+        }
+        $select.val(currentValue || '');
     }
 
     // Build/rebuild the primary-key "Field in the file" <select>'s options

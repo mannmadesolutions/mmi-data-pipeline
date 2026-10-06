@@ -61,8 +61,8 @@ abstract class MMI_Pipeline_Feed_Catalog {
      * no two have to be in memory together.
      *
      * Each row needs `sku`, `product` and may carry `sub` (second line),
-     * `image`, `promo` ({state, price, start, end, name}) and any keys its
-     * columns()/facets() name.
+     * `image`, `promo` (current_promo()) and any keys its columns()/facets()
+     * name. `cost` and `map` are the regular prices (regular_prices()).
      *
      * @return array{rows:array, counts?:array<string,int>}
      */
@@ -70,8 +70,8 @@ abstract class MMI_Pipeline_Feed_Catalog {
 
     /**
      * One SKU's detail from its shard parts: { images: [], images_note?: string,
-     * text: [label => html], lists: [label => string|array], promos: [ {name,
-     * code, price, regular, start, end, state} ], fields: [key => value] }.
+     * text: [label => html], lists: [label => string|array], promos: [ raw
+     * feed promotion records, shaped by promotion() ], fields: [key => value] }.
      */
     abstract protected function detail_from_parts( string $sku, array $parts ): array;
 
@@ -445,7 +445,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
     /* ── Helpers for adapters ────────────────────────────────────────────── */
 
     protected static function money( $value ): ?float {
-        return is_numeric( $value ) && (float) $value > 0 ? round( (float) $value, 2 ) : null;
+        return MMI_Supplier_Promotion::money( $value );
     }
 
     /** '', '1900-01-01…' and '0000-…' mean "no date". */
@@ -454,31 +454,68 @@ abstract class MMI_Pipeline_Feed_Catalog {
         return ( $value === '' || strpos( $value, '1900-' ) === 0 || strpos( $value, '0000-' ) === 0 ) ? '' : $value;
     }
 
+    /* ── Promotions: MMI_Supplier_Promotion, one shape for every supplier ── */
+
     /**
-     * The promotion that matters today: one running now, else the next to
-     * start. Each input: { start, end, price, name, regular? }.
+     * One promotion record from this supplier's feed as the shared input
+     * shape: { name, code, cost, regular_cost, map, regular_map, start, end }.
+     * Prices may be strings; dates may be 'Y-m-d…' strings or Unix
+     * timestamps. MMI_Supplier_Promotion (shared library) does the rest —
+     * rounding, dates, state, sorting — so a fix there reaches every
+     * supplier and every screen that shows promotions.
      */
-    protected static function pick_promo( array $promos ): ?array {
-        $today = current_time( 'Y-m-d' );
-        $best  = null;
-        foreach ( $promos as $promo ) {
-            $start = substr( (string) ( $promo['start'] ?? '' ), 0, 10 );
-            $end   = substr( (string) ( $promo['end'] ?? '' ), 0, 10 );
-            if ( $end !== '' && $end < $today ) {
-                continue;
+    protected function promotion( array $raw ): array {
+        return $raw;
+    }
+
+    /** Raw feed promotions in the shared shape, running first (MMI_Supplier_Promotion::all()). */
+    protected function promotions( array $raw, string $product = '' ): array {
+        return MMI_Supplier_Promotion::all( $raw, fn( array $r ): array => $this->promotion( $r ), $product );
+    }
+
+    /**
+     * A table row's `promo`: the promotion that matters today (running
+     * now, else the next to start) from raw feed promotions, or null.
+     */
+    protected function current_promo( array $raw, string $product = '' ): ?array {
+        $p = MMI_Supplier_Promotion::current( $this->promotions( $raw, $product ) );
+        return $p ? [ 'price' => $p['cost'] ] + $p : null;
+    }
+
+    /**
+     * A row's regular cost and MAP: the Cost and MAP columns always show the
+     * regular price, the Promo column the promotional one.
+     *
+     * @return array{cost:?float, map:?float}
+     */
+    protected static function regular_prices( ?array $promo, $cost, $map ): array {
+        return MMI_Supplier_Promotion::regular_prices( $promo, $cost, $map );
+    }
+
+    /* ── Membership ──────────────────────────────────────────────────────── */
+
+    /** @var array<string,int>|null SKU set from the saved index, per request. */
+    private $sku_set = null;
+
+    /**
+     * Whether the last fetched feed lists $sku (MMI_Supplier_Rule_Pack's
+     * "still sold"), or null when there's no feed to ask. Reads the saved
+     * index even when a newer feed hasn't been indexed yet, so a background
+     * scan never parses a multi-MB feed; builds it only if none exists.
+     */
+    public function has_sku( string $sku ): ?bool {
+        if ( $this->sku_set === null ) {
+            $index = $this->read_cache( 'index.json' );
+            if ( empty( $index['rows'] ) ) {
+                try {
+                    $index = $this->index();
+                } catch ( Throwable $e ) {
+                    return null;
+                }
             }
-            $row = [
-                'state' => ( $start === '' || $start <= $today ) ? 'active' : 'upcoming',
-                'price' => self::money( $promo['price'] ?? null ),
-                'start' => $start,
-                'end'   => $end,
-                'name'  => (string) ( $promo['name'] ?? '' ),
-            ];
-            if ( ! $best || ( $best['state'] === 'upcoming' && $row['state'] === 'active' ) || ( $best['state'] === $row['state'] && $start < $best['start'] ) ) {
-                $best = $row;
-            }
+            $this->sku_set = array_flip( array_map( 'strval', array_column( $index['rows'] ?? [], 'sku' ) ) );
         }
-        return $best;
+        return $this->sku_set ? isset( $this->sku_set[ $sku ] ) : null;
     }
 
     /* ── Query ───────────────────────────────────────────────────────────── */
@@ -520,7 +557,6 @@ abstract class MMI_Pipeline_Feed_Catalog {
         $index = $this->index();
         $site  = $this->site_products();
         $q     = strtolower( trim( $args['q'] ) );
-        $today = current_time( 'Y-m-d' );
         $keys  = $this->search_keys();
 
         $rows = [];
@@ -530,8 +566,13 @@ abstract class MMI_Pipeline_Feed_Catalog {
                     continue 2;
                 }
             }
-            if ( ! empty( $row['promo'] ) && $row['promo']['end'] !== '' && $row['promo']['end'] < $today ) {
-                $row['promo'] = null;
+            // The index is built once per fetch; a promotion may have
+            // started or ended since.
+            if ( ! empty( $row['promo'] ) ) {
+                $row['promo']['state'] = MMI_Supplier_Promotion::state( $row['promo'] );
+                if ( $row['promo']['state'] === 'ended' ) {
+                    $row['promo'] = null;
+                }
             }
             if ( $args['promo'] && ! in_array( $row['promo']['state'] ?? 'none', $args['promo'], true ) ) {
                 continue;
@@ -657,7 +698,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
             'images_note' => (string) ( $d['images_note'] ?? '' ),
             'text'        => $text,
             'lists'       => $lists,
-            'promos'      => array_values( (array) ( $d['promos'] ?? [] ) ),
+            'promos'      => $this->promotions( (array) ( $d['promos'] ?? [] ), (string) ( $d['product'] ?? '' ) ),
             'fields'      => $fields,
             'site'        => $site ? [
                 'status'   => $site['status'],

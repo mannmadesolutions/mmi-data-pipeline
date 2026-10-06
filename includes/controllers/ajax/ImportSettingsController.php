@@ -710,7 +710,9 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
     }
 
     $mtime     = filemtime($real_path);
-    $cache_key = 'mmi_pl_fields_' . md5($filename . '|' . $mtime);
+    // 'fields2': lists cached before every record was scanned (2.53.2)
+    // are missing optional fields; a new key retires them at once.
+    $cache_key = 'mmi_pl_fields2_' . md5($filename . '|' . $mtime);
     $cached    = get_transient($cache_key);
     if ($cached !== false) {
         wp_send_json_success(['fields' => $cached]);

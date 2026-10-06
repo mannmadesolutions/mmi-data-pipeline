@@ -17,7 +17,9 @@
     const SELECTORS = {
         APP:              '#mmi-taxmap-app',
         FILTER_PILLS:     '#mmi-taxmap-filter-pills',
-        PILL_BTN:         '.mmi-taxmap-pill',
+        // Scoped to the filter row: the create-term editor's case buttons
+        // reuse .mmi-taxmap-pill for its look and must not filter the table.
+        PILL_BTN:         '#mmi-taxmap-filter-pills .mmi-taxmap-pill',
         CUSTOM_BTN:       '#mmi-taxmap-custom-btn',
         CONFIG_PANEL:     '#mmi-taxmap-config-panel',
         SUPPLIER:         '#mmi-taxmap-supplier',
@@ -1535,12 +1537,207 @@
     } );
 
     $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-create-btn', function () {
-        const $tr         = $( this ).closest( 'tr' );
-        const sourceValue = $tr.attr( 'data-source-value' );
+        openCreateEditor( $( this ).closest( 'tr' ) );
+    } );
+
+    /* ── Create-term name editor ────────────────────────────────────────────
+     * The "+" button opens this in the row instead of creating the term at
+     * once: supplier feeds often send values in all caps ("NATIVE
+     * INSTRUMENTS"), and fixing a term's name after it exists means editing
+     * it in WooCommerce. Nothing is written until Create (or Enter). */
+
+    const CREATE_EDITOR = '.mmi-taxmap-create-editor';
+    let createLookupTimer;
+
+    function openCreateEditor( $tr ) {
+        const $existing = $tr.find( CREATE_EDITOR );
+        if ( $existing.length ) {
+            $existing.find( '.mmi-taxmap-create-name' ).trigger( 'focus' );
+            return;
+        }
+        hideAutocomplete();
+
+        const sourceValue = $tr.attr( 'data-source-value' ) || '';
+        const caseBtn = ( mode, label, title ) =>
+            `<button type="button" class="mmi-taxmap-pill mmi-taxmap-case-btn" data-case="${ mode }" title="${ title }">${ label }</button>`;
+
+        const $editor = $( '<div class="mmi-taxmap-create-editor">' ).html(
+            '<input type="text" class="mmi-taxmap-create-name" aria-label="Name of the new term">' +
+            '<div class="mmi-taxmap-create-case">' +
+                caseBtn( 'title', 'Title Case', 'Capitalize each word; short words without vowels (DJ, KRK) stay uppercase' ) +
+                caseBtn( 'upper', 'UPPER', 'All uppercase' ) +
+                caseBtn( 'lower', 'lower', 'All lowercase' ) +
+                caseBtn( 'source', 'As source', 'Exactly as the source value' ) +
+            '</div>' +
+            '<div class="mmi-taxmap-create-hint"></div>' +
+            '<div class="mmi-taxmap-create-actions">' +
+                '<button type="button" class="button button-primary mmi-action-btn mmi-button-small mmi-taxmap-create-confirm">Create &amp; map</button>' +
+                '<button type="button" class="button mmi-action-btn mmi-button-small mmi-taxmap-create-cancel">Cancel</button>' +
+            '</div>'
+        );
+        $editor.find( '.mmi-taxmap-create-name' ).val( suggestTermName( sourceValue ) );
+        markActiveCase( $editor, sourceValue );
+
+        $tr.addClass( 'is-creating-term' );
+        $tr.find( '.mmi-taxmap-term-input' ).after( $editor );
+        $editor.find( '.mmi-taxmap-create-name' ).trigger( 'focus' ).trigger( 'select' );
+        lookupCreateName( $tr );
+    }
+
+    function closeCreateEditor( $tr ) {
+        clearTimeout( createLookupTimer );
+        $tr.removeClass( 'is-creating-term' ).find( CREATE_EDITOR ).remove();
+    }
+
+    function confirmCreateEditor( $tr ) {
+        const name = $.trim( $tr.find( '.mmi-taxmap-create-name' ).val() || '' );
+        if ( ! name ) {
+            setCreateHint( $tr, 'Enter a name for the term.', 'error' );
+            $tr.find( '.mmi-taxmap-create-name' ).trigger( 'focus' );
+            return;
+        }
+        closeCreateEditor( $tr );
         // term_id=0 + a non-empty term_name makes mmi_save_taxonomy_mapping find-or-create
         // server-side — same path the autocomplete's "Create term" option already uses.
-        $tr.find( '.mmi-taxmap-term-input' ).val( sourceValue );
-        saveMapping( $tr, 0, sourceValue, false );
+        $tr.find( '.mmi-taxmap-term-input' ).val( name );
+        saveMapping( $tr, 0, name, false );
+    }
+
+    function setCreateHint( $tr, text, type ) {
+        $tr.find( '.mmi-taxmap-create-hint' )
+            .text( text )
+            .attr( 'data-type', type || '' );
+    }
+
+    /**
+     * Says whether the typed name already exists in the row's taxonomy. The
+     * server matches names case-insensitively (get_term_by), so "Roland" for
+     * an existing "ROLAND" maps to that term and doesn't rename it — the hint
+     * and button label say so before the click, not after.
+     */
+    function lookupCreateName( $tr ) {
+        clearTimeout( createLookupTimer );
+        const $editor = $tr.find( CREATE_EDITOR );
+        if ( ! $editor.length ) { return; }
+
+        const name     = $.trim( $editor.find( '.mmi-taxmap-create-name' ).val() || '' );
+        const taxonomy = $tr.attr( 'data-wc-taxonomy' ) || '';
+        const $confirm = $editor.find( '.mmi-taxmap-create-confirm' );
+        $confirm.html( 'Create &amp; map' );
+        setCreateHint( $tr, name ? `New term in ${ $.trim( taxonomyLabel( taxonomy ) ) }.` : '', '' );
+        if ( ! name || ! taxonomy ) { return; }
+
+        createLookupTimer = setTimeout( function () {
+            $.post( AJAX_URL, {
+                action:   'mmi_search_wc_terms',
+                nonce:    NONCE,
+                taxonomy: taxonomy,
+                search:   name,
+            } ).done( function ( resp ) {
+                const current = $.trim( $editor.find( '.mmi-taxmap-create-name' ).val() || '' );
+                if ( ! $editor.closest( 'body' ).length || current !== name ) { return; }
+                const match = ( resp.data?.terms || [] ).find( t => t.name.toLowerCase() === name.toLowerCase() );
+                if ( ! match ) { return; }
+                $confirm.text( 'Map to existing' );
+                setCreateHint(
+                    $tr,
+                    match.name === name
+                        ? `"${ match.name }" already exists. It will be mapped, not created again.`
+                        : `"${ match.name }" already exists. Names match regardless of case, so this maps to it unchanged. Rename it in WooCommerce to change its case.`,
+                    'existing'
+                );
+            } );
+        }, 250 );
+    }
+
+    /**
+     * Suggested name for a new term. All-caps source values are title-cased
+     * when they contain a word of 4+ characters ("ROLAND" → "Roland"); short
+     * all-caps values are usually acronyms ("AKG", "UAD") and are left alone.
+     */
+    function suggestTermName( value ) {
+        const hasUpper = /\p{Lu}/u.test( value );
+        const hasLower = /\p{Ll}/u.test( value );
+        const longWord = ( value.match( /[\p{L}\p{N}']+/gu ) || [] ).some( w => w.length >= 4 );
+        return hasUpper && ! hasLower && longWord ? toTitleCase( value ) : value;
+    }
+
+    const TITLE_SMALL_WORDS = [ 'a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'vs', 'with' ];
+
+    /**
+     * Capitalizes each word. Connector words after the first stay lowercase;
+     * words of 1-2 letters or with no vowels stay uppercase, since in brand
+     * and category names those are nearly always acronyms (IK, TC, DJ, KRK,
+     * MK2). Separators (spaces, hyphens, "&", "/") are kept as they are.
+     */
+    function toTitleCase( value ) {
+        let index = 0;
+        return value.replace( /[\p{L}\p{N}']+/gu, function ( word ) {
+            const lower = word.toLowerCase();
+            const first = index++ === 0;
+            if ( ! first && TITLE_SMALL_WORDS.includes( lower ) ) { return lower; }
+            if ( /\p{L}/u.test( word ) && ( word.length <= 2 || ! /[aeiouy]/i.test( word ) ) ) {
+                return word.toUpperCase();
+            }
+            return lower.charAt( 0 ).toUpperCase() + lower.slice( 1 );
+        } );
+    }
+
+    function applyCase( mode, value, sourceValue ) {
+        return {
+            title:  () => toTitleCase( value ),
+            upper:  () => value.toUpperCase(),
+            lower:  () => value.toLowerCase(),
+            source: () => sourceValue,
+        }[ mode ]();
+    }
+
+    /** Highlights each case pill the current name already matches. */
+    function markActiveCase( $editor, sourceValue ) {
+        const value = $editor.find( '.mmi-taxmap-create-name' ).val() || '';
+        $editor.find( '.mmi-taxmap-case-btn' ).each( function () {
+            const mode = $( this ).attr( 'data-case' );
+            $( this ).toggleClass( 'is-active', value !== '' && applyCase( mode, value, sourceValue ) === value );
+        } );
+    }
+
+    $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-case-btn', function () {
+        const $tr         = $( this ).closest( 'tr' );
+        const $input      = $tr.find( '.mmi-taxmap-create-name' );
+        const sourceValue = $tr.attr( 'data-source-value' ) || '';
+        $input.val( applyCase( $( this ).attr( 'data-case' ), $input.val() || '', sourceValue ) ).trigger( 'focus' );
+        markActiveCase( $tr.find( CREATE_EDITOR ), sourceValue );
+        lookupCreateName( $tr );
+    } );
+
+    $( document ).on( 'input', SELECTORS.TBODY + ' .mmi-taxmap-create-name', function () {
+        const $tr = $( this ).closest( 'tr' );
+        markActiveCase( $tr.find( CREATE_EDITOR ), $tr.attr( 'data-source-value' ) || '' );
+        lookupCreateName( $tr );
+    } );
+
+    $( document ).on( 'keydown', SELECTORS.TBODY + ' .mmi-taxmap-create-name', function ( e ) {
+        if ( e.key === 'Enter' ) {
+            e.preventDefault();
+            confirmCreateEditor( $( this ).closest( 'tr' ) );
+        } else if ( e.key === 'Escape' ) {
+            e.preventDefault();
+            closeCreateEditor( $( this ).closest( 'tr' ) );
+        }
+    } );
+
+    $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-create-confirm', function () {
+        confirmCreateEditor( $( this ).closest( 'tr' ) );
+    } );
+
+    $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-create-cancel', function () {
+        closeCreateEditor( $( this ).closest( 'tr' ) );
+    } );
+
+    // Redirecting the row to another taxonomy changes where the term will be
+    // created, so the "already exists" check has to run again.
+    $( document ).on( 'change', SELECTORS.TBODY + ' .mmi-taxmap-taxonomy-select', function () {
+        lookupCreateName( $( this ).closest( 'tr' ) );
     } );
 
     $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-skip-btn', function () {
@@ -2072,15 +2269,13 @@
     }
 
     /**
-     * "Create term" button — one click creates a new WC term named exactly as the
-     * source value (under the row's currently selected taxonomy) and maps it,
-     * skipping the search-and-select step entirely. Added because most new brand
-     * values need a term that's identical to the source text — typing it into the
-     * search box and confirming "Create term: X" from the autocomplete dropdown
-     * for every single one was unnecessary friction for the common case.
+     * "Create term" button — opens the row's name editor (openCreateEditor())
+     * prefilled from the source value, under the row's currently selected
+     * taxonomy, skipping the search-and-select step. The name can be edited
+     * or re-cased before the term is created and mapped.
      */
     function createTermButtonHtml() {
-        return $( '<button class="button mmi-action-btn mmi-button-small mmi-taxmap-create-btn" title="Create a term matching this source value and map it">' )
+        return $( '<button class="button mmi-action-btn mmi-button-small mmi-taxmap-create-btn" title="Create a term from this source value (edit the name first) and map it">' )
             .html( '<span class="dashicons dashicons-plus-alt2"></span>' );
     }
 
