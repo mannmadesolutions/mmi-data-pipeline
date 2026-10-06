@@ -452,6 +452,12 @@ class MMI_Pipeline_Field_Resolver {
                 return date( $format, $timestamp );
 
             case 'to_datetime':
+                // A Unix timestamp (Plugivery promotion start/end) is an exact
+                // instant: give it in site time, which is how WooCommerce reads
+                // a date string and how the importer compares sale dates.
+                if ( is_int( $value ) || ( is_string( $value ) && preg_match( '/^\d{9,11}$/', $value ) ) ) {
+                    return wp_date( 'Y-m-d H:i:s', (int) $value );
+                }
                 $timestamp = strtotime( (string) $value );
                 return $timestamp ? date( 'Y-m-d H:i:s', $timestamp ) : $value;
 
@@ -632,15 +638,27 @@ class MMI_Pipeline_Field_Resolver {
      * (indexed) — and reimplemented as a slower O(n) linear scan in
      * class-dynamic-product-importer.php (find_promotion()).
      *
+     * Plugivery's file is a bare array keyed by `prod_id` (the product's
+     * `id`); its own `id` is the promotion's ID. Each Plugivery record is
+     * cut down to the promotion-only fields before it is flat-merged, so
+     * the promotion ID never replaces the product `id` the import matches
+     * on. `msrp`/`reg_map`/`reg_cost` are dropped too: the products feed
+     * already carries the same values.
+     *
      * @param string $supplier
      * @param string $json_path  Directory containing the promo JSON files (with trailing slash).
      * @return array{index: array<string, array>, namespace: string|null}
      */
     public static function load_and_index_promotions( string $supplier, string $json_path ): array {
         $file_map = [
-            'xchange' => 'xchange-promotions.json',
-            'skuport' => 'skuport-promos.json',
+            'xchange'   => 'xchange-promotions.json',
+            'skuport'   => 'skuport-promos.json',
+            'plugivery' => 'plugivery-promotions.json',
         ];
+        // Suppliers whose promo record links to the product by a field other
+        // than sku/id/product_id, and the only promo fields to inject.
+        $key_fields  = [ 'plugivery' => 'prod_id' ];
+        $keep_fields = [ 'plugivery' => [ 'start', 'end', 'promo_map', 'promo_cost' ] ];
         $filename = $file_map[ $supplier ] ?? null;
         if ( ! $filename ) {
             return [ 'index' => [], 'namespace' => null ];
@@ -679,9 +697,16 @@ class MMI_Pipeline_Field_Resolver {
 
         $index = [];
         foreach ( $promos as $promo ) {
-            $key = $promo['sku'] ?? $promo['id'] ?? $promo['product_id'] ?? null;
+            if ( ! is_array( $promo ) ) {
+                continue;
+            }
+            $key = isset( $key_fields[ $supplier ] )
+                ? ( $promo[ $key_fields[ $supplier ] ] ?? null )
+                : ( $promo['sku'] ?? $promo['id'] ?? $promo['product_id'] ?? null );
             if ( $key !== null && $key !== '' ) {
-                $index[ (string) $key ] = $promo;
+                $index[ (string) $key ] = isset( $keep_fields[ $supplier ] )
+                    ? array_intersect_key( $promo, array_flip( $keep_fields[ $supplier ] ) )
+                    : $promo;
             }
         }
 

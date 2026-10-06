@@ -175,13 +175,13 @@ class MMI_Pipeline_Plugivery_Updater {
         $details = $this->read_details();
         $this->write_feed($listRows, $details);
 
-        $promotions = $this->request('list_promotions', ['state' => 1]);
-        $this->save_json(array_values((array) ($promotions['data'] ?? [])), self::PROMOTIONS_FILE, $this->jsonDir);
+        $promotions = array_values((array) ($this->request('list_promotions', ['state' => 1])['data'] ?? []));
+        $this->save_json($promotions, self::PROMOTIONS_FILE, $this->jsonDir);
 
         // Announced-but-not-started promotions (state 0), so a price change can
         // be planned before it lands. One read a day.
-        $future = $this->request('list_promotions', ['state' => 0]);
-        $this->save_json(array_values((array) ($future['data'] ?? [])), self::PROMOTIONS_FUTURE_FILE, $this->jsonDir);
+        $future = array_values((array) ($this->request('list_promotions', ['state' => 0])['data'] ?? []));
+        $this->save_json($future, self::PROMOTIONS_FUTURE_FILE, $this->jsonDir);
 
         foreach (['list_brands' => self::BRANDS_FILE, 'list_cats' => self::CATEGORIES_FILE] as $act => $file) {
             $mtime = @filemtime($this->jsonDir . $file);
@@ -193,7 +193,10 @@ class MMI_Pipeline_Plugivery_Updater {
         }
 
         $stale = count($this->stale_ids($listRows, $details));
-        $this->log(sprintf('Plugivery fetch done: %d products listed, %d need detail', count($listRows), $stale));
+        $this->log(sprintf(
+            'Plugivery fetch done: %d products listed, %d running promotions, %d upcoming promotions, %d need detail',
+            count($listRows), count($promotions), count($future), $stale
+        ));
         if ($stale > 0) {
             self::queue_detail_batch();
         }

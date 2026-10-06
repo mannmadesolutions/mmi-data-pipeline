@@ -457,6 +457,7 @@ class MMI_Pipeline_Admin {
         // as an independent record source.
         'xchange-promotions.json',
         'skuport-promos.json',
+        'plugivery-promotions.json',
     ];
 
     /**
