@@ -1052,7 +1052,6 @@ if ( ! function_exists( 'mmi_shared_menu_dashboard_plugin_info_for_slug' ) ) {
 			'mmi-google-services'  => array( 'group' => 'Integrations', 'file' => 'mmi-google-services/mmi-google-services.php' ),
 			'mmi-cloudflare'       => array( 'group' => 'Infrastructure', 'file' => 'mmi-cloudflare-integration/mmi-cloudflare-integration.php' ),
 			'mmi-rtsm'             => array( 'group' => 'Infrastructure', 'file' => 'mmi-rtsm/mmi-rtsm.php' ),
-			'mmi-2fa-bridge'       => array( 'group' => 'Infrastructure', 'file' => 'mmi-2fa-bridge/mmi-2fa-bridge.php' ),
 			'mmi-admin'            => array( 'group' => 'Admin & Ops', 'file' => 'mmi-admin/mmi-admin.php' ),
 			'mmi-email-customizer' => array( 'group' => 'Admin & Ops', 'file' => 'mmi-email-customizer/mmi-email-customizer.php' ),
 		);
