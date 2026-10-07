@@ -150,7 +150,7 @@ class MMI_Settings {
 		);
 
 		if ( $row !== null ) {
-			$value               = maybe_unserialize( $row );
+			$value               = self::reveal( $key, maybe_unserialize( $row ) );
 			self::$cache[ $key ] = $value;
 			return $value;
 		}
@@ -173,16 +173,67 @@ class MMI_Settings {
 
 		self::$cache[ $key ] = $value;
 
+		// A key already stored under another tab (e.g. one written with raw SQL into the shared
+		// "Credentials & API Keys" tab) is updated where it is: writing it under the derived tab
+		// would leave two rows, and get() reads whichever comes first.
+		$existing_tab = $wpdb->get_var( $wpdb->prepare( 'SELECT tab_name FROM ' . self::table() . ' WHERE field_name = %s LIMIT 1', $key ) );
+
 		$result = $wpdb->replace(
 			self::table(),
 			array(
-				'tab_name'    => self::tab_from_key( $key ),
+				'tab_name'    => $existing_tab !== null ? $existing_tab : self::tab_from_key( $key ),
 				'field_name'  => $key,
-				'field_value' => maybe_serialize( $value ),
+				'field_value' => maybe_serialize( self::seal( $key, $value ) ),
 			),
 			array( '%s', '%s', '%s' )
 		);
 		return $result !== false;
+	}
+
+	/* ── Secrets at rest (MMI_Credentials) ────────────────────────────── */
+
+	/**
+	 * Secret-named settings (and secret-named keys inside array settings) are stored
+	 * encrypted and handed back decrypted, so callers never see ciphertext.
+	 */
+	private static function seal( string $key, $value ) {
+		return class_exists( 'MMI_Credentials' ) ? MMI_Credentials::seal_setting( $key, $value ) : $value;
+	}
+
+	private static function reveal( string $key, $value ) {
+		return class_exists( 'MMI_Credentials' ) ? MMI_Credentials::reveal_setting( $key, $value ) : $value;
+	}
+
+	/**
+	 * Re-saves every setting that still holds a plaintext secret, so it is stored encrypted.
+	 * Idempotent. Run once per site after upgrading (`wp eval 'print_r( MMI_Settings::seal_existing() );'`),
+	 * only once every plugin that reads wp_mmi with raw SQL decrypts with MMI_Credentials::reveal().
+	 *
+	 * @return string[] Names of the settings that were sealed.
+	 */
+	public static function seal_existing(): array {
+		if ( ! class_exists( 'MMI_Credentials' ) || ! MMI_Credentials::available() ) {
+			return array();
+		}
+		global $wpdb;
+		$sealed = array();
+		$rows   = $wpdb->get_results( 'SELECT tab_name, field_name, field_value FROM ' . self::table() ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name only.
+		foreach ( $rows as $row ) {
+			$value = maybe_unserialize( $row->field_value );
+			if ( ! MMI_Credentials::needs_sealing( $row->field_name, $value ) ) {
+				continue;
+			}
+			$wpdb->update(
+				self::table(),
+				array( 'field_value' => maybe_serialize( MMI_Credentials::seal_setting( $row->field_name, $value ) ) ),
+				array( 'tab_name' => $row->tab_name, 'field_name' => $row->field_name ),
+				array( '%s' ),
+				array( '%s', '%s' )
+			);
+			unset( self::$cache[ $row->field_name ] );
+			$sealed[] = $row->field_name;
+		}
+		return $sealed;
 	}
 
 	public static function delete( string $key ): bool {
@@ -203,7 +254,7 @@ class MMI_Settings {
 		);
 		$result = array();
 		foreach ( $rows as $row ) {
-			$value                          = maybe_unserialize( $row->field_value );
+			$value                          = self::reveal( $row->field_name, maybe_unserialize( $row->field_value ) );
 			self::$cache[ $row->field_name ] = $value;
 			$result[ $row->field_name ]      = $value;
 		}
@@ -235,7 +286,7 @@ class MMI_Settings {
 		);
 		$found = array();
 		foreach ( $rows as $row ) {
-			$value                          = maybe_unserialize( $row->field_value );
+			$value                          = self::reveal( $row->field_name, maybe_unserialize( $row->field_value ) );
 			self::$cache[ $row->field_name ] = $value;
 			$found[]                        = $row->field_name;
 		}

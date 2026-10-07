@@ -186,6 +186,11 @@ trait MMI_Updater_Trait
         }
 
         $map = array_column($rows, 'field_value', 'field_name');
+        if (class_exists('MMI_Credentials')) {
+            foreach ($map as $name => $value) {
+                $map[$name] = \MMI_Credentials::reveal_setting((string) $name, $value);
+            }
+        }
         
         // Validate required keys if provided. array_key_exists()+strict
         // empty-string check, not empty() — empty() can't tell "key never
