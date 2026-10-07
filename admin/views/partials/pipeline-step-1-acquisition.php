@@ -509,11 +509,26 @@ $status_badge_map = [
                             // in this table. Real count, not a placeholder —
                             // see $mmi_src_taxmap_counts above.
                             $mmi_src_mapped_count = $mmi_src_taxmap_counts[ $sid ] ?? 0;
+                            // Declared taxonomy fields (Configure > Taxonomies; see
+                            // MMI_Pipeline_Admin::resolve_source_taxonomy_fields()) —
+                            // read off this row's decoded configuration for the same
+                            // no-second-query reason as $taxonomy_mapping_enabled above.
+                            $mmi_src_tax_fields = class_exists( 'MMI_Pipeline_Admin' )
+                                ? MMI_Pipeline_Admin::resolve_source_taxonomy_fields( (string) $sid, (array) ( $src['configuration'] ?? [] ) )
+                                : [];
+                            $mmi_src_tax_desc = [];
+                            foreach ( $mmi_src_tax_fields as $mmi_stf ) {
+                                $mmi_stf_tax = get_taxonomy( $mmi_stf['wc_taxonomy'] );
+                                $mmi_src_tax_desc[] = $mmi_stf['source_field'] . ' → ' . ( $mmi_stf_tax ? $mmi_stf_tax->label : $mmi_stf['wc_taxonomy'] );
+                            }
+                            $mmi_src_tax_title = $mmi_src_tax_desc
+                                ? ' Fields: ' . implode( ', ', $mmi_src_tax_desc ) . '.'
+                                : ' No taxonomy field declared for this source yet (Configure › Taxonomies).';
                             ?>
                             <button type="button" class="mmi-taxmap-quick-link<?php echo $mmi_src_mapped_count === 0 ? ' is-unmapped' : ''; ?>"
                                     data-taxmap-open-supplier="<?php echo esc_attr($sid); ?>"
                                     data-taxmap-supplier-name="<?php echo esc_attr($name); ?>"
-                                    title="<?php echo $mmi_src_mapped_count > 0 ? esc_attr( $mmi_src_mapped_count . ' value(s) mapped for this source — view or add more' ) : 'No taxonomy mapping set up for this source yet — click to assign one'; ?>">
+                                    title="<?php echo esc_attr( ( $mmi_src_mapped_count > 0 ? $mmi_src_mapped_count . ' value(s) mapped for this source — view or add more.' : 'No taxonomy mapping set up for this source yet — click to assign one.' ) . $mmi_src_tax_title ); ?>">
                                 <?php if ( $mmi_src_mapped_count > 0 ) : ?>
                                     <span class="dashicons dashicons-yes-alt"></span> <?php echo (int) $mmi_src_mapped_count; ?> mapped
                                 <?php else : ?>
@@ -576,6 +591,7 @@ $status_badge_map = [
             <button type="button" class="mmi-config-tab mmi-tab-http-only" data-tab="auth">Authentication</button>
             <button type="button" class="mmi-config-tab mmi-tab-http-only" data-tab="endpoints">Endpoints</button>
             <button type="button" class="mmi-config-tab" data-tab="parsing">Data Parsing</button>
+            <button type="button" class="mmi-config-tab" data-tab="taxonomies">Taxonomies</button>
             <button type="button" class="mmi-config-tab" data-tab="advanced">Advanced</button>
         </div>
 
@@ -797,6 +813,48 @@ $status_badge_map = [
             </div>
 
             <!-- ─── Advanced Tab ───────────────────────────────────────── -->
+            <?php /* ─── Taxonomies Tab (2026-10-07) ─────────────────────────
+                 Which raw feed field holds this source's brand, category,
+                 etc. — stored as configuration.taxonomy_fields, seeded from
+                 the source's template (mmi_ds_complete_template_setup()).
+                 This one declaration is what Field Mapping's "Enable for X"
+                 toggles on product_brand/product_cat, Taxonomy Mapping's
+                 source list and this table's mapped count all read, so a
+                 source declared here takes part in Taxonomy Mapping exactly
+                 like the built-in integrations do. Rows are built by
+                 import-pipeline-config.js (renderTaxonomyFieldRows()) from
+                 mmiImportSettings.productTaxonomies; the "Suggest from feed"
+                 button calls mmi_discover_taxonomy_candidates, the
+                 detection endpoint built 2026-08-30 and wired here. Shown
+                 for every source type, template sources included (their
+                 other tabs are hidden). */ ?>
+            <div class="mmi-config-tab-content" data-tab="taxonomies">
+                <div class="mmi-config-field">
+                    <label>Taxonomy Fields <small>(which feed field holds the brand, category, …)</small></label>
+                    <small class="mmi-field-description">
+                        One source field per WooCommerce taxonomy. Use <code>field1+field2</code> for a compound value
+                        (e.g. <code>master_category+sub_category</code>). Import profiles turn resolution on per source
+                        in Field Mapping ("Enable for …"), and Taxonomy Mapping lists these fields for alias setup.
+                        Leave the list empty if this feed carries no brand or category data.
+                    </small>
+                    <div id="mmi-taxonomy-fields-list" class="mmi-kv-pairs mmi-taxonomy-fields-list">
+                        <!-- rows injected by JS -->
+                    </div>
+                    <div class="mmi-taxonomy-fields-actions">
+                        <button type="button" class="button mmi-action-btn" id="mmi-add-taxonomy-field-btn">
+                            <span class="dashicons dashicons-plus"></span> Add Field
+                        </button>
+                        <button type="button" class="button mmi-action-btn" id="mmi-suggest-taxonomy-fields-btn" title="Samples this source's fetched feed for low-cardinality text fields that look like a brand or category">
+                            <span class="dashicons dashicons-search"></span> Suggest from feed
+                        </button>
+                        <button type="button" class="button mmi-action-btn mmi-is-hidden" id="mmi-reset-taxonomy-fields-btn" title="Restore the fields this integration's template declares">
+                            <span class="dashicons dashicons-image-rotate"></span> Reset to template
+                        </button>
+                    </div>
+                    <div id="mmi-taxonomy-field-suggestions" class="mmi-taxonomy-field-suggestions mmi-is-hidden"></div>
+                </div>
+            </div>
+
             <div class="mmi-config-tab-content" data-tab="advanced">
                 <div class="mmi-config-field">
                     <label for="cfg-timeout">Request Timeout (seconds)</label>

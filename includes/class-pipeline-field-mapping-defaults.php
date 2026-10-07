@@ -953,6 +953,84 @@ class MMI_Pipeline_Field_Mapping_Defaults {
     }
 
     /**
+     * Normalize a data source's declared taxonomy fields — the
+     * `configuration.taxonomy_fields` list a source row carries (seeded from
+     * its template by mmi_ds_complete_template_setup(), edited in the
+     * Configure modal's Taxonomies tab) — into a clean, deduplicated
+     * `[ ['source_field' => ..., 'wc_taxonomy' => ...], ... ]` with exactly
+     * one source field per taxonomy. Shared by MMI_Pipeline_Admin::
+     * get_configured_suppliers() (the read path) and DataSourceController's
+     * save handler (the write path) so both agree on the shape.
+     *
+     * @param mixed $raw Whatever was stored or posted.
+     * @return array<int, array{source_field:string, wc_taxonomy:string}>
+     */
+    public static function normalize_taxonomy_fields( $raw ): array {
+        $out  = [];
+        $seen = [];
+        foreach ( (array) $raw as $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+            $tax   = sanitize_key( (string) ( $row['wc_taxonomy'] ?? '' ) );
+            $field = trim( sanitize_text_field( (string) ( $row['source_field'] ?? '' ) ) );
+            if ( $tax === '' || $field === '' || isset( $seen[ $tax ] ) ) {
+                continue;
+            }
+            $seen[ $tax ] = true;
+            $out[]        = [ 'source_field' => $field, 'wc_taxonomy' => $tax ];
+        }
+        return $out;
+    }
+
+    /**
+     * The fixed per-supplier source field behind a Taxonomy-Mapping-only
+     * field (product_brand / product_cat — see panel-field-mapping.php's
+     * $mmi_taxonomy_mapping_only_fields), keyed by supplier id: which raw
+     * feed field feeds Taxonomy Mapping's alias lookup for this taxonomy.
+     *
+     * Before 2026-10-07 this was read straight from DEFAULTS[$field]['source'],
+     * which only ever knew xchange and skuport — so Plugivery (whose template
+     * had declared brand_name/cat_name since 2.56.1, with 34 alias values
+     * already mapped) and every source added later had no "Enable for X"
+     * toggle in Field Mapping, and could never be switched on. Now every
+     * configured source's own declared taxonomy fields
+     * (MMI_Pipeline_Admin::get_configured_suppliers()[$sid]['taxonomy_fields'])
+     * are the primary source, with DEFAULTS kept only as the fallback for the
+     * two original suppliers; a declaration always wins over DEFAULTS.
+     *
+     * @param string $field_name           Field key ('product_brand', 'product_cat', 'tax:{slug}').
+     * @param array  $configured_suppliers MMI_Pipeline_Admin::get_configured_suppliers().
+     * @return array<string, string> supplier_id => source field (compound 'a+b' allowed).
+     */
+    public static function fixed_taxonomy_sources( string $field_name, array $configured_suppliers ): array {
+        $wc_taxonomy = ( strpos( $field_name, 'tax:' ) === 0 ) ? substr( $field_name, 4 ) : $field_name;
+        $sources     = [];
+
+        foreach ( (array) ( self::DEFAULTS[ $field_name ]['source'] ?? [] ) as $sid => $src ) {
+            if ( trim( (string) $src ) !== '' ) {
+                $sources[ $sid ] = trim( (string) $src );
+            }
+        }
+
+        foreach ( $configured_suppliers as $sid => $info ) {
+            foreach ( (array) ( $info['taxonomy_fields'] ?? [] ) as $tf ) {
+                if ( ( $tf['wc_taxonomy'] ?? '' ) !== $wc_taxonomy ) {
+                    continue;
+                }
+                $field = trim( (string) ( $tf['source_field'] ?? '' ) );
+                if ( $field !== '' ) {
+                    $sources[ $sid ] = $field;
+                }
+            }
+        }
+
+        // Only sources that exist right now — a DEFAULTS entry for a supplier
+        // that was deleted must not resurrect a toggle for it.
+        return array_intersect_key( $sources, $configured_suppliers );
+    }
+
+    /**
      * Every currently-configured (supplier, source_field, wc_taxonomy) triple
      * with a real, non-empty source — the single derivation Taxonomy Mapping's
      * UI/backend uses in place of a hardcoded xchange/skuport/plugivery list.
@@ -1043,9 +1121,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
 
     /**
      * What Taxonomy Mapping lists and scans: get_taxonomy_source_fields() plus
-     * each template source's brand/category fields that no import profile
-     * maps yet (mmi_ds_get_preconfigured_templates()'s taxonomy_fields),
-     * flagged 'suggested' => true.
+     * each source's own declared brand/category fields that no import profile
+     * maps yet (get_configured_suppliers()[$sid]['taxonomy_fields'] — seeded
+     * from the source's template, editable per source in the Configure
+     * modal, so an uploaded/custom source that declares one is listed here
+     * too), flagged 'suggested' => true.
      *
      * Without these, a source only appeared in Taxonomy Mapping after a
      * profile already imported its brand/category field, so its aliases could
@@ -1061,7 +1141,7 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             static fn( array $row ): array => $row + [ 'suggested' => false ],
             self::get_taxonomy_source_fields()
         );
-        if ( ! function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_get_preconfigured_templates' ) || ! class_exists( '\\MMI_Pipeline_Admin' ) ) {
+        if ( ! class_exists( '\\MMI_Pipeline_Admin' ) ) {
             return $result;
         }
 
@@ -1070,12 +1150,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             $seen[ $row['supplier'] . '|' . $row['wc_taxonomy'] ] = true;
         }
 
-        $templates = \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_get_preconfigured_templates();
         foreach ( \MMI_Pipeline_Admin::get_configured_suppliers() as $supplier_id => $info ) {
             if ( ! ( $info['taxonomy_mapping_enabled'] ?? true ) ) {
                 continue;
             }
-            foreach ( (array) ( $templates[ $supplier_id ]['taxonomy_fields'] ?? [] ) as $field ) {
+            foreach ( (array) ( $info['taxonomy_fields'] ?? [] ) as $field ) {
                 // A profile mapping this taxonomy for the source (any field) wins.
                 if ( isset( $seen[ $supplier_id . '|' . $field['wc_taxonomy'] ] ) ) {
                     continue;

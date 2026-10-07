@@ -3220,3 +3220,42 @@
     margin-left: 6px;
     cursor: help;
 }
+
+/* ── Configure modal › Taxonomies tab (2026-10-07) ────────────────────────
+   Declared taxonomy fields: one .mmi-kv-row per WooCommerce taxonomy
+   (select) + source field (text), same row primitive as Custom Headers. */
+.mmi-kv-row select {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.mmi-taxonomy-fields-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.mmi-taxonomy-field-suggestions {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px dashed #c3c4c7;
+    border-radius: 4px;
+    background: #f6f7f7;
+    font-size: 12px;
+}
+
+.mmi-taxonomy-field-suggestions .mmi-taxonomy-field-suggestion {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 6px 0 0;
+}
+
+.mmi-taxonomy-field-suggestion .mmi-suggestion-samples {
+    color: #646970;
+}

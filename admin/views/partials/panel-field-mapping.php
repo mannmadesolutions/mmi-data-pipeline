@@ -71,7 +71,7 @@ $mmi_field_mapping_render_now = !empty($mmi_field_mapping_render_now);
  *               since its normal source-field row is already the primary
  *               "is this configured" signal.
  */
-$mmi_render_taxonomy_alias_status = static function (string $wc_taxonomy, string $current_profile_val, bool $always_show_suppliers = false) use ($configured_suppliers, $profile_assigned_sources, $mmi_restrict_to_assigned_sources): void {
+$mmi_render_taxonomy_alias_status = static function (string $wc_taxonomy, string $current_profile_val, bool $always_show_suppliers = false, ?array $fixed_sources = null) use ($configured_suppliers, $profile_assigned_sources, $mmi_restrict_to_assigned_sources): void {
     $scope_suppliers = $mmi_restrict_to_assigned_sources
         ? array_intersect_key($configured_suppliers, array_flip($profile_assigned_sources))
         : $configured_suppliers;
@@ -79,6 +79,16 @@ $mmi_render_taxonomy_alias_status = static function (string $wc_taxonomy, string
     if (empty($scope_suppliers)) {
         return;
     }
+
+    // $fixed_sources (2026-10-07): for a Taxonomy-Mapping-only field, the
+    // supplier => raw-field map from MMI_Pipeline_Field_Mapping_Defaults::
+    // fixed_taxonomy_sources(). A supplier missing from it has declared no
+    // field for this taxonomy at all (SkuPort has no category field; an
+    // uploaded CSV may have none) — a different situation from "declared,
+    // zero aliases yet", and the readout says so instead of the misleading
+    // "not configured yet". null = not applicable (field has its own picker).
+    $tax_obj   = get_taxonomy($wc_taxonomy);
+    $tax_label = $tax_obj && !empty($tax_obj->labels->singular_name) ? strtolower($tax_obj->labels->singular_name) : $wc_taxonomy;
 
     // get_tax_mappings('', ...) has no supplier_id filter at all (returns
     // EVERY supplier's rows, not just true-global ones) — read once, keep
@@ -104,13 +114,20 @@ $mmi_render_taxonomy_alias_status = static function (string $wc_taxonomy, string
                 continue; // Nothing mapped for this supplier yet — no row worth showing.
             }
         ?>
-            <br class="mmi-inline-break">
-            <span class="mmi-brand-status-row">
+            <?php /* data-supplier + the <br> inside the row: Step 2's live
+                 source scoping (updateFieldMappingSupplierScope() in
+                 import-settings.js) hides a row whose supplier this profile
+                 does not assign, the same way it hides that supplier's
+                 toggles and source rows, and the line break goes with it. */ ?>
+            <span class="mmi-brand-status-row" data-supplier="<?php echo esc_attr($sid); ?>">
+                <br class="mmi-inline-break">
                 <strong class="mmi-brand-status-supplier"><?php echo esc_html(strtoupper($sinfo['supplier_name'] ?? $sid)); ?>:</strong>
                 <?php if ($count > 0): ?>
                     source field<?php echo count($source_fields) === 1 ? '' : 's'; ?>
                     "<?php echo esc_html(implode('", "', $source_fields)); ?>",
                     <?php echo (int) $count; ?> alias value<?php echo $count === 1 ? '' : 's'; ?> mapped
+                <?php elseif ($fixed_sources !== null && !isset($fixed_sources[$sid])): ?>
+                    <span class="mmi-brand-status-unconfigured">no <?php echo esc_html($tax_label); ?> field declared for this source (Data Sources &rsaquo; Configure &rsaquo; Taxonomies)</span>
                 <?php else: ?>
                     <span class="mmi-brand-status-unconfigured">not configured yet</span>
                 <?php endif; ?>
@@ -598,6 +615,16 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                  non-empty, so the toggle is a real functional switch, not a cosmetic
                                  one, and a brand-new profile (blank_mappings() blanks 'source' the
                                  same as every other field) starts with both fields genuinely off. */ ?>
+                            <?php
+                            // Which raw feed field feeds this taxonomy, per source
+                            // (2026-10-07): each source's own declared taxonomy
+                            // fields (Configure modal, Taxonomies tab; seeded from
+                            // its template), with DEFAULTS as the fallback for
+                            // xchange/skuport only. Until now this read DEFAULTS
+                            // alone, so Plugivery and any later source never got a
+                            // toggle here — see fixed_taxonomy_sources()'s docblock.
+                            $mmi_fixed_sources = MMI_Pipeline_Field_Mapping_Defaults::fixed_taxonomy_sources($field_name, $configured_suppliers);
+                            ?>
                             <p class="mmi-no-sources-inline">
                                 <span class="dashicons dashicons-info"></span>
                                 Supplier values for <?php echo esc_html(strtolower($mapping['label'])); ?> —
@@ -611,18 +638,16 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                      whatever wizard progress hadn't been saved yet. */ ?>
                                 <a href="<?php echo esc_url(admin_url('admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_taxonomy=1' . (isset($current_profile) ? '&profile=' . urlencode($current_profile) : ''))); ?>" class="mmi-brand-taxonomy-link" target="_blank" rel="noopener noreferrer">Taxonomy Mapping</a>
                                 (opens in a new tab), not a source field here.
-                                <?php $mmi_render_taxonomy_alias_status($field_name, isset($current_profile) ? (string) $current_profile : '', true); ?>
+                                <?php $mmi_render_taxonomy_alias_status($field_name, isset($current_profile) ? (string) $current_profile : '', true, $mmi_fixed_sources); ?>
                             </p>
                             <?php
-                            $mmi_fixed_sources = MMI_Pipeline_Field_Mapping_Defaults::DEFAULTS[$field_name]['source'] ?? [];
-                            $mmi_tm_suppliers_with_source = array_filter(
-                                $configured_suppliers,
-                                static fn($sid) => trim((string) ($mmi_fixed_sources[$sid] ?? '')) !== '',
-                                ARRAY_FILTER_USE_KEY
-                            );
+                            $mmi_tm_suppliers_with_source = array_intersect_key($configured_suppliers, $mmi_fixed_sources);
                             ?>
-                            <?php if (!empty($mmi_tm_suppliers_with_source)): ?>
-                                <div class="mmi-taxonomy-enable-toggles">
+                            <?php /* Always rendered, even with no toggles yet: data-field is
+                                 the anchor injectSupplierTaxonomyToggles() (import-pipeline-
+                                 sources.js) appends to when a source is added or its
+                                 declared fields change while this table is on screen. */ ?>
+                                <div class="mmi-taxonomy-enable-toggles" data-field="<?php echo esc_attr($field_name); ?>">
                                     <?php foreach ($mmi_tm_suppliers_with_source as $sid => $sinfo):
                                         $mmi_tm_checked     = trim((string) ($mapping['source'][$sid] ?? '')) !== '';
                                         // Same mmi-supplier-not-in-profile treatment as every other
@@ -631,7 +656,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                         // assigned, not just visually deprioritized.
                                         $mmi_tm_not_assigned = $mmi_restrict_to_assigned_sources && !in_array($sid, $profile_assigned_sources, true);
                                     ?>
-                                        <label class="mmi-taxonomy-enable-toggle<?php echo $mmi_tm_not_assigned ? ' mmi-supplier-not-in-profile' : ''; ?>" title="Turn on Taxonomy Mapping resolution for <?php echo esc_attr(strtoupper($sinfo['supplier_name'])); ?>, using its '<?php echo esc_attr($mmi_fixed_sources[$sid]); ?>' field">
+                                        <label class="mmi-taxonomy-enable-toggle<?php echo $mmi_tm_not_assigned ? ' mmi-supplier-not-in-profile' : ''; ?>" data-supplier="<?php echo esc_attr($sid); ?>" title="Turn on Taxonomy Mapping resolution for <?php echo esc_attr(strtoupper($sinfo['supplier_name'])); ?>, using its '<?php echo esc_attr($mmi_fixed_sources[$sid]); ?>' field">
                                             <input type="checkbox"
                                                    class="field-taxonomy-mapping-toggle"
                                                    data-field="<?php echo esc_attr($field_name); ?>"
@@ -642,7 +667,6 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                         </label>
                                     <?php endforeach; ?>
                                 </div>
-                            <?php endif; ?>
                         <?php else: ?>
                         <?php // $mmi_tax_slug/$mmi_taxonomy_obj already hoisted above. ?>
                         <?php if ($mmi_tax_slug !== ''): ?>

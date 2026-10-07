@@ -526,11 +526,49 @@ class MMI_Pipeline_Admin {
                     // import. Defaults true (existing behavior, unaffected)
                     // for any source that predates this key.
                     'taxonomy_mapping_enabled' => ! array_key_exists( 'taxonomy_mapping_enabled', $cfg ) || (bool) $cfg['taxonomy_mapping_enabled'],
+                    // Which raw feed fields hold this source's brand/category
+                    // (2026-10-07) — the one declaration Field Mapping's
+                    // "Enable for X" toggles, Taxonomy Mapping's source list
+                    // and the Data Sources table all read. See
+                    // resolve_source_taxonomy_fields().
+                    'taxonomy_fields' => self::resolve_source_taxonomy_fields( $sid, $cfg ),
                 ];
             }
         }
 
         return $configured_suppliers;
+    }
+
+    /**
+     * A data source's declared taxonomy fields: which raw feed field feeds
+     * which WooCommerce taxonomy (brand, category, ...). Read from the row's
+     * own `configuration.taxonomy_fields` when it has ever been saved —
+     * including an explicitly emptied list, which means "this source has no
+     * taxonomy field" and must not fall through — otherwise from the
+     * preconfigured template the row was created from
+     * (mmi_ds_get_preconfigured_templates()), and nothing for a custom or
+     * uploaded source that has declared none yet.
+     *
+     * Template rows normally carry the key already: mmi_ds_complete_template_setup()
+     * seeds it on Add Data Source and MMI_Pipeline_Migration backfills existing
+     * rows. The template fallback here covers the window before that
+     * migration runs (admin_init) on a request that reads suppliers first.
+     *
+     * @param string $sid Supplier id.
+     * @param array  $cfg Decoded configuration column.
+     * @return array<int, array{source_field:string, wc_taxonomy:string}>
+     */
+    public static function resolve_source_taxonomy_fields( string $sid, array $cfg ): array {
+        if ( array_key_exists( 'taxonomy_fields', $cfg ) && is_array( $cfg['taxonomy_fields'] ) ) {
+            return MMI_Pipeline_Field_Mapping_Defaults::normalize_taxonomy_fields( $cfg['taxonomy_fields'] );
+        }
+        if ( function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_template_for_source' ) ) {
+            $tpl = \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_template_for_source( [ 'supplier_id' => $sid, 'configuration' => $cfg ] );
+            if ( $tpl ) {
+                return MMI_Pipeline_Field_Mapping_Defaults::normalize_taxonomy_fields( (array) ( $tpl['taxonomy_fields'] ?? [] ) );
+            }
+        }
+        return [];
     }
 
     /**
@@ -567,6 +605,7 @@ class MMI_Pipeline_Admin {
                     'config_status' => $row['config_status'],
                     'source_type'   => $row['source_type'],
                     'fileOptions'   => $file_options,
+                    'taxonomyFields' => self::resolve_source_taxonomy_fields( $sid, $cfg ),
                 ];
             }
         }
@@ -639,6 +678,10 @@ class MMI_Pipeline_Admin {
                 'enabled'      => [ 'class' => 'success', 'label' => 'Active' ],
             ],
             'configuredSuppliers' => $configured_suppliers,
+            // mmi_discover_taxonomy_candidates (TaxonomyMappingController.php)
+            // checks Taxonomy Mapping's own nonce; the Configure modal's
+            // Taxonomies tab calls it from import-pipeline-config.js.
+            'taxmapNonce'         => wp_create_nonce( 'mmi_pipeline_taxonomy_mapping' ),
             // The one integration list (DataSourceController.php) — the JS
             // used to keep its own copy, which never gained Plugivery.
             'preconfiguredTemplates' => function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_preconfigured_templates_for_js' ) ? \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_preconfigured_templates_for_js() : [],

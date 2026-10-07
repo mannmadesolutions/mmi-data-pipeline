@@ -22,6 +22,9 @@
     var preconfiguredNames = (window.MMIDataPipeline && window.MMIDataPipeline._preconfiguredNames) || {};
 
     function escHtml(str) { return window.MMIEscapeHtml(str); }
+    // Attribute-safe escaping for the Taxonomies tab row builder (same helper
+    // import-pipeline.js / import-pipeline-sources.js each keep locally).
+    function escAttr(val) { return $("<div>").text(val == null ? "" : String(val)).html().replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 
     if (!window.MMIDataPipeline) {
         console.error('MMI Data Pipeline: core object not found — import-pipeline-config.js cannot extend it.');
@@ -69,8 +72,11 @@
                     $('.mmi-config-tab-content').removeClass('active');
                     if (tpl) {
                         // Preconfigured API: hide all tabs except Authentication
+                        // and Taxonomies (the declared brand/category fields
+                        // apply to a template source as much as a custom one).
                         $('.mmi-config-tab').hide();
                         $('.mmi-config-tab[data-tab="auth"]').show().addClass('active');
+                        $('.mmi-config-tab[data-tab="taxonomies"]').show();
                         $('.mmi-config-tab-content[data-tab="auth"]').addClass('active');
                     } else {
                         // Custom source: show all tabs, start at Connection
@@ -125,6 +131,22 @@
                     }
                     $('#cfg-documentation-url').val(s.documentation_url || '');
                     $('#cfg-notes').val(s.notes || '');
+
+                    // ── Taxonomies tab: declared taxonomy fields. The row
+                    // normally carries configuration.taxonomy_fields (seeded
+                    // from its template; see mmi_ds_complete_template_setup);
+                    // fall back to the template list for a row the migration
+                    // has not reached yet, and to nothing for a custom source.
+                    const tplDefs = (window.mmiImportSettings && window.mmiImportSettings.preconfiguredTemplates) || {};
+                    self._taxonomyTemplateFields = (tpl && tplDefs[tpl] && Array.isArray(tplDefs[tpl].taxonomyFields))
+                        ? tplDefs[tpl].taxonomyFields
+                        : [];
+                    const declaredTaxonomyFields = Array.isArray(config.taxonomy_fields)
+                        ? config.taxonomy_fields
+                        : self._taxonomyTemplateFields;
+                    self.renderTaxonomyFieldRows(declaredTaxonomyFields);
+                    $('#mmi-reset-taxonomy-fields-btn').toggleClass('mmi-is-hidden', self._taxonomyTemplateFields.length === 0);
+                    $('#mmi-taxonomy-field-suggestions').addClass('mmi-is-hidden').empty();
 
                     // ── Non-HTTP source type panels (upload / dropbox / gdrive)
                     self.applySourceTypePanels(s.source_type);
@@ -417,6 +439,11 @@
                     detect_changes: $('#cfg-detect-changes').is(':checked'),
                     custom_headers: customHeaders,
                 },
+                // Taxonomies tab — see renderTaxonomyFieldRows(). Sent even
+                // when empty: an emptied list is the answer "this feed has
+                // no brand/category field", which the server stores as []
+                // (DataSourceController.php, mmi_save_data_source).
+                taxonomy_fields: self.collectTaxonomyFields(),
             };
 
             const $status = $('#mmi-autosave-status');
@@ -486,6 +513,26 @@
                                 .data('config-status', cfgStatus);
                         }
 
+                        // Declared taxonomy fields → every in-page consumer
+                        // (2026-10-07): the localized supplier list (what
+                        // syncFieldMappingSuppliers() re-injects from) and the
+                        // Field Mapping table's "Enable for X" toggles, if the
+                        // wizard's Fields step is on screen. Taxonomy Mapping's
+                        // own pills are server-rendered and pick this up on
+                        // its next Reload/open.
+                        const savedTaxonomyFields = (src.configuration && Array.isArray(src.configuration.taxonomy_fields))
+                            ? src.configuration.taxonomy_fields
+                            : [];
+                        if (window.mmiImportSettings && Array.isArray(window.mmiImportSettings.configuredSuppliers)) {
+                            window.mmiImportSettings.configuredSuppliers.forEach(function(cs) {
+                                if (cs.supplier_id === supplierId) { cs.taxonomyFields = savedTaxonomyFields; }
+                            });
+                        }
+                        if (typeof self.syncSupplierTaxonomyToggles === 'function') {
+                            self.syncSupplierTaxonomyToggles(supplierId, src.supplier_name || supplierId, savedTaxonomyFields);
+                        }
+                        self.updateTaxonomyQuickLinkTitle(supplierId, savedTaxonomyFields);
+
                         // Mark config as clean after a confirmed save
                         self._configDirty = false;
                         self._isSaving = false;
@@ -520,6 +567,122 @@
                     // Status already updated in success/error handlers
                 }
             });
+        },
+
+        // ─── Taxonomies tab (declared taxonomy fields, 2026-10-07) ──────
+        //
+        // One .mmi-kv-row per declared field: a WooCommerce taxonomy select
+        // (mmiImportSettings.productTaxonomies) + the raw source field. The
+        // list is the source's configuration.taxonomy_fields — what Field
+        // Mapping's "Enable for X" toggles, Taxonomy Mapping's source list and
+        // the Data Sources table read. Every input lives inside #mmi-config-
+        // modal, so the modal's existing delegated input/change listener
+        // autosaves edits here exactly like any other field.
+
+        taxonomyFieldRowHtml: function(wcTaxonomy, sourceField) {
+            const taxonomies = (window.mmiImportSettings && window.mmiImportSettings.productTaxonomies) || [];
+            let opts = '<option value="">— WooCommerce taxonomy —</option>';
+            let seen = false;
+            taxonomies.forEach(function(t) {
+                const sel = (t.slug === wcTaxonomy) ? ' selected' : '';
+                if (sel) { seen = true; }
+                opts += `<option value="${escAttr(t.slug)}"${sel}>${escHtml(t.label)} (${escHtml(t.slug)})</option>`;
+            });
+            if (wcTaxonomy && !seen) {
+                // A taxonomy no longer registered (plugin off?) — keep the
+                // saved value visible rather than silently dropping it.
+                opts += `<option value="${escAttr(wcTaxonomy)}" selected>${escHtml(wcTaxonomy)}</option>`;
+            }
+            return `<div class="mmi-kv-row mmi-taxonomy-field-row">
+                <select class="mmi-taxonomy-field-taxonomy" title="WooCommerce taxonomy this field feeds">${opts}</select>
+                <input type="text" class="mmi-taxonomy-field-source" placeholder="Source field, e.g. brand or master_category+sub_category" value="${escAttr(sourceField || '')}">
+                <button type="button" class="button button-small mmi-kv-remove mmi-taxonomy-field-remove" title="Remove">&times;</button>
+            </div>`;
+        },
+
+        renderTaxonomyFieldRows: function(fields) {
+            const self  = this;
+            const $list = $('#mmi-taxonomy-fields-list');
+            $list.empty();
+            (fields || []).forEach(function(tf) {
+                if (!tf) { return; }
+                $list.append(self.taxonomyFieldRowHtml(tf.wc_taxonomy || '', tf.source_field || ''));
+            });
+        },
+
+        /** Current rows → [{source_field, wc_taxonomy}], one per taxonomy, blanks skipped. */
+        collectTaxonomyFields: function() {
+            const out  = [];
+            const seen = {};
+            $('#mmi-taxonomy-fields-list .mmi-taxonomy-field-row').each(function() {
+                const tax   = String($(this).find('.mmi-taxonomy-field-taxonomy').val() || '').trim();
+                const field = String($(this).find('.mmi-taxonomy-field-source').val() || '').trim();
+                if (!tax || !field || seen[tax]) { return; }
+                seen[tax] = true;
+                out.push({ source_field: field, wc_taxonomy: tax });
+            });
+            return out;
+        },
+
+        /**
+         * "Suggest from feed": mmi_discover_taxonomy_candidates samples the
+         * source's fetched feed for low-cardinality text fields (built
+         * 2026-08-30 as a backend with no UI moment chosen; this is it).
+         * Each candidate renders as an "Add" button that appends a row.
+         */
+        suggestTaxonomyFields: function(supplierId) {
+            const self = this;
+            const $out = $('#mmi-taxonomy-field-suggestions');
+            const $btn = $('#mmi-suggest-taxonomy-fields-btn');
+            const taxNonce = (window.mmiImportSettings && window.mmiImportSettings.taxmapNonce) || '';
+            $btn.prop('disabled', true);
+            $out.removeClass('mmi-is-hidden').html('<span class="dashicons dashicons-update mmi-spin"></span> Sampling the fetched feed…');
+            $.ajax({
+                url: ajaxUrl,
+                method: 'POST',
+                data: { action: 'mmi_discover_taxonomy_candidates', supplier_id: supplierId, nonce: taxNonce },
+            }).done(function(response) {
+                if (!response || !response.success) {
+                    $out.html('<span class="dashicons dashicons-warning"></span> ' + escHtml((response && response.data && response.data.message) || 'Could not sample this source.'));
+                    return;
+                }
+                const cands = response.data.candidates || [];
+                if (!cands.length) {
+                    $out.html('No brand- or category-shaped field found in <code>' + escHtml(response.data.file || 'the feed') + '</code> beyond those already declared or mapped.');
+                    return;
+                }
+                let html = '<div>Likely taxonomy fields in <code>' + escHtml(response.data.file || '') + '</code> (sampled ' + escHtml(String(response.data.total_items || 0)) + ' records):</div>';
+                cands.forEach(function(c) {
+                    const samples = (c.sample_vals || []).slice(0, 3).join(', ');
+                    html += `<span class="mmi-taxonomy-field-suggestion">
+                        <button type="button" class="button button-small mmi-taxonomy-field-suggest-add"
+                                data-path="${escAttr(c.path)}" data-taxonomy="${escAttr(c.suggested_taxonomy || '')}"
+                                title="Add '${escAttr(c.path)}' as a taxonomy field">
+                            <span class="dashicons dashicons-plus"></span> ${escHtml(c.path)}
+                        </button>
+                        <span class="mmi-suggestion-samples">${escHtml(String(c.unique_count))} values · ${escHtml(samples)}</span>
+                    </span>`;
+                });
+                $out.html(html);
+            }).fail(function(xhr) {
+                $out.html('<span class="dashicons dashicons-warning"></span> Request failed: ' + escHtml(xhr.statusText || 'error'));
+            }).always(function() {
+                $btn.prop('disabled', false);
+            });
+        },
+
+        /** Keep the Data Sources table's mapped-count tooltip naming the declared fields. */
+        updateTaxonomyQuickLinkTitle: function(supplierId, fields) {
+            const $link = $(`.mmi-taxmap-quick-link[data-taxmap-open-supplier="${supplierId}"]`);
+            if (!$link.length) { return; }
+            const taxonomies = (window.mmiImportSettings && window.mmiImportSettings.productTaxonomies) || [];
+            const labelOf = function(slug) {
+                const t = taxonomies.find(function(x) { return x.slug === slug; });
+                return t ? t.label : slug;
+            };
+            const base  = String($link.attr('title') || '').split(/\s(?:Fields:|No taxonomy field declared)/)[0];
+            const parts = (fields || []).map(function(tf) { return tf.source_field + ' → ' + labelOf(tf.wc_taxonomy); });
+            $link.attr('title', base + (parts.length ? ' Fields: ' + parts.join(', ') + '.' : ' No taxonomy field declared for this source yet (Configure › Taxonomies).'));
         },
 
         // ─── Schedule Auto-Save (debounced) ─────────────────────────────
@@ -686,6 +849,39 @@
 
         // ─── Test Connection ────────────────────────────────────────────
 
+    });
+
+    // ─── Taxonomies tab buttons ─────────────────────────────────────────
+    // Delegated like the modal's other row controls (import-pipeline.js).
+    // Adding/removing a row changes nothing until a field is filled, so
+    // only the remove, suggestion-add and reset paths trigger the modal's
+    // debounced autosave explicitly; typing in a row already does.
+    $(document).on('click', '#mmi-add-taxonomy-field-btn', function() {
+        $('#mmi-taxonomy-fields-list').append(window.MMIDataPipeline.taxonomyFieldRowHtml('', ''));
+        $('#mmi-taxonomy-fields-list .mmi-taxonomy-field-row:last .mmi-taxonomy-field-taxonomy').trigger('focus');
+    });
+    $(document).on('click', '.mmi-taxonomy-field-remove', function() {
+        $(this).closest('.mmi-taxonomy-field-row').remove();
+        window.MMIDataPipeline.scheduleAutoSave();
+    });
+    $(document).on('click', '#mmi-suggest-taxonomy-fields-btn', function() {
+        window.MMIDataPipeline.suggestTaxonomyFields($('#mmi-config-supplier-id').val());
+    });
+    $(document).on('click', '.mmi-taxonomy-field-suggest-add', function() {
+        const path     = $(this).data('path');
+        const taxonomy = $(this).data('taxonomy') || '';
+        $('#mmi-taxonomy-fields-list').append(window.MMIDataPipeline.taxonomyFieldRowHtml(taxonomy, path));
+        $(this).prop('disabled', true);
+        if (taxonomy) {
+            window.MMIDataPipeline.scheduleAutoSave();
+        } else {
+            $('#mmi-taxonomy-fields-list .mmi-taxonomy-field-row:last .mmi-taxonomy-field-taxonomy').trigger('focus');
+        }
+    });
+    $(document).on('click', '#mmi-reset-taxonomy-fields-btn', function() {
+        const tplFields = window.MMIDataPipeline._taxonomyTemplateFields || [];
+        window.MMIDataPipeline.renderTaxonomyFieldRows(tplFields);
+        window.MMIDataPipeline.scheduleAutoSave();
     });
 
 })(jQuery);

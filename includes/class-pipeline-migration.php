@@ -43,7 +43,7 @@ class MMI_Pipeline_Migration {
      * something existing rows need, and the next admin load applies it.
      */
     const FLAG_TEMPLATE_SETUP    = 'mmi_pipeline_template_setup_version';
-    const TEMPLATE_SETUP_VERSION = 1;
+    const TEMPLATE_SETUP_VERSION = 2; // 2 (2026-10-07): taxonomy_fields seeded from the template
 
     /**
      * Hook into plugins_loaded (priority 20, after MMI_DB is available).

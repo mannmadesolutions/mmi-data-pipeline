@@ -421,19 +421,26 @@
                         // Inject the new supplier into the field-mapping panel
                         const knownFiles = self._knownSupplierFiles();
                         const fileOptions = knownFiles[src.supplier_id] || { [src.supplier_id + '-products.json']: 'Products' };
-                        self.injectSupplierToFieldMapping(src.supplier_id, src.supplier_name, false, 'unconfigured', fileOptions);
+                        // Declared taxonomy fields: a template source's row is
+                        // seeded with them server-side (mmi_ds_complete_template_setup),
+                        // a custom/uploaded source starts with none.
+                        const newTaxonomyFields = (src.configuration && Array.isArray(src.configuration.taxonomy_fields))
+                            ? src.configuration.taxonomy_fields
+                            : [];
+                        self.injectSupplierToFieldMapping(src.supplier_id, src.supplier_name, false, 'unconfigured', fileOptions, newTaxonomyFields);
 
                         // Keep configuredSuppliers list in sync so future syncFieldMappingSuppliers is accurate
                         if (window.mmiImportSettings && window.mmiImportSettings.configuredSuppliers) {
                             const exists = window.mmiImportSettings.configuredSuppliers.some(s => s.supplier_id === src.supplier_id);
                             if (!exists) {
                                 window.mmiImportSettings.configuredSuppliers.push({
-                                    supplier_id:   src.supplier_id,
-                                    supplier_name: src.supplier_name,
-                                    enabled:       false,
-                                    config_status: 'unconfigured',
-                                    source_type:   src.source_type,
-                                    fileOptions:   fileOptions,
+                                    supplier_id:    src.supplier_id,
+                                    supplier_name:  src.supplier_name,
+                                    enabled:        false,
+                                    config_status:  'unconfigured',
+                                    source_type:    src.source_type,
+                                    fileOptions:    fileOptions,
+                                    taxonomyFields: newTaxonomyFields,
                                 });
                             }
                         }
@@ -554,10 +561,16 @@
          * Inject a supplier column into every field-mapping row.
          * Safe to call multiple times — skips rows that already have this supplier.
          */
-        injectSupplierToFieldMapping: function(sid, supplierName, enabled, cfgStatus, fileOptions) {
+        injectSupplierToFieldMapping: function(sid, supplierName, enabled, cfgStatus, fileOptions, taxonomyFields) {
             const self    = this;
             const esc     = escAttr;
             const rowCls  = enabled ? '' : ' supplier-source-inactive';
+
+            // product_brand / product_cat have no editable source row — they
+            // get an "Enable for X" toggle per source that declares a field
+            // for that taxonomy (see panel-field-mapping.php). Synced here so
+            // a source added or edited without a reload shows up there too.
+            self.syncSupplierTaxonomyToggles(sid, supplierName, taxonomyFields || []);
             const dotHtml = !enabled
                 ? `<span class="supplier-status-dot supplier-status-${esc(cfgStatus || 'unconfigured')}" title="Source is ${esc(cfgStatus || 'unconfigured')} — not currently active">●</span>`
                 : '';
@@ -692,9 +705,69 @@
                     ? s.fileOptions
                     : (self._knownSupplierFiles()[s.supplier_id] || { [s.supplier_id + '-products.json']: 'Products' });
                 self.injectSupplierToFieldMapping(
-                    s.supplier_id, s.supplier_name, s.enabled, s.config_status, fileOptions
+                    s.supplier_id, s.supplier_name, s.enabled, s.config_status, fileOptions, s.taxonomyFields || []
                 );
             });
+        },
+
+        /**
+         * Bring the Field Mapping table's Taxonomy Mapping toggles for one
+         * source in line with its declared taxonomy fields (2026-10-07):
+         * `[{source_field, wc_taxonomy}, …]`, the same list the server
+         * renders from (MMI_Pipeline_Field_Mapping_Defaults::fixed_taxonomy_sources()).
+         * Each .mmi-taxonomy-enable-toggles[data-field] container is the
+         * taxonomy's row on the table — product_brand / product_cat today.
+         *
+         * - Declared and missing: append a toggle (unchecked — turning it on
+         *   is the profile's own decision, saved by the shared
+         *   .field-taxonomy-mapping-toggle handler in import-settings.js).
+         * - Declared and present: refresh data-source so a changed field
+         *   name is what the next tick saves.
+         * - Present but no longer declared, and unchecked: remove it. A
+         *   checked one stays — the profile has a live source saved for it,
+         *   and silently dropping the control would hide that.
+         *
+         * Then re-runs Step 2's scoping so a toggle for a source this
+         * profile does not assign is hidden like every other row.
+         */
+        syncSupplierTaxonomyToggles: function(sid, supplierName, taxonomyFields) {
+            const esc      = escAttr;
+            const declared = {};
+            (taxonomyFields || []).forEach(function(tf) {
+                if (tf && tf.wc_taxonomy && tf.source_field) {
+                    declared[tf.wc_taxonomy] = String(tf.source_field);
+                }
+            });
+
+            $('.mmi-taxonomy-enable-toggles[data-field]').each(function() {
+                const $wrap    = $(this);
+                const taxonomy = String($wrap.data('field') || '');
+                const $toggle  = $wrap.find(`.field-taxonomy-mapping-toggle[data-supplier="${sid}"]`);
+
+                if (Object.prototype.hasOwnProperty.call(declared, taxonomy)) {
+                    const field = declared[taxonomy];
+                    if ($toggle.length) {
+                        $toggle.attr('data-source', field).data('source', field);
+                        $toggle.closest('.mmi-taxonomy-enable-toggle')
+                            .attr('title', `Turn on Taxonomy Mapping resolution for ${supplierName.toUpperCase()}, using its '${field}' field`);
+                        return;
+                    }
+                    $wrap.append(
+                        `<label class="mmi-taxonomy-enable-toggle" data-supplier="${esc(sid)}" title="Turn on Taxonomy Mapping resolution for ${esc(supplierName.toUpperCase())}, using its '${esc(field)}' field">
+                            <input type="checkbox"
+                                   class="field-taxonomy-mapping-toggle"
+                                   data-field="${esc(taxonomy)}"
+                                   data-supplier="${esc(sid)}"
+                                   data-source="${esc(field)}">
+                            Enable for ${esc(supplierName.toUpperCase())}
+                        </label>`
+                    );
+                } else if ($toggle.length && !$toggle.is(':checked')) {
+                    $toggle.closest('.mmi-taxonomy-enable-toggle').remove();
+                }
+            });
+
+            if (window.mmiUpdateFieldMappingSupplierScope) { window.mmiUpdateFieldMappingSupplierScope(); }
         }
 
         // ─── Autosave Helpers ───────────────────────────────────────────

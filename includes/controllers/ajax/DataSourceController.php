@@ -727,6 +727,30 @@ add_action('wp_ajax_mmi_save_data_source', function () {
         'preconfigured_template' => sanitize_key($existing_configuration['preconfigured_template'] ?? ''),
     ];
 
+    // Keys this modal does not edit but other screens own — rebuilt from
+    // scratch above, they were silently dropped on every save until
+    // 2026-10-07: the Data Sources table's per-source Taxonomy Mapping
+    // toggle (mmi_toggle_source_taxonomy_mapping) came back on after any
+    // Configure save, and a custom json_files list vanished.
+    foreach (['taxonomy_mapping_enabled', 'json_files'] as $carry) {
+        if (array_key_exists($carry, $existing_configuration)) {
+            $configuration[$carry] = $existing_configuration[$carry];
+        }
+    }
+
+    // Declared taxonomy fields (Taxonomies tab). Sent as a list, possibly
+    // empty — an empty list is a real answer ("this source has no brand or
+    // category field"), so it is stored as [] rather than dropped, which
+    // would let the template fallback in
+    // MMI_Pipeline_Admin::resolve_source_taxonomy_fields() re-add the
+    // template's fields. Absent from the payload (older JS, other callers):
+    // keep whatever is stored.
+    if (array_key_exists('taxonomy_fields', $config)) {
+        $configuration['taxonomy_fields'] = \MMI_Pipeline_Field_Mapping_Defaults::normalize_taxonomy_fields($config['taxonomy_fields']);
+    } elseif (array_key_exists('taxonomy_fields', $existing_configuration)) {
+        $configuration['taxonomy_fields'] = $existing_configuration['taxonomy_fields'];
+    }
+
     // Build auth_config JSON
     $auth = $config['auth'] ?? [];
     $auth_type = sanitize_text_field($auth['type'] ?? 'none');
@@ -2485,6 +2509,16 @@ function mmi_ds_complete_template_setup(string $supplier_id): array {
         $filled[] = 'preconfigured_template';
     }
 
+    // Declared taxonomy fields (2026-10-07, TEMPLATE_SETUP_VERSION 2): the
+    // template's brand/category fields become the row's own declaration,
+    // which the admin can then edit in the Configure modal. Only when the
+    // key has never been saved — an emptied list is a deliberate answer.
+    if (!array_key_exists('taxonomy_fields', $configuration) && !empty($tpl['taxonomy_fields'])) {
+        $configuration['taxonomy_fields'] = \MMI_Pipeline_Field_Mapping_Defaults::normalize_taxonomy_fields((array) $tpl['taxonomy_fields']);
+        $update['configuration'] = wp_json_encode($configuration);
+        $filled[] = 'taxonomy fields';
+    }
+
     $auth_before = $auth;
     if (empty($auth['type']) || $auth['type'] === 'none') {
         $auth['type'] = $tpl['auth_type'];
@@ -2538,9 +2572,10 @@ function mmi_ds_preconfigured_templates_for_js(): array {
     $out = [];
     foreach (mmi_ds_get_preconfigured_templates() as $id => $tpl) {
         $out[$id] = [
-            'label'         => $tpl['supplier_name'],
-            'supplierName'  => $tpl['supplier_name'],
-            'fixedAuthKeys' => array_keys((array) ($tpl['auth_params'] ?? [])),
+            'label'          => $tpl['supplier_name'],
+            'supplierName'   => $tpl['supplier_name'],
+            'fixedAuthKeys'  => array_keys((array) ($tpl['auth_params'] ?? [])),
+            'taxonomyFields' => array_values((array) ($tpl['taxonomy_fields'] ?? [])),
         ];
     }
     return $out;

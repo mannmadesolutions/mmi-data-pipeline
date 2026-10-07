@@ -2819,7 +2819,8 @@ select.primary-key-source-input:disabled {
 .group-supplier-toggle-label.mmi-supplier-not-in-profile,
 .group-file-default.mmi-supplier-not-in-profile,
 .profile-file-default.mmi-supplier-not-in-profile,
-.mmi-taxonomy-enable-toggle.mmi-supplier-not-in-profile {
+.mmi-taxonomy-enable-toggle.mmi-supplier-not-in-profile,
+.mmi-brand-status-row.mmi-supplier-not-in-profile {
     display: none;
 }
 

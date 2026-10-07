@@ -945,7 +945,12 @@ jQuery(document).ready(function($) {
         const checked = $('#new-profile-sources-list .np-source-check:checked')
             .map(function () { return this.value; }).get();
         const restrictToAssigned = checked.length > 0;
-        $('.group-supplier-toggle-label, .supplier-source-row, .supplier-file-row, .group-file-default, .profile-file-default').each(function () {
+        // .mmi-taxonomy-enable-toggle / .mmi-brand-status-row (2026-10-07):
+        // product_brand/product_cat's "Enable for X" toggles and their alias
+        // readout rows were left out of this pass, so ticking a source in
+        // Step 2 showed its source rows on every other field but never its
+        // Taxonomy Mapping toggle until the panel was reloaded.
+        $('.group-supplier-toggle-label, .supplier-source-row, .supplier-file-row, .group-file-default, .profile-file-default, .mmi-taxonomy-enable-toggle, .mmi-brand-status-row').each(function () {
             const $el = $(this);
             const sid = $el.data('supplier');
             const isAssigned = !restrictToAssigned || checked.indexOf(sid) !== -1;
@@ -992,6 +997,10 @@ jQuery(document).ready(function($) {
     // removing, or enabling/disabling a data source outside the wizard (the
     // main Data Sources tab).
     window.mmiUpdateFieldMappingSingleSourceState = updateFieldMappingSingleSourceState;
+    // Same reason, for the per-supplier show/hide pass itself — a toggle
+    // injected after the page rendered (injectSupplierTaxonomyToggles() in
+    // import-pipeline-sources.js) needs the current Step 2 scoping applied.
+    window.mmiUpdateFieldMappingSupplierScope = updateFieldMappingSupplierScope;
 
     // Optimistic status-line update — the actual persistence already happens
     // via the shared autosave handlers above; this just keeps the "Primary
