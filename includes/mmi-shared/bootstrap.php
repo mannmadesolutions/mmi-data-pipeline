@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.4';
+$mmi_shared_lib_this_copy_version = '1.46.5';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -682,7 +682,11 @@ if ( ! function_exists( 'mmi_shared_license_revalidate_bootstrap' ) ) {
 if ( ! function_exists( 'mmi_shared_license_recheck_bootstrap' ) ) {
 	function mmi_shared_license_recheck_bootstrap(): void {
 		add_action( 'rest_api_init', [ 'MMI_License_Recheck', 'register_route' ] );
-		add_action( MMI_License_Recheck::EXPIRY_HOOK, 'mmi_license_revalidate_all' );
+		// The hook name as a literal (= MMI_License_Recheck::EXPIRY_HOOK, checked
+		// by tests/scenario8): reading the class constant here autoloaded the
+		// class while the FIRST plugin's copy was still loading, which pinned
+		// every shared class to that copy before newer copies had registered.
+		add_action( 'mmi_shared_license_revalidate_expiry', 'mmi_license_revalidate_all' );
 		foreach ( [ 'mmi_license_revalidated', 'mmi_license_client_activated', 'mmi_license_client_deactivated', 'admin_init' ] as $hook ) {
 			add_action( $hook, [ 'MMI_License_Recheck', 'schedule_expiry_check' ], 20 );
 		}
