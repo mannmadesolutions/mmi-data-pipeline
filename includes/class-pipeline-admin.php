@@ -177,24 +177,10 @@ class MMI_Pipeline_Admin {
         /* ── Import tab ────────────────────────────────────────────────── */
 
         if ( 'import' === $current_tab ) {
-            // The media library (plupload/mediaelement/imgareaselect/media-views —
-            // a substantial JS/CSS stack) is only ever opened from the Configure
-            // Source modal's File Upload panel, to replace an EXISTING upload-type
-            // source's file (#mmi-upload-choose-btn, import-pipeline.js) — creating
-            // a brand-new upload-type source uses the wizard's own drag-drop widget
-            // (a plain <input type="file">, no wp.media involved) instead. So this
-            // only needs enqueuing when at least one currently configured source is
-            // actually type 'upload', not unconditionally on every Import tab visit.
-            $mmi_has_upload_source = false;
-            foreach ( self::get_configured_suppliers() as $mmi_configured_supplier ) {
-                if ( ( $mmi_configured_supplier['source_type'] ?? '' ) === 'upload' ) {
-                    $mmi_has_upload_source = true;
-                    break;
-                }
-            }
-            if ( $mmi_has_upload_source ) {
-                wp_enqueue_media();
-            }
+            // No wp_enqueue_media(): the Configure Source modal's "Choose File"
+            // (#mmi-upload-choose-btn) now uploads through the same private
+            // file-input path as Add Source and the wizard, so the ~1 MB media
+            // library stack no longer loads with this tab.
 
             self::enqueue_style( 'mmi-pipeline-preview',
                 'assets/css/import-preview.css', [ 'mmi-pipeline-settings' ] );
@@ -279,17 +265,16 @@ class MMI_Pipeline_Admin {
                 self::build_preview_data()
             );
 
-            // Taxonomy Mapping — folded into the Import tab as a collapsible
-            // section on 2026-08-30 (previously its own top-level tab, see
-            // AGENTS.md's Incident History for that date). Loaded unconditionally
-            // whenever the Import tab renders, same as every other section on
-            // this page, since the section markup is always present (just
-            // collapsed by default) rather than only reachable via its own
-            // ?pipeline_tab value.
+            // Taxonomy Mapping (folded into the Import tab 2026-08-30) and
+            // Duplicate Products (2026-09-02) both start closed, so their
+            // scripts (~190 KB together) load the first time they're opened
+            // rather than with the page — see mmi_shared_lib_lazy_script().
+            // Their CSS stays eager (small, and needed the moment they open).
+            // A deep link that opens one straight away loads it eagerly.
             self::enqueue_style( 'mmi-pipeline-taxonomy',
                 'assets/css/taxonomy-mapping.css', [ 'mmi-pipeline-settings' ] );
 
-            self::enqueue_script( 'mmi-pipeline-taxonomy-js',
+            self::register_script( 'mmi-pipeline-taxonomy-js',
                 'assets/js/taxonomy-mapping.js', [ 'jquery', 'mmi-escape-html' ] );
 
             wp_localize_script( 'mmi-pipeline-taxonomy-js', 'mmiTaxMapping', [
@@ -298,19 +283,26 @@ class MMI_Pipeline_Admin {
                 'aliasRules' => self::build_taxmap_alias_rules_data(),
             ] );
 
-            // Duplicate Products — folded into the Import tab as a
-            // collapsible section on 2026-09-02 (previously its own
-            // top-level tab), same "loaded unconditionally, section markup
-            // just starts collapsed" treatment as Taxonomy Mapping above.
+            self::load_on_first_use( 'mmi-pipeline-taxonomy-js', [
+                'sections' => [ '#mmi-taxonomy-mapping-section' ],
+                'clicks'   => [ '#mmi-taxonomy-mapping-toggle' ],
+                'eager'    => isset( $_GET['open_taxonomy'] ),
+            ] );
+
             self::enqueue_style( 'mmi-pipeline-dupes',
                 'assets/css/duplicate-products.css', [ 'mmi-pipeline-settings' ] );
 
-            self::enqueue_script( 'mmi-pipeline-dupes-js',
+            self::register_script( 'mmi-pipeline-dupes-js',
                 'assets/js/duplicate-products.js', [ 'jquery', 'mmi-escape-html' ] );
 
             wp_localize_script( 'mmi-pipeline-dupes-js', 'mmiDupes', [
                 'ajaxUrl' => admin_url( 'admin-ajax.php' ),
                 'nonce'   => wp_create_nonce( 'mmi_pipeline_canonical_candidates' ),
+            ] );
+
+            self::load_on_first_use( 'mmi-pipeline-dupes-js', [
+                'sections' => [ '#mmi-duplicate-products-section' ],
+                'eager'    => isset( $_GET['open_duplicates'] ),
             ] );
         }
 
@@ -968,5 +960,26 @@ class MMI_Pipeline_Admin {
             return;
         }
         wp_enqueue_script( $handle, MMI_PIPELINE_URL . $relative_path, $deps, filemtime( $abs ), true );
+    }
+
+    private static function register_script( string $handle, string $relative_path, array $deps ): void {
+        $abs = MMI_PIPELINE_PATH . $relative_path;
+        if ( ! file_exists( $abs ) ) {
+            return;
+        }
+        wp_register_script( $handle, MMI_PIPELINE_URL . $relative_path, $deps, filemtime( $abs ), true );
+    }
+
+    /**
+     * Load a registered script when its section is first opened, through the
+     * shared library's loader; a plain enqueue where an older bundled copy
+     * without it wins the version negotiation.
+     */
+    private static function load_on_first_use( string $handle, array $trigger ): void {
+        if ( function_exists( 'mmi_shared_lib_lazy_script' ) ) {
+            mmi_shared_lib_lazy_script( $handle, $trigger );
+            return;
+        }
+        wp_enqueue_script( $handle );
     }
 }

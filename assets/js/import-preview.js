@@ -187,9 +187,13 @@
                 e.preventDefault();
                 e.stopPropagation();
                 const $badge = $(this);
-                if (window.MMIDupes && typeof window.MMIDupes.openForCollision === 'function') {
-                    window.MMIDupes.openForCollision($badge.data('supplier'), String($badge.data('pk-value')));
-                }
+                // duplicate-products.js loads on first use (shared mmiLazyScripts).
+                const loaded = window.mmiLazyScripts ? window.mmiLazyScripts.load('mmi-pipeline-dupes-js') : Promise.resolve();
+                loaded.then(function () {
+                    if (window.MMIDupes && typeof window.MMIDupes.openForCollision === 'function') {
+                        window.MMIDupes.openForCollision($badge.data('supplier'), String($badge.data('pk-value')));
+                    }
+                });
             });
 
             // "🔍" next to a row's Primary Key — inspect the raw source data

@@ -631,11 +631,13 @@ $status_badge_map = [
                         <label>Uploaded File</label>
                         <div class="mmi-upload-field-wrap">
                             <input type="hidden" id="cfg-upload-attachment-id">
+                            <input type="file" id="cfg-upload-file-input" class="mmi-is-hidden" accept=".csv,.tsv,.txt,.json,.xml,.xlsx,.xls">
                             <input type="text" id="cfg-upload-filename" readonly placeholder="No file selected" class="mmi-upload-filename-display">
                             <button type="button" class="button" id="mmi-upload-choose-btn">Choose File</button>
                             <button type="button" class="button mmi-btn-danger mmi-is-hidden" id="mmi-upload-clear-btn">Remove</button>
                         </div>
-                        <p class="description">Supported formats: CSV, TSV, JSON, XML, XLSX. The file is stored in the WordPress media library and fetched from there during import.</p>
+                        <p class="description mmi-is-hidden" id="cfg-upload-status" role="status"></p>
+                        <p class="description">Supported formats: CSV, TSV, JSON, XML, XLSX. The file is stored privately on this server and read from there during import.</p>
                     </div>
                 </div>
 

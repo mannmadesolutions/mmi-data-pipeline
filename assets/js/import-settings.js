@@ -2417,22 +2417,55 @@ jQuery(document).ready(function($) {
     // promise with `{not_found: true}` when the file doesn't exist yet, so
     // callers can distinguish "ask the server to fetch it first" from a real
     // failure — mirrors the previous client-side-fetch behavior exactly.
+    //
+    // Every file asked for in the same tick goes out as ONE batched request
+    // (mmi_pipeline_get_fields_from_files): opening the wizard asks for one
+    // file per enabled source, and as separate calls that was 4+ concurrent
+    // admin-ajax requests (each ~1 s of WordPress boot) — over the Server Load
+    // section's 2-simultaneous limit, and the wizard's visible lag.
+    let pendingFieldFetches = null;
+
     function fetchFieldsFromFile(filename) {
-        return $.ajax({
+        const deferred = $.Deferred();
+        if (!pendingFieldFetches) {
+            pendingFieldFetches = {};
+            setTimeout(flushFieldFetches, 0);
+        }
+        (pendingFieldFetches[filename] = pendingFieldFetches[filename] || []).push(deferred);
+        return deferred.promise();
+    }
+
+    function flushFieldFetches() {
+        const batch     = pendingFieldFetches;
+        const filenames = Object.keys(batch);
+        pendingFieldFetches = null;
+
+        const settle = function (filename, result, fallbackMessage) {
+            batch[filename].forEach(function (deferred) {
+                if (result && Array.isArray(result.fields)) {
+                    deferred.resolve(result.fields);
+                    return;
+                }
+                const err = new Error((result && result.message) || fallbackMessage);
+                err.notFound = !!(result && result.not_found);
+                deferred.reject(err);
+            });
+        };
+
+        $.ajax({
             url: (window.mmiGlobal && window.mmiGlobal.ajaxUrl) || window.ajaxurl,
             type: 'POST',
             data: {
-                action: 'mmi_pipeline_get_fields_from_file',
+                action: 'mmi_pipeline_get_fields_from_files',
                 nonce: mmiImportSettings.nonce,
-                filename: filename,
+                filenames: filenames,
             },
         }).then(function (response) {
-            if (response && response.success) {
-                return response.data.fields;
-            }
-            const err = new Error((response && response.data && response.data.message) || 'Failed to load fields');
-            err.notFound = !!(response && response.data && response.data.not_found);
-            throw err;
+            const files   = (response && response.success && response.data && response.data.files) || {};
+            const message = (response && response.data && response.data.message) || 'Failed to load fields';
+            filenames.forEach(function (filename) { settle(filename, files[filename], message); });
+        }, function () {
+            filenames.forEach(function (filename) { settle(filename, null, 'Failed to load fields'); });
         });
     }
 
@@ -3132,7 +3165,9 @@ jQuery(document).ready(function($) {
             });
         });
     }
-    initPkFileSelectors();
+    // Not run at page load: these rows live in the wizard, which stays hidden
+    // until opened, and running it here fired one field-list request per
+    // source on every visit. initWizardPkSelectorsOnce() runs it on first open.
 
     // Primary key — populate every row's "Custom Field" meta-key select from
     // the store's known product meta keys (same data source as the Scope
@@ -3164,7 +3199,16 @@ jQuery(document).ready(function($) {
             populatePkCustomSelect($(this));
         });
     }
-    initPkCustomSelectors();
+
+    // The page-load rows' primary-key selects, filled the first time the
+    // wizard opens (the only place they're visible) instead of on every visit.
+    let hasInitWizardPkSelectors = false;
+    function initWizardPkSelectorsOnce() {
+        if (hasInitWizardPkSelectors) { return; }
+        hasInitWizardPkSelectors = true;
+        initPkFileSelectors();
+        initPkCustomSelectors();
+    }
 
     // Set input disabled/placeholder state, then (for any file selector that
     // already has a value — either a pre-selected <select> or the hidden
@@ -3995,20 +4039,41 @@ jQuery(document).ready(function($) {
         // until this exact moment).
         primeSourceFieldCache();
         initFieldFileSelectors();
+        initWizardPkSelectorsOnce();
 
-        refreshWizardSourcesList(function () {
-            openProfileWizardShow(meta);
-            if (typeof onShown === 'function') { onShown(); }
-        });
+        // Shown at once from the rows already on the page; the server copy
+        // only replaces them afterwards if the source list actually changed.
+        // Waiting on that round trip first (~1 s of admin-ajax boot) was most
+        // of the wizard's open lag.
+        openProfileWizardShow(meta);
+        if (typeof onShown === 'function') { onShown(); }
+        refreshWizardSourcesList();
     }
 
-    // Re-fetches #new-profile-sources-list from the server before every wizard
+    /**
+     * What the Step 2 checklist currently lists: each row's source id and
+     * visible text (name, type pill, primary-key status). Compared against the
+     * server's copy so a refresh that changes nothing touches nothing.
+     */
+    function wizardSourcesSignature($list) {
+        return $list.find('.mmi-source-row').map(function () {
+            const $row = $(this);
+            const id   = $row.attr('data-supplier') || $row.find('.np-source-check').val() || '';
+            return id + '|' + $row.text().replace(/\s+/g, ' ').trim();
+        }).get().join('\n');
+    }
+
+    // Re-fetches #new-profile-sources-list from the server on every wizard
     // open. The page's own inline render of this list is baked in at page load
     // and has no other refresh path — a source added via the Data Sources tab
     // (or any route besides the wizard's own inline upload widget) would
     // otherwise stay invisible to the wizard until a full page reload. See
     // "Wizard Source List Went Stale" in AGENTS.md.
-    function refreshWizardSourcesList(callback) {
+    //
+    // Runs after the wizard is already showing, so it must not clobber what
+    // the user did meanwhile: nothing is replaced unless the list really
+    // differs, and when it does, the checked sources carry over.
+    function refreshWizardSourcesList() {
         $.ajax({
             url: (window.mmiGlobal && window.mmiGlobal.ajaxUrl) || window.ajaxurl,
             type: 'POST',
@@ -4017,29 +4082,38 @@ jQuery(document).ready(function($) {
                 nonce: mmiImportSettings.nonce
             },
             success: function (response) {
-                if (response.success && response.data) {
-                    if (typeof response.data.checklist_html === 'string') {
-                        $('#new-profile-sources-list').html(response.data.checklist_html);
-                    }
-                    if (typeof response.data.pk_editor_html === 'string') {
-                        // The freshly-injected rows' primary-key selects (file
-                        // choice + "Field in the file" + "Custom Field" meta-key)
-                        // only ever got populated with real detected fields by
-                        // the page-load-once init loops above — without this,
-                        // any row this refresh adds/replaces is stuck showing
-                        // only the PHP bootstrap placeholder option plus
-                        // "Custom / Other…".
-                        const $pkList = $('#new-profile-pk-editors-list').html(response.data.pk_editor_html);
-                        initPkFileSelectors($pkList);
-                        initPkCustomSelectors($pkList);
-                    }
+                if (!response || !response.success || !response.data
+                    || typeof response.data.checklist_html !== 'string') {
+                    return;
                 }
-                callback();
-            },
-            error: function () {
-                // Fall back to whatever the page already rendered rather than
-                // blocking the wizard from opening at all.
-                callback();
+                const $checklist = $('#new-profile-sources-list');
+                const $fresh     = $('<div>').html(response.data.checklist_html);
+                if (wizardSourcesSignature($fresh) === wizardSourcesSignature($checklist)) {
+                    return;
+                }
+
+                const checkedIds = $checklist.find('.np-source-check:checked').map(function () {
+                    return $(this).val();
+                }).get();
+                $checklist.html(response.data.checklist_html);
+
+                if (typeof response.data.pk_editor_html === 'string') {
+                    // The freshly-injected rows' primary-key selects (file
+                    // choice + "Field in the file" + "Custom Field" meta-key)
+                    // start with only the PHP bootstrap placeholder option plus
+                    // "Custom / Other…" until populated here.
+                    const $pkList = $('#new-profile-pk-editors-list').html(response.data.pk_editor_html);
+                    $pkList.find('.mmi-source-row').addClass('mmi-is-hidden');
+                    initPkFileSelectors($pkList);
+                    initPkCustomSelectors($pkList);
+                }
+
+                // Re-check what was checked; 'change' re-reveals each one's
+                // primary-key editor row and re-syncs Field Mapping's scope.
+                checkedIds.forEach(function (srcId) {
+                    $checklist.find('.np-source-check[value="' + srcId + '"]').prop('checked', true).trigger('change');
+                });
+                updateFieldMappingSupplierScope();
             }
         });
     }

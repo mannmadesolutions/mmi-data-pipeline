@@ -656,20 +656,16 @@ add_action('wp_ajax_mmi_pipeline_ensure_source_cache', function () {
  * cached in a transient keyed by the file's mtime, so a second request for
  * the same unchanged file doesn't even pay the decode cost again.
  */
-add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
-    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
-
-    if (!mmi_data_pipeline_user_can()) {
-        wp_send_json_error(['message' => 'Insufficient permissions']);
-        return;
-    }
-
-    $filename = sanitize_file_name($_POST['filename'] ?? '');
-    if (empty($filename)) {
-        wp_send_json_error(['message' => 'Filename required']);
-        return;
-    }
-
+/**
+ * Field names + one sample value per field for one cached source-data file
+ * (see the two AJAX actions below). Returns ['fields' => [...]] on success,
+ * or ['message' => ..., 'not_found' => bool] when the file is missing,
+ * outside the JSON directory, or unreadable.
+ *
+ * @param string $filename Already passed through sanitize_file_name().
+ * @return array<string, mixed>
+ */
+function mmi_pipeline_extract_fields_from_file( string $filename ): array {
     $json_dir = mmi_shared_lib_json_dir();
     $path     = $json_dir . $filename;
 
@@ -677,8 +673,7 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
     // whether this particular file does.
     $real_dir = realpath($json_dir);
     if (!$real_dir) {
-        wp_send_json_error(['message' => 'Invalid filename']);
-        return;
+        return ['message' => 'Invalid filename'];
     }
 
     // Check existence BEFORE realpath()ing the file itself: realpath()
@@ -696,8 +691,7 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
         // calls mmi_pipeline_ensure_source_cache then retries once — flagged
         // explicitly so the client can tell "no file yet" apart from a real
         // decode/permission failure.
-        wp_send_json_error(['message' => 'File not found', 'not_found' => true]);
-        return;
+        return ['message' => 'File not found', 'not_found' => true];
     }
 
     // The file exists — NOW resolve its real path and confirm it's still
@@ -705,8 +699,7 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
     // any crafted value sanitize_file_name() didn't strip.
     $real_path = realpath($path);
     if (!$real_path || strpos($real_path, $real_dir . DIRECTORY_SEPARATOR) !== 0) {
-        wp_send_json_error(['message' => 'Invalid filename']);
-        return;
+        return ['message' => 'Invalid filename'];
     }
 
     $mtime     = filemtime($real_path);
@@ -715,8 +708,7 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
     $cache_key = 'mmi_pl_fields2_' . md5($filename . '|' . $mtime);
     $cached    = get_transient($cache_key);
     if ($cached !== false) {
-        wp_send_json_success(['fields' => $cached]);
-        return;
+        return ['fields' => $cached];
     }
 
     $raw  = file_get_contents($real_path);
@@ -724,8 +716,7 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
     unset($raw);
 
     if ($data === null) {
-        wp_send_json_error(['message' => 'Could not parse JSON']);
-        return;
+        return ['message' => 'Could not parse JSON'];
     }
 
     // Xchange format: { products: [...], api_time: ..., debug: ... }.
@@ -774,7 +765,57 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
 
     set_transient($cache_key, $fields, 15 * MINUTE_IN_SECONDS);
 
-    wp_send_json_success(['fields' => $fields]);
+    return ['fields' => $fields];
+}
+
+add_action('wp_ajax_mmi_pipeline_get_fields_from_file', function () {
+    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
+
+    if (!mmi_data_pipeline_user_can()) {
+        wp_send_json_error(['message' => 'Insufficient permissions']);
+        return;
+    }
+
+    $filename = sanitize_file_name($_POST['filename'] ?? '');
+    if (empty($filename)) {
+        wp_send_json_error(['message' => 'Filename required']);
+        return;
+    }
+
+    $result = mmi_pipeline_extract_fields_from_file($filename);
+    if (isset($result['fields'])) {
+        wp_send_json_success($result);
+    }
+    wp_send_json_error($result);
+});
+
+/*
+ * Batched form of the action above: every file the wizard needs in one
+ * request instead of one request per source. Opening the wizard used to fire
+ * one call per enabled source at once, each paying WordPress's ~1 s admin-ajax
+ * boot, over the 2-simultaneous-request limit. Per-file results keep the
+ * single-file shape so the client can still tell "not fetched yet" apart.
+ */
+add_action('wp_ajax_mmi_pipeline_get_fields_from_files', function () {
+    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
+
+    if (!mmi_data_pipeline_user_can()) {
+        wp_send_json_error(['message' => 'Insufficient permissions']);
+        return;
+    }
+
+    $max_files = 20;
+    $requested = array_slice((array) wp_unslash($_POST['filenames'] ?? []), 0, $max_files);
+    $files     = [];
+    foreach ($requested as $raw) {
+        $filename = sanitize_file_name((string) $raw);
+        if ($filename === '' || isset($files[$filename])) {
+            continue;
+        }
+        $files[$filename] = mmi_pipeline_extract_fields_from_file($filename);
+    }
+
+    wp_send_json_success(['files' => $files]);
 });
 
 // Field-name extraction lives in MMI_Pipeline_Config_Validator::extract_field_names()

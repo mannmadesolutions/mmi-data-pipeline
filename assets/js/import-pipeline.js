@@ -404,24 +404,48 @@
 
             // ── File Upload source panel ─────────────────────────────────
 
-            // Open the WP media library to pick a file
+            // Replace the source's file: a plain file input through the same
+            // private-upload endpoint Add Source and the wizard use
+            // (analyzeUploadedFile()). This used the WP media library, which
+            // cost every Import tab visit ~1 MB of media scripts for a picker
+            // that also listed public Media Library files.
             $(document).on('click', '#mmi-upload-choose-btn', function(e) {
                 e.preventDefault();
-                var frame = wp.media({
-                    title:    'Select Data File',
-                    button:   { text: 'Use this file' },
-                    library:  { type: ['text/csv','text/tab-separated-values','application/json','text/xml','application/xml','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel'] },
-                    multiple: false,
+                $('#cfg-upload-file-input').val('').trigger('click');
+            });
+            $(document).on('change', '#cfg-upload-file-input', function() {
+                var file = this.files && this.files[0];
+                if (!file) { return; }
+                var $btn = $('#mmi-upload-choose-btn');
+                var $status = $('#cfg-upload-status');
+                $btn.prop('disabled', true).addClass('mmi-is-loading');
+                $status.removeClass('mmi-is-hidden mmi-text-error').text('Uploading ' + file.name + '…');
+                self.analyzeUploadedFile(file, {
+                    selectors: {
+                        idleId:            'cfg-upload-none',
+                        resultId:          'cfg-upload-none',
+                        errorId:           'cfg-upload-none',
+                        analyzingId:       'cfg-upload-none',
+                        errorMsgId:        'cfg-upload-none',
+                        attachmentInputId: 'cfg-upload-attachment-id',
+                        formatInputId:     'cfg-upload-none',
+                        resultFilenameId:  'cfg-upload-none',
+                        resultMetaId:      'cfg-upload-none',
+                    },
+                    onSuccess: function(data) {
+                        $btn.prop('disabled', false).removeClass('mmi-is-loading');
+                        $status.addClass('mmi-is-hidden').text('');
+                        $('#cfg-upload-filename').val(data.filename || file.name);
+                        $('#mmi-upload-clear-btn').removeClass('mmi-is-hidden');
+                        self.scheduleAutoSave();
+                        self.validateTestConnectionBtn();
+                    },
+                    onError: function(message) {
+                        $btn.prop('disabled', false).removeClass('mmi-is-loading');
+                        $status.addClass('mmi-text-error').text(message);
+                        self.validateTestConnectionBtn();
+                    },
                 });
-                frame.on('select', function() {
-                    var attachment = frame.state().get('selection').first().toJSON();
-                    $('#cfg-upload-attachment-id').val(attachment.id);
-                    $('#cfg-upload-filename').val(attachment.filename || attachment.title || '');
-                    $('#mmi-upload-clear-btn').removeClass('mmi-is-hidden');
-                    self.scheduleAutoSave();
-                    self.validateTestConnectionBtn();
-                });
-                frame.open();
             });
 
             // Clear the selected file
@@ -592,9 +616,14 @@
                 e.stopPropagation();
                 const supplierId   = $(this).data('taxmap-open-supplier');
                 const supplierName = $(this).data('taxmap-supplier-name') || supplierId;
-                if (supplierId && window.MMITaxMapping && typeof window.MMITaxMapping.openForSupplier === 'function') {
-                    window.MMITaxMapping.openForSupplier(supplierId, supplierName);
-                }
+                if (!supplierId) { return; }
+                // taxonomy-mapping.js loads on first use (shared mmiLazyScripts).
+                const loaded = window.mmiLazyScripts ? window.mmiLazyScripts.load('mmi-pipeline-taxonomy-js') : Promise.resolve();
+                loaded.then(function () {
+                    if (window.MMITaxMapping && typeof window.MMITaxMapping.openForSupplier === 'function') {
+                        window.MMITaxMapping.openForSupplier(supplierId, supplierName);
+                    }
+                });
             });
 
             // ── Per-Source Taxonomy Mapping Toggle (2026-08-31) ──────────
