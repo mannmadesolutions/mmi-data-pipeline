@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.6';
+$mmi_shared_lib_this_copy_version = '1.46.7';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -920,6 +920,7 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 			'mmi-license-panel'     => array( 'file' => 'js/shared/license-panel.js', 'deps' => array( 'jquery' ) ),
 			'mmi-condition-builder' => array( 'file' => 'js/shared/mmi-condition-builder.js', 'deps' => array( 'jquery', 'mmi-escape-html' ) ),
 			'mmi-lazy-scripts'      => array( 'file' => 'js/shared/mmi-lazy-scripts.js', 'deps' => array() ),
+			'mmi-row-feedback'      => array( 'file' => 'js/shared/mmi-row-feedback.js', 'deps' => array() ),
 		);
 		foreach ( $scripts as $handle => $spec ) {
 			if ( is_file( $dir . '/' . $spec['file'] ) ) {

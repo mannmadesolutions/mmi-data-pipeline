@@ -4337,6 +4337,47 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
     border-left-color: var(--mmi-primary, #45852C);
 }
 
+/* ── Row feedback (shared lib 1.46.7, 2026-10-07) ───────────────────────────
+ * What a table row shows after its own action, inside the row: no table reload,
+ * no notice row inserted between rows (owner, 2026-10-07: "alerts flash over
+ * table contents"). JS: js/shared/mmi-row-feedback.js (window.MMIRowFeedback,
+ * script handle `mmi-row-feedback`).
+ *   tr.mmi-row-busy     its request is running (dimmed, not clickable)
+ *   tr.mmi-row-done     decided; the outcome sits in one of its cells
+ *   tr.mmi-row-leaving  fading out before removal
+ *   .mmi-row-msg.is-{success|info|warning|error}  the message inside a cell
+ */
+tr.mmi-row-busy {
+    opacity: 0.55;
+    pointer-events: none;
+    transition: opacity var(--mmi-transition-fast, 0.15s) ease;
+}
+tr.mmi-row-done > td,
+tr.mmi-row-done > th {
+    background: var(--mmi-bg-light, #f8f9fa);
+}
+tr.mmi-row-leaving {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.mmi-row-msg {
+    display: inline-block;
+    margin-top: var(--mmi-space-xs, 4px);
+    padding: 2px var(--mmi-space-sm, 8px);
+    border-radius: var(--mmi-radius-sm, 4px);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.mmi-row-msg.is-success { color: var(--mmi-success-text, #155724); background: var(--mmi-success-bg, #d4edda); }
+.mmi-row-msg.is-info { color: var(--mmi-info-text, #1565c0); background: var(--mmi-info-bg, #e3f2fd); }
+.mmi-row-msg.is-warning { color: var(--mmi-warning-text, #856404); background: var(--mmi-warning-bg, #fff3cd); }
+.mmi-row-msg.is-error { color: var(--mmi-error-text, #721c24); background: var(--mmi-error-bg, #f8d7da); }
+@media (prefers-reduced-motion: reduce) {
+    tr.mmi-row-busy,
+    tr.mmi-row-leaving { transition: none; }
+}
+
 /* ── Label Grid (added 2026-09-29) ──────────────────────────────────────────
    Stacked "LABEL  [control]" rows whose controls must start at the same x.
    The label column is max-content: it sizes to the widest label actually
