@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.3';
+$mmi_shared_lib_this_copy_version = '1.46.4';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -914,6 +914,7 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 			'mmi-gate'              => array( 'file' => 'js/shared/mmi-gate.js', 'deps' => array( 'jquery' ) ),
 			'mmi-license-panel'     => array( 'file' => 'js/shared/license-panel.js', 'deps' => array( 'jquery' ) ),
 			'mmi-condition-builder' => array( 'file' => 'js/shared/mmi-condition-builder.js', 'deps' => array( 'jquery', 'mmi-escape-html' ) ),
+			'mmi-lazy-scripts'      => array( 'file' => 'js/shared/mmi-lazy-scripts.js', 'deps' => array() ),
 		);
 		foreach ( $scripts as $handle => $spec ) {
 			if ( is_file( $dir . '/' . $spec['file'] ) ) {
@@ -990,6 +991,172 @@ if ( ! defined( 'MMI_SHARED_ASSETS_HOOKS_REGISTERED' ) && defined( 'ABSPATH' ) )
 	define( 'MMI_SHARED_ASSETS_HOOKS_REGISTERED', true );
 	add_action( 'admin_enqueue_scripts', 'mmi_shared_assets_enqueue', 5 );
 	add_filter( 'admin_body_class', 'mmi_shared_assets_body_class' );
+}
+
+/**
+ * ── Page-load weight on MMI admin pages ──────────────────────────────────
+ *
+ * A Safari timeline of Data Pipeline's Import tab (2026-10-07) showed 261
+ * scripts (11.8 MB) loading one after another, each blocking the parser, and
+ * DOMContentLoaded at 49 s with the cache bypassed. Three fixes, MMI pages only
+ * (?page=mmi-*, the same test that adds body.mmi-page):
+ *   - MMI footer scripts load with `defer`, so the browser fetches them in
+ *     parallel instead of stopping at each one. WordPress keeps a script
+ *     blocking when it can't be deferred safely (an inline 'after' script, or
+ *     a blocking script that depends on it).
+ *   - WordPress's Cmd-K command palette and everything that hangs off it
+ *     (core-commands → core-data → block-editor → React, ~6.7 MB) is dropped;
+ *     no MMI page uses it.
+ *   - mmi_shared_lib_lazy_script() lets a page load a section's script when
+ *     the section is first opened (mmi-lazy-scripts.js).
+ */
+
+if ( ! function_exists( 'mmi_shared_assets_is_mmi_page' ) ) {
+	function mmi_shared_assets_is_mmi_page(): bool {
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		return is_admin() && strncmp( $page, 'mmi-', 4 ) === 0;
+	}
+}
+
+if ( ! function_exists( 'mmi_shared_lib_lazy_script' ) ) {
+	/**
+	 * Load a registered admin script on first use instead of with the page
+	 * (see mmi-lazy-scripts.js for how each trigger works). The handle keeps
+	 * its normal registration: its dependencies are enqueued now and its
+	 * wp_localize_script() data still prints at page load; only the file waits.
+	 * Falls back to a normal enqueue when the loader isn't available.
+	 *
+	 * @param string $handle  A registered script handle.
+	 * @param array  $trigger {
+	 *     @type string[] $sections Selectors; the script loads when one opens.
+	 *     @type string[] $clicks   Selectors; a click loads it, then replays.
+	 *     @type bool     $eager    Load as soon as the page is ready.
+	 * }
+	 */
+	function mmi_shared_lib_lazy_script( string $handle, array $trigger ): void {
+		$scripts = wp_scripts();
+		if ( ! wp_script_is( 'mmi-lazy-scripts', 'registered' ) || ! isset( $scripts->registered[ $handle ] ) ) {
+			wp_enqueue_script( $handle );
+			return;
+		}
+		$GLOBALS['mmi_shared_lazy_scripts'][ $handle ] = array(
+			'sections' => array_values( array_map( 'strval', (array) ( $trigger['sections'] ?? array() ) ) ),
+			'clicks'   => array_values( array_map( 'strval', (array) ( $trigger['clicks'] ?? array() ) ) ),
+			'eager'    => ! empty( $trigger['eager'] ),
+		);
+		foreach ( $scripts->registered[ $handle ]->deps as $dep ) {
+			wp_enqueue_script( $dep );
+		}
+		wp_enqueue_script( 'mmi-lazy-scripts' );
+	}
+}
+
+if ( ! function_exists( 'mmi_shared_assets_print_lazy_config' ) ) {
+	/**
+	 * Hands mmi-lazy-scripts.js each lazy script's URL and triggers, and prints
+	 * the scripts' localized data ahead of it. A script whose extra code must
+	 * run after the file itself (an inline 'after' script, translations) can't
+	 * wait, so it is enqueued normally instead.
+	 */
+	function mmi_shared_assets_print_lazy_config(): void {
+		$lazy = $GLOBALS['mmi_shared_lazy_scripts'] ?? array();
+		if ( ! $lazy || ! wp_script_is( 'mmi-lazy-scripts', 'enqueued' ) ) {
+			return;
+		}
+		$scripts = wp_scripts();
+		$config  = array();
+		$data    = array();
+		foreach ( $lazy as $handle => $trigger ) {
+			$obj = $scripts->registered[ $handle ] ?? null;
+			if ( ! $obj || wp_script_is( $handle, 'enqueued' ) ) {
+				continue;
+			}
+			if ( '' !== $scripts->get_inline_script_data( $handle, 'after' ) || ! empty( $obj->textdomain ) ) {
+				wp_enqueue_script( $handle );
+				continue;
+			}
+			$src = (string) $obj->src;
+			if ( strncmp( $src, '/', 1 ) === 0 && strncmp( $src, '//', 2 ) !== 0 ) {
+				$src = $scripts->base_url . $src;
+			}
+			$ver = false === $obj->ver ? $scripts->default_version : $obj->ver;
+			if ( $ver ) {
+				$src = add_query_arg( 'ver', rawurlencode( (string) $ver ), $src );
+			}
+			$config[ $handle ] = $trigger + array( 'src' => esc_url_raw( $src ) );
+			foreach ( array( (string) $scripts->get_data( $handle, 'data' ), $scripts->get_inline_script_data( $handle, 'before' ) ) as $extra ) {
+				if ( '' !== $extra ) {
+					$data[] = $extra;
+				}
+			}
+		}
+		if ( $config ) {
+			$data[] = 'window.mmiLazyScriptsConfig = ' . wp_json_encode( $config ) . ';';
+			wp_add_inline_script( 'mmi-lazy-scripts', implode( "\n", $data ), 'before' );
+		}
+	}
+}
+
+if ( ! function_exists( 'mmi_shared_assets_defer_footer_scripts' ) ) {
+	function mmi_shared_assets_defer_footer_scripts(): void {
+		if ( ! mmi_shared_assets_is_mmi_page() ) {
+			return;
+		}
+		$scripts = wp_scripts();
+		foreach ( $scripts->registered as $handle => $obj ) {
+			if ( ! is_string( $obj->src ) || strpos( $obj->src, '/plugins/mmi-' ) === false ) {
+				continue;
+			}
+			if ( 1 !== (int) $scripts->get_data( $handle, 'group' ) || $scripts->get_data( $handle, 'strategy' ) ) {
+				continue;
+			}
+			$scripts->add_data( $handle, 'strategy', 'defer' );
+		}
+	}
+}
+
+if ( ! function_exists( 'mmi_shared_assets_drop_command_palette' ) ) {
+	function mmi_shared_assets_drop_command_palette(): void {
+		if ( ! mmi_shared_assets_is_mmi_page() ) {
+			return;
+		}
+		$scripts        = wp_scripts();
+		$memo           = array();
+		$needs_commands = static function ( string $handle ) use ( &$needs_commands, &$memo, $scripts ): bool {
+			if ( isset( $memo[ $handle ] ) ) {
+				return $memo[ $handle ];
+			}
+			$memo[ $handle ] = false; // Settles a dependency cycle as "no".
+			if ( 'wp-commands' === $handle ) {
+				return $memo[ $handle ] = true;
+			}
+			foreach ( $scripts->registered[ $handle ]->deps ?? array() as $dep ) {
+				if ( $needs_commands( (string) $dep ) ) {
+					return $memo[ $handle ] = true;
+				}
+			}
+			return false;
+		};
+		foreach ( $scripts->queue as $handle ) {
+			if ( strpos( (string) ( $scripts->registered[ $handle ]->src ?? '' ), '/plugins/mmi-' ) !== false ) {
+				continue;
+			}
+			if ( $needs_commands( (string) $handle ) ) {
+				wp_dequeue_script( $handle );
+			}
+		}
+		wp_dequeue_style( 'wp-commands' );
+	}
+}
+
+// Own guard, not MMI_SHARED_ASSETS_HOOKS_REGISTERED: an older bundled copy
+// that loads first defines that constant without registering these.
+if ( ! defined( 'MMI_SHARED_ASSETS_LOAD_HOOKS_REGISTERED' ) && defined( 'ABSPATH' ) ) {
+	define( 'MMI_SHARED_ASSETS_LOAD_HOOKS_REGISTERED', true );
+	add_action( 'admin_enqueue_scripts', 'mmi_shared_assets_drop_command_palette', PHP_INT_MAX );
+	add_action( 'admin_print_footer_scripts', 'mmi_shared_assets_drop_command_palette', 1 );
+	add_action( 'admin_print_footer_scripts', 'mmi_shared_assets_print_lazy_config', 1 );
+	add_action( 'admin_print_footer_scripts', 'mmi_shared_assets_defer_footer_scripts', 2 );
 }
 
 /**
