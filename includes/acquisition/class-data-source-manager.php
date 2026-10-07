@@ -293,10 +293,11 @@ class Data_Source_Manager {
         if ( $wpdb->get_var( "SHOW TABLES LIKE '{$mmi_table}'" ) !== $mmi_table ) {
             return '';
         }
-        return (string) $wpdb->get_var( $wpdb->prepare(
+        $value = (string) $wpdb->get_var( $wpdb->prepare(
             "SELECT field_value FROM {$mmi_table} WHERE tab_name = 'Credentials & API Keys' AND field_name = %s",
             $field_name
         ) );
+        return class_exists( 'MMI_Credentials' ) ? (string) \MMI_Credentials::reveal( $value ) : $value;
     }
 
     /* ── Parsing & persistence ────────────────────────────────────────────── */

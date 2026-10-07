@@ -346,11 +346,11 @@ add_action('wp_ajax_mmi_get_data_source', function () {
                 if (empty($key) || $wpdb->get_var("SHOW TABLES LIKE '{$mmi_table}'") !== $mmi_table) {
                     return '';
                 }
-                return (string) $wpdb->get_var($wpdb->prepare(
+                return mmi_ds_reveal((string) $wpdb->get_var($wpdb->prepare(
                     "SELECT field_value FROM {$mmi_table} WHERE tab_name = %s AND field_name = %s",
                     $vault_tab,
                     $key
-                ));
+                )));
             };
             if (empty($source['auth_config']['token_url']) && !empty($template['token_url_vault_key'])) {
                 $resolved = $resolve_vault($template['token_url_vault_key']);
@@ -484,6 +484,7 @@ add_action('wp_ajax_mmi_add_data_source', function () {
                 $vault_tab,
                 $template_insert['base_url_vault_key']
             )) ?: '';
+            $resolved_base_url = mmi_ds_reveal($resolved_base_url);
         }
         if (!empty($template_insert['token_url_vault_key']) && $wpdb->get_var("SHOW TABLES LIKE '{$mmi_table}'") === $mmi_table) {
             $resolved_token_url = $wpdb->get_var($wpdb->prepare(
@@ -491,6 +492,7 @@ add_action('wp_ajax_mmi_add_data_source', function () {
                 $vault_tab,
                 $template_insert['token_url_vault_key']
             )) ?: '';
+            $resolved_token_url = mmi_ds_reveal($resolved_token_url);
         }
 
         $initial_config = [
@@ -1312,10 +1314,10 @@ add_action('wp_ajax_mmi_test_data_source', function () {
         $mmi_table  = class_exists( 'MMI_Settings' ) ? \MMI_Settings::ensure_table() : $wpdb->prefix . 'mmi';
         $db_token   = '';
         if ($wpdb->get_var("SHOW TABLES LIKE '{$mmi_table}'") === $mmi_table) {
-            $db_token = (string) $wpdb->get_var($wpdb->prepare(
+            $db_token = mmi_ds_reveal((string) $wpdb->get_var($wpdb->prepare(
                 "SELECT field_value FROM {$mmi_table} WHERE tab_name = 'Credentials & API Keys' AND field_name = %s",
                 $supplier_id . '-dropbox_access_token'
-            ));
+            )));
         }
 
         if (empty($db_file_path)) {
@@ -2063,10 +2065,17 @@ function mmi_ds_resolve_credentials(array $auth_config): array {
             $tab,
             $field_name
         ));
-        $resolved[$param] = $value ?: '';
+        $resolved[$param] = $value ? mmi_ds_reveal($value) : '';
     }
 
     return $resolved;
+}
+
+/**
+ * Vault values are stored encrypted (MMI_Credentials); values saved before that read back as is.
+ */
+function mmi_ds_reveal($value): string {
+    return (string) (class_exists('MMI_Credentials') ? \MMI_Credentials::reveal($value) : $value);
 }
 
 /**
@@ -2105,6 +2114,11 @@ function mmi_ds_resolve_credentials_masked(array $auth_config): array {
  */
 function mmi_ds_save_credential(string $field_name, string $value): bool {
     global $wpdb;
+
+    // Secret-named fields (passwords, tokens, keys) are stored encrypted; URLs and usernames stay readable.
+    if (class_exists('MMI_Credentials')) {
+        $value = \MMI_Credentials::seal_setting($field_name, $value);
+    }
 
     $mmi_table = class_exists( 'MMI_Settings' ) ? \MMI_Settings::ensure_table() : $wpdb->prefix . 'mmi';
     $tab = 'Credentials & API Keys';
