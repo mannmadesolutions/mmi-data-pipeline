@@ -3,7 +3,7 @@
  * Product Specs editor — the product edit screen UI for the Content Registry
  *
  * Edits every storable registry concept (system requirements, features,
- * videos, specifications, licensing, platforms, disclaimer) in its canonical
+ * videos, specifications, manuals, licensing, platforms, disclaimer) in its canonical
  * `_mmi_*` key via MMI_Product_Content_Registry::store(), which owns the
  * storage shape. A hand edit to a field an import can also write is
  * auto-locked through Field Locks, so the next feed refresh can't silently
@@ -145,6 +145,11 @@ class MMI_Product_Content_Editor {
                 (array) $R::canonical_value( $id, 'specs' )
             );
             self::textarea( 'specs', __( 'Specifications (one per line, "Label: Value")', 'mmi-data-pipeline' ), implode( "\n", $pairs ), 5 );
+            $manuals = array_map(
+                static fn( $p ) => $p['label'] === '' ? $p['value'] : "{$p['label']}: {$p['value']}",
+                (array) $R::canonical_value( $id, 'manuals' )
+            );
+            self::textarea( 'manuals', __( 'Manuals & documentation (one per line, "Label: URL" or just the URL)', 'mmi-data-pipeline' ), implode( "\n", $manuals ), 3 );
             self::textarea( 'disclaimer', __( 'Disclaimer (shown as a "Note:" banner)', 'mmi-data-pipeline' ), (string) $R::canonical_value( $id, 'disclaimer' ), 2 );
             ?>
         </div>
@@ -273,6 +278,16 @@ class MMI_Product_Content_Editor {
                     : [ 'label' => trim( substr( $line, 0, $pos ) ), 'value' => trim( substr( $line, $pos + 1 ) ) ];
             },
             $lines( $input['specs'] ?? '' )
+        );
+        // "User manual: https://…" or a bare URL; the label is whatever comes before the URL.
+        $values['manuals']    = array_map(
+            static function ( $line ) {
+                $pos = stripos( $line, 'http' );
+                return $pos === false || $pos === 0
+                    ? [ 'label' => '', 'value' => $line ]
+                    : [ 'label' => trim( rtrim( trim( substr( $line, 0, $pos ) ), ':-–|' ) ), 'value' => trim( substr( $line, $pos ) ) ];
+            },
+            $lines( $input['manuals'] ?? '' )
         );
         $values['licensing']  = (array) ( $input['licensing'] ?? [] );
         $values['platforms']  = (array) ( $input['platforms'] ?? [] );

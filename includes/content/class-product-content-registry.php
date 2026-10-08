@@ -129,6 +129,15 @@ class MMI_Product_Content_Registry {
             'sources' => [ [ '_mmi_platforms', 'platforms' ] ],
             'store'   => [ '_mmi_platforms', 'platforms' ],
         ],
+        // User manuals and other documentation, as {label, url} links (owner 2026-10-08:
+        // a Manual status in the Product Content coverage icons). Only http(s) URLs are stored.
+        'manuals'              => [
+            'label'   => 'Manuals & documentation',
+            'group'   => 'media',
+            'type'    => 'list',
+            'sources' => [ [ '_mmi_manuals', 'links' ] ],
+            'store'   => [ '_mmi_manuals', 'links' ],
+        ],
         'disclaimer'           => [
             'label'   => 'Disclaimer',
             'group'   => 'notes',
@@ -245,7 +254,7 @@ class MMI_Product_Content_Registry {
     private static function read_source( int $product_id, array $source ): array {
         [ $meta_key, $format ] = $source;
         $raw = get_post_meta( $product_id, $meta_key, true );
-        if ( is_string( $raw ) && $raw !== '' && in_array( $format, [ 'requirements', 'list', 'videos', 'licensing', 'platforms', 'pairs', 'repeater', 'repeater_videos' ], true ) ) {
+        if ( is_string( $raw ) && $raw !== '' && in_array( $format, [ 'requirements', 'list', 'videos', 'licensing', 'platforms', 'pairs', 'links', 'repeater', 'repeater_videos' ], true ) ) {
             $decoded = json_decode( $raw, true );
             if ( json_last_error() === JSON_ERROR_NONE ) {
                 $raw = $decoded;
@@ -268,6 +277,7 @@ class MMI_Product_Content_Registry {
             case 'platforms':
                 return is_array( $raw ) ? self::rows_from_strings( array_map( static fn( $p ) => self::PLATFORM_LABELS[ strtolower( (string) $p ) ] ?? (string) $p, $raw ) ) : [];
             case 'pairs':
+            case 'links':
                 return is_array( $raw ) ? self::pair_rows( $raw ) : [];
             case 'text':
                 $text = is_scalar( $raw ) ? trim( (string) $raw ) : '';
@@ -527,6 +537,7 @@ class MMI_Product_Content_Registry {
             case 'videos':
                 return array_column( self::video_rows( $raw ), 'value' );
             case 'pairs':
+            case 'links':
                 return array_map( static fn( $r ) => [ 'label' => $r['label'], 'value' => $r['text'] ], is_array( $raw ) ? self::pair_rows( $raw ) : [] );
             default:
                 return is_array( $raw ) ? $raw : [];
@@ -590,6 +601,7 @@ class MMI_Product_Content_Registry {
             case 'videos':
                 return array_column( $rows, 'value' );
             case 'pairs':
+            case 'links':
                 return array_map( static fn( $r ) => [ 'label' => $r['label'], 'value' => $r['text'] ], $rows );
             case 'text':
                 return (string) ( $rows[0]['value'] ?? '' );
@@ -648,6 +660,18 @@ class MMI_Product_Content_Registry {
                     }
                 }
                 return $pairs;
+
+            case 'links':
+                $links = [];
+                foreach ( (array) $value as $link ) {
+                    $link = (array) $link;
+                    $raw  = trim( (string) ( $link['value'] ?? '' ) );
+                    $url  = preg_match( '#^https?://#i', $raw ) ? esc_url_raw( $raw, [ 'http', 'https' ] ) : ''; // esc_url_raw() alone turns "not a url" into http://not%20a%20url
+                    if ( $url !== '' ) {
+                        $links[] = [ 'label' => $clean_line( $link['label'] ?? '' ), 'value' => $url ];
+                    }
+                }
+                return $links;
 
             case 'licensing':
                 $value   = (array) $value;
