@@ -451,6 +451,17 @@ class Product_CRUD_Manager {
      * @param mixed $image_urls
      */
     public function set_product_images( int $product_id, $image_urls ): void {
+        /**
+         * Whether imports may set this product's pictures. A site that sources
+         * product pictures elsewhere returns false, so no file is downloaded either.
+         *
+         * @param bool   $allow
+         * @param int    $product_id
+         * @param string $source 'data_pipeline' | 'xchange_vendor_media'
+         */
+        if ( ! apply_filters( 'mmi_import_product_images', true, $product_id, 'data_pipeline' ) ) {
+            return;
+        }
         if ( ! is_array( $image_urls ) ) {
             $image_urls = [ $image_urls ];
         }
