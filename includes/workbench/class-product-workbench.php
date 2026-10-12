@@ -612,13 +612,28 @@ final class Product_Workbench {
             }
             wp_cache_flush_runtime();
         }
+        $lock_tax = self::import_locked_taxonomy( $action, $params );
+        $lock_obj = $lock_tax ? get_taxonomy( $lock_tax ) : null;
         return [
             'selected'    => count( $ids ),
             'will_change' => $will_change,
             'unchanged'   => count( $ids ) - $will_change,
             'summary'     => self::action_summary( $action, $params ),
             'sample'      => $sample,
+            'locks'       => $lock_tax ? ( $lock_obj ? $lock_obj->labels->name : $lock_tax ) : '',
         ];
+    }
+
+    /**
+     * The taxonomy a job locks against imports on each product it changes,
+     * or '' when the action writes nothing an import would put back.
+     */
+    private static function import_locked_taxonomy( string $action, array $params ): string {
+        if ( $action !== 'set_taxonomy_term' || ! class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+            return '';
+        }
+        $taxonomy = (string) ( $params['taxonomy'] ?? '' );
+        return isset( \MMI_Pipeline_Field_Locks::lockable_fields()[ $taxonomy ] ) ? $taxonomy : '';
     }
 
     /* ── Apply (job) ───────────────────────────────────────────────────── */
@@ -680,8 +695,9 @@ final class Product_Workbench {
         set_transient( $lock, 1, MINUTE_IN_SECONDS );
 
         try {
-            $ids   = array_slice( Workbench_Change_Log::job_ids( $job_id ), (int) $job['cursor'], self::BATCH_SIZE );
-            $rows  = [];
+            $ids      = array_slice( Workbench_Change_Log::job_ids( $job_id ), (int) $job['cursor'], self::BATCH_SIZE );
+            $rows     = [];
+            $lock_tax = self::import_locked_taxonomy( $job['action'], $job['params'] );
             update_object_term_cache( $ids, 'product' );
             update_meta_cache( 'post', $ids );
             foreach ( $ids as $id ) {
@@ -696,6 +712,13 @@ final class Product_Workbench {
                         $job['unchanged']++;
                     } else {
                         $job['changed']++;
+                        // Same as a row edit: a person's term change is locked
+                        // against imports, or the next supplier import puts
+                        // the feed's terms back. Undo releases a lock it added.
+                        if ( $lock_tax && ! \MMI_Pipeline_Field_Locks::is_locked( $id, $lock_tax ) ) {
+                            \MMI_Pipeline_Field_Locks::lock( $id, $lock_tax );
+                            $before['lock_added'] = true;
+                        }
                         $rows[] = [ 'product_id' => $id, 'before' => $before, 'after' => $after ];
                     }
                 } catch ( \Throwable $e ) {
@@ -791,8 +814,9 @@ final class Product_Workbench {
         switch ( $action ) {
             case 'set_taxonomy_term':
                 wp_set_object_terms( $id, array_map( 'intval', $state['terms'] ), $params['taxonomy'], false );
-                // A row edit locked the field; undoing it releases a lock it added.
-                if ( ! empty( $params['locked_here'] ) && class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+                // The edit locked the field; undoing it releases a lock it added
+                // (job-wide for a row edit, per product for a bulk change).
+                if ( ( ! empty( $params['locked_here'] ) || ! empty( $state['lock_added'] ) ) && class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
                     \MMI_Pipeline_Field_Locks::unlock( $id, $params['taxonomy'] );
                 }
                 break;

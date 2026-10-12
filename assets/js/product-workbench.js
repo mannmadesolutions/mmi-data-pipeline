@@ -127,6 +127,7 @@
         TERMS_SAVED:      '%label% saved. Undo it from Recent changes.',
         TERMS_NO_CAT:     'Choose at least one category.',
         TERMS_LOCKED:     'Locked against imports',
+        BULK_LOCK:        'Each changed product gets %label% locked against imports, so supplier imports keep this change. Undo releases the lock.',
         NOTHING_SELECTED: 'Nothing selected yet.',
         TARGET_IDS:       '%count% selected product%s% will be checked.',
         TARGET_FILTER:    'All %count% product%s% matching the search will be checked%excl%.',
@@ -647,6 +648,7 @@
         $(SELECTORS.PREVIEW_OUT).removeClass(CSS.HIDDEN).html(`
             <p class="mmi-wb-preview-summary"><strong>${esc(d.summary)}</strong>:
                 ${num(d.will_change)} of ${num(d.selected)} would change; ${num(d.unchanged)} already match.</p>
+            ${d.locks && d.will_change ? `<p class="mmi-wb-preview-lock"><span class="dashicons dashicons-lock" aria-hidden="true"></span> ${esc(fill(MESSAGES.BULK_LOCK, { label: d.locks }))}</p>` : ''}
             ${rows ? `<div class="mmi-table-scroll-wrapper"><table class="widefat striped mmi-wb-preview-table">
                 <thead><tr><th>Product</th><th>Now</th><th></th><th>After</th></tr></thead><tbody>${rows}</tbody></table></div>${more}` : ''}`);
     }

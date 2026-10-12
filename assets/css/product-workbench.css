@@ -456,6 +456,18 @@ td.mmi-wb-col-thumb img,
     margin: 0 0 8px;
 }
 
+.mmi-wb-preview-lock {
+    margin: 0 0 8px;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-preview-lock .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
 .mmi-wb-preview-table .mmi-wb-before {
     color: var(--mmi-wb-danger);
     text-decoration: line-through;
