@@ -266,21 +266,16 @@ function mmi_canonical_candidates_recommend( array $members ): ?array {
 }
 
 /* ── Scan all configured feeds for duplicate candidates ───────────────────── */
-add_action( 'wp_ajax_mmi_scan_duplicate_candidates', function () {
-    check_ajax_referer( CANONICAL_CANDIDATES_NONCE, 'nonce' );
-    if ( ! mmi_data_pipeline_user_can() ) {
-        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
-    }
-
-    if ( ! (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true ) ) {
-        wp_send_json_error( [ 'code' => 'disabled', 'message' => 'Duplicate Products scanning is disabled — enable it via the section toggle before scanning.' ] );
-    }
-
-    $force_refresh = ! empty( $_POST['force_refresh'] );
+/**
+ * Scans the supplier feeds for listings of the same product (brand + name) and
+ * returns the review queue's groups. Cached for 10 minutes; each fresh scan also
+ * saves the review index (mmi_canonical_candidates_review_index()).
+ */
+function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
     if ( ! $force_refresh ) {
         $cached = get_transient( 'mmi_canonical_candidates_scan_cache' );
         if ( $cached !== false ) {
-            wp_send_json_success( $cached );
+            return $cached;
         }
     }
 
@@ -417,8 +412,71 @@ add_action( 'wp_ajax_mmi_scan_duplicate_candidates', function () {
     ];
 
     set_transient( 'mmi_canonical_candidates_scan_cache', $response, 10 * MINUTE_IN_SECONDS );
+    mmi_canonical_candidates_save_review_index( $result, 'candidate' );
 
-    wp_send_json_success( $response );
+    return $response;
+}
+
+
+/**
+ * Durable record of the groups the Duplicates queue shows as needing review (not
+ * dismissed, not already linked), so other screens can show a product's duplicate
+ * status without re-reading the feeds. Each scan replaces its own source's groups:
+ * 'candidate' (brand + name feed matches) or 'mpn' (same part number). Approving or
+ * dismissing a group removes it.
+ */
+function mmi_canonical_candidates_save_review_index( array $groups, string $source ): void {
+    $index = mmi_canonical_candidates_review_index();
+    $kept  = array_filter( $index['groups'], static fn( $g ) => ( $g['source'] ?? 'candidate' ) !== $source );
+    foreach ( $groups as $g ) {
+        if ( ! empty( $g['already_linked'] ) ) {
+            continue;
+        }
+        $kept[ $g['group_key'] ] = [
+            'source'      => $source,
+            'name'        => (string) $g['name'],
+            'product_ids' => array_values( array_unique( array_filter( array_map( 'intval', array_column( $g['members'], 'wc_product_id' ) ) ) ) ),
+            'skus'        => array_values( array_unique( array_filter( array_map( 'strval', array_column( $g['members'], 'sku' ) ) ) ) ),
+        ];
+    }
+    MMI_DB::set_setting( 'mmi_canonical_candidates_review_index', [ 'scanned_at' => time(), 'groups' => $kept ] );
+}
+
+/**
+ * The review index: [ 'scanned_at' => int|null, 'groups' => group_key => [ name, product_ids, skus ] ].
+ * scanned_at is null until the Duplicates section has scanned once.
+ */
+function mmi_canonical_candidates_review_index(): array {
+    $index = MMI_DB::get_setting( 'mmi_canonical_candidates_review_index', [] );
+    return [
+        'scanned_at' => is_array( $index ) && ! empty( $index['scanned_at'] ) ? (int) $index['scanned_at'] : null,
+        'groups'     => is_array( $index ) && is_array( $index['groups'] ?? null ) ? $index['groups'] : [],
+    ];
+}
+
+/** Removes the groups $drop( group_key, group ) picks from the review index (approve / dismiss). */
+function mmi_canonical_candidates_drop_from_review_index( callable $drop ): void {
+    $index = mmi_canonical_candidates_review_index();
+    if ( $index['scanned_at'] === null ) {
+        return;
+    }
+    $groups = array_filter( $index['groups'], static fn( $g, $key ) => ! $drop( (string) $key, $g ), ARRAY_FILTER_USE_BOTH );
+    if ( count( $groups ) !== count( $index['groups'] ) ) {
+        MMI_DB::set_setting( 'mmi_canonical_candidates_review_index', [ 'scanned_at' => $index['scanned_at'], 'groups' => $groups ] );
+    }
+}
+
+add_action( 'wp_ajax_mmi_scan_duplicate_candidates', function () {
+    check_ajax_referer( CANONICAL_CANDIDATES_NONCE, 'nonce' );
+    if ( ! mmi_data_pipeline_user_can() ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+    }
+
+    if ( ! (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true ) ) {
+        wp_send_json_error( [ 'code' => 'disabled', 'message' => 'Duplicate Products scanning is disabled — enable it via the section toggle before scanning.' ] );
+    }
+
+    wp_send_json_success( mmi_canonical_candidates_scan( ! empty( $_POST['force_refresh'] ) ) );
 } );
 
 /* ── Dismiss a candidate group — not actually a duplicate ─────────────────── */
@@ -438,6 +496,7 @@ add_action( 'wp_ajax_mmi_dismiss_duplicate_group', function () {
         $dismissed[] = $group_key;
         MMI_DB::set_setting( 'mmi_canonical_candidates_dismissed', $dismissed );
     }
+    mmi_canonical_candidates_drop_from_review_index( static fn( string $key ) => $key === $group_key );
 
     delete_transient( 'mmi_canonical_candidates_scan_cache' );
 
@@ -509,6 +568,9 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
 
     update_post_meta( $canonical_id, 'canonical', 'TRUE' );
     update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $associated ) );
+    // A group is worked once every listing it found is in this link.
+    $linked = array_flip( array_merge( [ $canonical_id ], $associated ) );
+    mmi_canonical_candidates_drop_from_review_index( static fn( string $key, array $g ) => $g['product_ids'] && ! array_diff_key( array_flip( $g['product_ids'] ), $linked ) );
 
     delete_transient( 'mmi_canonical_candidates_scan_cache' );
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
@@ -1029,7 +1091,9 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
     }
 
     // Same-MPN groups ride in this response (a third request would break the ≤2 auto-fired AJAX limit).
-    $groups = array_merge( $groups, mmi_canonical_candidates_mpn_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() ) );
+    $mpn_groups = mmi_canonical_candidates_mpn_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() );
+    mmi_canonical_candidates_save_review_index( $mpn_groups, 'mpn' );
+    $groups = array_merge( $groups, $mpn_groups );
 
     usort( $groups, fn( $a, $b ) => $b['price_spread'] <=> $a['price_spread'] );
 
