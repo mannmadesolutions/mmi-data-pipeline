@@ -395,7 +395,34 @@ td.mmi-wb-col-thumb img,
     opacity: 0.5;
 }
 
-/* ── Change selected products ─────────────────────────────────────────── */
+/* ── Change panel (top of Results, so it's reachable without scrolling) ── */
+
+.mmi-wb-change {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0 12px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--mmi-wb-border);
+}
+
+/* Label sits on the action row, centred on its 28px controls. */
+.mmi-wb-change-label {
+    line-height: 28px;
+}
+
+.mmi-wb-change > .mmi-wb-action {
+    flex: 1 1 600px;
+}
+
+/* Status lines and the preview take the full width under the action row. */
+.mmi-wb-change > .mmi-wb-target,
+.mmi-wb-change > .mmi-wb-progress,
+.mmi-wb-change > .mmi-wb-message,
+.mmi-wb-change > .mmi-wb-preview {
+    flex: 1 0 100%;
+}
 
 .mmi-wb-action {
     display: flex;

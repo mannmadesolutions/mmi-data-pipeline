@@ -167,8 +167,38 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
 
     <!-- ── 2. Results ───────────────────────────────────────────────── -->
     <div class="mmi-process-section" id="mmi-wb-results-section">
-        <?php $mmi_wb_section_head( 'list-view', 'Results', 'Tick the products to change, or select every match. Click a category below to narrow to it' ); ?>
+        <?php
+        // The change controls sit above the results, so acting on them never
+        // means scrolling past a page of rows.
+        $mmi_wb_section_head(
+            'list-view',
+            'Results',
+            'Choose a change, then apply it to the ticked products or to every result. Click a category to narrow to it. Replace swaps every existing term in that taxonomy for the one chosen',
+            '<button type="button" class="button" id="mmi-wb-preview" disabled><span class="dashicons dashicons-visibility"></span> Preview</button>'
+            . '<button type="button" class="button" id="mmi-wb-apply-all" disabled title="Apply to every product the search finds, ticked or not"><span class="dashicons dashicons-database"></span> Apply to all results</button>'
+            . '<button type="button" class="button button-primary" id="mmi-wb-apply" disabled><span class="dashicons dashicons-yes"></span> Apply to selected</button>'
+        );
+        ?>
         <div class="mmi-section-content">
+            <div class="mmi-wb-change" id="mmi-wb-change" role="group" aria-label="Change products">
+                <span class="mmi-wb-filters-label mmi-wb-change-label">Change</span>
+                <div class="mmi-wb-action" id="mmi-wb-action-scope">
+                    <select class="mmi-custom-rule-action" id="mmi-wb-action" aria-label="What to change">
+                        <?php Rule_Builder_View::action_options( 'set_taxonomy_term', true ); ?>
+                    </select>
+                    <div class="mmi-custom-rule-params">
+                        <?php Rule_Builder_View::action_params( [ 'taxonomy' => 'product_cat', 'mode' => 'replace' ] ); ?>
+                    </div>
+                </div>
+                <p class="mmi-wb-target" id="mmi-wb-target">Nothing selected yet.</p>
+                <div class="mmi-wb-progress mmi-hidden" id="mmi-wb-progress">
+                    <div class="mmi-progress-track"><div class="mmi-progress-fill" id="mmi-wb-progress-fill"></div></div>
+                    <span class="mmi-wb-progress-text" id="mmi-wb-progress-text"></span>
+                    <button type="button" class="button-link mmi-wb-stop" id="mmi-wb-stop">Stop</button>
+                </div>
+                <div class="mmi-wb-message" id="mmi-wb-message" role="status"></div>
+                <div class="mmi-wb-preview mmi-hidden" id="mmi-wb-preview-out"></div>
+            </div>
             <div class="mmi-wb-empty" id="mmi-wb-empty">Type a search, pick a filter or add a condition to see products here.</div>
             <div class="mmi-wb-results mmi-hidden" id="mmi-wb-results">
                 <div class="mmi-wb-facets" id="mmi-wb-facets" aria-label="Categories in these results"></div>
@@ -210,39 +240,7 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
         </div>
     </div>
 
-    <!-- ── 3. Change products ───────────────────────────────────────── -->
-    <div class="mmi-process-section" id="mmi-wb-change">
-        <?php
-        $mmi_wb_section_head(
-            'edit',
-            'Change products',
-            'Any Custom Rule action, once, to the ticked products or to every product the search finds. Replace swaps every existing term in that taxonomy for the one chosen — nothing of the old value is kept on the product',
-            '<button type="button" class="button" id="mmi-wb-preview" disabled><span class="dashicons dashicons-visibility"></span> Preview</button>'
-            . '<button type="button" class="button" id="mmi-wb-apply-all" disabled title="Apply to every product the search finds, ticked or not"><span class="dashicons dashicons-database"></span> Apply to all results</button>'
-            . '<button type="button" class="button button-primary" id="mmi-wb-apply" disabled><span class="dashicons dashicons-yes"></span> Apply to selected</button>'
-        );
-        ?>
-        <div class="mmi-section-content">
-            <div class="mmi-wb-action" id="mmi-wb-action-scope">
-                <select class="mmi-custom-rule-action" id="mmi-wb-action" aria-label="What to change">
-                    <?php Rule_Builder_View::action_options( 'set_taxonomy_term', true ); ?>
-                </select>
-                <div class="mmi-custom-rule-params">
-                    <?php Rule_Builder_View::action_params( [ 'taxonomy' => 'product_cat', 'mode' => 'replace' ] ); ?>
-                </div>
-            </div>
-            <p class="mmi-wb-target" id="mmi-wb-target">Nothing selected yet.</p>
-            <div class="mmi-wb-progress mmi-hidden" id="mmi-wb-progress">
-                <div class="mmi-progress-track"><div class="mmi-progress-fill" id="mmi-wb-progress-fill"></div></div>
-                <span class="mmi-wb-progress-text" id="mmi-wb-progress-text"></span>
-                <button type="button" class="button-link mmi-wb-stop" id="mmi-wb-stop">Stop</button>
-            </div>
-            <div class="mmi-wb-message" id="mmi-wb-message" role="status"></div>
-            <div class="mmi-wb-preview mmi-hidden" id="mmi-wb-preview-out"></div>
-        </div>
-    </div>
-
-    <!-- ── 4. Recent changes ────────────────────────────────────────── -->
+    <!-- ── 3. Recent changes ────────────────────────────────────────── -->
     <div class="mmi-process-section" id="mmi-wb-history">
         <?php $mmi_wb_section_head( 'backup', 'Recent changes', 'Every Apply is recorded product by product. Undo restores each product\'s previous value — unless it has been edited again since, which is left alone' ); ?>
         <div class="mmi-section-content">
