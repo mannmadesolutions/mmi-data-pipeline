@@ -112,13 +112,12 @@ button.mmi-health-chip:focus-visible {
     letter-spacing: 0.3px;
 }
 
-.mmi-wb-stale {
+.mmi-wb-search-status {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     margin: 10px 0 0;
     color: var(--mmi-wb-muted);
-    font-style: italic;
 }
 
 /* ── Results ───────────────────────────────────────────────────────────── */

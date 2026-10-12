@@ -43,9 +43,7 @@
         CONDITIONS:         '#mmi-wb-conditions',
         FIND_SECTION:       '#mmi-wb-find',
         CONDITION_BUILDER:  '#mmi-wb-cb',
-        SEARCH_BTN:         '#mmi-wb-search',
-        RESET_BTN:          '#mmi-wb-reset',
-        STALE_NOTE:         '#mmi-wb-stale',
+        SEARCH_STATUS:      '#mmi-wb-search-status',
         SAVE_SEARCH_BTN:    '#mmi-wb-save-search',
         SAVE_SEARCH_FORM:   '#mmi-wb-save-search-form',
         SAVE_SEARCH_NAME:   '#mmi-wb-save-search-name',
@@ -72,6 +70,7 @@
         ACTION:             '#mmi-wb-action',
         PREVIEW_BTN:        '#mmi-wb-preview',
         APPLY_BTN:          '#mmi-wb-apply',
+        APPLY_ALL_BTN:      '#mmi-wb-apply-all',
         TARGET:             '#mmi-wb-target',
         PROGRESS:           '#mmi-wb-progress',
         PROGRESS_FILL:      '#mmi-wb-progress-fill',
@@ -97,6 +96,11 @@
     };
 
     const DEFAULT_PER_PAGE = 50; // matches the Per page select's server-rendered default
+    const DEFAULT_STATUSES = [ 'draft', 'publish' ]; // ticked on load; sorted
+    const SEARCH_DEBOUNCE_MS = 400;
+    const MAX_SELECTION = 20000; // Product_Workbench::MAX_SELECTION
+    // Operators that take no value (mmi-condition-builder.js NO_VALUE_OPERATORS).
+    const NO_VALUE_OPERATORS = [ 'is_empty', 'is_not_empty', 'term_default_only' ];
     const STATUS_LABELS = { publish: 'Published', draft: 'Draft', pending: 'Pending', private: 'Private' };
     const STOCK_LABELS  = { instock: 'In stock', outofstock: 'Out of stock', onbackorder: 'Backorder' };
     const JOB_STATUS_LABELS = {
@@ -104,12 +108,13 @@
     };
 
     const LABELS = {
-        SEARCH_IDLE:    '<span class="dashicons dashicons-search"></span> Search',
-        SEARCH_RUNNING: '<span class="mmi-loading"></span> Searching…',
+        SEARCHING:      '<span class="mmi-loading"></span> Searching…',
         PREVIEW_IDLE:   '<span class="dashicons dashicons-visibility"></span> Preview',
         PREVIEW_RUNNING:'<span class="mmi-loading"></span> Checking…',
-        APPLY_IDLE:     '<span class="dashicons dashicons-yes"></span> Apply',
+        APPLY_IDLE:     '<span class="dashicons dashicons-yes"></span> Apply to selected',
         APPLY_RUNNING:  '<span class="mmi-loading"></span> Applying…',
+        APPLY_ALL_IDLE: '<span class="dashicons dashicons-database"></span> Apply to all %count% results',
+        APPLY_ALL_NONE: '<span class="dashicons dashicons-database"></span> Apply to all results',
     };
 
     // Taxonomies the results table edits in place (Product_Workbench::EDITABLE_TAXONOMIES).
@@ -129,9 +134,13 @@
         TERMS_LOCKED:     'Locked against imports',
         BULK_LOCK:        'Each changed product gets %label% locked against imports, so supplier imports keep this change. Undo releases the lock.',
         NOTHING_SELECTED: 'Nothing selected yet.',
+        TARGET_NONE:      'Nothing ticked. Preview checks all %count% result%s%; Apply to all results changes every one of them.',
         TARGET_IDS:       '%count% selected product%s% will be checked.',
         TARGET_FILTER:    'All %count% product%s% matching the search will be checked%excl%.',
         CONFIRM_APPLY:    '%summary%\n\nApply to %count% product%s%? You can undo this from Recent changes.',
+        CONFIRM_APPLY_ALL:'%summary%\n\nApply to ALL %count% product%s% the search finds, ticked or not?\n\nSearch: %filter%\n\nYou can undo this from Recent changes.',
+        TOO_MANY:         'The search finds %count% products; one run can change at most %max%. Narrow the search first.',
+        WAITING_VALUE:    'Condition %n% needs a value before the results update.',
         CONFIRM_UNDO:     'Undo "%summary%"?\n\nEach product gets its previous value back, unless it has been edited again since.',
         INCOMPLETE:       'Condition %n%: pick a Source and a Field, or remove it.',
         SAVED_SEARCH:     'Saved “%name%”. Load it from Load saved conditions, here or in Catalog Maintenance.',
@@ -159,6 +168,10 @@
         stopRequested: false,
         checks:     {},     // health check id => {chip, label}, from the last search
         rowsById:   {},     // the rows on screen, by product id (for the row editor)
+        pending:    false,  // the results don't reflect the inputs yet (search due, running, or a condition unfinished)
+        xhr:        null,   // the search request in flight
+        timer:      null,   // the debounce timer
+        filterKey:  '',     // JSON of the last searched filter, to skip repeat searches
     };
     let pager = null;
 
@@ -218,6 +231,31 @@
             return true;
         });
         return pos;
+    }
+
+    /** The first complete condition still waiting for its value (1-based), or 0. */
+    function firstConditionWithoutValue() {
+        let pos = 0;
+        $(SELECTORS.CONDITIONS).find(RB.SELECTORS.CONDITION_ROW).each(function(i) {
+            const $r = $(this);
+            const op = $r.find(RB.SELECTORS.COND_OPERATOR_SEL).val() || '';
+            if (NO_VALUE_OPERATORS.indexOf(op) === -1 && String($r.find(RB.SELECTORS.COND_VALUE_SEL).val() || '').trim() === '') {
+                pos = i + 1;
+                return false;
+            }
+            return true;
+        });
+        return pos;
+    }
+
+    /**
+     * Whether the filter narrows anything. The status defaults alone don't:
+     * results (and Apply to all) wait until something has been entered.
+     */
+    function hasParameters(f) {
+        const statuses = f.statuses.slice().sort().join(',');
+        return !!(f.q || f.conditions.length || f.stock.length || f.health.length
+            || f.supplier !== 'all' || statuses !== DEFAULT_STATUSES.join(','));
     }
 
     /** Readable one-liner of a filter, stored with each job. */
@@ -286,12 +324,19 @@
             .on('change', SELECTORS.FILTER_MS + ' input[type=checkbox]', function() {
                 renderFilterLabel($(this).closest(SELECTORS.FILTER_MS));
             })
+            // Clear all: search box, supplier, filters and conditions.
             .on('click', SELECTORS.FILTERS_CLEAR, function() {
+                $(SELECTORS.QUERY).val('');
+                $(SELECTORS.QUERY_CASE).prop('checked', false);
+                $(SELECTORS.QUERY_IN).val('title_sku');
+                $(SELECTORS.SUPPLIER).val('all');
                 $(SELECTORS.STOCK_CB + ', ' + SELECTORS.HEALTH_CB).prop('checked', false);
-                $(SELECTORS.STATUS_CB).each(function() { this.checked = this.value === 'publish' || this.value === 'draft'; });
+                $(SELECTORS.STATUS_CB).each(function() { this.checked = DEFAULT_STATUSES.indexOf(this.value) !== -1; });
                 $(SELECTORS.HEALTH_MODE).val('any');
                 $(SELECTORS.FILTER_MS).each(function() { renderFilterLabel($(this)); });
-                markStale(true);
+                $(SELECTORS.CONDITIONS).empty();
+                window.MMIConditionBuilder.updateEmptyHint($(SELECTORS.CONDITION_BUILDER));
+                scheduleSearch(0);
             })
             // A Health chip filters to products failing that check.
             .on('click', SELECTORS.HEALTH_CHIP, function() {
@@ -300,7 +345,7 @@
                 $(SELECTORS.HEALTH_CB).each(function() { this.checked = this.value === id; });
                 $(SELECTORS.HEALTH_MODE).val('any');
                 renderFilterLabel($('#mmi-wb-health-ms'));
-                search(true);
+                scheduleSearch(0);
             });
     }
 
@@ -309,43 +354,107 @@
         window.MMIConditionBuilder.showNotice($(SELECTORS.CONDITION_BUILDER), text);
     }
 
-    function markStale(stale) {
-        $(SELECTORS.STALE_NOTE).toggleClass(CSS.HIDDEN, !stale || state.filter === null);
+    /** The line under the conditions: "Searching…", a waiting hint, or nothing. */
+    function searchStatus(html) {
+        $(SELECTORS.SEARCH_STATUS).html(html || '').toggleClass(CSS.HIDDEN, !html);
     }
 
     /* ── Search + results ───────────────────────────────────────────────── */
 
+    /**
+     * Run the search a moment after the last edit (typing, a filter, a
+     * condition). Apply buttons stay off until the results are current, so
+     * a change never runs against results the screen no longer describes.
+     */
+    function scheduleSearch(delay) {
+        clearTimeout(state.timer);
+        state.pending = true;
+        renderSelection();
+        state.timer = setTimeout(function() {
+            state.timer = null;
+            search(true);
+        }, delay === undefined ? SEARCH_DEBOUNCE_MS : delay);
+    }
+
+    /** Back to "nothing searched": no results, nothing to apply to. */
+    function resetResults() {
+        if (state.xhr) state.xhr.abort();
+        state.filter    = null;
+        state.filterKey = '';
+        state.total     = 0;
+        state.pageIds   = [];
+        state.pending   = false;
+        clearSelection();
+        $(SELECTORS.RESULTS).addClass(CSS.HIDDEN);
+        $(SELECTORS.EMPTY).removeClass(CSS.HIDDEN);
+        $(SELECTORS.PREVIEW_OUT).addClass(CSS.HIDDEN).empty();
+        renderSelection();
+    }
+
     function search(fresh) {
         if (fresh) {
-            const bad = firstIncompleteCondition();
-            if (bad) {
-                searchNotice(fill(MESSAGES.INCOMPLETE, { n: bad }));
+            const filter     = collectFilter();
+            const incomplete = firstIncompleteCondition();
+            if (!incomplete && !hasParameters(filter)) {
+                // Nothing to look for yet.
+                searchStatus('');
+                resetResults();
                 return;
             }
-            state.filter     = collectFilter();
-            state.filterText = describeFilter(state.filter);
+            if (incomplete) {
+                searchStatus(esc(fill(MESSAGES.INCOMPLETE, { n: incomplete })));
+                state.pending = true; // results are for the search before this edit
+                renderSelection();
+                return;
+            }
+            const waiting = firstConditionWithoutValue();
+            if (waiting) {
+                searchStatus(esc(fill(MESSAGES.WAITING_VALUE, { n: waiting })));
+                state.pending = true;
+                renderSelection();
+                return;
+            }
+            const key = JSON.stringify(filter);
+            if (key === state.filterKey) { // nothing that matters changed
+                searchStatus('');
+                state.pending = false;
+                renderSelection();
+                return;
+            }
+            state.filter     = filter;
+            state.filterKey  = key;
+            state.filterText = describeFilter(filter);
             state.page       = 1;
             clearSelection();
-            markStale(false);
             $(SELECTORS.PREVIEW_OUT).addClass(CSS.HIDDEN).empty();
         }
         if (!state.filter) return;
 
-        const $btn = $(SELECTORS.SEARCH_BTN);
-        $btn.prop('disabled', true).addClass(CSS.IS_LOADING).html(LABELS.SEARCH_RUNNING);
+        // Only the latest search counts: drop one still in flight.
+        if (state.xhr) state.xhr.abort();
+        state.pending = true;
+        renderSelection();
+        searchStatus(LABELS.SEARCHING);
         $(SELECTORS.ROWS).addClass('mmi-wb-loading');
 
-        post('mmi_workbench_search', {
+        const xhr = state.xhr = post('mmi_workbench_search', {
             filter: state.filter, page: state.page, per_page: state.perPage,
             sort: state.sort, dir: state.dir, fresh: fresh ? 1 : 0,
-        }).done(function(resp) {
-            if (!resp.success) { searchNotice((resp.data && resp.data.message) || MESSAGES.NETWORK); return; }
+        });
+        xhr.done(function(resp) {
+            if (!resp.success) { state.filterKey = ''; searchNotice((resp.data && resp.data.message) || MESSAGES.NETWORK); return; }
             renderResults(resp.data);
-        }).fail(function() {
+        }).fail(function(jq, status) {
+            if (status === 'abort') return;
+            state.filterKey = ''; // let the same search be retried
             searchNotice(MESSAGES.NETWORK);
         }).always(function() {
-            $btn.prop('disabled', false).removeClass(CSS.IS_LOADING).html(LABELS.SEARCH_IDLE);
+            if (state.xhr !== xhr) return; // a newer search took over
+            state.xhr = null;
+            state.pending = state.timer !== null;
+            searchStatus('');
             $(SELECTORS.ROWS).removeClass('mmi-wb-loading');
+            renderSelection();
         });
     }
 
@@ -541,7 +650,6 @@
                 const $notice = $(`<tr class="mmi-wb-row-notice"><td colspan="${cols}">${esc(fill(MESSAGES.TERMS_SAVED, { label: TERM_EDIT[taxonomy].label }))}</td></tr>`);
                 $new.after($notice);
                 setTimeout(() => $notice.remove(), NOTICE_MS);
-                markStale(true);
                 loadJobs();
             })
             .fail(() => termNotice($editor, MESSAGES.NETWORK))
@@ -597,17 +705,33 @@
             .text(`Select all ${num(state.total)} matching products`);
         $(SELECTORS.CLEAR_SELECTION).toggleClass(CSS.HIDDEN, n === 0);
 
+        const all = allAvailable();
         let target = MESSAGES.NOTHING_SELECTED;
         if (n && state.mode === 'filter') {
             const excl = state.exclude.size ? `, except ${num(state.exclude.size)} unticked` : '';
             target = fill(MESSAGES.TARGET_FILTER, { count: num(state.total), s: plural(state.total), excl });
         } else if (n) {
             target = fill(MESSAGES.TARGET_IDS, { count: num(n), s: plural(n) });
+        } else if (all) {
+            target = fill(MESSAGES.TARGET_NONE, { count: num(state.total), s: plural(state.total) });
         }
         $(SELECTORS.TARGET).text(target);
-        const busy = state.running !== null;
-        $(SELECTORS.PREVIEW_BTN).prop('disabled', !n || busy);
+        const busy = state.running !== null || state.pending;
+        $(SELECTORS.PREVIEW_BTN).prop('disabled', !(n || all) || busy);
         $(SELECTORS.APPLY_BTN).prop('disabled', !n || busy);
+        if (state.running === null) {
+            const tooMany = state.total > MAX_SELECTION;
+            $(SELECTORS.APPLY_ALL_BTN).prop('disabled', !all || busy || tooMany)
+                .attr('title', tooMany ? fill(MESSAGES.TOO_MANY, { count: num(state.total), max: num(MAX_SELECTION) }) : 'Apply to every product the search finds, ticked or not')
+                .html(all ? fill(LABELS.APPLY_ALL_IDLE, { count: num(state.total) }) : LABELS.APPLY_ALL_NONE);
+        } else {
+            $(SELECTORS.APPLY_ALL_BTN).prop('disabled', true);
+        }
+    }
+
+    /** Whether there are current search results to act on as a whole. */
+    function allAvailable() {
+        return state.filter !== null && state.total > 0;
     }
 
     function selectionPayload() {
@@ -615,6 +739,16 @@
             return { mode: 'filter', filter: state.filter, exclude: Array.from(state.exclude) };
         }
         return { mode: 'ids', ids: Array.from(state.ids) };
+    }
+
+    /** Every product the search finds, ticks ignored (re-matched by the server). */
+    function allPayload() {
+        return { mode: 'filter', filter: state.filter, exclude: [] };
+    }
+
+    /** What Preview checks: the ticked products, or every result when none is ticked. */
+    function previewPayload() {
+        return selectedCount() ? selectionPayload() : allPayload();
     }
 
     /* ── Action ─────────────────────────────────────────────────────────── */
@@ -628,7 +762,7 @@
         const $btn = $(SELECTORS.PREVIEW_BTN);
         $btn.prop('disabled', true).html(LABELS.PREVIEW_RUNNING);
         showMessage('', '');
-        post('mmi_workbench_preview', Object.assign({ selection: selectionPayload() }, actionPayload()))
+        post('mmi_workbench_preview', Object.assign({ selection: previewPayload() }, actionPayload()))
             .done(function(resp) {
                 if (!resp.success) { showMessage(resp.data && resp.data.message, 'error'); return; }
                 renderPreview(resp.data);
@@ -653,27 +787,39 @@
                 <thead><tr><th>Product</th><th>Now</th><th></th><th>After</th></tr></thead><tbody>${rows}</tbody></table></div>${more}` : ''}`);
     }
 
-    function apply() {
-        const n = selectedCount();
+    /**
+     * Start a job on the ticked products, or (all) on every product the
+     * search finds. The server re-matches the search when the job starts.
+     */
+    function apply(all) {
+        if (state.pending || state.running !== null) return;
+        const n = all ? state.total : selectedCount();
         const summary = `${$(SELECTORS.ACTION + ' option:selected').text()}${paramsHint()}`;
-        if (!window.confirm(fill(MESSAGES.CONFIRM_APPLY, { summary, count: num(n), s: plural(n) }))) return;
+        const confirmText = all
+            ? fill(MESSAGES.CONFIRM_APPLY_ALL, { summary, count: num(n), s: plural(n), filter: state.filterText })
+            : fill(MESSAGES.CONFIRM_APPLY, { summary, count: num(n), s: plural(n) });
+        if (!window.confirm(confirmText)) return;
 
+        const $btn = $(all ? SELECTORS.APPLY_ALL_BTN : SELECTORS.APPLY_BTN);
+        const restore = function() {
+            $(SELECTORS.APPLY_BTN).html(LABELS.APPLY_IDLE);
+            renderSelection();
+        };
         showMessage('', '');
-        $(SELECTORS.APPLY_BTN).prop('disabled', true).html(LABELS.APPLY_RUNNING);
-        post('mmi_workbench_start', Object.assign({ selection: selectionPayload(), filter_label: state.filterText }, actionPayload()))
+        $(SELECTORS.APPLY_BTN + ', ' + SELECTORS.APPLY_ALL_BTN).prop('disabled', true);
+        $btn.html(LABELS.APPLY_RUNNING);
+        post('mmi_workbench_start', Object.assign({ selection: all ? allPayload() : selectionPayload(), filter_label: state.filterText }, actionPayload()))
             .done(function(resp) {
                 if (!resp.success) {
                     showMessage(resp.data && resp.data.message, 'error');
-                    $(SELECTORS.APPLY_BTN).html(LABELS.APPLY_IDLE);
-                    renderSelection();
+                    restore();
                     return;
                 }
                 runLoop(resp.data.job, 'mmi_workbench_run');
             })
             .fail(function() {
                 showMessage(MESSAGES.NETWORK, 'error');
-                $(SELECTORS.APPLY_BTN).html(LABELS.APPLY_IDLE);
-                renderSelection();
+                restore();
             });
     }
 
@@ -866,7 +1012,6 @@
         loadJobs();
 
         $(document)
-            .on('click', SELECTORS.SEARCH_BTN, () => search(true))
             .on('click', SELECTORS.EDIT_TERMS, function() { openTermEditor($(this)); })
             .on('click', SELECTORS.TERM_CANCEL, closeTermEditor)
             .on('click', SELECTORS.TERM_SAVE, function() { saveTerms($(this).closest(SELECTORS.TERM_EDITOR_TR)); })
@@ -887,18 +1032,12 @@
                 if (e.key === 'Enter') { e.preventDefault(); saveSearch(); }
                 if (e.key === 'Escape') { toggleSaveForm(false); }
             })
-            .on('keydown', SELECTORS.QUERY, function(e) { if (e.key === 'Enter') { e.preventDefault(); search(true); } })
-            .on('click', SELECTORS.RESET_BTN, function() {
-                $(SELECTORS.QUERY).val('');
-                $(SELECTORS.QUERY_CASE).prop('checked', false);
-                $(SELECTORS.CONDITIONS).empty();
-                window.MMIConditionBuilder.updateEmptyHint($(SELECTORS.CONDITION_BUILDER));
-                markStale(true);
-            })
+            // Enter searches at once instead of waiting out the debounce.
+            .on('keydown', SELECTORS.QUERY, function(e) { if (e.key === 'Enter') { e.preventDefault(); scheduleSearch(0); } })
             // Add/Remove/Load saved belong to the shared condition builder;
-            // any change there marks the results stale.
-            .on(RB.CHANGE_EVENT, SELECTORS.CONDITION_BUILDER, () => markStale(true))
-            .on('input change', [SELECTORS.QUERY, SELECTORS.QUERY_CASE, SELECTORS.QUERY_IN, SELECTORS.SUPPLIER, SELECTORS.STATUS_CB, SELECTORS.STOCK_CB, SELECTORS.HEALTH_CB, SELECTORS.HEALTH_MODE, SELECTORS.MATCH_LOGIC].join(', '), () => markStale(true))
+            // any change there, or to the fields above, re-runs the search.
+            .on(RB.CHANGE_EVENT, SELECTORS.CONDITION_BUILDER, () => scheduleSearch())
+            .on('input change', [SELECTORS.QUERY, SELECTORS.QUERY_CASE, SELECTORS.QUERY_IN, SELECTORS.SUPPLIER, SELECTORS.STATUS_CB, SELECTORS.STOCK_CB, SELECTORS.HEALTH_CB, SELECTORS.HEALTH_MODE, SELECTORS.MATCH_LOGIC].join(', '), () => scheduleSearch())
 
             // Category chip → narrow to that category (or to uncategorized).
             .on('click', SELECTORS.FACET, function() {
@@ -909,7 +1048,7 @@
                 $(SELECTORS.MATCH_LOGIC).val('all');
                 // The field list loads asynchronously; search once it has.
                 const wait = setInterval(function() {
-                    if ($row.find(RB.SELECTORS.COND_FIELD_SEL).val()) { clearInterval(wait); search(true); }
+                    if ($row.find(RB.SELECTORS.COND_FIELD_SEL).val()) { clearInterval(wait); scheduleSearch(0); }
                 }, 100);
                 setTimeout(() => clearInterval(wait), 10000);
             })
@@ -951,7 +1090,8 @@
                 $(SELECTORS.PREVIEW_OUT).addClass(CSS.HIDDEN).empty();
             })
             .on('click', SELECTORS.PREVIEW_BTN, preview)
-            .on('click', SELECTORS.APPLY_BTN, apply)
+            .on('click', SELECTORS.APPLY_BTN, () => apply(false))
+            .on('click', SELECTORS.APPLY_ALL_BTN, () => apply(true))
             .on('click', SELECTORS.STOP_BTN, function() { state.stopRequested = true; })
 
             .on('click', SELECTORS.JOB_SORTABLE_TH, function() {
