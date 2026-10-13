@@ -3299,6 +3299,19 @@ div.wrap div.mmi-header p,
     pointer-events: none;
 }
 
+/* A switch with its text: the whole label toggles it. Markup:
+   <label class="mmi-toggle-field"><span class="mmi-toggle-switch"><input type="checkbox">
+   <span class="mmi-toggle-slider"></span></span> Text</label> */
+.mmi-toggle-field {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mmi-toggle-field-gap, 8px);
+    cursor: pointer;
+}
+.mmi-toggle-field .mmi-toggle-switch {
+    flex-shrink: 0;
+}
+
 /* Indeterminate state for master "toggle all" switches */
 .mmi-toggle-switch input:indeterminate + .mmi-toggle-slider {
     background: linear-gradient(90deg, var(--mmi-primary, #45852C) 50%, var(--mmi-toggle-track-bg, #ccc) 50%);
