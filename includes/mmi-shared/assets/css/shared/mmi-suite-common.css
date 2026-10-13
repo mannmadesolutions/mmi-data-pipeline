@@ -3343,6 +3343,9 @@ div.wrap div.mmi-header p,
  * Variants added for long lists: .mmi-ms-search (filter box at the top of the
  * menu), .mmi-ms-option--check (a <label> wrapping a checkbox, so the picker
  * posts with its form), .mmi-multiselect--block (full-width trigger).
+ * Tree options carry data-depth + --mmi-ms-depth (indent per level) and
+ * .is-parent on terms with children. An option a consumer marks .is-empty
+ * (no matches under the other filters) is dimmed but stays clickable.
  */
 .mmi-multiselect {
     position: relative;
@@ -3456,6 +3459,16 @@ div.wrap div.mmi-header p,
 .mmi-ms-option.is-selected .mmi-ms-opt-count {
     color: rgba(255,255,255,0.75);
     opacity: 1;
+}
+.mmi-ms-option[data-depth] {
+    padding-left: calc(8px + var(--mmi-ms-depth, 0) * var(--mmi-ms-indent, 14px));
+}
+/* A term with child terms reads as a group heading. */
+.mmi-ms-option.is-parent {
+    font-weight: 600;
+}
+.mmi-ms-option.is-empty:not(.is-selected) {
+    color: var(--mmi-ms-empty, #8c8f94);
 }
 
 .mmi-multiselect--block,

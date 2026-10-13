@@ -12,6 +12,10 @@
  * Input IDs:   filter-taxonomy-{slug}
  * POST params: filter_taxonomy_{slug}
  *
+ * Hierarchical taxonomies arrive as a tree (parent, then its children, each
+ * with a depth); options are indented by depth via --mmi-ms-depth.
+ * Per-option counts are filled in by the consumer (.mmi-ms-opt-count).
+ *
  * Public API (window.mmiTaxonomyFilters):
  *   collectParams()         — returns { filter_taxonomy_slug: "val,val2" } for
  *                             every injected filter; call from collectFilterParams()
@@ -61,11 +65,15 @@
         selectedValues.forEach( function ( v ) { selSet[ v ] = true; } );
 
         var optionsHtml = '';
-        terms.forEach( function ( term ) {
-            var isSel = !! selSet[ term.slug ];
+        terms.forEach( function ( term, i ) {
+            var isSel    = !! selSet[ term.slug ];
+            var depth    = parseInt( term.depth, 10 ) || 0;
+            var next     = terms[ i + 1 ];
+            var isParent = !! next && ( parseInt( next.depth, 10 ) || 0 ) > depth;
             optionsHtml +=
-                '<button type="button" class="mmi-ms-option' + ( isSel ? ' is-selected' : '' ) + '"' +
-                ' data-value="' + escAttr( term.slug ) + '">' +
+                '<button type="button" class="mmi-ms-option' + ( isSel ? ' is-selected' : '' ) + ( isParent ? ' is-parent' : '' ) + '"' +
+                ' data-value="' + escAttr( term.slug ) + '"' +
+                ( depth ? ' data-depth="' + depth + '" style="--mmi-ms-depth: ' + depth + '"' : '' ) + '>' +
                 '<span class="mmi-ms-opt-label">' + escHtml( term.name ) + '</span>' +
                 '<span class="mmi-ms-opt-count"></span>' +
                 '</button>';

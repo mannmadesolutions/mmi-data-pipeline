@@ -30,11 +30,12 @@ if ( ! class_exists( 'MMI_Taxonomy_Filter_Handler' ) ) {
 		/**
 		 * Terms for each requested taxonomy, in the shape
 		 * js/shared/taxonomy-filter.js's injectSection() expects:
-		 * { slug => { label: string, terms: [ {slug, name}, ... ] } }.
-		 * Unknown/non-existent taxonomy slugs are silently skipped — the
-		 * caller declared its own filterable-taxonomy list (see
-		 * $mmi_taxonomy_filter_slugs in tab-products.php), so a typo there
-		 * should degrade to "one fewer filter shown," not a fatal.
+		 * { slug => { label: string, terms: [ {slug, name, depth}, ... ] } }.
+		 * A hierarchical taxonomy's terms come as a tree, each parent followed
+		 * by its children (alphabetical among siblings); depth is 0 for a
+		 * top-level term. Unknown/non-existent taxonomy slugs are silently
+		 * skipped — the caller declared its own filterable-taxonomy list, so a
+		 * typo there should degrade to "one fewer filter shown," not a fatal.
 		 *
 		 * @param string[] $slugs Taxonomy slugs requested by the widget.
 		 */
@@ -58,18 +59,77 @@ if ( ! class_exists( 'MMI_Taxonomy_Filter_Handler' ) ) {
 					continue;
 				}
 
-				$taxonomy_obj = get_taxonomy( $slug );
-
 				$result[ $slug ] = [
-					'label' => $taxonomy_obj ? $taxonomy_obj->labels->singular_name : $slug,
-					'terms' => array_map(
-						static fn( $term ) => [ 'slug' => $term->slug, 'name' => $term->name ],
-						$terms
-					),
+					'label' => self::label( $slug ),
+					'terms' => self::as_tree( $terms, is_taxonomy_hierarchical( $slug ) ),
 				];
 			}
 
 			return $result;
+		}
+
+		/**
+		 * The taxonomy's singular name. A taxonomy named like a core one
+		 * ("Category", "Tag") is prefixed with its post type ("Product
+		 * Category"), since WordPress posts have a Category too.
+		 */
+		private static function label( string $taxonomy ): string {
+			$tax = get_taxonomy( $taxonomy );
+			if ( ! $tax ) {
+				return $taxonomy;
+			}
+			$label = $tax->labels->singular_name;
+			if ( ! in_array( $taxonomy, [ 'category', 'post_tag' ], true ) ) {
+				$core = array_filter( array_map(
+					static fn( $core_slug ) => get_taxonomy( $core_slug ) ? get_taxonomy( $core_slug )->labels->singular_name : '',
+					[ 'category', 'post_tag' ]
+				) );
+				$type = get_post_type_object( $tax->object_type[0] ?? '' );
+				if ( $type && in_array( $label, $core, true ) ) {
+					$label = $type->labels->singular_name . ' ' . $label;
+				}
+			}
+			return $label;
+		}
+
+		/**
+		 * Name-sorted terms → [ {slug, name, depth} ] with every parent
+		 * followed by its children. Names are decoded (WordPress stores
+		 * "&" as "&amp;"); the browser escapes them on output.
+		 *
+		 * @param WP_Term[] $terms Sorted by name.
+		 */
+		private static function as_tree( array $terms, bool $hierarchical ): array {
+			$ids      = array_flip( array_map( static fn( $t ) => (int) $t->term_id, $terms ) );
+			$children = [];
+			foreach ( $terms as $term ) {
+				// A term whose parent is missing is shown at the top level, never dropped.
+				$parent = $hierarchical && isset( $ids[ (int) $term->parent ] ) ? (int) $term->parent : 0;
+				$children[ $parent ][] = $term;
+			}
+
+			$out   = [];
+			$stack = [ [ 0, 0 ] ];
+			$queue = [ 0 => array_reverse( $children[0] ?? [] ) ];
+			while ( $stack ) {
+				[ $parent, $depth ] = end( $stack );
+				$term = array_pop( $queue[ $parent ] );
+				if ( null === $term ) {
+					array_pop( $stack );
+					continue;
+				}
+				$out[] = [
+					'slug'  => $term->slug,
+					'name'  => wp_specialchars_decode( $term->name, ENT_QUOTES ),
+					'depth' => $depth,
+				];
+				$id = (int) $term->term_id;
+				if ( ! empty( $children[ $id ] ) ) {
+					$queue[ $id ] = array_reverse( $children[ $id ] );
+					$stack[]      = [ $id, $depth + 1 ];
+				}
+			}
+			return $out;
 		}
 	}
 }
