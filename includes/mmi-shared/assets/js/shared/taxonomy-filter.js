@@ -89,7 +89,7 @@
             : escHtml( label );
 
         return (
-            '<div class="mmi-multiselect" data-filter="' + escAttr( inputId ) + '" data-label="' + escAttr( label ) + '">' +
+            '<div class="mmi-multiselect" data-filter="' + escAttr( inputId ) + '" data-filter-id="' + escAttr( inputId ) + '" data-label="' + escAttr( label ) + '">' +
                 '<button type="button" class="mmi-ms-trigger" aria-expanded="false">' +
                     '<span class="mmi-ms-label">' + triggerLabel + '</span>' +
                     badgeHtml +
@@ -144,17 +144,36 @@
     }
 
     /* ── Sync the filter-customize panel ─────────────────────────────────── */
-    function updateCustomizePanel( $context ) {
-        var $panel = $context.find( '#mmi-filter-customize-panel' );
+    /* One section row plus a row per taxonomy, the same shape as the panel's
+       own sections. Looked up by id, not inside $context: the panel is a
+       modal that moves itself to <body> the first time it opens. */
+    function updateCustomizePanel( taxonomyData ) {
+        var $panel = $( '#mmi-filter-customize-panel' );
         if ( ! $panel.length ) {
             return;
         }
-        /* Remove any previously injected taxonomy entry */
-        $panel.find( '.mmi-fcp-item[data-taxonomy-entry]' ).remove();
-        $panel.append(
-            '<label class="mmi-fcp-item" data-taxonomy-entry>' +
-                '<input type="checkbox" data-section-toggle="' + SECTION_SLUG + '"> Taxonomies' +
-            '</label>'
+        $panel.find( '[data-taxonomy-entry]' ).remove();
+
+        var itemsHtml = '';
+        Object.keys( taxonomyData ).forEach( function ( slug ) {
+            itemsHtml +=
+                '<label class="mmi-fcp-filter-item">' +
+                    '<input type="checkbox" data-filter-toggle="' + escAttr( INPUT_PREFIX + slug ) + '"> ' +
+                    escHtml( taxonomyData[ slug ].label ) +
+                '</label>';
+        } );
+        if ( ! itemsHtml ) {
+            return;
+        }
+
+        var $body = $panel.find( '.mmi-fcp-body' );
+        ( $body.length ? $body : $panel ).append(
+            '<div class="mmi-fcp-section" data-taxonomy-entry>' +
+                '<label class="mmi-fcp-section-row">' +
+                    '<input type="checkbox" data-section-toggle="' + SECTION_SLUG + '"> Taxonomies' +
+                '</label>' +
+                '<div class="mmi-fcp-filters" data-section-filters="' + SECTION_SLUG + '">' + itemsHtml + '</div>' +
+            '</div>'
         );
     }
 
@@ -214,7 +233,7 @@
                     return;
                 }
                 injectSection( $filtersRow, response.data, initialValues );
-                updateCustomizePanel( $context );
+                updateCustomizePanel( response.data );
 
                 /* Trigger the filter-visibility system so new section respects prefs */
                 $( document ).trigger( 'mmi:taxonomy:injected', [ $context ] );

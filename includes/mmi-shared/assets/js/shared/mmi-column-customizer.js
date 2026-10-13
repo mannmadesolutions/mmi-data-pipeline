@@ -76,6 +76,34 @@ window.MMIColumnCustomizer = (function ($) {
     }
 
     /**
+     * Open any customize panel as the shared centered modal. Exported so
+     * panels that aren't column lists (Reverb's Filter Settings) open and
+     * close exactly the same way.
+     *
+     * Reparents to <body> before showing, not just visually centering via
+     * CSS: the panel's original position in the DOM is deep inside each
+     * caller's own markup (e.g. mmi-data-pipeline's export preview nests it
+     * inside .mmi-scope-layout-preview, a position:sticky column, and sticky,
+     * like fixed, creates a new stacking context that traps the panel's
+     * z-index). The panel is position:fixed either way, so moving it costs
+     * nothing visually, and it puts the panel in the SAME stacking context as
+     * the body-appended backdrop. Callers bind panel interactions with
+     * delegated $(document) handlers, so relocating the node breaks nothing.
+     *
+     * @param {string} panelSelector
+     */
+    function openModal(panelSelector) {
+        showBackdrop();
+        $(panelSelector).appendTo('body').removeAttr('hidden');
+    }
+
+    /** @param {string} panelSelector */
+    function closeModal(panelSelector) {
+        $(panelSelector).attr('hidden', '');
+        hideBackdrop();
+    }
+
+    /**
      * @param {object} options
      * @param {string} options.buttonSelector
      * @param {string} options.panelSelector
@@ -300,27 +328,11 @@ window.MMIColumnCustomizer = (function ($) {
         }
 
         function openPanel() {
-            showBackdrop();
-            // Reparent to <body> before showing, not just visually center via
-            // CSS: the panel's original position in the DOM is deep inside
-            // each caller's own markup (e.g. mmi-data-pipeline's export
-            // preview nests it inside .mmi-scope-layout-preview, a
-            // position:sticky column — sticky, like fixed, always creates a
-            // new stacking context, which traps the panel's z-index inside
-            // it regardless of how high a number it's given). The panel is
-            // position:fixed either way, so moving it costs nothing visually
-            // — but it does put the panel in the SAME stacking context as
-            // the body-appended backdrop, which is the only way a numeric
-            // z-index comparison between the two is actually meaningful.
-            // Every internal interaction is bound via delegated $(document)
-            // handlers (see bindPanelInteractions), so relocating the node
-            // breaks nothing.
-            $(cfg.panelSelector).appendTo('body').removeAttr('hidden');
+            openModal(cfg.panelSelector);
         }
 
         function closePanel() {
-            $(cfg.panelSelector).attr('hidden', '');
-            hideBackdrop();
+            closeModal(cfg.panelSelector);
         }
 
         function bindPanelInteractions() {
@@ -432,5 +444,5 @@ window.MMIColumnCustomizer = (function ($) {
         };
     }
 
-    return { init: createInstance };
+    return { init: createInstance, openModal: openModal, closeModal: closeModal };
 })(jQuery);

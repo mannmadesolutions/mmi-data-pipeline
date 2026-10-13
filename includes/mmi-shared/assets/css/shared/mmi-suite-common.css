@@ -2745,9 +2745,10 @@ div.wrap div.mmi-header p,
  * mmi-import-pipeline's export preview table adopted the same pattern
  * (#mmi-export-preview-column-customize-btn) — per CLAUDE.md's CSS
  * Ownership rule, a class used by more than one plugin belongs here, not in
- * either plugin's own stylesheet. Reverb's #mmi-column-customize-btn (tab=
- * products) and #mmi-filter-customize-btn both still use the .mmi-fcp-*
- * classes below for their popover body.
+ * either plugin's own stylesheet. Reverb's Filter Settings panel
+ * (.mmi-filter-customize-panel/-btn) is the same modal and button, opened by
+ * MMIColumnCustomizer.openModal(), so both customize panels look and behave
+ * alike.
  *
  * Rendered as a true centered modal (fixed + transform-centered, with a
  * dimmed backdrop) rather than a button-anchored popover — the previous
@@ -2762,7 +2763,8 @@ div.wrap div.mmi-header p,
     position: relative;
 }
 
-.mmi-column-customize-btn {
+.mmi-column-customize-btn,
+.mmi-filter-customize-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -2774,11 +2776,13 @@ div.wrap div.mmi-header p,
     border-color: #c3c4c7 !important;
     background: #fff !important;
 }
-.mmi-column-customize-btn:hover {
+.mmi-column-customize-btn:hover,
+.mmi-filter-customize-btn:hover {
     color: var(--mmi-primary, #45852C) !important;
     border-color: var(--mmi-primary, #45852C) !important;
 }
-.mmi-column-customize-btn .dashicons {
+.mmi-column-customize-btn .dashicons,
+.mmi-filter-customize-btn .dashicons {
     font-size: 14px;
     width: 14px;
     height: 14px;
@@ -2795,7 +2799,8 @@ div.wrap div.mmi-header p,
     display: none;
 }
 
-.mmi-column-customize-panel {
+.mmi-column-customize-panel,
+.mmi-filter-customize-panel {
     position: fixed;
     top: 50%;
     left: 50%;
@@ -2813,7 +2818,8 @@ div.wrap div.mmi-header p,
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
     z-index: 100001;
 }
-.mmi-column-customize-panel[hidden] {
+.mmi-column-customize-panel[hidden],
+.mmi-filter-customize-panel[hidden] {
     display: none;
 }
 
@@ -2903,34 +2909,36 @@ div.wrap div.mmi-header p,
     border-color: var(--mmi-primary, #45852C) !important;
 }
 
-/* ── Column customize panel's own header/body/footer layout ──────────────
- * Scoped under .mmi-column-customize-panel rather than changed on the bare
- * .mmi-fcp-header/-body/-footer rules above — those are also shared by the
- * Filter Settings popover (.mmi-filter-customize-panel, reverb-only, its own
- * CSS lives in mmi-reverb-integration/assets/css/admin.css), which stays a
- * small anchored popover and must not inherit this modal's flex/full-bleed
- * treatment. The panel itself is display:flex/flex-direction:column (see
- * above); header and footer are pinned (flex-shrink:0), body is the one
- * scrolling region. */
-.mmi-column-customize-panel .mmi-fcp-header {
+/* ── Customize modal header/body/footer layout ───────────────────────────
+ * Scoped under the two modal panels rather than changed on the bare
+ * .mmi-fcp-header/-body/-footer rules above, which assume a padded popover.
+ * The panel itself is display:flex/flex-direction:column (see above);
+ * header and footer are pinned (flex-shrink:0), body is the one scrolling
+ * region. */
+.mmi-column-customize-panel .mmi-fcp-header,
+.mmi-filter-customize-panel .mmi-fcp-header {
     margin: 0;
     padding: 14px 20px 12px;
     border-radius: 8px 8px 0 0;
     flex-shrink: 0;
 }
-.mmi-column-customize-panel .mmi-fcp-title {
+.mmi-column-customize-panel .mmi-fcp-title,
+.mmi-filter-customize-panel .mmi-fcp-title {
     font-size: 14px;
 }
-.mmi-column-customize-panel .mmi-fcp-close {
+.mmi-column-customize-panel .mmi-fcp-close,
+.mmi-filter-customize-panel .mmi-fcp-close {
     font-size: 22px;
 }
-.mmi-column-customize-panel .mmi-fcp-body {
+.mmi-column-customize-panel .mmi-fcp-body,
+.mmi-filter-customize-panel .mmi-fcp-body {
     flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 8px 20px;
 }
-.mmi-column-customize-panel .mmi-fcp-footer {
+.mmi-column-customize-panel .mmi-fcp-footer,
+.mmi-filter-customize-panel .mmi-fcp-footer {
     flex-shrink: 0;
     padding: 10px 20px 16px;
 }
