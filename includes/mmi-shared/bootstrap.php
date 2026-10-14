@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.10';
+$mmi_shared_lib_this_copy_version = '1.46.11';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -1153,6 +1153,65 @@ if ( ! function_exists( 'mmi_shared_assets_drop_command_palette' ) ) {
 		}
 		wp_dequeue_style( 'wp-commands' );
 	}
+}
+
+/**
+ * ── Nonce refresh (lib 1.46.11, 2026-10-14) ──────────────────────────────
+ *
+ * A page left open longer than nonce_life (12-24 h) failed every AJAX call
+ * with the nonce it printed at load. mmi-hub refreshed nonces through
+ * Heartbeat until its deletion (2026-09-17); nothing replaced it.
+ *
+ * js/shared/mmi-nonce-refresh.js (handle mmi-nonce-refresh, registered in
+ * wp-admin and on the front end) fetches fresh values from the
+ * mmi_refresh_nonces action below; see the file for when and why.
+ *
+ * A plugin opts a nonce action in with a callable that decides who may
+ * receive it:
+ *   add_filter( 'mmi_refreshable_nonces', fn( $n ) => $n + [ 'rtsm_nonce' => 'rtsm_user_can' ] );
+ */
+if ( ! function_exists( 'mmi_shared_ajax_refresh_nonces' ) ) {
+	/**
+	 * Fresh nonces for the requested registered actions the user may have.
+	 * No nonce check: an expired page gets its nonce here. Same model as
+	 * WordPress's own rest-nonce action (wp_ajax_rest_nonce): logged-in only
+	 * (no nopriv hook), no side effects, and another origin can't read the
+	 * response.
+	 */
+	function mmi_shared_ajax_refresh_nonces(): void {
+		$registry  = (array) apply_filters( 'mmi_refreshable_nonces', array() );
+		$requested = array_filter( (array) wp_unslash( $_POST['actions'] ?? array() ), 'is_string' );
+		$nonces    = array();
+		foreach ( array_unique( $requested ) as $action ) {
+			if ( isset( $registry[ $action ] ) && is_callable( $registry[ $action ] ) && call_user_func( $registry[ $action ] ) ) {
+				$nonces[ $action ] = wp_create_nonce( $action );
+			}
+		}
+		wp_send_json_success( array( 'nonces' => $nonces ) );
+	}
+}
+
+if ( ! function_exists( 'mmi_shared_nonce_refresh_register_script' ) ) {
+	function mmi_shared_nonce_refresh_register_script(): void {
+		$winner = mmi_shared_assets_winner();
+		$file   = 'js/shared/mmi-nonce-refresh.js';
+		if ( ! is_file( $winner['dir'] . '/' . $file ) ) {
+			return;
+		}
+		wp_register_script( 'mmi-nonce-refresh', $winner['url'] . $file, array( 'jquery' ), $winner['version'], true );
+		wp_localize_script( 'mmi-nonce-refresh', 'mmiNonceRefresh', array(
+			'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
+			'action'      => 'mmi_refresh_nonces',
+			'lifeSeconds' => (int) apply_filters( 'nonce_life', DAY_IN_SECONDS, -1 ),
+		) );
+	}
+}
+
+if ( ! defined( 'MMI_SHARED_NONCE_REFRESH_REGISTERED' ) && defined( 'ABSPATH' ) ) {
+	define( 'MMI_SHARED_NONCE_REFRESH_REGISTERED', true );
+	add_action( 'wp_ajax_mmi_refresh_nonces', 'mmi_shared_ajax_refresh_nonces' );
+	add_action( 'admin_enqueue_scripts', 'mmi_shared_nonce_refresh_register_script', 5 );
+	add_action( 'wp_enqueue_scripts', 'mmi_shared_nonce_refresh_register_script', 5 );
 }
 
 // Own guard, not MMI_SHARED_ASSETS_HOOKS_REGISTERED: an older bundled copy
