@@ -190,6 +190,17 @@ $mmi_wb_section_head = static function ( string $icon, string $title, string $de
                         <?php Rule_Builder_View::action_params( [ 'taxonomy' => 'product_cat', 'mode' => 'replace' ] ); ?>
                     </div>
                 </div>
+                <?php // Field Locks: shown only for changes that write a field imports also write (product-workbench.js). ?>
+                <div class="mmi-wb-lock-options mmi-hidden" id="mmi-wb-lock-options">
+                    <label class="mmi-wb-lock-option">
+                        <span class="mmi-toggle-switch"><input type="checkbox" id="mmi-wb-skip-locked"><span class="mmi-toggle-slider"></span></span>
+                        <span id="mmi-wb-skip-locked-label">Skip products where this field is locked</span>
+                    </label>
+                    <label class="mmi-wb-lock-option" id="mmi-wb-add-lock-option">
+                        <span class="mmi-toggle-switch"><input type="checkbox" id="mmi-wb-add-lock"><span class="mmi-toggle-slider"></span></span>
+                        <span id="mmi-wb-add-lock-label">Lock this field against imports</span>
+                    </label>
+                </div>
                 <p class="mmi-wb-target" id="mmi-wb-target">Nothing selected yet.</p>
                 <div class="mmi-wb-progress mmi-hidden" id="mmi-wb-progress">
                     <div class="mmi-progress-track"><div class="mmi-progress-fill" id="mmi-wb-progress-fill"></div></div>

@@ -88,7 +88,13 @@ add_action( 'wp_ajax_mmi_workbench_start', function () {
     $ids   = mmi_workbench_request_ids();
     // phpcs:ignore WordPress.Security.NonceVerification.Missing
     $label = sanitize_text_field( wp_unslash( $_POST['filter_label'] ?? '' ) );
-    wp_send_json_success( [ 'job' => Product_Workbench::start_job( $ids, $valid['action'], $valid['params'], $label ) ] );
+    $options = [
+        // phpcs:disable WordPress.Security.NonceVerification.Missing
+        'skip_locked' => ! empty( $_POST['skip_locked'] ),
+        'add_lock'    => ! empty( $_POST['add_lock'] ),
+        // phpcs:enable
+    ];
+    wp_send_json_success( [ 'job' => Product_Workbench::start_job( $ids, $valid['action'], $valid['params'], $label, $options ) ] );
 } );
 
 add_action( 'wp_ajax_mmi_workbench_run', function () {

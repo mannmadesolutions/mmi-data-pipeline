@@ -172,6 +172,11 @@ class MMI_Pipeline_Admin {
                 'assets/css/product-workbench.css', [ 'mmi-pipeline-settings', 'mmi-pipeline-rule-builder' ] );
             self::enqueue_script( 'mmi-pipeline-workbench',
                 'assets/js/product-workbench.js', [ 'jquery', 'mmi-pipeline-rule-builder', 'mmi-escape-html', 'mmi-pagination' ] );
+            // Which import fields each change writes, for the lock switches.
+            wp_localize_script( 'mmi-pipeline-workbench', 'mmiWorkbench', [
+                'lockLabels'       => \MannMade\DataPipeline\Workbench\Product_Workbench::lock_labels(),
+                'actionLockFields' => \MannMade\DataPipeline\Workbench\Product_Workbench::ACTION_LOCK_FIELDS,
+            ] );
         }
 
         /* ── Import tab ────────────────────────────────────────────────── */

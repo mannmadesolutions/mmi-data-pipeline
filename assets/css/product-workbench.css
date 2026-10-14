@@ -417,6 +417,7 @@ td.mmi-wb-col-thumb img,
 }
 
 /* Status lines and the preview take the full width under the action row. */
+.mmi-wb-change > .mmi-wb-lock-options,
 .mmi-wb-change > .mmi-wb-target,
 .mmi-wb-change > .mmi-wb-progress,
 .mmi-wb-change > .mmi-wb-message,
@@ -438,6 +439,21 @@ td.mmi-wb-col-thumb img,
 
 .mmi-wb-action .mmi-custom-rule-params {
     flex: 1 1 420px;
+}
+
+/* Field Lock switches for the chosen change. */
+.mmi-wb-lock-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    margin-top: 8px;
+}
+
+.mmi-wb-lock-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
 }
 
 .mmi-wb-target {
@@ -503,6 +519,26 @@ td.mmi-wb-col-thumb img,
 .mmi-wb-preview-table .mmi-wb-after {
     color: var(--mmi-wb-accent);
     font-weight: 600;
+}
+
+.mmi-wb-preview-table .mmi-wb-lock-cell {
+    width: 18px;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-preview-table .mmi-wb-lock-cell .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+/* A locked product the run will skip: shown, but visibly left alone. */
+.mmi-wb-preview-table tr.is-skipped td {
+    opacity: 0.45;
+}
+
+.mmi-wb-preview-table tr.is-skipped .mmi-wb-before {
+    text-decoration: none;
 }
 
 .mmi-wb-preview-table .mmi-wb-arrow {

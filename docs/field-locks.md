@@ -23,7 +23,20 @@ Every field the Field Mapping panel can import is lockable except the SKU and th
 | Taxonomies (categories, tags, brand, custom taxonomies) | Terms are not reassigned, including by Taxonomy Mapping aliases and the supplier's default Distribution term |
 | Creating a new product | Not affected. A lock only exists on a product that already exists. |
 | Editing the product yourself | Not affected. Locks only stop imports. |
+| Product Workbench bulk changes | Not affected unless you choose otherwise. See below. |
 | Duplicate Products → Apply field winners | Not affected. That's an explicit choice you make in the review screen. |
+
+## Product Workbench
+
+A lock means "imports may not overwrite this". It never stops a person's change, including a Workbench bulk change. *Since 2.58.6:*
+
+- **The preview counts locked products.** It says how many of the products the change would touch have that field locked, and marks them in the sample with a lock icon.
+- **Skip products where this field is locked** (a switch, off by default) leaves those products alone. The job and its log count them as skipped.
+- **Category, brand and other taxonomy changes always lock** the taxonomy on each changed product, as editing it in the results table does, so the next import keeps your change.
+- **Lock this field against imports** (a switch, off by default) does the same for price, sale price, sale dates, stock status, Manage stock and a copied meta field. These usually follow the supplier feed, so they're locked only when you ask.
+- **Undo** releases only the locks that job added. A lock the product already had stays.
+
+The switches appear only for changes that write a field imports also write. Status and backorders have none.
 
 ## For developers
 

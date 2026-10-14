@@ -589,7 +589,9 @@ final class Product_Workbench {
      * first PREVIEW_SAMPLE that would.
      */
     public static function preview( array $ids, string $action, array $params ): array {
+        $lock_fields = self::lock_fields( $action, $params );
         $will_change = 0;
+        $locked      = 0;
         $sample      = [];
         foreach ( array_chunk( $ids, 500 ) as $chunk ) {
             update_object_term_cache( $chunk, 'product' );
@@ -601,45 +603,118 @@ final class Product_Workbench {
                     continue;
                 }
                 $will_change++;
+                $is_locked = self::has_locked_field( $id, $lock_fields );
+                if ( $is_locked ) {
+                    $locked++;
+                }
                 if ( count( $sample ) < self::PREVIEW_SAMPLE ) {
                     $sample[] = [
                         'id'     => $id,
                         'title'  => html_entity_decode( get_the_title( $id ), ENT_QUOTES, 'UTF-8' ),
                         'before' => self::describe( $before, $action ),
                         'after'  => self::describe( $after, $action ),
+                        'locked' => $is_locked,
                     ];
                 }
             }
             wp_cache_flush_runtime();
         }
-        $lock_tax = self::import_locked_taxonomy( $action, $params );
-        $lock_obj = $lock_tax ? get_taxonomy( $lock_tax ) : null;
         return [
             'selected'    => count( $ids ),
             'will_change' => $will_change,
             'unchanged'   => count( $ids ) - $will_change,
             'summary'     => self::action_summary( $action, $params ),
             'sample'      => $sample,
-            'locks'       => $lock_tax ? ( $lock_obj ? $lock_obj->labels->name : $lock_tax ) : '',
+            // Of the products that would change, how many have the field
+            // locked against imports. The page subtracts them when the job
+            // is set to skip locked products.
+            'locked'      => $locked,
+            'lock_label'  => self::lock_label( $lock_fields ),
+            'lock_mode'   => $lock_fields ? ( self::always_locks( $action ) ? 'always' : 'optional' ) : '',
         ];
     }
 
+    /* ── Field Locks ───────────────────────────────────────────────────── */
+
     /**
-     * The taxonomy a job locks against imports on each product it changes,
-     * or '' when the action writes nothing an import would put back.
+     * Import fields each fixed action writes. Status and backorders aren't
+     * listed: no import writes them, so there is nothing to lock.
      */
-    private static function import_locked_taxonomy( string $action, array $params ): string {
-        if ( $action !== 'set_taxonomy_term' || ! class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
-            return '';
+    const ACTION_LOCK_FIELDS = [
+        'set_regular_price'          => [ '_regular_price' ],
+        'set_sale_price'             => [ '_sale_price' ],
+        'clear_sale_price'           => [ '_sale_price' ],
+        'set_sale_dates'             => [ '_sale_price_dates_from', '_sale_price_dates_to' ],
+        'set_stock_status_backorder' => [ '_stock_status' ],
+        'enable_manage_stock'        => [ '_manage_stock' ],
+        'disable_manage_stock'       => [ '_manage_stock' ],
+    ];
+
+    /**
+     * The Field Lock keys an action writes, so an import could write over the
+     * change: the chosen taxonomy, the copy's target meta key, or the
+     * action's fixed fields. Only lockable fields are returned.
+     *
+     * @return string[]
+     */
+    public static function lock_fields( string $action, array $params ): array {
+        if ( ! class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+            return [];
         }
-        $taxonomy = (string) ( $params['taxonomy'] ?? '' );
-        return isset( \MMI_Pipeline_Field_Locks::lockable_fields()[ $taxonomy ] ) ? $taxonomy : '';
+        if ( $action === 'set_taxonomy_term' ) {
+            $fields = [ (string) ( $params['taxonomy'] ?? '' ) ];
+        } elseif ( $action === 'copy_source_field_to_meta' ) {
+            $fields = [ (string) ( $params['meta_key'] ?? '' ) ];
+        } else {
+            $fields = self::ACTION_LOCK_FIELDS[ $action ] ?? [];
+        }
+        return array_values( array_intersect( $fields, array_keys( \MMI_Pipeline_Field_Locks::lockable_fields() ) ) );
+    }
+
+    /**
+     * A taxonomy change always locks its taxonomy, as the row edit and
+     * Product Content's pickers do. Other fields are locked only when the
+     * job asks, because they usually follow the supplier feed (prices, stock).
+     */
+    public static function always_locks( string $action ): bool {
+        return $action === 'set_taxonomy_term';
+    }
+
+    /** @return array<string,string> Every lockable field → the name the page shows for it. */
+    public static function lock_labels(): array {
+        if ( ! class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+            return [];
+        }
+        $labels = [];
+        foreach ( \MMI_Pipeline_Field_Locks::lockable_fields() as $field => $label ) {
+            $tax              = taxonomy_exists( $field ) ? get_taxonomy( $field ) : null;
+            $labels[ $field ] = $tax ? $tax->labels->name : $label;
+        }
+        return $labels;
+    }
+
+    /** "Sale Start Date and Sale End Date" for a list of lock fields. */
+    public static function lock_label( array $fields ): string {
+        $labels = self::lock_labels();
+        return implode( ' and ', array_map( static fn( $f ) => $labels[ $f ] ?? $f, $fields ) );
+    }
+
+    /** Whether any of $fields is locked on the product (reads the primed meta cache). */
+    private static function has_locked_field( int $id, array $fields ): bool {
+        return $fields && array_intersect( $fields, \MMI_Pipeline_Field_Locks::get( $id ) );
     }
 
     /* ── Apply (job) ───────────────────────────────────────────────────── */
 
-    public static function start_job( array $ids, string $action, array $params, string $filter_label ): array {
+    /**
+     * @param array{skip_locked?:bool,add_lock?:bool} $options skip_locked:
+     *        leave products whose field is locked against imports alone.
+     *        add_lock: lock the field on each changed product (taxonomy
+     *        changes always do).
+     */
+    public static function start_job( array $ids, string $action, array $params, string $filter_label, array $options = [] ): array {
         Workbench_Change_Log::ensure_table();
+        $lock_fields = self::lock_fields( $action, $params );
         $job = [
             'id'           => wp_generate_uuid4(),
             'created_at'   => current_time( 'mysql' ),
@@ -653,6 +728,9 @@ final class Product_Workbench {
             'changed'      => 0,
             'unchanged'    => 0,
             'failed'       => 0,
+            'skipped'      => 0,
+            'skip_locked'  => $lock_fields && ! empty( $options['skip_locked'] ),
+            'add_lock'     => $lock_fields && ( self::always_locks( $action ) || ! empty( $options['add_lock'] ) ),
             'status'       => 'running',
             'undo_cursor'  => 0,
             'undone'       => 0,
@@ -660,13 +738,13 @@ final class Product_Workbench {
         ];
         Workbench_Change_Log::save_job_ids( $job['id'], $ids );
         Workbench_Change_Log::save_job( $job );
-        MMI_Logger::info( "Workbench job {$job['id']} started: {$job['summary']} on {$job['total']} product(s)", [ 'filter' => $job['filter_label'] ], 'sync', 'Product_Workbench' );
+        MMI_Logger::info( "Workbench job {$job['id']} started: {$job['summary']} on {$job['total']} product(s)", [ 'filter' => $job['filter_label'], 'skip_locked' => $job['skip_locked'], 'add_lock' => $job['add_lock'] ], 'sync', 'Product_Workbench' );
         if ( function_exists( 'mmi_data_pipeline_audit' ) ) {
             mmi_data_pipeline_audit( 'workbench.apply', [
                 'object_type' => 'workbench_job',
                 'object_id'   => $job['id'],
                 'outcome'     => 'success',
-                'details'     => [ 'action' => $action, 'summary' => $job['summary'], 'filter' => $job['filter_label'], 'products' => $job['total'] ],
+                'details'     => [ 'action' => $action, 'summary' => $job['summary'], 'filter' => $job['filter_label'], 'products' => $job['total'], 'skip_locked' => $job['skip_locked'], 'add_lock' => $job['add_lock'] ],
             ] );
         }
         return $job;
@@ -695,15 +773,29 @@ final class Product_Workbench {
         set_transient( $lock, 1, MINUTE_IN_SECONDS );
 
         try {
-            $ids      = array_slice( Workbench_Change_Log::job_ids( $job_id ), (int) $job['cursor'], self::BATCH_SIZE );
-            $rows     = [];
-            $lock_tax = self::import_locked_taxonomy( $job['action'], $job['params'] );
+            $ids         = array_slice( Workbench_Change_Log::job_ids( $job_id ), (int) $job['cursor'], self::BATCH_SIZE );
+            $rows        = [];
+            $lock_fields = self::lock_fields( $job['action'], $job['params'] );
+            $skip_locked = $lock_fields && ! empty( $job['skip_locked'] );
+            // Jobs started before add_lock existed locked taxonomy changes only.
+            $add_lock = $lock_fields && ( $job['add_lock'] ?? self::always_locks( $job['action'] ) );
             update_object_term_cache( $ids, 'product' );
             update_meta_cache( 'post', $ids );
             foreach ( $ids as $id ) {
                 try {
                     $before = self::state( $id, $job['action'], $job['params'] );
-                    $raw    = $job['action'] === 'copy_source_field_to_meta' ? Stock_Override_Resolver::raw_feed_item( $id ) : [];
+                    if ( $skip_locked && self::has_locked_field( $id, $lock_fields ) ) {
+                        // Counted as skipped only when the job would have
+                        // changed it, so the total matches the preview's.
+                        $would = self::predict( $id, $before, $job['action'], $job['params'] );
+                        if ( $would == $before ) { // phpcs:ignore Universal.Operators.StrictComparisons -- array value equality.
+                            $job['unchanged']++;
+                        } else {
+                            $job['skipped'] = ( $job['skipped'] ?? 0 ) + 1;
+                        }
+                        continue;
+                    }
+                    $raw = $job['action'] === 'copy_source_field_to_meta' ? Stock_Override_Resolver::raw_feed_item( $id ) : [];
                     Custom_Rule_Actions::apply( $id, $job['action'], $job['params'], $raw );
                     clean_post_cache( $id );
                     wp_cache_delete( $id, 'post_meta' );
@@ -712,12 +804,16 @@ final class Product_Workbench {
                         $job['unchanged']++;
                     } else {
                         $job['changed']++;
-                        // Same as a row edit: a person's term change is locked
-                        // against imports, or the next supplier import puts
-                        // the feed's terms back. Undo releases a lock it added.
-                        if ( $lock_tax && ! \MMI_Pipeline_Field_Locks::is_locked( $id, $lock_tax ) ) {
-                            \MMI_Pipeline_Field_Locks::lock( $id, $lock_tax );
-                            $before['lock_added'] = true;
+                        // Lock the changed field against imports, or the next
+                        // supplier import writes the feed's value back. Undo
+                        // releases only the locks this job added.
+                        if ( $add_lock ) {
+                            $current = \MMI_Pipeline_Field_Locks::get( $id );
+                            $added   = array_values( array_diff( $lock_fields, $current ) );
+                            if ( $added ) {
+                                \MMI_Pipeline_Field_Locks::set( $id, array_merge( $current, $added ) );
+                                $before['locks_added'] = $added;
+                            }
                         }
                         $rows[] = [ 'product_id' => $id, 'before' => $before, 'after' => $after ];
                     }
@@ -730,7 +826,8 @@ final class Product_Workbench {
             $job['cursor'] += count( $ids );
             if ( $job['cursor'] >= $job['total'] || empty( $ids ) ) {
                 $job['status'] = 'done';
-                MMI_Logger::info( "Workbench job {$job_id} done: {$job['changed']} changed, {$job['unchanged']} unchanged, {$job['failed']} failed", [], 'sync', 'Product_Workbench' );
+                $skipped = (int) ( $job['skipped'] ?? 0 );
+                MMI_Logger::info( "Workbench job {$job_id} done: {$job['changed']} changed, {$job['unchanged']} unchanged, {$skipped} skipped (field locked against imports), {$job['failed']} failed", [], 'sync', 'Product_Workbench' );
             }
             Workbench_Change_Log::save_job( $job );
             self::invalidate_search_cache();
@@ -814,11 +911,6 @@ final class Product_Workbench {
         switch ( $action ) {
             case 'set_taxonomy_term':
                 wp_set_object_terms( $id, array_map( 'intval', $state['terms'] ), $params['taxonomy'], false );
-                // The edit locked the field; undoing it releases a lock it added
-                // (job-wide for a row edit, per product for a bulk change).
-                if ( ( ! empty( $params['locked_here'] ) || ! empty( $state['lock_added'] ) ) && class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
-                    \MMI_Pipeline_Field_Locks::unlock( $id, $params['taxonomy'] );
-                }
                 break;
 
             case 'set_status_publish':
@@ -877,6 +969,18 @@ final class Product_Workbench {
                     delete_post_meta( $id, $params['meta_key'] );
                 }
                 break;
+        }
+
+        // Release the locks the change added. Rows logged before 2.58.6
+        // mark a taxonomy lock as `lock_added` (bulk) or `locked_here`
+        // (row edit, job-wide).
+        $release = (array) ( $state['locks_added'] ?? [] );
+        if ( $action === 'set_taxonomy_term' && ( ! empty( $params['locked_here'] ) || ! empty( $state['lock_added'] ) ) ) {
+            $release[] = $params['taxonomy'];
+        }
+        if ( $release && class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+            $locked = \MMI_Pipeline_Field_Locks::get( $id );
+            \MMI_Pipeline_Field_Locks::set( $id, array_diff( $locked, $release ) );
         }
         clean_post_cache( $id );
     }

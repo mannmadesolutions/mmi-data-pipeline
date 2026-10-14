@@ -78,6 +78,12 @@
         STOP_BTN:           '#mmi-wb-stop',
         MESSAGE:            '#mmi-wb-message',
         PREVIEW_OUT:        '#mmi-wb-preview-out',
+        LOCK_OPTIONS:       '#mmi-wb-lock-options',
+        SKIP_LOCKED:        '#mmi-wb-skip-locked',
+        SKIP_LOCKED_LABEL:  '#mmi-wb-skip-locked-label',
+        ADD_LOCK:           '#mmi-wb-add-lock',
+        ADD_LOCK_OPTION:    '#mmi-wb-add-lock-option',
+        ADD_LOCK_LABEL:     '#mmi-wb-add-lock-label',
 
         JOBS_ROWS:          '#mmi-wb-jobs-rows',
         JOB_SORTABLE_TH:    '.mmi-wb-job-sortable',
@@ -93,6 +99,7 @@
         FACET_ON:    'is-active',
         MSG_ERROR:   'is-error',
         MSG_OK:      'is-success',
+        SKIPPED:     'is-skipped',
     };
 
     const DEFAULT_PER_PAGE = 50; // matches the Per page select's server-rendered default
@@ -124,6 +131,10 @@
     };
     const NOTICE_MS = 6000;
 
+    // Import fields each change writes (Product_Workbench::lock_fields()):
+    // field → label, and the fixed fields of each non-taxonomy action.
+    const LOCKS = window.mmiWorkbench || { lockLabels: {}, actionLockFields: {} };
+
     const MESSAGES = {
         TERMS_LOADING:    'Loading…',
         TERMS_SEARCH:     'Search %label%…',
@@ -133,6 +144,13 @@
         TERMS_NO_CAT:     'Choose at least one category.',
         TERMS_LOCKED:     'Locked against imports',
         BULK_LOCK:        'Each changed product gets %label% locked against imports, so supplier imports keep this change. Undo releases the lock.',
+        SKIP_LOCKED:      'Skip products where %label% is locked',
+        ADD_LOCK:         'Lock %label% against imports',
+        PREVIEW_LOCKED:   '%count% of them %have% %label% locked against imports. They change too, unless you turn on Skip.',
+        PREVIEW_SKIPPED:  '%count% with %label% locked against imports will be skipped.',
+        ADD_LOCK_OFF:     'Supplier imports may write %label% back over this change. Turn on Lock to keep it.',
+        CONFIRM_SKIP:     'Products with %label% locked against imports are skipped.',
+        CONFIRM_LOCK:     'Changed products get %label% locked against imports.',
         NOTHING_SELECTED: 'Nothing selected yet.',
         TARGET_NONE:      'Nothing ticked. Preview checks all %count% result%s%; Apply to all results changes every one of them.',
         TARGET_IDS:       '%count% selected product%s% will be checked.',
@@ -145,7 +163,7 @@
         INCOMPLETE:       'Condition %n%: pick a Source and a Field, or remove it.',
         SAVED_SEARCH:     'Saved “%name%”. Load it from Load saved conditions, here or in Catalog Maintenance.',
         NETWORK:          'Network error — please try again.',
-        DONE:             'Done: %changed% changed, %unchanged% already matched%failed%.',
+        DONE:             'Done: %changed% changed, %unchanged% already matched%skipped%%failed%.',
         STOPPED:          'Stopped after %cursor% of %total%. Resume it from Recent changes.',
         UNDONE:           'Undone: %undone% restored%conflicts%.',
     };
@@ -172,6 +190,7 @@
         xhr:        null,   // the search request in flight
         timer:      null,   // the debounce timer
         filterKey:  '',     // JSON of the last searched filter, to skip repeat searches
+        lastPreview: null,  // the last preview's data, redrawn when a lock switch changes
     };
     let pager = null;
 
@@ -367,6 +386,14 @@
      * a change never runs against results the screen no longer describes.
      */
     function scheduleSearch(delay) {
+        // The search box fires `change` when it loses focus, after its input
+        // events already searched. That blur usually comes from pressing
+        // Preview or Apply, and a button disabled mid-press never gets its
+        // click, so an edit that leaves the search as it was changes nothing.
+        if (!state.pending && state.filterKey && !firstIncompleteCondition()
+            && JSON.stringify(collectFilter()) === state.filterKey) {
+            return;
+        }
         clearTimeout(state.timer);
         state.pending = true;
         renderSelection();
@@ -772,19 +799,83 @@
     }
 
     function renderPreview(d) {
-        const rows = d.sample.map((s) => `<tr>
+        state.lastPreview = d;
+        const lock  = lockOptions();
+        const skip  = lock.skip && d.locked > 0;
+        const lockIcon = `<span class="dashicons dashicons-lock" title="${MESSAGES.TERMS_LOCKED}" aria-label="${MESSAGES.TERMS_LOCKED}"></span>`;
+        const rows = d.sample.map((s) => `<tr class="${skip && s.locked ? CSS.SKIPPED : ''}">
+            <td class="mmi-wb-lock-cell">${s.locked ? lockIcon : ''}</td>
             <td><a href="post.php?post=${s.id}&action=edit" target="_blank" rel="noopener">${esc(s.title)}</a></td>
             <td class="mmi-wb-before">${esc(s.before)}</td>
             <td class="mmi-wb-arrow" aria-hidden="true">→</td>
             <td class="mmi-wb-after">${esc(s.after)}</td>
         </tr>`).join('');
         const more = d.will_change > d.sample.length ? `<p class="mmi-wb-more">…and ${num(d.will_change - d.sample.length)} more.</p>` : '';
+        const changing = d.will_change - (skip ? d.locked : 0);
+        const skipped  = skip ? `; ${num(d.locked)} skipped` : '';
+
+        const notes = [];
+        if (d.locked > 0) {
+            notes.push(fill(skip ? MESSAGES.PREVIEW_SKIPPED : MESSAGES.PREVIEW_LOCKED,
+                { count: num(d.locked), have: d.locked === 1 ? 'has' : 'have', label: d.lock_label }));
+        }
+        if (changing > 0 && d.lock_mode === 'always') {
+            notes.push(fill(MESSAGES.BULK_LOCK, { label: d.lock_label }));
+        } else if (changing > 0 && d.lock_mode === 'optional') {
+            notes.push(fill(lock.add ? MESSAGES.BULK_LOCK : MESSAGES.ADD_LOCK_OFF, { label: d.lock_label }));
+        }
+        const noteHtml = notes.map((n) => `<p class="mmi-wb-preview-lock"><span class="dashicons dashicons-lock" aria-hidden="true"></span> ${esc(n)}</p>`).join('');
+
         $(SELECTORS.PREVIEW_OUT).removeClass(CSS.HIDDEN).html(`
             <p class="mmi-wb-preview-summary"><strong>${esc(d.summary)}</strong>:
-                ${num(d.will_change)} of ${num(d.selected)} would change; ${num(d.unchanged)} already match.</p>
-            ${d.locks && d.will_change ? `<p class="mmi-wb-preview-lock"><span class="dashicons dashicons-lock" aria-hidden="true"></span> ${esc(fill(MESSAGES.BULK_LOCK, { label: d.locks }))}</p>` : ''}
+                ${num(changing)} of ${num(d.selected)} would change; ${num(d.unchanged)} already match${skipped}.</p>
+            ${noteHtml}
             ${rows ? `<div class="mmi-table-scroll-wrapper"><table class="widefat striped mmi-wb-preview-table">
-                <thead><tr><th>Product</th><th>Now</th><th></th><th>After</th></tr></thead><tbody>${rows}</tbody></table></div>${more}` : ''}`);
+                <thead><tr><th class="mmi-wb-lock-cell"><span class="screen-reader-text">Locked</span></th><th>Product</th><th>Now</th><th></th><th>After</th></tr></thead><tbody>${rows}</tbody></table></div>${more}` : ''}`);
+    }
+
+    /* ── Field Locks ────────────────────────────────────────────────────── */
+
+    /** Lockable import fields the chosen change writes (mirrors Product_Workbench::lock_fields()). */
+    function lockFields() {
+        const action = $(SELECTORS.ACTION).val();
+        const params = RB.collectActionParams($(SELECTORS.ACTION_SCOPE));
+        let fields = LOCKS.actionLockFields[action] || [];
+        if (action === 'set_taxonomy_term') fields = [ params.taxonomy ];
+        if (action === 'copy_source_field_to_meta') fields = [ params.meta_key ];
+        return fields.filter((f) => f && Object.prototype.hasOwnProperty.call(LOCKS.lockLabels, f));
+    }
+
+    function lockLabel(fields) {
+        return fields.map((f) => LOCKS.lockLabels[f]).join(' and ');
+    }
+
+    /** The switches' state for the chosen change; both false when it writes no lockable field. */
+    function lockOptions() {
+        const fields = lockFields();
+        const always = $(SELECTORS.ACTION).val() === 'set_taxonomy_term';
+        return {
+            fields,
+            label:  lockLabel(fields),
+            always,
+            skip:   fields.length > 0 && $(SELECTORS.SKIP_LOCKED).prop('checked'),
+            add:    fields.length > 0 && (always || $(SELECTORS.ADD_LOCK).prop('checked')),
+        };
+    }
+
+    /** Show the lock switches only for a change that writes a lockable field, named after it. */
+    function renderLockOptions() {
+        const lock = lockOptions();
+        $(SELECTORS.LOCK_OPTIONS).toggleClass(CSS.HIDDEN, !lock.fields.length);
+        $(SELECTORS.SKIP_LOCKED_LABEL).text(fill(MESSAGES.SKIP_LOCKED, { label: lock.label }));
+        // A taxonomy change always locks, so it has no Lock switch.
+        $(SELECTORS.ADD_LOCK_OPTION).toggleClass(CSS.HIDDEN, lock.always);
+        $(SELECTORS.ADD_LOCK_LABEL).text(fill(MESSAGES.ADD_LOCK, { label: lock.label }));
+    }
+
+    /** Redraw an open preview after a switch changes (its counts already cover both ways). */
+    function refreshPreview() {
+        if (state.lastPreview && !$(SELECTORS.PREVIEW_OUT).hasClass(CSS.HIDDEN)) renderPreview(state.lastPreview);
     }
 
     /**
@@ -795,9 +886,15 @@
         if (state.pending || state.running !== null) return;
         const n = all ? state.total : selectedCount();
         const summary = `${$(SELECTORS.ACTION + ' option:selected').text()}${paramsHint()}`;
+        const lock = lockOptions();
+        const lockLines = [
+            lock.skip ? fill(MESSAGES.CONFIRM_SKIP, { label: lock.label }) : '',
+            lock.add ? fill(MESSAGES.CONFIRM_LOCK, { label: lock.label }) : '',
+        ].filter(Boolean).join('\n');
+        const fullSummary = lockLines ? `${summary}\n${lockLines}` : summary;
         const confirmText = all
-            ? fill(MESSAGES.CONFIRM_APPLY_ALL, { summary, count: num(n), s: plural(n), filter: state.filterText })
-            : fill(MESSAGES.CONFIRM_APPLY, { summary, count: num(n), s: plural(n) });
+            ? fill(MESSAGES.CONFIRM_APPLY_ALL, { summary: fullSummary, count: num(n), s: plural(n), filter: state.filterText })
+            : fill(MESSAGES.CONFIRM_APPLY, { summary: fullSummary, count: num(n), s: plural(n) });
         if (!window.confirm(confirmText)) return;
 
         const $btn = $(all ? SELECTORS.APPLY_ALL_BTN : SELECTORS.APPLY_BTN);
@@ -808,7 +905,8 @@
         showMessage('', '');
         $(SELECTORS.APPLY_BTN + ', ' + SELECTORS.APPLY_ALL_BTN).prop('disabled', true);
         $btn.html(LABELS.APPLY_RUNNING);
-        post('mmi_workbench_start', Object.assign({ selection: all ? allPayload() : selectionPayload(), filter_label: state.filterText }, actionPayload()))
+        const lockPayload = { skip_locked: lock.skip ? 1 : 0, add_lock: lock.add ? 1 : 0 };
+        post('mmi_workbench_start', Object.assign({ selection: all ? allPayload() : selectionPayload(), filter_label: state.filterText }, actionPayload(), lockPayload))
             .done(function(resp) {
                 if (!resp.success) {
                     showMessage(resp.data && resp.data.message, 'error');
@@ -867,7 +965,8 @@
                     finish(fill(MESSAGES.UNDONE, { undone: num(j.undone), conflicts }), 'ok');
                 } else {
                     const failed = j.failed ? `, ${num(j.failed)} failed (see the sync log)` : '';
-                    finish(fill(MESSAGES.DONE, { changed: num(j.changed), unchanged: num(j.unchanged), failed }), j.failed ? 'error' : 'ok');
+                    const skipped = j.skipped ? `, ${num(j.skipped)} skipped (locked against imports)` : '';
+                    finish(fill(MESSAGES.DONE, { changed: num(j.changed), unchanged: num(j.unchanged), skipped, failed }), j.failed ? 'error' : 'ok');
                 }
             }).fail(function() {
                 finish(MESSAGES.NETWORK + ' The run is saved — resume it from Recent changes.', 'error');
@@ -952,7 +1051,7 @@
             }
             const changed = j.status === 'undone'
                 ? `${num(j.undone)} restored${j.conflicts ? `, ${num(j.conflicts)} kept` : ''}`
-                : `${num(j.changed)} of ${num(j.total)}`;
+                : `${num(j.changed)} of ${num(j.total)}${j.skipped ? `, ${num(j.skipped)} skipped (locked)` : ''}`;
             const kind = { done: 'success', undone: 'info', running: 'warning', undoing: 'warning', stopped: 'warning' }[j.status] || '';
             return `<tr>
                 <td>${esc(j.created_at)}<br><span class="mmi-wb-none">${esc(j.user)}</span></td>
@@ -1009,6 +1108,7 @@
         initFilterMenus();
         RB.updateActionParamsVisibility($(SELECTORS.ACTION_SCOPE));
         RB.loadTaxonomyTerms($(SELECTORS.ACTION_SCOPE).find(RB.SELECTORS.PARAM_GROUP).first(), 'product_cat', '');
+        renderLockOptions();
         loadJobs();
 
         $(document)
@@ -1085,10 +1185,16 @@
             .on('change', SELECTORS.ACTION, function() {
                 RB.updateActionParamsVisibility($(SELECTORS.ACTION_SCOPE));
                 $(SELECTORS.PREVIEW_OUT).addClass(CSS.HIDDEN).empty();
+                // Switches start off for each kind of change, so a Lock chosen
+                // for prices never carries over to stock unnoticed.
+                $(SELECTORS.SKIP_LOCKED + ', ' + SELECTORS.ADD_LOCK).prop('checked', false);
+                renderLockOptions();
             })
             .on('change', SELECTORS.ACTION_SCOPE + ' select, ' + SELECTORS.ACTION_SCOPE + ' input', function() {
                 $(SELECTORS.PREVIEW_OUT).addClass(CSS.HIDDEN).empty();
+                renderLockOptions();
             })
+            .on('change', SELECTORS.SKIP_LOCKED + ', ' + SELECTORS.ADD_LOCK, refreshPreview)
             .on('click', SELECTORS.PREVIEW_BTN, preview)
             .on('click', SELECTORS.APPLY_BTN, () => apply(false))
             .on('click', SELECTORS.APPLY_ALL_BTN, () => apply(true))
