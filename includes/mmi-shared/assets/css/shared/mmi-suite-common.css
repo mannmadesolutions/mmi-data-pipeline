@@ -3669,8 +3669,11 @@ div.wrap div.mmi-header p,
  * Only alignment is forced; the default icon size uses :where() so a
  * plugin's own size rule (e.g. RTSM header, Reverb toolbar) still wins.
  * [hidden] / .hidden are excluded so hiding a button keeps working.
+ * The WP media modal is excluded too: it is appended to body.mmi-page, and its
+ * narrow-screen "Menu" toggle (a .button with a dashicon, hidden by core with
+ * display:none) would otherwise show over the modal title.
  */
-body.mmi-page .button:not([hidden]):not(.hidden):has(> .dashicons, > .mmi-loading) {
+body.mmi-page .button:not([hidden]):not(.hidden):not(.media-modal *):has(> .dashicons, > .mmi-loading) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
