@@ -138,6 +138,23 @@ class MMI_Product_Content_Registry {
             'sources' => [ [ '_mmi_manuals', 'links' ] ],
             'store'   => [ '_mmi_manuals', 'links' ],
         ],
+        // Audio demos as {label, url} links: a SoundCloud track or playlist, or an audio file
+        // the manufacturer's page plays. Only http(s) URLs are stored.
+        'audio'                => [
+            'label'   => 'Audio demos',
+            'group'   => 'media',
+            'type'    => 'list',
+            'sources' => [ [ '_mmi_audio', 'links' ] ],
+            'store'   => [ '_mmi_audio', 'links' ],
+        ],
+        // The software version the manufacturer's page states ("2.4.1").
+        'version'              => [
+            'label'   => 'Software version',
+            'group'   => 'requirements',
+            'type'    => 'text',
+            'sources' => [ [ '_mmi_version', 'text' ] ],
+            'store'   => [ '_mmi_version', 'text' ],
+        ],
         'disclaimer'           => [
             'label'   => 'Disclaimer',
             'group'   => 'notes',
@@ -159,6 +176,7 @@ class MMI_Product_Content_Registry {
         'vst-3'       => 'VST3',
         'au'          => 'AU',
         'aax'         => 'AAX',
+        'clap'        => 'CLAP',
         'rtas'        => 'RTAS',
         'stand-alone' => 'Standalone',
         'standalone'  => 'Standalone',

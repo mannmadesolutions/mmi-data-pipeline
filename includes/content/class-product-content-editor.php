@@ -49,6 +49,7 @@ class MMI_Product_Content_Editor {
         'vst-3'       => 'VST3',
         'au'          => 'AU',
         'aax'         => 'AAX',
+        'clap'        => 'CLAP',
         'rtas'        => 'RTAS',
         'stand-alone' => 'Standalone',
         'other'       => 'Other',
