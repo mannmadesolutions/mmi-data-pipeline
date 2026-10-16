@@ -1,0 +1,365 @@
+/**
+ * Product Workbench — find products, change them in bulk, undo.
+ *
+ * React owns the screen. The condition builder and the change picker are the
+ * suite's shared jQuery components, hosted as Islands and read through
+ * bridge.ts, so Catalog Maintenance and Field Mapping keep the same behavior.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import { ApiError, api } from "./api";
+import * as bridge from "./bridge";
+import { IDS } from "./bridge";
+import {
+  EMPTY_QUICK, EMPTY_SELECTION, allPayload, buildFilter, describeFilter, filterKey, isSelected, lockOptions,
+  selectAllMatching, selectedCount, selectionPayload, targetText, toggleRows, type QuickFilters, type SelectionState,
+} from "./logic";
+import { LABELS, MESSAGES, fill, num, plural } from "./messages";
+import { PreviewPanel } from "./PreviewPanel";
+import { RecentChanges } from "./RecentChanges";
+import { ResultsTable } from "./ResultsTable";
+import type { ActionChoice, ConditionsState, Job, Preview, WorkbenchConfig } from "./types";
+import { jobStub, useJobRunner } from "./useJobRunner";
+import { SEARCH_DEBOUNCE_MS, useSearch } from "./useSearch";
+import { BusyButton, Dashicon, Island, MultiSelect, Pager, Section } from "./ui";
+
+type Message = { text: string; kind: "" | "error" | "ok" };
+
+export function App({ cfg }: { cfg: WorkbenchConfig }) {
+  /* ── Inputs ───────────────────────────────────────────────────────────── */
+
+  const [quick, setQuick] = useState<QuickFilters>(EMPTY_QUICK);
+  const [cond, setCond] = useState<ConditionsState>(() => bridge.readConditions());
+  const [action, setAction] = useState<ActionChoice>(() => bridge.readAction());
+  const [switches, setSwitches] = useState({ skip: false, add: false });
+  const filter = useMemo(() => buildFilter(quick, cond.conditions, cond.matchLogic), [quick, cond]);
+  const lock = useMemo(() => lockOptions(action, switches, cfg), [action, switches, cfg]);
+
+  /* ── Results, selection, preview, messages ────────────────────────────── */
+
+  const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [applying, setApplying] = useState<"selected" | "all" | null>(null);
+  const [message, setMessage] = useState<Message>({ text: "", kind: "" });
+  const [jobs, setJobs] = useState<Job[] | null>(null);
+
+  const search = useSearch(
+    { filter, firstIncomplete: cond.firstIncomplete, firstWithoutValue: cond.firstWithoutValue },
+    cfg.defaultPerPage,
+    {
+      onNewSearch: () => { setSelection(EMPTY_SELECTION); setPreview(null); },
+      onError: (text) => bridge.builderNotice(text),
+    },
+  );
+  const { view } = search;
+  const total = view.result?.total ?? 0;
+  const haveResults = view.filter !== null && total > 0;
+
+  const loadJobs = useCallback(() => {
+    api.jobs().then((d) => setJobs(d.jobs)).catch(() => setJobs((j) => j ?? []));
+  }, []);
+
+  const runner = useJobRunner((r) => {
+    setApplying(null);
+    setPreview(null);
+    setMessage({ text: r.text, kind: r.ok ? "ok" : "error" });
+    loadJobs();
+    // The job is finished with these products: drop the selection, or ones that no
+    // longer match stay selected out of sight. A failed run keeps it for a retry.
+    if (r.ok) setSelection(EMPTY_SELECTION);
+    search.refetch(); // results now show the new values
+  });
+
+  /* ── Search triggers ──────────────────────────────────────────────────── */
+
+  // Each edit searches after the debounce; explicit actions (Enter, Clear all,
+  // a chip, a facet) set the delay to 0 and bump the tick.
+  const nextDelay = useRef(SEARCH_DEBOUNCE_MS);
+  const [tick, setTick] = useState(0);
+  const searchNow = () => { nextDelay.current = 0; setTick((t) => t + 1); };
+  const firstRun = useRef(true);
+  const key = filterKey(filter);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    search.schedule(nextDelay.current);
+    nextDelay.current = SEARCH_DEBOUNCE_MS;
+    // `key` stands for the whole filter; schedule() is stable and reads the latest inputs itself.
+  }, [key, cond.firstIncomplete, cond.firstWithoutValue, tick]);
+
+  /* ── The hosted jQuery components ─────────────────────────────────────── */
+
+  useEffect(() => {
+    bridge.initActionPicker();
+    setAction(bridge.readAction());
+    loadJobs();
+    const offCond = bridge.onConditionsChange(() => setCond(bridge.readConditions()));
+    const offAction = bridge.onActionChange((kind) => {
+      setPreview(null);
+      // Switches start off for each kind of change, so a Lock chosen for
+      // prices never carries over to stock unnoticed.
+      if (kind === "action") setSwitches({ skip: false, add: false });
+      setAction(bridge.readAction());
+    });
+    return () => { offCond(); offAction(); };
+  }, [loadJobs]);
+
+  /* ── Handlers ─────────────────────────────────────────────────────────── */
+
+  const setQ = (p: Partial<QuickFilters>) => setQuick((q) => ({ ...q, ...p }));
+
+  const clearAll = () => {
+    setQuick(EMPTY_QUICK);
+    bridge.clearConditions();
+    setCond(bridge.readConditions());
+    searchNow();
+  };
+
+  const onHealthChip = (id: string) => { setQ({ health: [id], healthMode: "any" }); searchNow(); };
+
+  const onFacet = (name: string, none: boolean) => {
+    bridge.addCategoryCondition(name, none).then(() => { setCond(bridge.readConditions()); searchNow(); });
+  };
+
+  const busy = runner.running !== null || view.pending;
+  const n = selectedCount(selection, total);
+  const tooMany = total > cfg.maxSelection;
+
+  const runPreview = () => {
+    if (!view.filter) return;
+    setPreviewBusy(true);
+    setMessage({ text: "", kind: "" });
+    api.preview(n ? selectionPayload(selection, view.filter) : allPayload(view.filter), action.action, action.params)
+      .then(setPreview)
+      .catch((e: ApiError) => setMessage({ text: e.message, kind: "error" }))
+      .finally(() => setPreviewBusy(false));
+  };
+
+  const apply = (all: boolean) => {
+    if (!view.filter || busy) return;
+    const count = all ? total : n;
+    const lockLines = [
+      lock.skip ? fill(MESSAGES.CONFIRM_SKIP, { label: lock.label }) : "",
+      lock.add ? fill(MESSAGES.CONFIRM_LOCK, { label: lock.label }) : "",
+    ].filter(Boolean).join("\n");
+    const summary = lockLines ? `${action.summary}\n${lockLines}` : action.summary;
+    const filterText = describeFilter(view.filter, bridge.readConditions().phrases, cfg);
+    const ok = window.confirm(all
+      ? fill(MESSAGES.CONFIRM_APPLY_ALL, { summary, count: num(count), s: plural(count), filter: filterText })
+      : fill(MESSAGES.CONFIRM_APPLY, { summary, count: num(count), s: plural(count) }));
+    if (!ok) return;
+    setApplying(all ? "all" : "selected");
+    setMessage({ text: "", kind: "" });
+    api.start(all ? allPayload(view.filter) : selectionPayload(selection, view.filter), action.action, action.params, filterText, lock)
+      .then((d) => runner.run(d.job, "apply"))
+      .catch((e: ApiError) => { setApplying(null); setMessage({ text: e.message, kind: "error" }); });
+  };
+
+  const onUndo = (job: Job, finishing: boolean) => {
+    if (runner.running) return;
+    if (!finishing && !window.confirm(fill(MESSAGES.CONFIRM_UNDO, { summary: job.summary }))) return;
+    setMessage({ text: "", kind: "" });
+    void runner.run(jobStub(job.id), "undo");
+  };
+  const onResume = (job: Job) => {
+    if (runner.running) return;
+    setMessage({ text: "", kind: "" });
+    void runner.run(jobStub(job.id), "apply", true);
+  };
+
+  /* ── Render ───────────────────────────────────────────────────────────── */
+
+  const rows = view.result?.rows ?? [];
+  const pageAll = rows.length > 0 && rows.every((r) => isSelected(selection, r.id));
+  const activeFacets = (view.filter?.conditions ?? [])
+    .filter((c) => c.source === "wp_taxonomy" && c.field === "product_cat" && c.operator === "equals").map((c) => c.value);
+  const healthOptions = Object.fromEntries(cfg.healthChecks.map((c) => [c.id, c.label]));
+  const slot = document.getElementById(IDS.SAVE_SEARCH_SLOT);
+
+  return (
+    <>
+      <Section id="mmi-wb-find" icon="search" title="Find products"
+        desc="Search titles and SKUs, then narrow with the same conditions Custom Rules use — supplier feed fields, categories and other taxonomies, post fields and meta. Results update as you type">
+        <div className="mmi-toolbar mmi-wb-quick">
+          <input type="search" id="mmi-wb-q" className="mmi-wb-q" placeholder="Search titles and SKUs… (e.g. bundle)" aria-label="Search products"
+            value={quick.q} onChange={(e) => setQ({ q: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchNow(); } }} />
+          <label className="mmi-cond-case" title="Match case — off: &quot;bundle&quot; also finds &quot;Bundle&quot; and &quot;BUNDLE&quot;">
+            <input type="checkbox" id="mmi-wb-q-case" checked={quick.qCase} onChange={(e) => setQ({ qCase: e.target.checked })} />Aa
+          </label>
+          <select id="mmi-wb-q-in" aria-label="Search in" value={quick.qIn} onChange={(e) => setQ({ qIn: e.target.value as QuickFilters["qIn"] })}>
+            <option value="title_sku">in title or SKU</option>
+            <option value="title">in title only</option>
+            <option value="sku">in SKU only</option>
+          </select>
+          <span className="mmi-wb-divider" aria-hidden="true" />
+          <select id="mmi-wb-supplier" aria-label="Supplier scope" title="Only products tracked under this supplier"
+            value={quick.supplier} onChange={(e) => setQ({ supplier: e.target.value })}>
+            <option value="all">All suppliers</option>
+            {cfg.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="native">No supplier (created here)</option>
+          </select>
+        </div>
+
+        <div className="mmi-toolbar mmi-wb-filters" role="group" aria-label="Filters">
+          <span className="mmi-wb-filters-label">Filter</span>
+          <MultiSelect id="mmi-wb-status-ms" label="Status" options={cfg.statuses} checked={quick.statuses} onChange={(v) => setQ({ statuses: v })} />
+          <MultiSelect id="mmi-wb-stock-ms" label="Stock" options={cfg.stock} checked={quick.stock} onChange={(v) => setQ({ stock: v })} />
+          <MultiSelect id="mmi-wb-health-ms" label="Health" options={healthOptions} checked={quick.health} onChange={(v) => setQ({ health: v })}
+            before={
+              <label className="mmi-wb-health-mode">Show products that{" "}
+                <select id="mmi-wb-health-mode" aria-label="Health filter mode" value={quick.healthMode}
+                  onChange={(e) => setQ({ healthMode: e.target.value as QuickFilters["healthMode"] })}>
+                  <option value="any">fail any ticked check</option>
+                  <option value="all">fail every ticked check</option>
+                  <option value="none">pass every ticked check</option>
+                </select>
+              </label>
+            } />
+          <button type="button" className="button-link mmi-wb-filters-clear" title="Clear the search box, filters and conditions" onClick={clearAll}>Clear all</button>
+        </div>
+
+        <Island sourceId="mmi-wb-island-conditions" className="mmi-wb-island" />
+        {slot && createPortal(<SaveSearch matchLogic={cond.matchLogic} />, slot)}
+        <p className={`mmi-wb-search-status${view.loading || view.hint ? "" : " mmi-hidden"}`} id="mmi-wb-search-status" role="status">
+          {view.loading ? <><span className="mmi-loading" aria-hidden="true" /> {LABELS.SEARCHING}</> : view.hint}
+        </p>
+      </Section>
+
+      <Section id="mmi-wb-results-section" icon="list-view" title="Results"
+        desc="Choose a change, then apply it to the ticked products or to every result. Click a category to narrow to it. Replace swaps every existing term in that taxonomy for the one chosen"
+        actions={<>
+          <BusyButton id="mmi-wb-preview" busy={previewBusy} icon="visibility" label={LABELS.PREVIEW} busyLabel={LABELS.PREVIEWING}
+            disabled={!(n || haveResults) || busy} onClick={runPreview} />
+          <BusyButton id="mmi-wb-apply-all" busy={applying === "all"} icon="database" busyLabel={LABELS.APPLYING}
+            label={haveResults ? fill(LABELS.APPLY_ALL, { count: num(total) }) : LABELS.APPLY_ALL_NONE}
+            title={tooMany ? fill(MESSAGES.TOO_MANY, { count: num(total), max: num(cfg.maxSelection) }) : MESSAGES.APPLY_ALL_TITLE}
+            disabled={!haveResults || busy || tooMany || applying !== null} onClick={() => apply(true)} />
+          <BusyButton id="mmi-wb-apply" className="button button-primary" busy={applying === "selected"} icon="yes"
+            label={LABELS.APPLY} busyLabel={LABELS.APPLYING} disabled={!n || busy || applying !== null} onClick={() => apply(false)} />
+        </>}>
+        <div className="mmi-wb-change" id="mmi-wb-change" role="group" aria-label="Change products">
+          <span className="mmi-wb-filters-label mmi-wb-change-label">Change</span>
+          <Island sourceId="mmi-wb-island-action" className="mmi-wb-island" />
+          {lock.fields.length > 0 && (
+            <div className="mmi-wb-lock-options" id="mmi-wb-lock-options">
+              <label className="mmi-wb-lock-option">
+                <span className="mmi-toggle-switch">
+                  <input type="checkbox" checked={switches.skip} onChange={(e) => setSwitches((s) => ({ ...s, skip: e.target.checked }))} />
+                  <span className="mmi-toggle-slider" />
+                </span>
+                <span>{fill(MESSAGES.SKIP_LOCKED, { label: lock.label })}</span>
+              </label>
+              {!lock.always && (
+                <label className="mmi-wb-lock-option">
+                  <span className="mmi-toggle-switch">
+                    <input type="checkbox" checked={switches.add} onChange={(e) => setSwitches((s) => ({ ...s, add: e.target.checked }))} />
+                    <span className="mmi-toggle-slider" />
+                  </span>
+                  <span>{fill(MESSAGES.ADD_LOCK, { label: lock.label })}</span>
+                </label>
+              )}
+            </div>
+          )}
+          <p className="mmi-wb-target" id="mmi-wb-target">{targetText(selection, total, haveResults)}</p>
+          {runner.progress && (
+            <div className="mmi-wb-progress" id="mmi-wb-progress">
+              <div className="mmi-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={runner.progress.pct}
+                aria-label={runner.progress.text}>
+                <div className="mmi-progress-fill" style={{ "--pct": `${runner.progress.pct}%` } as CSSProperties} />
+              </div>
+              <span className="mmi-wb-progress-text">{runner.progress.text}</span>
+              {runner.progress.kind === "apply" && <button type="button" className="button-link mmi-wb-stop" onClick={runner.stop}>Stop</button>}
+            </div>
+          )}
+          <div className={`mmi-wb-message${message.kind === "error" ? " is-error" : message.kind === "ok" ? " is-success" : ""}`} id="mmi-wb-message" role="status">
+            {message.text}
+          </div>
+          {preview && <PreviewPanel preview={preview} lock={lock} />}
+        </div>
+
+        {!view.result && <div className="mmi-wb-empty" id="mmi-wb-empty">{MESSAGES.EMPTY}</div>}
+        <div className={`mmi-wb-results${view.result ? "" : " mmi-hidden"}`} id="mmi-wb-results">
+          {view.result && view.result.facets.length > 0 && (
+            <div className="mmi-wb-facets" id="mmi-wb-facets" aria-label="Categories in these results">
+              <span className="mmi-wb-label">Categories in results</span>
+              {view.result.facets.map((f) => (
+                <button key={`${f.id}-${f.name}`} type="button" className={`mmi-wb-facet${activeFacets.includes(f.name) ? " is-active" : ""}`}
+                  title={fill(MESSAGES.FACET_TITLE, { name: f.name })} onClick={() => onFacet(f.name, f.id === 0)}>
+                  <span>{f.name}</span> <b>{num(f.count)}</b>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mmi-toolbar mmi-wb-selection">
+            <span className="mmi-wb-count" id="mmi-wb-count">{view.result ? fill(MESSAGES.FOUND, { count: num(total), s: plural(total) }) : ""}</span>
+            <span className="mmi-wb-selected" id="mmi-wb-selected">{n ? fill(MESSAGES.SELECTED, { count: num(n) }) : ""}</span>
+            {selection.mode !== "filter" && pageAll && total > rows.length && (
+              <button type="button" className="button-link" id="mmi-wb-select-all-matching" onClick={() => setSelection(selectAllMatching())}>
+                {fill(MESSAGES.SELECT_ALL, { count: num(total) })}
+              </button>
+            )}
+            {n > 0 && <button type="button" className="button-link" id="mmi-wb-clear-selection" onClick={() => setSelection(EMPTY_SELECTION)}>Clear selection</button>}
+            <label className="mmi-pagination-size-label mmi-wb-per-page">Per page:{" "}
+              <select className="mmi-pagination-size" id="mmi-wb-per-page" value={view.perPage}
+                onChange={(e) => search.refetch({ perPage: Number(e.target.value) || cfg.defaultPerPage, page: 1 })}>
+                {cfg.perPageOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </label>
+          </div>
+          <ResultsTable result={view.result} sort={view.sort} dir={view.dir} loading={view.loading} selection={selection}
+            onSort={search.sortBy} onToggle={(ids, on) => setSelection((s) => toggleRows(s, ids, on))} onHealthChip={onHealthChip}
+            onRowSaved={(row) => { search.replaceRow(row); loadJobs(); }} />
+          {view.result && <Pager pages={view.result.pages} current={view.page} onPage={(p) => search.refetch({ page: p })} />}
+        </div>
+      </Section>
+
+      <RecentChanges jobs={jobs} busy={runner.running !== null} onUndo={onUndo} onResume={onResume} />
+    </>
+  );
+}
+
+/** "Save search": keeps the builder's conditions as a named search, loadable here and in Catalog Maintenance. */
+function SaveSearch({ matchLogic }: { matchLogic: string }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (open) input.current?.focus(); }, [open]);
+
+  const save = () => {
+    const bad = bridge.incompleteMessage();
+    if (bad) { bridge.builderNotice(bad); return; }
+    const label = name.trim();
+    setSaving(true);
+    api.saveSearch(label, matchLogic, bridge.readConditions().conditions)
+      .then(() => {
+        bridge.refreshLibrary();
+        setOpen(false);
+        bridge.builderNotice(fill(MESSAGES.SAVED_SEARCH, { name: label }));
+      })
+      .catch((e: ApiError) => bridge.builderNotice(e.message))
+      .finally(() => setSaving(false));
+  };
+
+  if (!open) {
+    return (
+      <button type="button" className="mmi-cb-btn-secondary" id="mmi-wb-save-search" onClick={() => { setName(""); setOpen(true); }}
+        title="Keep these conditions as a named search, loadable from Load saved conditions here and in Catalog Maintenance">
+        <Dashicon name="saved" /> Save search
+      </button>
+    );
+  }
+  return (
+    <span className="mmi-wb-save-search-form" id="mmi-wb-save-search-form">
+      <input ref={input} type="text" placeholder={MESSAGES.SAVE_SEARCH_NAME} aria-label="Search name" maxLength={80} value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); save(); }
+          if (e.key === "Escape") setOpen(false);
+        }} />
+      <button type="button" className="button button-small" disabled={saving} onClick={save}>Save</button>
+      <button type="button" className="button-link" onClick={() => setOpen(false)}>Cancel</button>
+    </span>
+  );
+}

@@ -1,0 +1,29 @@
+name: ui
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck, unit tests, build
+        run: npm run check
+
+      # build/ is committed (customers install it as-is), so it must match src/.
+      - name: Committed build matches the source
+        run: git diff --exit-code -- build/

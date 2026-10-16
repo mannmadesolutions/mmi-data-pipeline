@@ -35,6 +35,12 @@ function mmi_workbench_ajax_guard(): void {
     }
 }
 
+// Long-open Workbench tabs keep this nonce valid through the shared MMINonces
+// helper (src/workbench/index.tsx), for users this plugin's capability allows.
+add_filter( 'mmi_refreshable_nonces', static function ( $nonces ) {
+    return (array) $nonces + [ 'mmi_pipeline_import_settings' => 'mmi_data_pipeline_user_can' ];
+} );
+
 /** $_POST[$key] as an unslashed array. */
 function mmi_workbench_post_array( string $key ): array {
     // phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard runs first; each value is sanitized downstream.

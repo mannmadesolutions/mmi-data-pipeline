@@ -170,13 +170,11 @@ class MMI_Pipeline_Admin {
             self::enqueue_rule_builder();
             self::enqueue_style( 'mmi-pipeline-workbench',
                 'assets/css/product-workbench.css', [ 'mmi-pipeline-settings', 'mmi-pipeline-rule-builder' ] );
-            self::enqueue_script( 'mmi-pipeline-workbench',
-                'assets/js/product-workbench.js', [ 'jquery', 'mmi-pipeline-rule-builder', 'mmi-escape-html', 'mmi-pagination' ] );
-            // Which import fields each change writes, for the lock switches.
-            wp_localize_script( 'mmi-pipeline-workbench', 'mmiWorkbench', [
-                'lockLabels'       => \MannMade\DataPipeline\Workbench\Product_Workbench::lock_labels(),
-                'actionLockFields' => \MannMade\DataPipeline\Workbench\Product_Workbench::ACTION_LOCK_FIELDS,
-            ] );
+            // The React app (src/workbench → build/workbench.js); the view
+            // shows self::$built_script_problem instead when it can't load.
+            if ( self::enqueue_built_script( 'mmi-pipeline-workbench', 'workbench' ) ) {
+                wp_localize_script( 'mmi-pipeline-workbench', 'mmiWorkbench', self::workbench_ui_config() );
+            }
         }
 
         /* ── Import tab ────────────────────────────────────────────────── */
@@ -949,6 +947,68 @@ class MMI_Pipeline_Admin {
             'ajaxUrl' => admin_url( 'admin-ajax.php' ),
             'nonce'   => $nonce,
         ] );
+    }
+
+    /** Why a built React script didn't load (shown by its view), or '' when it did. */
+    public static $built_script_problem = '';
+
+    // Handles a built script can run without (it falls back), e.g. an older bundled shared library.
+    const BUILT_OPTIONAL_DEPS = [ 'mmi-nonce-refresh' ];
+
+    /**
+     * Enqueue a React entry built by scripts/build-ui.mjs, using the
+     * dependencies and content-hash version from its build/<entry>.asset.php.
+     * Returns false (and records why) when the build is missing or WordPress
+     * lacks a handle it needs: React's own (react, react-dom,
+     * react-jsx-runtime) arrived in WordPress 6.6.
+     */
+    private static function enqueue_built_script( string $handle, string $entry ): bool {
+        $js    = MMI_PIPELINE_PATH . "build/{$entry}.js";
+        $asset = MMI_PIPELINE_PATH . "build/{$entry}.asset.php";
+        if ( ! file_exists( $js ) || ! file_exists( $asset ) ) {
+            self::$built_script_problem = "build/{$entry}.js is missing from this install of MMI Data Pipeline. Reinstall the plugin, or run scripts/ui.sh build from its source.";
+            return false;
+        }
+        $meta    = require $asset;
+        $deps    = [];
+        $missing = [];
+        foreach ( (array) ( $meta['dependencies'] ?? [] ) as $dep ) {
+            if ( wp_script_is( $dep, 'registered' ) ) {
+                $deps[] = $dep;
+            } elseif ( ! in_array( $dep, self::BUILT_OPTIONAL_DEPS, true ) ) {
+                $missing[] = $dep;
+            }
+        }
+        if ( $missing ) {
+            self::$built_script_problem = 'This screen needs WordPress 6.6 or later (missing script: ' . implode( ', ', $missing ) . ').';
+            return false;
+        }
+        wp_enqueue_script( $handle, MMI_PIPELINE_URL . "build/{$entry}.js", $deps, (string) ( $meta['version'] ?? MMI_PIPELINE_VERSION ), true );
+        return true;
+    }
+
+    /** Settings the Workbench app reads as window.mmiWorkbench (types: src/workbench/types.ts WorkbenchConfig). */
+    private static function workbench_ui_config(): array {
+        $suppliers = [];
+        foreach ( self::get_configured_suppliers() as $id => $info ) {
+            $suppliers[] = [ 'id' => (string) $id, 'name' => (string) ( $info['supplier_name'] ?? $id ) ];
+        }
+        $checks = [];
+        foreach ( \MannMade\DataPipeline\Workbench\Health_Checks::all() as $id => $check ) {
+            $checks[] = [ 'id' => (string) $id, 'label' => (string) $check['label'] ];
+        }
+        return [
+            'suppliers'        => $suppliers,
+            'statuses'         => [ 'publish' => 'Published', 'draft' => 'Draft', 'pending' => 'Pending', 'private' => 'Private' ],
+            'stock'            => [ 'instock' => 'In stock', 'outofstock' => 'Out of stock', 'onbackorder' => 'Backorder' ],
+            'healthChecks'     => $checks,
+            'perPageOptions'   => \MannMade\DataPipeline\Workbench\Product_Workbench::PER_PAGE_OPTIONS,
+            'defaultPerPage'   => 50,
+            'maxSelection'     => \MannMade\DataPipeline\Workbench\Product_Workbench::MAX_SELECTION,
+            // Which import fields each change writes, for the lock switches.
+            'lockLabels'       => \MannMade\DataPipeline\Workbench\Product_Workbench::lock_labels(),
+            'actionLockFields' => \MannMade\DataPipeline\Workbench\Product_Workbench::ACTION_LOCK_FIELDS,
+        ];
     }
 
     private static function enqueue_style( string $handle, string $relative_path, array $deps ): void {

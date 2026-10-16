@@ -412,7 +412,8 @@ td.mmi-wb-col-thumb img,
     line-height: 28px;
 }
 
-.mmi-wb-change > .mmi-wb-action {
+/* Descendant, not child: the picker sits inside its .mmi-wb-island wrapper (display: contents). */
+.mmi-wb-change .mmi-wb-action {
     flex: 1 1 600px;
 }
 
@@ -570,4 +571,11 @@ td.mmi-wb-col-thumb img,
     width: 16px;
     height: 16px;
     vertical-align: text-bottom;
+}
+
+/* ── Hosted jQuery components (React Island wrappers) ───────────────────
+   The wrapper stays out of layout, so the hosted markup is a direct
+   flex item of its row, as it was when the view printed it in place. */
+.mmi-wb-island {
+    display: contents;
 }

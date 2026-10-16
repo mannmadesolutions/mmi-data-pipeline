@@ -1,0 +1,6 @@
+# Source and toolchain for the React admin UI: customers get build/ only.
+src
+package.json
+package-lock.json
+tsconfig.json
+vitest.config.mts
