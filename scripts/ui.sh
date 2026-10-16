@@ -23,6 +23,22 @@ if [ ! -d node_modules ] || [ package.json -nt node_modules ] || { [ -f package-
   touch node_modules
   cp package-lock.json "$PLUGIN/package-lock.json"
 fi
+
+# Editors check tsconfig.json in the plugin and look for node_modules in its
+# parent folders. Link the workspace's node_modules into the nearest one outside
+# the web root ($HOME by default; MMI_UI_EDITOR_LINK="" to skip), so types and
+# imports resolve in the editor too. An existing folder or foreign link is left alone.
+EDITOR_LINK="${MMI_UI_EDITOR_LINK-$HOME/node_modules}"
+if [ -n "$EDITOR_LINK" ] && case "$PLUGIN/" in "$(dirname "$EDITOR_LINK")"/*) true;; *) false;; esac; then
+  if [ ! -e "$EDITOR_LINK" ] && [ ! -L "$EDITOR_LINK" ]; then
+    ln -s "$WORK/node_modules" "$EDITOR_LINK"
+  elif [ -L "$EDITOR_LINK" ] && [ "$(readlink "$EDITOR_LINK")" != "$WORK/node_modules" ] && [[ "$(readlink "$EDITOR_LINK")" == *"/mmi-ui-build/"* ]]; then
+    ln -sfn "$WORK/node_modules" "$EDITOR_LINK"
+  elif [ "$(readlink "$EDITOR_LINK" 2>/dev/null)" != "$WORK/node_modules" ]; then
+    echo "note: $EDITOR_LINK exists and isn't this workspace's; editor type checks may not find the UI packages" >&2
+  fi
+fi
+
 cmd="${1:-check}"
 [ "$cmd" = install ] && exit 0
 if [ "$cmd" = e2e ]; then
