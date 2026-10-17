@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.12';
+$mmi_shared_lib_this_copy_version = '1.46.13';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -1429,6 +1429,27 @@ if ( ! function_exists( 'mmi_shared_menu_render_dashboard' ) ) {
 	}
 }
 
+if ( ! function_exists( 'mmi_shared_menu_icon' ) ) {
+	/**
+	 * The MannMade "Two Halves" mark as a one-colour menu icon.
+	 *
+	 * Same geometry as the logo (two 14-unit round strokes on a 100 viewBox),
+	 * drawn as filled outlines because WordPress's svg-painter only recolours
+	 * `fill` attributes. The left diagonal is cut back around the right one's
+	 * end, so the two halves still read as two without their colours.
+	 */
+	function mmi_shared_menu_icon(): string {
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 12 80 80">'
+			. '<path fill="black" d="M29 82L29 22A7 7 0 0 0 15 22L15 82A7 7 0 0 0 29 82Z"/>'
+			. '<path fill="black" d="M46.89 43.99L27.64 17.85A7 7 0 0 0 16.36 26.15L38.58 56.31A12 12 0 0 1 40.34 52.88Z"/>'
+			. '<path fill="black" d="M55.64 64.15L83.64 26.15A7 7 0 0 0 72.36 17.85L44.36 55.85A7 7 0 0 0 55.64 64.15Z"/>'
+			. '<path fill="black" d="M71 22L71 82A7 7 0 0 0 85 82L85 22A7 7 0 0 0 71 22Z"/>'
+			. '</svg>';
+
+		return 'data:image/svg+xml;base64,' . base64_encode( $svg ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- add_menu_page() takes SVG icons as base64 data URIs.
+	}
+}
+
 if ( ! function_exists( 'mmi_shared_menu_add_parent' ) ) {
 	function mmi_shared_menu_add_parent(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -1440,7 +1461,7 @@ if ( ! function_exists( 'mmi_shared_menu_add_parent' ) ) {
 			'manage_options',
 			'mmi-dashboard',
 			'mmi_shared_menu_render_dashboard',
-			'dashicons-store',
+			mmi_shared_menu_icon(),
 			3
 		);
 	}
