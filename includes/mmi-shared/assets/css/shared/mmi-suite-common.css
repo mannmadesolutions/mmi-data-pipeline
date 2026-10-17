@@ -426,6 +426,17 @@ div.wrap div.mmi-header h1 .dashicons,
   height: 28px !important;
 }
 
+/* The MannMade "Two Halves" mark, in the logo's own colours, as a stand-in
+   for a dashicon glyph (sized by the .dashicons rules it sits beside). */
+.mmi-brand-mark {
+  display: inline-block;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='10 12 80 80'%3E%3Cpath d='M22 82V22L50 60' fill='none' stroke='%2345852c' stroke-width='14' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M50 60L78 22V82' fill='none' stroke='%236366f1' stroke-width='14' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.mmi-brand-mark::before {
+  content: none;
+}
+
 .wrap .mmi-header .mmi-header-description,
 div.wrap div.mmi-header .mmi-header-description,
 .mmi-header .mmi-header-description,

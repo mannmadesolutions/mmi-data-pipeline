@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.13';
+$mmi_shared_lib_this_copy_version = '1.46.14';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -1356,7 +1356,7 @@ if ( ! function_exists( 'mmi_shared_menu_render_dashboard' ) ) {
 		}
 
 		echo '<div class="wrap mmi-page">';
-		echo '<div class="mmi-header"><h1><span class="dashicons dashicons-store"></span> ' . esc_html__( 'MannMade', 'mmi-shared' ) . '</h1>';
+		echo '<div class="mmi-header"><h1><span class="dashicons mmi-brand-mark" aria-hidden="true"></span> ' . esc_html__( 'MannMade', 'mmi-shared' ) . '</h1>';
 		echo '<p class="mmi-header-description">' . esc_html__( 'Choose a plugin from the menu on the left.', 'mmi-shared' ) . '</p></div>';
 		echo '<div class="wp-header-end"></div>';
 
