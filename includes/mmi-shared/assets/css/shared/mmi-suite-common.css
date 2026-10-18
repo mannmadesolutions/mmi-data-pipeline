@@ -3226,7 +3226,12 @@ div.wrap div.mmi-header p,
 }
 .mmi-pagination-size {
     font-size: var(--mmi-font-sm, 12px);
-    padding: 3px 6px;
+    /* Right padding keeps the number clear of WordPress's dropdown chevron
+       (core draws it as a background image 5px from the right edge); the
+       old 6px let it sit on top of the value (owner, 2026-10-18). */
+    min-height: 28px;
+    padding: 2px 24px 2px 8px;
+    line-height: 1.5;
     border-radius: var(--mmi-pagination-btn-radius, var(--mmi-radius-sm, 4px));
     border: 1px solid var(--mmi-pagination-btn-border-color, var(--mmi-border-secondary, #ccd0d4));
     background: var(--mmi-pagination-btn-bg, var(--mmi-bg-tertiary, #f6f7f7));
@@ -3606,6 +3611,36 @@ div.wrap div.mmi-header p,
     align-items: center;
     flex-wrap: wrap;
     gap: 6px 14px;
+}
+
+/* Every control in a filter panel shares one height, so a row of pills,
+   dropdown buttons, number boxes and selects lines up (owner, 2026-10-18:
+   "all filter-row elements look different from each other"). Selects keep
+   right padding for WordPress's chevron. */
+.mmi-filters-section {
+    --mmi-filter-control-height: 30px;
+}
+body.mmi-page .mmi-filters-section :is(.mmi-pill, .mmi-ms-trigger, input[type="number"], input[type="text"], input[type="search"], select, .button):not([hidden]) {
+    height: var(--mmi-filter-control-height);
+    min-height: var(--mmi-filter-control-height);
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: calc(var(--mmi-filter-control-height) - 2px);
+    font-size: 12px;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+body.mmi-page .mmi-filters-section :is(.mmi-ms-trigger, input[type="number"], input[type="text"], input[type="search"], select) {
+    border-color: #c3c4c7;
+    border-radius: var(--mmi-filter-control-radius, 4px);
+}
+body.mmi-page .mmi-filters-section select {
+    padding-left: 8px;
+    padding-right: 24px;
+}
+body.mmi-page .mmi-filters-section .mmi-ms-trigger {
+    display: inline-flex;
+    align-items: center;
 }
 
 /* Pill Filter Group */
