@@ -164,6 +164,12 @@ if ( ! class_exists( 'MMI_Supplier_Admin', false ) ) {
 						<div class="mmi-header-actions"><?php echo $actions; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped by header_actions() ?></div>
 					<?php endif; ?>
 					<p class="mmi-header-description"><?php echo esc_html( static::description() ); ?></p>
+					<?php
+					// What sibling MMI plugins add here, locked chips for any not installed.
+					if ( class_exists( 'MMI_Feature_Gate' ) && method_exists( 'MMI_Feature_Gate', 'render_works_with' ) ) {
+						MMI_Feature_Gate::render_works_with( 'mmi-' . $id . '-integration' );
+					}
+					?>
 					<?php if ( $alerts !== null ) : ?>
 						<div class="mmi-header-alerts" id="mmi-<?php echo esc_attr( $prefix ); ?>-header-alerts"><?php echo $alerts; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped by header_alerts() ?></div>
 					<?php endif; ?>
@@ -211,18 +217,12 @@ if ( ! class_exists( 'MMI_Supplier_Admin', false ) ) {
 				$catalog->render();
 				return;
 			}
-			if ( class_exists( 'MMI_Feature_Gate' ) ) {
-				MMI_Feature_Gate::register( 'mmi-data-pipeline', array(
-					'label'       => __( 'MMI Data Pipeline', 'mmi-shared' ),
-					'product_url' => 'https://mannmade.us/extensions/data-pipeline',
-				) );
-			}
 			?>
 			<div class="mmi-process-section mmi-gated-feature mmi-is-locked">
 				<?php
 				if ( class_exists( 'MMI_Feature_Gate' ) ) {
 					/* translators: %s: supplier name */
-					MMI_Feature_Gate::render_locked( 'mmi-data-pipeline', sprintf( __( '%s Catalog', 'mmi-shared' ), static::supplier_label() ) );
+					MMI_Feature_Gate::render_locked( 'mmi-data-pipeline', sprintf( __( '%s Catalog', 'mmi-shared' ), static::supplier_label() ), 'pipeline.catalog' );
 				}
 				?>
 				<p class="mmi-process-section-description">

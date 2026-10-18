@@ -190,7 +190,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.15';
+$mmi_shared_lib_this_copy_version = '1.46.19';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -266,6 +266,36 @@ if ( ! function_exists( 'mmi_shared_lib_register' ) ) {
 }
 
 mmi_shared_lib_register( $mmi_shared_lib_this_copy_version, __DIR__, $mmi_shared_lib_this_copy_class_map );
+
+if ( ! function_exists( 'mmi_shared_lib_loaded_plugins' ) ) {
+	/**
+	 * Slugs (plugin directory names) of every MMI plugin loaded this request.
+	 * Every active MMI plugin requires its own bundled bootstrap.php from
+	 * <plugin>/includes/mmi-shared/, so the registered candidate directories
+	 * already say which plugins are running — no plugin has to announce
+	 * itself. MMI_Feature_Gate::is_available() reads this.
+	 *
+	 * @return array<string,true> slug => true
+	 */
+	function mmi_shared_lib_loaded_plugins(): array {
+		if ( ! defined( 'WP_PLUGIN_DIR' ) ) {
+			return array();
+		}
+		$plugins_dir = rtrim( str_replace( '\\', '/', WP_PLUGIN_DIR ), '/' ) . '/';
+		$slugs       = array();
+		foreach ( mmi_shared_lib_candidates() as $candidate ) {
+			$dir = str_replace( '\\', '/', $candidate['dir'] );
+			if ( strpos( $dir, $plugins_dir ) !== 0 ) {
+				continue;
+			}
+			$slug = strtok( substr( $dir, strlen( $plugins_dir ) ), '/' );
+			if ( is_string( $slug ) && $slug !== '' ) {
+				$slugs[ $slug ] = true;
+			}
+		}
+		return $slugs;
+	}
+}
 
 if ( ! function_exists( 'mmi_shared_lib_winner' ) ) {
 	/**
@@ -935,6 +965,16 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 				'hasVipAccess' => false,
 			) );
 		}
+		// Locked cross-plugin features (MMI_Feature_Gate): the tooltip script
+		// and its data load on every MMI page, so any greyed element or
+		// padlock works without the page having to remember to enqueue it.
+		if ( wp_script_is( 'mmi-gate', 'registered' ) && class_exists( 'MMI_Feature_Gate' ) && method_exists( 'MMI_Feature_Gate', 'js_data' ) ) {
+			wp_localize_script( 'mmi-gate', 'mmiGateData', MMI_Feature_Gate::js_data() );
+			$gate_page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+			if ( strncmp( $gate_page, 'mmi-', 4 ) === 0 ) {
+				wp_enqueue_script( 'mmi-gate' );
+			}
+		}
 		if ( wp_script_is( 'mmi-license-panel', 'registered' ) ) {
 			wp_localize_script( 'mmi-license-panel', 'mmiLicensePanel', array(
 				'enterKeyLabel'          => __( 'Please enter a license key.', 'mmi-shared' ),
@@ -997,6 +1037,28 @@ if ( ! defined( 'MMI_SHARED_ASSETS_HOOKS_REGISTERED' ) && defined( 'ABSPATH' ) )
 	define( 'MMI_SHARED_ASSETS_HOOKS_REGISTERED', true );
 	add_action( 'admin_enqueue_scripts', 'mmi_shared_assets_enqueue', 5 );
 	add_filter( 'admin_body_class', 'mmi_shared_assets_body_class' );
+}
+
+// Staff preview of locked cross-plugin features (?mmi_gate_preview=<slug|all>,
+// ?mmi_gate_preview=off to end) — display only, see MMI_Feature_Gate.
+if ( ! defined( 'MMI_FEATURE_GATE_HOOKS_REGISTERED' ) && defined( 'ABSPATH' ) ) {
+	define( 'MMI_FEATURE_GATE_HOOKS_REGISTERED', true );
+	add_action(
+		'admin_init',
+		static function () {
+			if ( class_exists( 'MMI_Feature_Gate' ) && method_exists( 'MMI_Feature_Gate', 'remember_preview' ) ) {
+				MMI_Feature_Gate::remember_preview();
+			}
+		}
+	);
+	add_action(
+		'admin_notices',
+		static function () {
+			if ( class_exists( 'MMI_Feature_Gate' ) && method_exists( 'MMI_Feature_Gate', 'render_preview_notice' ) ) {
+				MMI_Feature_Gate::render_preview_notice();
+			}
+		}
+	);
 }
 
 /**

@@ -1759,11 +1759,11 @@ div.wrap div.mmi-header p,
    GATED FEATURES (MMI_Feature_Gate)
    =================================== */
 
-/* Wraps a feature that only fully works with a sibling MMI plugin present.
-   Never display:none/omitted when locked — see AGENTS.md's "Gated Feature
-   Disclosure." .mmi-is-locked dims and disables the real controls beneath;
-   the badge + popover always render regardless of lock state so the DOM
-   position never shifts between locked/unlocked. */
+/* A feature one MMI plugin adds to another, shown locked when the plugin
+   that powers it isn't active. Never display:none/omitted — see AGENTS.md's
+   "Gated Feature Disclosure." Tooltip copy comes from mmi-gate.js. */
+
+/* Panel lock: the caller's own controls, dimmed, beside a padlock badge. */
 .mmi-gated-feature {
   position: relative;
   display: inline-flex;
@@ -1771,9 +1771,15 @@ div.wrap div.mmi-header p,
   gap: 6px;
 }
 
-.mmi-gated-feature.mmi-is-locked > :not(.mmi-gate-badge):not(.mmi-gate-popover) {
+.mmi-gated-feature.mmi-is-locked:not(.mmi-gated-feature--overlay) > :not(.mmi-gate-badge) {
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* A padlock nested inside the dimmed controls (e.g. inside a card) must
+   still take the pointer, or its tooltip can never open. */
+.mmi-gated-feature.mmi-is-locked .mmi-gate-badge {
+  pointer-events: auto;
 }
 
 .mmi-gate-badge {
@@ -1790,7 +1796,8 @@ div.wrap div.mmi-header p,
 }
 
 .mmi-gate-badge:hover,
-.mmi-gate-badge:focus-visible {
+.mmi-gate-badge:focus-visible,
+.mmi-gate-badge.mmi-gate-is-open {
   background: var(--mmi-gray-400);
   outline: none;
 }
@@ -1801,19 +1808,83 @@ div.wrap div.mmi-header p,
   height: 13px;
 }
 
-/* [hidden] is the only visibility gate — never toggle display directly
-   (AGENTS.md's "[hidden] Attribute vs. a Class That Sets display" rule). */
-.mmi-gate-popover {
+/* Overlay lock: the element keeps its normal place and size, greyed, with a
+   small lock on its corner. Works on anything from a 20px logo to a card
+   (--block). Inner links/buttons are inert. */
+.mmi-gated-feature--overlay {
+  gap: 0;
+  vertical-align: middle;
+  border-radius: var(--mmi-radius-sm);
+  cursor: help;
+}
+
+.mmi-gated-feature--overlay.mmi-gated-feature--block {
+  display: block;
+}
+
+.mmi-gated-feature--overlay.mmi-is-locked > .mmi-gated-feature__content {
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: opacity var(--mmi-transition-fast);
+}
+
+.mmi-gated-feature--overlay:hover > .mmi-gated-feature__content,
+.mmi-gated-feature--overlay.mmi-gate-is-open > .mmi-gated-feature__content {
+  opacity: 0.6;
+}
+
+.mmi-gated-feature--overlay:focus-visible {
+  outline: 2px solid var(--mmi-primary);
+  outline-offset: 2px;
+}
+
+.mmi-gate-lock.dashicons {
   position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: var(--mmi-z-popover);
-  width: 240px;
+  right: -5px;
+  bottom: -4px;
+  width: 13px;
+  height: 13px;
+  font-size: 9px;
+  line-height: 13px;
+  text-align: center;
+  border-radius: var(--mmi-radius-full);
+  background: var(--mmi-gray-700);
+  color: var(--mmi-white);
+  box-shadow: 0 0 0 1px var(--mmi-bg-white);
+  pointer-events: none;
+}
+
+.mmi-gated-feature--block > .mmi-gate-lock.dashicons {
+  top: 8px;
+  right: 8px;
+  bottom: auto;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* Tooltip: one element on <body>, fixed-positioned by mmi-gate.js through
+   --mmi-gate-x/--mmi-gate-y so table scroll wrappers can't clip it.
+   [hidden] is the only visibility gate (AGENTS.md's "[hidden] Attribute vs. a
+   Class That Sets display" rule). */
+.mmi-gate-popover {
+  position: fixed;
+  top: var(--mmi-gate-y, 0);
+  left: var(--mmi-gate-x, 0);
+  z-index: var(--mmi-z-tooltip);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
   background: var(--mmi-bg-white);
   border: 1px solid var(--mmi-gray-400);
   border-radius: var(--mmi-radius-md);
   box-shadow: var(--mmi-shadow-lg);
   padding: 12px 14px;
+  font-size: 12px;
+  line-height: var(--mmi-line-height-normal);
+  color: var(--mmi-text-primary);
+  text-align: left;
+  white-space: normal;
 }
 
 .mmi-gate-popover:not([hidden]) {
@@ -1826,9 +1897,84 @@ div.wrap div.mmi-header p,
   color: var(--mmi-text-primary);
 }
 
+.mmi-gate-popover p:last-child {
+  margin-bottom: 0;
+}
+
+.mmi-gate-popover .mmi-gate-popover__title {
+  font-weight: var(--mmi-font-weight-semibold);
+}
+
+.mmi-gate-popover .mmi-gate-popover__requires {
+  color: var(--mmi-text-secondary);
+}
+
+.mmi-gate-popover__list {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  list-style: disc;
+}
+
+.mmi-gate-popover__list li {
+  margin: 0 0 4px;
+}
+
 .mmi-gate-cta {
   font-size: 12px;
   font-weight: 600;
+}
+
+/* "Works with" strip under a plugin's page title (render_works_with()):
+   one chip per plugin that adds features here. */
+.mmi-works-with {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.mmi-works-with__label {
+  color: var(--mmi-text-muted);
+  margin-right: 2px;
+}
+
+.mmi-works-with__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px 0 5px;
+  border: 1px solid var(--mmi-border-primary);
+  border-radius: var(--mmi-radius-full);
+  background: var(--mmi-bg-white);
+  color: var(--mmi-text-primary);
+  cursor: help;
+}
+
+.mmi-works-with__chip .dashicons {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+}
+
+.mmi-works-with__chip.is-active .dashicons {
+  color: var(--mmi-success);
+}
+
+.mmi-works-with__chip.mmi-is-locked {
+  background: var(--mmi-gray-100);
+  color: var(--mmi-text-secondary);
+  border-style: dashed;
+}
+
+.mmi-works-with__chip:hover,
+.mmi-works-with__chip:focus-visible,
+.mmi-works-with__chip.mmi-gate-is-open {
+  border-color: var(--mmi-gray-500);
+  outline: none;
 }
 
 /* ===================================
