@@ -2,12 +2,8 @@
 /**
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
- * Description: Import and export any WordPress or WooCommerce data — products,
- *              orders, customers, coupons, users, comments, posts, pages,
- *              custom post types and taxonomies — with guided field mapping,
- *              taxonomy mapping, supplier data sources, scheduling and run
- *              reports. CSV, JSON and XML.
- * Version:     2.58.9
+ * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
+ * Version:     2.58.10
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -22,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.58.9' );
+define( 'MMI_PIPELINE_VERSION', '2.58.10' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
