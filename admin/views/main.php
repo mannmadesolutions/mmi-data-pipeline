@@ -125,6 +125,7 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
             </div>
         <?php endif; ?>
         <p class="mmi-header-description">Unified product data workflow — import from supplier feeds or export your catalog, with profiles and a live preview for both directions</p>
+        <?php if ( class_exists( 'MMI_Feature_Gate' ) ) { MMI_Feature_Gate::render_works_with( 'mmi-data-pipeline' ); } ?>
     </div>
     <div class="wp-header-end"></div>
 

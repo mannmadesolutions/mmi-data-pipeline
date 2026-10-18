@@ -468,6 +468,9 @@ $status_badge_map = [
                             // shown to any site with Xchange configured.
                             if ( $sid === 'xchange' && class_exists('MMI_DB') ) :
                                 $web_assets_enabled = (bool) MMI_DB::get_setting('mmi_xchange_web_assets_enabled', false);
+                                // The toggle posts to a handler MMI Xchange registers, and the
+                                // web-assets fetch is MMI Xchange's: greyed and locked without it.
+                                ob_start();
                             ?>
                                 <div class="mmi-source-sub-toggle">
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mmi-web-assets-form">
@@ -484,7 +487,14 @@ $status_badge_map = [
                                               title="(richer images &amp; descriptions) Pulls per-SKU images and long-form descriptions from Xchange's Web Asset API on each scheduled fetch and merges them into the product feed. Off by default — most sites don't need this."></span>
                                     </form>
                                 </div>
-                            <?php endif; ?>
+                            <?php
+                                $web_assets_html = (string) ob_get_clean();
+                                if ( class_exists( 'MMI_Feature_Gate' ) ) {
+                                    MMI_Feature_Gate::render_overlay( 'xchange.web_assets', $web_assets_html );
+                                } else {
+                                    echo $web_assets_html; // phpcs:ignore WordPress.Security.EscapeOutput -- markup above, escaped where built.
+                                }
+                            endif; ?>
                         </td>
                         <td>
                             <span class="mmi-source-type-badge mmi-source-<?php echo esc_attr($src_type); ?>">
