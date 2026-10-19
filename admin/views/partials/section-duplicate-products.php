@@ -128,8 +128,8 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                                 Members <span class="sort-icon"></span>
                                 <span class="mmi-dupes-th-resize" data-resize-col="members"></span>
                             </th>
-                            <th class="col-spread sortable" data-col="price_spread" data-resize-col="spread">
-                                COG SPREAD <span class="sort-icon"></span>
+                            <th class="col-spread sortable" data-col="price_spread" data-resize-col="spread" title="Selling price: the supplier feed's MAP, else the store price. Sorts by how far apart the listings' prices are.">
+                                Price <span class="sort-icon"></span>
                                 <span class="mmi-dupes-th-resize" data-resize-col="spread"></span>
                             </th>
                             <th class="col-source sortable" data-col="source" data-resize-col="source" title="Legacy link = a real, pre-existing canonical/associated_product_ids link found in the database. Fresh match = detected just now by matching brand + product name across live supplier feeds.">

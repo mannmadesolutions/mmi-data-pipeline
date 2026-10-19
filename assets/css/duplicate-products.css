@@ -95,9 +95,8 @@
     background: #f6f7f7;
 }
 
-/* Queue-only selectors use `> thead` / `> tbody`: each expanded group nests a
-   .mmi-dupes-member-table inside this table, and a plain `.mmi-dupes-table th`
-   styled (and sorted) those headings too. */
+/* Queue-only selectors use `> thead` / `> tbody`, so nothing nested in an
+   expanded group's review panel picks up the queue's cell styles. */
 .mmi-dupes-table > thead > tr > th {
     position: relative;
     padding: 0.6rem 0.9rem;
@@ -181,7 +180,7 @@
 .mmi-dupes-table .col-brand   { width: 16%; font-weight: 500; }
 .mmi-dupes-table .col-name    { width: 28%; }
 .mmi-dupes-table .col-members { width: 90px; text-align: center; }
-.mmi-dupes-table .col-spread  { width: 150px; }
+.mmi-dupes-table .col-spread  { width: 190px; white-space: nowrap; }
 .mmi-dupes-table .col-source  { width: 110px; }
 .mmi-dupes-table .col-status  { width: 100px; }
 
@@ -207,23 +206,20 @@
     border: 1px solid #e2e4e7;
 }
 
-/* Sortable column headers (queue + member tables). The shared sort arrow
+/* Sortable column headers (queue table). The shared sort arrow
    (mmi-suite-common.css, th.sortable::after) moves left of the 10px resize
    handle, so clicking the arrow sorts and only the handle resizes. */
-.mmi-dupes-table > thead th.sortable,
-.mmi-dupes-member-table > thead th.sortable {
+.mmi-dupes-table > thead th.sortable {
     cursor: pointer;
     user-select: none;
     padding-right: 30px;
 }
 
-.mmi-dupes-table > thead th.sortable::after,
-.mmi-dupes-member-table > thead th.sortable::after {
+.mmi-dupes-table > thead th.sortable::after {
     right: 14px;
 }
 
-.mmi-dupes-table > thead th.sortable:hover,
-.mmi-dupes-member-table > thead th.sortable:hover {
+.mmi-dupes-table > thead th.sortable:hover {
     background: #ebebeb;
 }
 
@@ -290,10 +286,32 @@ button.mmi-dupes-status--btn:disabled {
     border-color: #8a1f1f;
 }
 
-/* Review row — expands below a group row to show member listings + the
-   canonical-pick / include controls. */
+/* Queue Price cell (buildPriceCell()): a dash when no listing has a price,
+   and a chip when every listing sells at the same price. */
+.mmi-dupes-table td.col-spread.is-empty {
+    color: #a7aaad;
+}
+
+.mmi-dupes-price-chip {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #eaf4e6;
+    color: var(--mmi-primary, #45852C);
+    font-size: 0.7rem;
+    font-weight: 600;
+    vertical-align: 1px;
+}
+
+/* ── Review panel ─────────────────────────────────────────────────────────
+   Expands below a group row. Modeled on the Marketplace Earnings element
+   (mmi-admin/includes/marketplace-earnings/assets/css/earnings.css): a dark
+   verdict card, a legend, then one rounded row per listing with a bar and a
+   right-aligned figure. Every value reads from a --mmi-dupes-* token. The
+   layout follows the panel's own width (container query). */
 .mmi-dupes-review-row td {
-    background: #fafbfb;
+    background: #f6f7f4;
     padding: 0;
 }
 
@@ -303,124 +321,461 @@ button.mmi-dupes-status--btn:disabled {
 }
 
 .mmi-dupes-review-box {
-    padding: 0.9rem 1.2rem;
-    overflow-x: auto; /* a member table widened by column resizing scrolls here */
+    --mmi-dupes-accent: var(--mmi-primary, #45852C);
+    --mmi-dupes-surface: #ffffff;
+    --mmi-dupes-subtle: #f1f3ee;
+    --mmi-dupes-border: #dfe3da;
+    --mmi-dupes-muted: #5f6368;
+    --mmi-dupes-off: #c26a12;
+    --mmi-dupes-none: #c3c4c7;
+    --mmi-dupes-dark: #0f172a;
+    --mmi-dupes-dark-muted: #cbd5e1;
+    --mmi-dupes-radius: 12px;
+
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.1rem 1.25rem 1.25rem;
+    font-size: 0.85rem;
+}
+
+.mmi-dupes-review-box *,
+.mmi-dupes-review-box *::before,
+.mmi-dupes-review-box *::after {
+    box-sizing: border-box;
+}
+
+/* Verdict card — the widget's "best pick" card. */
+.mmi-dupes-verdict {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem 1.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--mmi-dupes-dark);
+    color: #ffffff;
+    border-radius: var(--mmi-dupes-radius);
+}
+
+.mmi-dupes-verdict-text,
+.mmi-dupes-verdict-figure {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.mmi-dupes-verdict-figure {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.mmi-dupes-verdict-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--mmi-dupes-dark-muted);
+}
+
+.mmi-dupes-verdict-headline {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.mmi-dupes-verdict-headline::before {
+    content: "";
+    display: inline-block;
+    width: 0.6em;
+    height: 0.6em;
+    margin-right: 0.5em;
+    border-radius: 50%;
+    background: var(--mmi-dupes-none);
+    vertical-align: 0.1em;
+}
+
+.mmi-dupes-verdict.is-match .mmi-dupes-verdict-headline::before { background: #7bc05c; }
+.mmi-dupes-verdict.is-off .mmi-dupes-verdict-headline::before   { background: #f0a24a; }
+
+.mmi-dupes-verdict-amount {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+
+.mmi-dupes-verdict-note {
+    font-size: 0.8rem;
+    color: var(--mmi-dupes-dark-muted);
 }
 
 .mmi-dupes-review-hint {
-    margin: 0 0 0.7rem;
+    margin: 0;
     font-size: 0.8rem;
-    color: #50575e;
+    color: var(--mmi-dupes-muted);
 }
 
-/* Member review table — one row per candidate/linked product, uniform
-   column order shared by buildReviewRow() (candidates) and
-   buildLegacyReviewRow() (already-linked groups) in duplicate-products.js:
-   Supplier/SKU/Vendor/Cost/Product/Status, then one column per "product
-   data winner" field visible for this group (see ASSET_FIELDS), then a
-   trailing control column (Canonical+Include, or Actions). */
-.mmi-dupes-member-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #fff;
-    border: 1px solid #e2e4e7;
-    border-radius: 4px;
+/* Legend */
+.mmi-dupes-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 1.1rem;
+    font-size: 0.78rem;
+    color: var(--mmi-dupes-muted);
+}
+
+.mmi-dupes-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.mmi-dupes-key::before {
+    content: "";
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 3px;
+    background: var(--mmi-dupes-accent);
+}
+
+.mmi-dupes-key--off::before  { background: var(--mmi-dupes-off); }
+.mmi-dupes-key--none::before { background: var(--mmi-dupes-subtle); box-shadow: inset 0 0 0 1px var(--mmi-dupes-border); }
+
+.mmi-dupes-legend-note {
+    margin-left: auto;
+    font-style: italic;
+}
+
+/* Listing rows — one grid shared by every row (subgrid), so bars, prices
+   and controls line up down the list the way table columns would. */
+.mmi-dupes-listings {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    /* Edge tracks are auto: each row's padding is added to them (subgrid). */
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.5rem 0.85rem;
+}
+
+.mmi-dupes-listing {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-template-areas:
+        "thumb name  figure"
+        "thumb bar   bar"
+        "ctrl  ctrl  ctrl";
+    row-gap: 0.5rem;
+    align-items: center;
+    margin: 0;
+    padding: 0.8rem 1rem;
+    background: var(--mmi-dupes-surface);
+    border: 1px solid var(--mmi-dupes-border);
+    border-radius: var(--mmi-dupes-radius);
+}
+
+@container (min-width: 58rem) {
+    .mmi-dupes-listings {
+        grid-template-columns: auto minmax(0, 2.4fr) minmax(90px, 1fr) auto auto;
+    }
+
+    .mmi-dupes-listing {
+        grid-template-areas: "thumb name bar figure ctrl";
+    }
+}
+
+/* The picked canonical listing — the widget's "is-best" outline. */
+.mmi-dupes-listing.is-canonical {
+    border-color: var(--mmi-dupes-accent);
+    box-shadow: inset 0 0 0 1px var(--mmi-dupes-accent);
+}
+
+.mmi-dupes-listing.is-unresolved {
+    background: var(--mmi-dupes-subtle);
+    border-style: dashed;
+}
+
+.mmi-dupes-listing-thumb {
+    grid-area: thumb;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
-    margin-bottom: 0.8rem;
-    font-size: 0.82rem;
+    border-radius: 8px;
+    border: 1px solid var(--mmi-dupes-border);
+    background: #ffffff;
+    color: var(--mmi-dupes-none);
 }
 
-.mmi-dupes-member-table thead th {
-    position: relative; /* anchors the .mmi-dupes-th-resize handle */
-    box-sizing: border-box;
-    background: #f6f7f7;
-    padding: 0.5rem 0.6rem;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: #50575e;
-    text-align: left;
-    white-space: nowrap;
-    border-bottom: 1px solid #e2e4e7;
-}
-
-.mmi-dupes-member-table td {
-    padding: 0.45rem 0.6rem;
-    border-bottom: 1px solid #f0f0f1;
-    vertical-align: middle;
-}
-
-.mmi-dupes-member-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.mmi-dupes-member-table tbody tr:hover {
-    background: #fafbfb;
-}
-
-/* After a column resize (freezeMemberTable() in duplicate-products.js): fixed
-   layout, cells clip, and previews use the column's full width. */
-.mmi-dupes-member-table.is-resized {
-    table-layout: fixed;
-}
-
-.mmi-dupes-member-table.is-resized thead th,
-.mmi-dupes-member-table.is-resized td {
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.mmi-dupes-member-table.is-resized .mmi-dupes-winner-cell .mmi-dupes-winner-preview {
-    max-width: none;
-}
-
-/* Lowest non-zero cost in the group (replaces the "(lowest cost)" tag). */
-.mmi-dupes-member-table .mmi-dupes-cost--lowest {
-    color: var(--mmi-primary, #45852C);
-    font-weight: 700;
-}
-
-.mmi-dupes-member-row.is-unresolved {
-    opacity: 0.6;
-}
-
-.mmi-dupes-member-table .col-mt-canon,
-.mmi-dupes-member-table .col-mt-include {
-    text-align: center;
-    width: 70px;
-}
-
-/* Per-field "winner" cell — a radio plus a short preview of that member's
-   value for the field, or an em-dash when this member has nothing to offer
-   for it (a member legitimately having no image/description/etc. is the
-   whole reason this feature exists, not an error state). */
-.mmi-dupes-winner-cell {
-    text-align: center;
-    white-space: nowrap;
-}
-
-.mmi-dupes-winner-cell--empty {
-    color: #c3c4c7;
-}
-
-.mmi-dupes-winner-cell .mmi-dupes-winner-preview {
+.mmi-dupes-listing-thumb img {
     display: block;
-    margin-top: 0.2rem;
-    max-width: 130px;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.mmi-dupes-listing-name {
+    grid-area: name;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.mmi-dupes-listing-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.mmi-dupes-listing-title {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #646970;
+    font-weight: 600;
+    color: #1d2327;
+    text-decoration: none;
+}
+
+a.mmi-dupes-listing-title:hover,
+a.mmi-dupes-listing-title:focus-visible {
+    color: var(--mmi-dupes-accent);
+    text-decoration: underline;
+}
+
+.mmi-dupes-listing.is-unresolved .mmi-dupes-listing-title {
+    color: var(--mmi-dupes-muted);
+    font-style: italic;
+}
+
+.mmi-dupes-listing-id {
+    flex: none;
     font-size: 0.75rem;
+    color: var(--mmi-dupes-muted);
+}
+
+.mmi-dupes-listing-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    color: var(--mmi-dupes-muted);
+}
+
+/* Price bar — sized against the group's highest price. */
+.mmi-dupes-bar {
+    grid-area: bar;
+    display: flex;
+    height: 0.7rem;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--mmi-dupes-subtle);
+}
+
+.mmi-dupes-bar-fill {
+    width: var(--mmi-dupes-bar-w, 0%);
+    border-radius: 999px;
+    background: var(--mmi-dupes-accent);
+}
+
+.mmi-dupes-listing.is-price-off .mmi-dupes-bar-fill {
+    background: var(--mmi-dupes-off);
+}
+
+.mmi-dupes-figure {
+    grid-area: figure;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+}
+
+.mmi-dupes-amount {
+    font-size: 1.05rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.mmi-dupes-listing.is-price-off .mmi-dupes-amount  { color: var(--mmi-dupes-off); }
+.mmi-dupes-listing.is-price-none .mmi-dupes-amount { color: var(--mmi-dupes-none); }
+
+.mmi-dupes-sub {
+    font-size: 0.72rem;
+    color: var(--mmi-dupes-muted);
+    white-space: nowrap;
+}
+
+/* Lowest non-zero cost — the canonical preselection's reason. */
+.mmi-dupes-cost.is-lowest {
+    color: var(--mmi-dupes-accent);
+    font-weight: 600;
+}
+
+.mmi-dupes-listing-controls {
+    grid-area: ctrl;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+/* Canonical / Include — the widget's chips, each wrapping its real input. */
+.mmi-dupes-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--mmi-dupes-border);
+    border-radius: 999px;
+    background: var(--mmi-dupes-surface);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+}
+
+.mmi-dupes-choice input {
+    margin: 0;
+    accent-color: var(--mmi-dupes-accent);
+}
+
+.mmi-dupes-choice:has(input:checked) {
+    border-color: var(--mmi-dupes-accent);
+    background: #eaf4e6;
+    color: #2b5c1d;
+}
+
+.mmi-dupes-choice:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mmi-dupes-member-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+/* Product data pickers — the widget's segmented control, one per field. */
+.mmi-dupes-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1rem;
+    background: var(--mmi-dupes-surface);
+    border: 1px solid var(--mmi-dupes-border);
+    border-radius: var(--mmi-dupes-radius);
+}
+
+.mmi-dupes-fields-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.mmi-dupes-fields-title {
+    font-weight: 600;
+}
+
+.mmi-dupes-hint {
+    font-size: 0.78rem;
+    color: var(--mmi-dupes-muted);
+}
+
+.mmi-dupes-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+    align-items: center;
+}
+
+@container (min-width: 40rem) {
+    .mmi-dupes-field {
+        grid-template-columns: 8rem minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+}
+
+.mmi-dupes-field-label {
+    font-weight: 500;
+}
+
+.mmi-dupes-seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    background: var(--mmi-dupes-subtle);
+    border-radius: 10px;
+}
+
+.mmi-dupes-seg-opt {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 260px;
+    min-width: 0;
+    padding: 0.35rem 0.65rem;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: var(--mmi-dupes-muted);
+    cursor: pointer;
+}
+
+/* The radio stays focusable and keyboard-operable; the option shows its state. */
+.mmi-dupes-seg-opt input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    pointer-events: none;
+}
+
+.mmi-dupes-seg-opt:hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.mmi-dupes-seg-opt:has(input:checked) {
+    background: var(--mmi-dupes-surface);
+    color: #1d2327;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14), inset 0 0 0 1px var(--mmi-dupes-accent);
+}
+
+.mmi-dupes-seg-opt:has(input:focus-visible) {
+    outline: 2px solid var(--mmi-dupes-accent);
+    outline-offset: 1px;
+}
+
+.mmi-dupes-seg-id {
+    flex: none;
+    font-weight: 600;
+}
+
+.mmi-dupes-seg-preview {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .mmi-dupes-asset-thumb {
-    width: 28px;
-    height: 28px;
+    display: block;
+    width: 26px;
+    height: 26px;
     object-fit: contain;
-    border-radius: 3px;
-    border: 1px solid #e2e4e7;
+    border-radius: 4px;
+    border: 1px solid var(--mmi-dupes-border, #e2e4e7);
     background: #fff;
 }
 
@@ -428,15 +783,6 @@ button.mmi-dupes-status--btn:disabled {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-}
-
-/* Legacy-group Manage panel — per-member action buttons (Make Canonical /
-   Remove) inside the trailing Actions column, on one line. */
-.mmi-dupes-member-table td .mmi-dupes-member-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    white-space: nowrap;
 }
 
 /* ── Pill-styled buttons — matches the .mmi-dupes-stat/.mmi-dupes-status

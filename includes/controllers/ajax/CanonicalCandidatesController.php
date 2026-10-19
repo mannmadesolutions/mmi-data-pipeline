@@ -265,6 +265,52 @@ function mmi_canonical_candidates_recommend( array $members ): ?array {
     return reset( $resolved );
 }
 
+/**
+ * A listing's regular store price (its sale price is temporary), else its
+ * active price; 0 for an unimported feed item or a product with no price.
+ */
+function mmi_canonical_candidates_store_price( int $product_id ): float {
+    if ( $product_id <= 0 ) {
+        return 0.0;
+    }
+    $regular = (string) get_post_meta( $product_id, '_regular_price', true );
+    return round( (float) ( $regular !== '' ? $regular : get_post_meta( $product_id, '_price', true ) ), 2 );
+}
+
+/**
+ * The group's price comparison, which the review queue shows instead of a cost
+ * spread: many listings have no cost, and two listings at the same selling
+ * price say far more about being one item than two equal costs do.
+ *
+ * Sets each member's store_price and list_price (the feed's MAP, else the store
+ * price; list_price_source says which) and returns the group fields. Listings
+ * with no price are left out of min/max rather than read as $0.
+ *
+ * @param  array $members Group members, by reference.
+ * @return array{price_min: float, price_max: float, price_spread: float, price_count: int, price_match: bool}
+ */
+function mmi_canonical_candidates_price_summary( array &$members ): array {
+    foreach ( $members as &$m ) {
+        $map                    = round( (float) ( $m['map_price'] ?? 0 ), 2 );
+        $m['store_price']       = mmi_canonical_candidates_store_price( (int) ( $m['wc_product_id'] ?? 0 ) );
+        $m['list_price']        = $map > 0 ? $map : $m['store_price'];
+        $m['list_price_source'] = $map > 0 ? 'map' : ( $m['store_price'] > 0 ? 'store' : '' );
+    }
+    unset( $m );
+
+    $prices = array_values( array_filter( array_column( $members, 'list_price' ), static fn( $p ) => $p > 0 ) );
+    $min    = $prices ? min( $prices ) : 0.0;
+    $max    = $prices ? max( $prices ) : 0.0;
+
+    return [
+        'price_min'    => $min,
+        'price_max'    => $max,
+        'price_spread' => round( $max - $min, 2 ),
+        'price_count'  => count( $prices ),
+        'price_match'  => count( $prices ) >= 2 && count( $prices ) === count( $members ) && round( $max - $min, 2 ) == 0,
+    ];
+}
+
 /* ── Scan all configured feeds for duplicate candidates ───────────────────── */
 /**
  * Scans the supplier feeds for listings of the same product (brand + name) and
@@ -384,18 +430,14 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
         }
         unset( $member );
 
-        $prices      = array_column( $group['members'], 'dealer_price' );
-        $price_min   = $prices ? min( $prices ) : 0;
-        $price_max   = $prices ? max( $prices ) : 0;
+        $price = mmi_canonical_candidates_price_summary( $group['members'] );
 
         $result[] = [
             'group_key'              => $key,
             'brand'                  => $group['brand'],
             'name'                   => $group['name'],
             'members'                => $group['members'],
-            'price_min'              => $price_min,
-            'price_max'              => $price_max,
-            'price_spread'           => $price_max - $price_min,
+        ] + $price + [
             'already_linked'         => $already_linked,
             'recommended_product_id' => $recommended_product_id,
             'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $group['brand'] ),
@@ -403,7 +445,7 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
         ];
     }
 
-    // Biggest price discrepancy first — most actionable for margin protection.
+    // Biggest selling-price discrepancy first.
     usort( $result, fn( $a, $b ) => $b['price_spread'] <=> $a['price_spread'] );
 
     $response = [
@@ -963,7 +1005,7 @@ function mmi_canonical_candidates_mpn_groups( array $feed_index ): array {
             $member['is_recommended'] = $recommended_product_id !== null && $member['wc_product_id'] === $recommended_product_id;
         }
         unset( $member );
-        $prices  = array_column( $members, 'dealer_price' );
+        $price   = mmi_canonical_candidates_price_summary( $members );
         $name_id = $canonicals ? (int) $canonicals[0]['wc_product_id'] : (int) $ids[0];
         $groups[] = [
             'group_key'              => 'mpn-' . $key,
@@ -973,9 +1015,7 @@ function mmi_canonical_candidates_mpn_groups( array $feed_index ): array {
             'brand'                  => $brand,
             'name'                   => get_the_title( $name_id ) ?: '(untitled)',
             'members'                => $members,
-            'price_min'              => $prices ? min( $prices ) : 0,
-            'price_max'              => $prices ? max( $prices ) : 0,
-            'price_spread'           => $prices ? max( $prices ) - min( $prices ) : 0,
+        ] + $price + [
             'already_linked'         => false,
             'recommended_product_id' => $recommended_product_id,
             'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),
@@ -1068,9 +1108,7 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
             }
             unset( $member );
 
-            $prices    = array_column( $members, 'dealer_price' );
-            $price_min = $prices ? min( $prices ) : 0;
-            $price_max = $prices ? max( $prices ) : 0;
+            $price = mmi_canonical_candidates_price_summary( $members );
 
             $groups[] = [
                 'group_key'              => 'legacy-' . $canonical_id,
@@ -1079,9 +1117,7 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
                 'brand'                  => $brand,
                 'name'                   => get_the_title( $canonical_id ) ?: '(untitled)',
                 'members'                => $members,
-                'price_min'              => $price_min,
-                'price_max'              => $price_max,
-                'price_spread'           => $price_max - $price_min,
+            ] + $price + [
                 'already_linked'         => true,
                 'recommended_product_id' => $recommended_product_id,
                 'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),

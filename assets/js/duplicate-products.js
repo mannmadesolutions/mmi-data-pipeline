@@ -123,25 +123,41 @@
         return defaults;
     }
 
-    /** One <td> for an asset-winner column — a radio when the member has data, a dash otherwise. */
-    function buildWinnerCell( fieldKey, radioGroupName, member, defaultWinnerId ) {
-        if ( ! member.wc_product_id || ! memberHasAsset( member, fieldKey ) ) {
-            return $( '<td class="mmi-dupes-winner-cell mmi-dupes-winner-cell--empty">—</td>' );
-        }
-        const $td = $( '<td class="mmi-dupes-winner-cell">' );
-        $td.append(
-            $( '<input type="radio" class="mmi-dupes-winner-radio">' )
-                .attr( { name: radioGroupName, 'data-field': fieldKey, 'data-product-id': member.wc_product_id } )
-                .prop( 'checked', member.wc_product_id === defaultWinnerId )
+    /**
+     * "Product data" pickers: one segmented row per field, one option per
+     * listing that has a value for it (a listing with nothing to offer simply
+     * isn't an option). Each option is a real .mmi-dupes-winner-radio, so
+     * collectFieldWinners() reads them as before.
+     */
+    function buildFieldPickers( assetFields, members, defaults, radioGroupPrefix, hint ) {
+        const $section = $( '<section class="mmi-dupes-fields">' ).append(
+            $( '<div class="mmi-dupes-fields-head">' ).append(
+                $( '<span class="mmi-dupes-fields-title">' ).text( 'Product data' ),
+                $( '<span class="mmi-dupes-hint">' ).text( hint )
+            )
         );
-        // The title is already the Product cell's link text (both are the
-        // listing's post_title), so its winner cell is just the radio.
-        if ( fieldKey !== 'title' ) {
-            const $preview = $( '<span class="mmi-dupes-winner-preview">' ).html( memberAssetPreviewHtml( member, fieldKey ) );
-            if ( fieldKey !== 'image' ) { $preview.attr( 'title', $preview.text() ); }
-            $td.append( $preview );
-        }
-        return $td;
+        assetFields.forEach( function ( f ) {
+            const $seg = $( '<div class="mmi-dupes-seg" role="radiogroup">' ).attr( 'aria-label', f.label );
+            members.filter( m => m.wc_product_id && memberHasAsset( m, f.key ) ).forEach( function ( m ) {
+                const $preview = $( '<span class="mmi-dupes-seg-preview">' ).html( memberAssetPreviewHtml( m, f.key ) );
+                const $opt = $( '<label class="mmi-dupes-seg-opt">' ).append(
+                    $( '<input type="radio" class="mmi-dupes-winner-radio">' )
+                        .attr( { name: radioGroupPrefix + f.key, 'data-field': f.key, 'data-product-id': m.wc_product_id } )
+                        .prop( 'checked', m.wc_product_id === defaults[ f.key ] ),
+                    $( '<span class="mmi-dupes-seg-id">' ).text( '#' + m.wc_product_id ),
+                    $preview
+                );
+                if ( f.key !== 'image' ) { $opt.attr( 'title', $preview.text() ); }
+                $seg.append( $opt );
+            } );
+            $section.append(
+                $( '<div class="mmi-dupes-field">' ).append(
+                    $( '<span class="mmi-dupes-field-label">' ).text( f.label ),
+                    $seg
+                )
+            );
+        } );
+        return $section;
     }
 
     /** A listing's title: the raw post_title (assets.title), else the server's product_name. */
@@ -159,36 +175,185 @@
         return m ? m.wc_product_id : 0;
     }
 
-    /** Cost cell; the lowest non-zero cost is highlighted rather than tagged in the Product cell. */
-    function buildCostCell( member, lowestId ) {
-        const isLowest = !! lowestId && member.wc_product_id === lowestId;
-        return $( '<td class="mmi-dupes-cost">' )
-            .toggleClass( 'mmi-dupes-cost--lowest', isLowest )
-            .attr( 'title', isLowest ? 'Lowest cost in this group' : null )
-            .text( formatPrice( member.dealer_price ) );
+    /* ── Price comparison (review panel) ──────────────────────────────────────
+       Each member carries list_price (the feed's MAP, else the store price;
+       list_price_source says which) from mmi_canonical_candidates_price_
+       summary(). Listings are compared on it, not on cost: many have no cost,
+       and an identical selling price is the stronger sign of one item. */
+
+    const STOCK_LABELS      = { instock: 'In stock', outofstock: 'Out of stock', onbackorder: 'On backorder' };
+    const VISIBILITY_LABELS = { catalog: 'shop only', search: 'search only', hidden: 'hidden' };
+
+    /**
+     * The price listings are checked against: the most common list price,
+     * ties going to the preselected canonical's price. 0 when none has one.
+     */
+    function referencePrice( members, canonicalId ) {
+        const counts = new Map();
+        members.forEach( ( m ) => {
+            const p = Number( m.list_price ) || 0;
+            if ( p > 0 ) { counts.set( p.toFixed( 2 ), ( counts.get( p.toFixed( 2 ) ) || 0 ) + 1 ); }
+        } );
+        const canon    = members.find( ( m ) => m.wc_product_id && m.wc_product_id === canonicalId );
+        const canonKey = canon && Number( canon.list_price ) > 0 ? Number( canon.list_price ).toFixed( 2 ) : '';
+        let best = '';
+        let bestN = 0;
+        counts.forEach( ( n, key ) => {
+            if ( n > bestN || ( n === bestN && key === canonKey ) ) { best = key; bestN = n; }
+        } );
+        return Number( best ) || 0;
     }
 
-    /** Product cell: the listing's title, linked to its edit screen, with its ID. */
-    function buildProductCell( member ) {
-        if ( ! member.wc_product_id ) {
-            return $( '<td>' ).html( '<em>not yet imported</em>' );
-        }
-        const title = memberTitle( member );
-        return $( '<td class="mmi-dupes-product-cell">' ).append(
-            $( '<a target="_blank">' )
-                .attr( 'href', `/wp-admin/post.php?post=${ member.wc_product_id }&action=edit` )
-                .text( title ? `${ title } (#${ member.wc_product_id })` : `#${ member.wc_product_id }` )
-        );
+    /** 'match' | 'off' | 'none' — how one listing's price compares with the reference. */
+    function priceState( member, refPrice ) {
+        const p = Number( member.list_price ) || 0;
+        if ( ! p ) { return 'none'; }
+        return p.toFixed( 2 ) === refPrice.toFixed( 2 ) ? 'match' : 'off';
+    }
+
+    /** Why these listings were grouped, for the verdict card's subline. */
+    function matchBasis( group ) {
+        if ( group.source === 'mpn' ) { return `Same ${ group.brand } part number, ${ group.match }`; }
+        if ( group.source === 'legacy' ) { return `Already linked to canonical #${ group.canonical_product_id }`; }
+        return 'Same brand and product name in the supplier feeds';
     }
 
     /**
-     * Member-table headings. Each carries a resize handle (initColumnResize()
-     * handles both tables) and is sorted by the shared mmi-table-sort.js; the
-     * shared resize/sort guard keeps a resize drag from also sorting.
+     * Dark summary card atop the panel (the Marketplace Earnings "best pick"
+     * card): what the prices say about this group, at a glance.
      */
-    function memberTh( key, label, extraClass ) {
-        return `<th class="col-mt-${ key }${ extraClass ? ' ' + extraClass : '' }" data-resize-col="mt-${ key }">${ escHtml( label ) }` +
-            `<span class="mmi-dupes-th-resize" data-resize-col="mt-${ key }"></span></th>`;
+    function buildPriceVerdict( group, refPrice ) {
+        const n     = group.members.length;
+        const count = Number( group.price_count ) || 0;
+        const off   = group.members.filter( ( m ) => priceState( m, refPrice ) === 'off' ).length;
+        let headline, figure, note;
+        if ( ! count ) {
+            headline = 'No prices to compare';
+            figure   = '—';
+            note     = 'No listing has a MAP or store price';
+        } else if ( group.price_match ) {
+            headline = `Same price on all ${ n } listings`;
+            figure   = formatPrice( group.price_min );
+            note     = 'Matching prices back up the match';
+        } else if ( group.price_spread > 0 ) {
+            headline = `Prices differ by ${ formatPrice( group.price_spread ) }`;
+            figure   = `${ formatPrice( group.price_min ) } – ${ formatPrice( group.price_max ) }`;
+            note     = `${ off } of ${ count } priced listing${ count === 1 ? '' : 's' } differ from ${ formatPrice( refPrice ) }`;
+        } else {
+            headline = `Same price on the ${ count } priced listing${ count === 1 ? '' : 's' }`;
+            figure   = formatPrice( group.price_min );
+            note     = `${ n - count } of ${ n } listings have no price`;
+        }
+        const tone = ! count ? 'none' : ( group.price_spread > 0 ? 'off' : 'match' );
+        return $( '<div class="mmi-dupes-verdict">' ).addClass( 'is-' + tone ).append(
+            $( '<div class="mmi-dupes-verdict-text">' ).append(
+                $( '<span class="mmi-dupes-verdict-label">' ).text( 'Price check' ),
+                $( '<span class="mmi-dupes-verdict-headline">' ).text( headline ),
+                $( '<span class="mmi-dupes-verdict-note">' ).text( matchBasis( group ) )
+            ),
+            $( '<div class="mmi-dupes-verdict-figure">' ).append(
+                $( '<span class="mmi-dupes-verdict-amount">' ).text( figure ),
+                $( '<span class="mmi-dupes-verdict-note">' ).text( note )
+            )
+        );
+    }
+
+    /** Legend for the listing bars; the "different" key only when one differs. */
+    function buildPriceLegend( group, refPrice ) {
+        if ( ! ( Number( group.price_count ) || 0 ) ) { return null; }
+        const states = new Set( group.members.map( ( m ) => priceState( m, refPrice ) ) );
+        const $legend = $( '<div class="mmi-dupes-legend">' ).append(
+            $( '<span class="mmi-dupes-key">' ).text( `Price ${ formatPrice( refPrice ) }` )
+        );
+        if ( states.has( 'off' ) ) { $legend.append( $( '<span class="mmi-dupes-key mmi-dupes-key--off">' ).text( 'Different price' ) ); }
+        if ( states.has( 'none' ) ) { $legend.append( $( '<span class="mmi-dupes-key mmi-dupes-key--none">' ).text( 'No price' ) ); }
+        $legend.append( $( '<span class="mmi-dupes-legend-note">' ).text( 'MAP from the supplier feed, else the store price' ) );
+        return $legend;
+    }
+
+    /**
+     * One listing row: thumbnail, title + facts, a bar sized against the
+     * group's highest price, the price, and the row's controls ($controls).
+     */
+    function buildListingRow( member, ctx, $controls ) {
+        const resolved = !! member.wc_product_id;
+        const state    = priceState( member, ctx.refPrice );
+        const price    = Number( member.list_price ) || 0;
+        const thumb    = member.assets && member.assets.image_thumb_url;
+        const title    = memberTitle( member );
+
+        const $title = resolved
+            ? $( '<a class="mmi-dupes-listing-title" target="_blank">' )
+                .attr( 'href', `/wp-admin/post.php?post=${ member.wc_product_id }&action=edit` )
+                .text( title || `#${ member.wc_product_id }` )
+            : $( '<span class="mmi-dupes-listing-title">' ).text( title || 'Not imported yet' );
+
+        const facts = [ member.supplier, member.vendor, member.sku ? `SKU ${ member.sku }` : '' ];
+        if ( resolved ) {
+            facts.push( STOCK_LABELS[ member.stock_status ] || member.stock_status || '' );
+            if ( member.visibility && member.visibility !== 'visible' ) { facts.push( VISIBILITY_LABELS[ member.visibility ] || member.visibility ); }
+        } else {
+            facts.push( 'not imported yet' );
+        }
+
+        const cost     = Number( member.dealer_price ) || 0;
+        const isLowest = !! ctx.lowestId && member.wc_product_id === ctx.lowestId;
+        const subParts = [ member.list_price_source === 'map' ? 'MAP' : ( member.list_price_source === 'store' ? 'Store price' : 'No price' ) ];
+        const store    = Number( member.store_price ) || 0;
+        if ( member.list_price_source === 'map' && store > 0 && store.toFixed( 2 ) !== price.toFixed( 2 ) ) {
+            subParts.push( `store ${ formatPrice( store ) }` );
+        }
+        const $sub = $( '<span class="mmi-dupes-sub">' ).text( subParts.join( ' · ' ) );
+        if ( cost > 0 ) {
+            $sub.append( ' · ', $( '<span class="mmi-dupes-cost">' )
+                .toggleClass( 'is-lowest', isLowest )
+                .attr( 'title', isLowest ? 'Lowest cost in this group' : null )
+                .text( `${ isLowest ? 'lowest cost' : 'cost' } ${ formatPrice( cost ) }` ) );
+        }
+
+        const width = price > 0 && ctx.maxPrice > 0 ? Math.max( 3, Math.round( price / ctx.maxPrice * 100 ) ) : 0;
+
+        const $li = $( '<li class="mmi-dupes-listing">' )
+            .addClass( 'is-price-' + state )
+            .toggleClass( 'is-unresolved', ! resolved )
+            .toggleClass( 'is-canonical', !! resolved && member.wc_product_id === ctx.canonicalId );
+        return $li.append(
+            $( '<div class="mmi-dupes-listing-thumb">' ).append(
+                thumb
+                    ? $( '<img alt="" loading="lazy">' ).attr( 'src', thumb )
+                    : $( '<span class="dashicons dashicons-format-image" aria-hidden="true"></span>' )
+            ),
+            $( '<div class="mmi-dupes-listing-name">' ).append(
+                $( '<span class="mmi-dupes-listing-head">' ).append(
+                    $title,
+                    resolved ? $( '<span class="mmi-dupes-listing-id">' ).text( '#' + member.wc_product_id ) : null
+                ),
+                $( '<span class="mmi-dupes-listing-meta">' ).text( facts.filter( Boolean ).join( ' · ' ) )
+            ),
+            $( '<div class="mmi-dupes-bar" aria-hidden="true">' ).append(
+                $( '<span class="mmi-dupes-bar-fill">' ).css( '--mmi-dupes-bar-w', width + '%' )
+            ),
+            $( '<div class="mmi-dupes-figure">' ).append(
+                $( '<span class="mmi-dupes-amount">' ).text( price > 0 ? formatPrice( price ) : '—' ),
+                $sub
+            ),
+            $( '<div class="mmi-dupes-listing-controls">' ).append( $controls )
+        );
+    }
+
+    /** Shared head of both review panels: verdict, hints, legend; returns the listing context. */
+    function startReviewBox( $box, group, canonicalId, hints ) {
+        const refPrice = referencePrice( group.members, canonicalId );
+        $box.append( buildPriceVerdict( group, refPrice ) );
+        hints.filter( Boolean ).forEach( ( h ) => $box.append( $( '<p class="mmi-dupes-review-hint">' ).text( h ) ) );
+        const $legend = buildPriceLegend( group, refPrice );
+        if ( $legend ) { $box.append( $legend ); }
+        return {
+            refPrice,
+            canonicalId,
+            lowestId: lowestCostId( group.members ),
+            maxPrice: Math.max( 0, ...group.members.map( ( m ) => Number( m.list_price ) || 0 ) ),
+        };
     }
 
     /** Reads every checked .mmi-dupes-winner-radio in a review row into {field: productId}. */
@@ -855,7 +1020,7 @@
                 sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
             } else {
                 sortState.col = col;
-                sortState.dir = ( col === 'members' || col === 'price_spread' ) ? 'desc' : 'asc';
+                sortState.dir = col === 'members' ? 'desc' : 'asc';
             }
             updateSortIcons();
             sortAndRerender();
@@ -881,6 +1046,14 @@
         const { col, dir } = sortState;
         const sorted = [ ...visibleGroups() ].sort( ( a, b ) => {
             let va, vb;
+            if ( col === 'price_spread' ) {
+                // Price sorts by spread (same price first ascending); groups
+                // with fewer than two prices have nothing to compare and stay
+                // last in either direction.
+                const na = ( Number( a.price_count ) || 0 ) < 2;
+                const nb = ( Number( b.price_count ) || 0 ) < 2;
+                if ( na !== nb ) { return na ? 1 : -1; }
+            }
             if ( col === 'members' )      { va = a.members.length; vb = b.members.length; }
             else if ( col === 'price_spread' ) { va = a.price_spread;  vb = b.price_spread;  }
             else if ( col === 'status' )  { va = a.already_linked ? 1 : 0; vb = b.already_linked ? 1 : 0; }
@@ -916,7 +1089,32 @@
     }
 
     function formatPrice( v ) {
-        return '$' + ( Number( v ) || 0 ).toFixed( 2 );
+        return '$' + ( Number( v ) || 0 ).toLocaleString( 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 } );
+    }
+
+    /**
+     * Queue Price cell (MAP, else store price): one price with a "Same price"
+     * chip when every listing matches, the range when they differ, a dash
+     * when none has a price.
+     */
+    function buildPriceCell( group ) {
+        const $td   = $( '<td class="col-spread">' );
+        const count = Number( group.price_count ) || 0;
+        if ( ! count ) {
+            return $td.addClass( 'is-empty' ).attr( 'title', 'No listing in this group has a MAP or store price' ).text( '—' );
+        }
+        if ( group.price_spread > 0 ) {
+            $td.text( `${ formatPrice( group.price_min ) } – ${ formatPrice( group.price_max ) }` );
+        } else {
+            $td.text( formatPrice( group.price_min ) );
+            if ( group.price_match ) {
+                $td.append( ' ', $( '<span class="mmi-dupes-price-chip">' ).text( 'Same price' ) );
+            }
+        }
+        if ( count < group.members.length ) {
+            $td.attr( 'title', `${ count } of ${ group.members.length } listings have a price` );
+        }
+        return $td;
     }
 
     /**
@@ -963,15 +1161,11 @@
         );
         $tr.append(
             $( '<td class="col-name">' ).html(
-                thumbHtml( group.image_url, 'mmi-dupes-product-thumb', group.name ) + escHtml( group.name )
+                thumbHtml( group.image_url, 'mmi-dupes-product-thumb', group.name ) + escHtml( decodeEntities( group.name ) )
             )
         );
         $tr.append( $( '<td class="col-members">' ).text( group.members.length ) );
-        $tr.append( $( '<td class="col-spread">' ).text(
-            group.price_spread > 0
-                ? `${ formatPrice( group.price_min ) } – ${ formatPrice( group.price_max ) }`
-                : formatPrice( group.price_min )
-        ) );
+        $tr.append( buildPriceCell( group ) );
         $tr.append( $( `<td class="col-source"><span class="mmi-badge ${ sourceClass }" title="${ escHtml( sourceTitle ) }">${ sourceLabel }</span></td>` ) );
         $tr.append( $( `<td class="col-status"><span class="mmi-dupes-status ${ statusClass }">${ statusLabel }</span></td>` ) );
 
@@ -992,6 +1186,11 @@
         $( document ).on( 'click', SELECTORS.TBODY + ' tr.mmi-dupes-row', function () {
             if ( window.getSelection().toString().length > 0 ) { return; }
             toggleReviewRow( $( this ) );
+        } );
+        // The picked canonical listing carries the accent outline.
+        $( document ).on( 'change', SELECTORS.TBODY + ' .mmi-dupes-canon-radio', function () {
+            $( this ).closest( '.mmi-dupes-listings' ).children().removeClass( 'is-canonical' );
+            $( this ).closest( '.mmi-dupes-listing' ).addClass( 'is-canonical' );
         } );
         $( document ).on( 'keydown', SELECTORS.TBODY + ' tr.mmi-dupes-row', function ( e ) {
             if ( e.key === 'Enter' || e.key === ' ' ) {
@@ -1176,11 +1375,6 @@
         // acting on without needing 'tr.mmi-dupes-row' as an ancestor.
         $reviewRow.attr( 'data-group-key', groupKey );
         $row.after( $reviewRow );
-        // Two frames later: the shared mmi-table-sort.js marks the new headings
-        // .sortable (adding arrow padding) in the next frame; pinning widths
-        // before that clipped them ("SUP…").
-        const $memberTable = $reviewRow.find( '.mmi-dupes-member-table' );
-        window.requestAnimationFrame( () => window.requestAnimationFrame( () => applyStoredMemberWidths( $memberTable ) ) );
     }
 
     function buildReviewRow( group ) {
@@ -1188,16 +1382,6 @@
         const $tr  = $( '<tr class="mmi-dupes-review-row">' );
         const $td  = $( '<td>' ).attr( 'colspan', colspan );
         const $box = $( '<div class="mmi-dupes-review-box">' );
-
-        $box.append( '<p class="mmi-dupes-review-hint">Pick which listing is canonical (shown to customers; the lowest cost is preselected) and which others are the same item under a different vendor. For each product data field below, pick which candidate’s value should win on the canonical listing — independent of which one is canonical. Unresolved items aren’t imported as WooCommerce products yet and can’t be linked or contribute data until they are.</p>' );
-        if ( group.source === 'mpn' ) {
-            // Plain text only: the part number comes from product meta.
-            $box.append( $( '<p class="mmi-dupes-review-hint">' ).text(
-                `Every listing below carries the same ${ group.brand } part number, ${ group.match }.`
-                + ( group.multiple_canonicals ? ' More than one is marked canonical: approving keeps the one you pick and folds the other’s links into it.' : '' )
-                + ( ( group.covers || [] ).length ? ` This row replaces ${ group.covers.join( ' and ' ) }; linking here completes it.` : '' )
-            ) );
-        }
 
         // The lowest non-zero cost listing is preselected as canonical (user
         // rule, 2026-09-30), even over one already marked canonical; with no
@@ -1209,58 +1393,46 @@
                 || {} ).wc_product_id
             || 0;
 
-        const assetFields   = visibleAssetFields( group.members );
-        const winnerDefaults = computeFieldWinnerDefaults( group.members, preselectedCanonicalId );
-        const winnerGroupPrefix = 'mmi-dupes-winner-' + group.group_key + '-';
+        const ctx = startReviewBox( $box, group, preselectedCanonicalId, [
+            'Pick the canonical listing (the one customers see; the lowest cost is preselected) and tick every listing that is the same item.'
+                + ( group.members.some( m => ! m.wc_product_id ) ? ' Listings not imported yet can’t be linked until they are.' : '' ),
+            group.multiple_canonicals ? 'More than one is marked canonical: approving keeps the one you pick and folds the other’s links into it.' : '',
+            ( group.covers || [] ).length ? `This row replaces ${ group.covers.join( ' and ' ) }; linking here completes it.` : '',
+        ] );
 
-        const $table = $( '<table class="mmi-dupes-member-table">' );
-        const $thead = $( '<thead><tr>' +
-            memberTh( 'supplier', 'Supplier' ) +
-            memberTh( 'sku', 'SKU' ) +
-            memberTh( 'vendor', 'Vendor' ) +
-            memberTh( 'cost', 'Cost' ) +
-            memberTh( 'product', 'Product' ) +
-            memberTh( 'status', 'Status' ) +
-            assetFields.map( f => memberTh( 'winner-' + f.key, f.label, 'col-mt-winner' ) ).join( '' ) +
-            memberTh( 'canon', 'Canonical' ) +
-            memberTh( 'include', 'Include' ) +
-            '</tr></thead>' );
-        const $tbody = $( '<tbody>' );
-
-        group.members.forEach( ( member, idx ) => {
+        const $list = $( '<ul class="mmi-dupes-listings">' );
+        group.members.forEach( ( member ) => {
             const resolved = !! member.wc_product_id;
-            const $row = $( '<tr class="mmi-dupes-member-row">' ).toggleClass( 'is-unresolved', ! resolved );
-
-            $row.append( $( '<td>' ).html( `<strong>${ escHtml( member.supplier ) }</strong>` ) );
-            $row.append( $( '<td>' ).text( member.sku || '—' ) );
-            $row.append( $( '<td>' ).text( member.vendor || '—' ) );
-            $row.append( buildCostCell( member, lowestId ) );
-            $row.append( buildProductCell( member ) );
-            $row.append( $( '<td>' ).text( resolved ? ( member.stock_status || '—' ) : '—' ) );
-
-            assetFields.forEach( function ( f ) {
-                $row.append( buildWinnerCell( f.key, winnerGroupPrefix + f.key, member, winnerDefaults[ f.key ] ) );
-            } );
-
-            const radioId = `mmi-dupes-canon-${ group.group_key }-${ idx }`.replace( /[^a-zA-Z0-9_-]/g, '_' );
-            $row.append( $( '<td>' ).append(
-                $( '<input type="radio" class="mmi-dupes-canon-radio">' )
-                    .attr( { name: 'mmi-dupes-canon-' + group.group_key, id: radioId, disabled: ! resolved } )
-                    .attr( 'data-product-id', member.wc_product_id || 0 )
-                    .prop( 'checked', member.wc_product_id === preselectedCanonicalId )
-            ) );
-            $row.append( $( '<td>' ).append(
-                $( '<input type="checkbox" class="mmi-dupes-include-check">' )
-                    .attr( 'disabled', ! resolved )
-                    .attr( 'data-product-id', member.wc_product_id || 0 )
-                    .prop( 'checked', resolved )
-            ) );
-
-            $tbody.append( $row );
+            const $controls = [
+                $( '<label class="mmi-dupes-choice">' ).append(
+                    $( '<input type="radio" class="mmi-dupes-canon-radio">' )
+                        .attr( { name: 'mmi-dupes-canon-' + group.group_key, disabled: ! resolved } )
+                        .attr( 'data-product-id', member.wc_product_id || 0 )
+                        .prop( 'checked', resolved && member.wc_product_id === preselectedCanonicalId ),
+                    $( '<span>' ).text( 'Canonical' )
+                ),
+                $( '<label class="mmi-dupes-choice">' ).append(
+                    $( '<input type="checkbox" class="mmi-dupes-include-check">' )
+                        .attr( 'disabled', ! resolved )
+                        .attr( 'data-product-id', member.wc_product_id || 0 )
+                        .prop( 'checked', resolved ),
+                    $( '<span>' ).text( 'Include' )
+                ),
+            ];
+            $list.append( buildListingRow( member, ctx, $controls ) );
         } );
+        $box.append( $list );
 
-        $table.append( $thead ).append( $tbody );
-        $box.append( $table );
+        const assetFields = visibleAssetFields( group.members );
+        if ( assetFields.length ) {
+            $box.append( buildFieldPickers(
+                assetFields,
+                group.members,
+                computeFieldWinnerDefaults( group.members, preselectedCanonicalId ),
+                'mmi-dupes-winner-' + group.group_key + '-',
+                'For each field, pick whose value the canonical listing keeps, whichever listing is canonical.'
+            ) );
+        }
 
         $box.append(
             $( '<div class="mmi-dupes-review-actions">' ).append(
@@ -1292,41 +1464,13 @@
         const $td  = $( '<td>' ).attr( 'colspan', colspan );
         const $box = $( '<div class="mmi-dupes-review-box">' );
 
-        $box.append( '<p class="mmi-dupes-review-hint">This group is already linked. Removing a member resets it to a plain, unlinked product (it can naturally re-enter this queue later); reassigning canonical moves which listing stays visible to customers. Picking a winner for a product data field below and clicking "Apply Selected Winners" copies that candidate’s value onto the current canonical product — independent of which one is canonical.</p>' );
+        const ctx = startReviewBox( $box, group, group.canonical_product_id, [
+            'Removing a listing resets it to a plain, unlinked product (it can re-enter this queue later); Make Canonical moves which listing customers see.',
+        ] );
 
-        const assetFields    = visibleAssetFields( group.members );
-        const winnerDefaults = computeFieldWinnerDefaults( group.members, group.canonical_product_id );
-        const winnerGroupPrefix = 'mmi-dupes-legacy-winner-' + group.canonical_product_id + '-';
-
-        const $table = $( '<table class="mmi-dupes-member-table">' );
-        const lowestId = lowestCostId( group.members );
-        const $thead = $( '<thead><tr>' +
-            memberTh( 'supplier', 'Supplier' ) +
-            memberTh( 'sku', 'SKU' ) +
-            memberTh( 'vendor', 'Vendor' ) +
-            memberTh( 'cost', 'Cost' ) +
-            memberTh( 'product', 'Product' ) +
-            memberTh( 'status', 'Status' ) +
-            assetFields.map( f => memberTh( 'winner-' + f.key, f.label, 'col-mt-winner' ) ).join( '' ) +
-            memberTh( 'actions', 'Actions' ) +
-            '</tr></thead>' );
-        const $tbody = $( '<tbody>' );
-
+        const $list = $( '<ul class="mmi-dupes-listings">' );
         group.members.forEach( function ( member ) {
-            const $row = $( '<tr class="mmi-dupes-member-row">' );
-
-            $row.append( $( '<td>' ).html( `<strong>${ escHtml( member.supplier ) }</strong>` ) );
-            $row.append( $( '<td>' ).text( member.sku || '—' ) );
-            $row.append( $( '<td>' ).text( member.vendor || '—' ) );
-            $row.append( buildCostCell( member, lowestId ) );
-            $row.append( buildProductCell( member ) );
-            $row.append( $( '<td>' ).text( `${ member.stock_status || '—' } / ${ member.visibility || '—' }` ) );
-
-            assetFields.forEach( function ( f ) {
-                $row.append( buildWinnerCell( f.key, winnerGroupPrefix + f.key, member, winnerDefaults[ f.key ] ) );
-            } );
-
-            // One look for the column: the "✓ Canonical" badge and both buttons are
+            // One look for the controls: the "✓ Canonical" badge and both buttons are
             // .mmi-dupes-status.status-linked (buttons add --btn for cursor/hover).
             const $actions = $( '<div class="mmi-dupes-member-actions">' );
             if ( member.is_canonical ) {
@@ -1341,13 +1485,20 @@
                         .attr( { 'data-canonical-id': group.canonical_product_id, 'data-member-id': member.wc_product_id } )
                 );
             }
-            $row.append( $( '<td class="mmi-dupes-actions-cell">' ).append( $actions ) );
-
-            $tbody.append( $row );
+            $list.append( buildListingRow( member, ctx, $actions ) );
         } );
+        $box.append( $list );
 
-        $table.append( $thead ).append( $tbody );
-        $box.append( $table );
+        const assetFields = visibleAssetFields( group.members );
+        if ( assetFields.length ) {
+            $box.append( buildFieldPickers(
+                assetFields,
+                group.members,
+                computeFieldWinnerDefaults( group.members, group.canonical_product_id ),
+                'mmi-dupes-legacy-winner-' + group.canonical_product_id + '-',
+                'Pick a value for any field, then Apply Selected Winners copies it onto the current canonical listing.'
+            ) );
+        }
 
         const $reviewActions = $( '<div class="mmi-dupes-review-actions">' );
         if ( assetFields.length ) {
@@ -1465,43 +1616,6 @@
         } );
     }
 
-    /**
-     * Member tables lay out automatically until a column is resized; then every
-     * heading is pinned to its current pixel width and the table switches to
-     * fixed layout, so dragging one column moves only that column (the table
-     * grows or shrinks; its wrapper scrolls). Widths persist per column key.
-     */
-    function freezeMemberTable( $table ) {
-        if ( $table.hasClass( 'is-resized' ) ) { return; }
-        const $ths = $table.find( '> thead > tr > th' );
-        const widths = $ths.map( function () { return $( this ).outerWidth(); } ).get();
-        $ths.each( function ( i ) { $( this ).css( 'width', widths[ i ] + 'px' ); } );
-        $table.addClass( 'is-resized' );
-        syncMemberTableWidth( $table );
-    }
-
-    function syncMemberTableWidth( $table ) {
-        let total = 0;
-        $table.find( '> thead > tr > th' ).each( function () { total += parseFloat( this.style.width ) || $( this ).outerWidth(); } );
-        $table.css( 'width', Math.round( total ) + 'px' );
-    }
-
-    function applyStoredMemberWidths( $table ) {
-        if ( ! $table.length ) { return; }
-        let stored;
-        try {
-            stored = JSON.parse( localStorage.getItem( COLUMN_WIDTH_STORAGE_KEY ) );
-        } catch ( e ) { /* ignore — localStorage unavailable or corrupt value */ }
-        if ( ! stored || typeof stored !== 'object' ) { return; }
-        const $ths = $table.find( '> thead > tr > th' ).filter( function () {
-            return parseInt( stored[ $( this ).data( 'resize-col' ) ], 10 ) >= 40;
-        } );
-        if ( ! $ths.length ) { return; }
-        freezeMemberTable( $table );
-        $ths.each( function () { $( this ).css( 'width', parseInt( stored[ $( this ).data( 'resize-col' ) ], 10 ) + 'px' ); } );
-        syncMemberTableWidth( $table );
-    }
-
     function initColumnResize() {
         let $resizingTh  = null;
         let resizeStartX = 0;
@@ -1516,8 +1630,6 @@
             e.preventDefault();
             e.stopPropagation();
             $resizingTh  = $( this ).closest( 'th' );
-            const $memberTable = $resizingTh.closest( '.mmi-dupes-member-table' );
-            if ( $memberTable.length ) { freezeMemberTable( $memberTable ); }
             resizeStartX = e.pageX;
             resizeStartW = $resizingTh.outerWidth();
             $( this ).addClass( 'is-resizing' );
@@ -1535,8 +1647,6 @@
             if ( ! $resizingTh ) { return; }
             const newWidth = Math.max( 40, resizeStartW + ( e.pageX - resizeStartX ) );
             $resizingTh.css( 'width', newWidth + 'px' );
-            const $memberTable = $resizingTh.closest( '.mmi-dupes-member-table' );
-            if ( $memberTable.length ) { syncMemberTableWidth( $memberTable ); }
         } );
 
         $( document ).on( 'mouseup', function () {
@@ -1586,6 +1696,17 @@
 
     function escHtml( str ) {
         return window.MMIEscapeHtml( str );
+    }
+
+    /**
+     * Same-MPN and linked group names come from get_the_title(), which
+     * encodes "&" as "&#038;"; decoded once here so escHtml() doesn't print
+     * the entity. A <textarea> decodes without running anything.
+     */
+    function decodeEntities( str ) {
+        const el = document.createElement( 'textarea' );
+        el.innerHTML = str || '';
+        return el.value;
     }
 
 } )( jQuery );
