@@ -73,24 +73,55 @@
         }
     }
 
-    /** Short cell content for one member's value of one asset field. */
-    function memberAssetPreviewHtml( member, fieldKey ) {
+    /**
+     * What makes two listings' values for a field the same thing (image and
+     * gallery attachment IDs, text fingerprints from the server), so a card
+     * can say "Same as #…". '' when unknown.
+     */
+    function assetValueKey( member, fieldKey ) {
         const a = member.assets || {};
         switch ( fieldKey ) {
+            case 'image':   return a.image_id ? String( a.image_id ) : '';
+            case 'gallery': return a.gallery_key || '';
+            case 'content': return a.content_hash || '';
+            case 'excerpt': return a.excerpt_hash || '';
+            case 'title':   return ( a.title || '' ).trim();
+            default:        return '';
+        }
+    }
+
+    /** The small fact beside a card's ID: length or count, whichever helps judge the value. */
+    function assetMeta( member, fieldKey ) {
+        const a = member.assets || {};
+        const plural = ( n, word ) => `${ n } ${ word }${ n === 1 ? '' : 's' }`;
+        switch ( fieldKey ) {
+            case 'gallery': return plural( a.gallery_count || 0, 'picture' );
+            case 'content': return a.content_words ? plural( a.content_words, 'word' ) : '';
+            case 'excerpt': return a.excerpt_words ? plural( a.excerpt_words, 'word' ) : '';
+            case 'title':   return a.title ? plural( a.title.trim().length, 'character' ) : '';
+            default:        return '';
+        }
+    }
+
+    /** A card's body: the value itself, readable in full (text wraps, pictures shown). */
+    function assetPreview( member, fieldKey ) {
+        const a   = member.assets || {};
+        const img = ( url, cls ) => $( '<img alt="" loading="lazy">' ).addClass( cls ).attr( 'src', url );
+        switch ( fieldKey ) {
             case 'image':
-                return a.image_thumb_url
-                    ? `<img class="mmi-dupes-asset-thumb" src="${ escHtml( a.image_thumb_url ) }" alt="" loading="lazy">`
-                    : '—';
-            case 'gallery':
-                return a.gallery_count ? `${ a.gallery_count } image(s)` : '—';
-            case 'content':
-                return a.content_preview ? escHtml( a.content_preview ) : '—';
-            case 'title':
-                return a.title ? escHtml( a.title ) : '—';
-            case 'excerpt':
-                return a.excerpt_preview ? escHtml( a.excerpt_preview ) : '—';
-            default:
-                return '—';
+                return a.image_thumb_url ? img( a.image_thumb_url, 'mmi-dupes-pick-image' ) : null;
+            case 'gallery': {
+                const thumbs = a.gallery_thumbs || [];
+                if ( ! thumbs.length ) { return null; }
+                const $strip = $( '<div class="mmi-dupes-pick-gallery">' ).append( thumbs.map( ( u ) => img( u, 'mmi-dupes-pick-gallery-thumb' ) ) );
+                const more = ( a.gallery_count || 0 ) - thumbs.length;
+                if ( more > 0 ) { $strip.append( $( '<span class="mmi-dupes-pick-more">' ).text( `+${ more }` ) ); }
+                return $strip;
+            }
+            case 'content': return $( '<p class="mmi-dupes-pick-text">' ).text( a.content_preview || '' );
+            case 'excerpt': return $( '<p class="mmi-dupes-pick-text">' ).text( a.excerpt_preview || '' );
+            case 'title':   return $( '<p class="mmi-dupes-pick-text mmi-dupes-pick-text--title">' ).text( a.title || '' );
+            default:        return null;
         }
     }
 
@@ -124,10 +155,10 @@
     }
 
     /**
-     * "Product data" pickers: one segmented row per field, one option per
-     * listing that has a value for it (a listing with nothing to offer simply
-     * isn't an option). Each option is a real .mmi-dupes-winner-radio, so
-     * collectFieldWinners() reads them as before.
+     * "Product data" pickers: per field, one card per listing that has a value
+     * (a listing with nothing to offer isn't an option), showing the value
+     * itself so the cards can be compared side by side. Each card holds a real
+     * .mmi-dupes-winner-radio, so collectFieldWinners() reads them as before.
      */
     function buildFieldPickers( assetFields, members, defaults, radioGroupPrefix, hint ) {
         const $section = $( '<section class="mmi-dupes-fields">' ).append(
@@ -137,23 +168,36 @@
             )
         );
         assetFields.forEach( function ( f ) {
-            const $seg = $( '<div class="mmi-dupes-seg" role="radiogroup">' ).attr( 'aria-label', f.label );
-            members.filter( m => m.wc_product_id && memberHasAsset( m, f.key ) ).forEach( function ( m ) {
-                const $preview = $( '<span class="mmi-dupes-seg-preview">' ).html( memberAssetPreviewHtml( m, f.key ) );
-                const $opt = $( '<label class="mmi-dupes-seg-opt">' ).append(
+            const options = members.filter( m => m.wc_product_id && memberHasAsset( m, f.key ) );
+            const keys    = options.map( m => assetValueKey( m, f.key ) );
+            const allSame = options.length > 1 && keys[ 0 ] !== '' && keys.every( k => k === keys[ 0 ] );
+
+            const $grid = $( '<div class="mmi-dupes-pick-grid" role="radiogroup">' ).attr( 'aria-label', f.label );
+            options.forEach( function ( m, i ) {
+                const firstSame = keys[ i ] !== '' ? options[ keys.indexOf( keys[ i ] ) ] : null;
+                const $head = $( '<span class="mmi-dupes-pick-head">' ).append(
                     $( '<input type="radio" class="mmi-dupes-winner-radio">' )
                         .attr( { name: radioGroupPrefix + f.key, 'data-field': f.key, 'data-product-id': m.wc_product_id } )
                         .prop( 'checked', m.wc_product_id === defaults[ f.key ] ),
-                    $( '<span class="mmi-dupes-seg-id">' ).text( '#' + m.wc_product_id ),
-                    $preview
+                    $( '<span class="mmi-dupes-pick-id">' ).text( '#' + m.wc_product_id ),
+                    $( '<span class="mmi-dupes-pick-meta">' ).text( assetMeta( m, f.key ) )
                 );
-                if ( f.key !== 'image' ) { $opt.attr( 'title', $preview.text() ); }
-                $seg.append( $opt );
+                if ( ! allSame && firstSame && firstSame !== m ) {
+                    $head.append( $( '<span class="mmi-dupes-pick-same">' ).text( `Same as #${ firstSame.wc_product_id }` ) );
+                }
+                const $preview = assetPreview( m, f.key );
+                $grid.append( $( '<label class="mmi-dupes-pick">' )
+                    .toggleClass( 'is-picked', m.wc_product_id === defaults[ f.key ] )
+                    .append( $head, $preview || [] ) );
             } );
+
             $section.append(
                 $( '<div class="mmi-dupes-field">' ).append(
-                    $( '<span class="mmi-dupes-field-label">' ).text( f.label ),
-                    $seg
+                    $( '<div class="mmi-dupes-field-label">' ).append(
+                        $( '<span>' ).text( f.label ),
+                        allSame ? $( '<span class="mmi-dupes-field-note">' ).text( 'Same on every listing' ) : []
+                    ),
+                    $grid
                 )
             );
         } );
@@ -1192,6 +1236,19 @@
             $( this ).closest( '.mmi-dupes-listings' ).children().removeClass( 'is-canonical' );
             $( this ).closest( '.mmi-dupes-listing' ).addClass( 'is-canonical' );
         } );
+        // Chip and card selected looks are classes, not :has(:checked), which
+        // WebKit doesn't restyle when a radio changes. A radio change re-marks
+        // every input of its group.
+        $( document ).on( 'change', SELECTORS.TBODY + ' .mmi-dupes-choice input, ' + SELECTORS.TBODY + ' .mmi-dupes-pick input', function () {
+            const changed = this;
+            const $group  = changed.type === 'radio'
+                ? $( changed ).closest( '.mmi-dupes-review-box' ).find( 'input[type="radio"]' ).filter( ( _, el ) => el.name === changed.name )
+                : $( changed );
+            $group.each( function () {
+                $( this ).closest( '.mmi-dupes-pick' ).toggleClass( 'is-picked', this.checked );
+                $( this ).closest( '.mmi-dupes-choice' ).toggleClass( 'is-on', this.checked );
+            } );
+        } );
         $( document ).on( 'keydown', SELECTORS.TBODY + ' tr.mmi-dupes-row', function ( e ) {
             if ( e.key === 'Enter' || e.key === ' ' ) {
                 e.preventDefault();
@@ -1404,14 +1461,14 @@
         group.members.forEach( ( member ) => {
             const resolved = !! member.wc_product_id;
             const $controls = [
-                $( '<label class="mmi-dupes-choice">' ).append(
+                $( '<label class="mmi-dupes-choice">' ).toggleClass( 'is-on', resolved && member.wc_product_id === preselectedCanonicalId ).append(
                     $( '<input type="radio" class="mmi-dupes-canon-radio">' )
                         .attr( { name: 'mmi-dupes-canon-' + group.group_key, disabled: ! resolved } )
                         .attr( 'data-product-id', member.wc_product_id || 0 )
                         .prop( 'checked', resolved && member.wc_product_id === preselectedCanonicalId ),
                     $( '<span>' ).text( 'Canonical' )
                 ),
-                $( '<label class="mmi-dupes-choice">' ).append(
+                $( '<label class="mmi-dupes-choice">' ).toggleClass( 'is-on', resolved ).append(
                     $( '<input type="checkbox" class="mmi-dupes-include-check">' )
                         .attr( 'disabled', ! resolved )
                         .attr( 'data-product-id', member.wc_product_id || 0 )

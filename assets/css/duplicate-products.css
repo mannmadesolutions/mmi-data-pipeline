@@ -647,7 +647,8 @@ a.mmi-dupes-listing-title:focus-visible {
     accent-color: var(--mmi-dupes-accent);
 }
 
-.mmi-dupes-choice:has(input:checked) {
+/* .is-on is set by the script (see .mmi-dupes-pick.is-picked). */
+.mmi-dupes-choice.is-on {
     border-color: var(--mmi-dupes-accent);
     background: #eaf4e6;
     color: #2b5c1d;
@@ -694,8 +695,8 @@ a.mmi-dupes-listing-title:focus-visible {
 .mmi-dupes-field {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.3rem;
-    align-items: center;
+    gap: 0.4rem;
+    align-items: start;
 }
 
 @container (min-width: 40rem) {
@@ -705,78 +706,131 @@ a.mmi-dupes-listing-title:focus-visible {
     }
 }
 
+.mmi-dupes-field + .mmi-dupes-field {
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--mmi-dupes-border);
+}
+
 .mmi-dupes-field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding-top: 0.35rem;
     font-weight: 500;
 }
 
-.mmi-dupes-seg {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    background: var(--mmi-dupes-subtle);
-    border-radius: 10px;
+.mmi-dupes-field-note {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--mmi-dupes-muted);
 }
 
-.mmi-dupes-seg-opt {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    max-width: 260px;
+/* One card per listing's value, side by side; the value wraps in full. */
+.mmi-dupes-pick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.5rem;
+}
+
+.mmi-dupes-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
     min-width: 0;
-    padding: 0.35rem 0.65rem;
-    border-radius: 8px;
-    font-size: 0.78rem;
-    color: var(--mmi-dupes-muted);
+    padding: 0.6rem 0.75rem 0.7rem;
+    background: var(--mmi-dupes-subtle);
+    border: 1px solid var(--mmi-dupes-border);
+    border-radius: 10px;
     cursor: pointer;
 }
 
-/* The radio stays focusable and keyboard-operable; the option shows its state. */
-.mmi-dupes-seg-opt input {
-    position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
-    margin: 0;
-    pointer-events: none;
+.mmi-dupes-pick:hover {
+    border-color: #c4cabd;
 }
 
-.mmi-dupes-seg-opt:hover {
-    background: rgba(255, 255, 255, 0.6);
-}
-
-.mmi-dupes-seg-opt:has(input:checked) {
+/* .is-picked is set by the script: WebKit doesn't restyle :has(:checked) on change. */
+.mmi-dupes-pick.is-picked {
     background: var(--mmi-dupes-surface);
-    color: #1d2327;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14), inset 0 0 0 1px var(--mmi-dupes-accent);
+    border-color: var(--mmi-dupes-accent);
+    box-shadow: inset 0 0 0 1px var(--mmi-dupes-accent);
 }
 
-.mmi-dupes-seg-opt:has(input:focus-visible) {
-    outline: 2px solid var(--mmi-dupes-accent);
-    outline-offset: 1px;
+.mmi-dupes-pick-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+    font-size: 0.78rem;
 }
 
-.mmi-dupes-seg-id {
-    flex: none;
+.mmi-dupes-pick-head input {
+    margin: 0;
+    accent-color: var(--mmi-dupes-accent);
+}
+
+.mmi-dupes-pick-id {
     font-weight: 600;
 }
 
-.mmi-dupes-seg-preview {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.mmi-dupes-pick-meta {
+    color: var(--mmi-dupes-muted);
 }
 
-.mmi-dupes-asset-thumb {
+.mmi-dupes-pick-same {
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #e8eef7;
+    color: #1f4e8c;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.mmi-dupes-pick-text {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: #3c434a;
+    overflow-wrap: anywhere;
+}
+
+.mmi-dupes-pick-text--title {
+    font-weight: 500;
+    color: #1d2327;
+}
+
+.mmi-dupes-pick-image {
     display: block;
-    width: 26px;
-    height: 26px;
+    width: 96px;
+    height: 96px;
     object-fit: contain;
-    border-radius: 4px;
-    border: 1px solid var(--mmi-dupes-border, #e2e4e7);
-    background: #fff;
+    border: 1px solid var(--mmi-dupes-border);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.mmi-dupes-pick-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.mmi-dupes-pick-gallery-thumb {
+    display: block;
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    border: 1px solid var(--mmi-dupes-border);
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.mmi-dupes-pick-more {
+    padding: 0 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mmi-dupes-muted);
 }
 
 .mmi-dupes-review-actions {

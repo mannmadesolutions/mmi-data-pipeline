@@ -94,9 +94,19 @@ function mmi_canonical_candidates_asset_snapshot( int $product_id ): array {
 
     $thumb_id    = (int) get_post_thumbnail_id( $product_id );
     $gallery     = get_post_meta( $product_id, '_product_image_gallery', true );
-    $gallery_ids = array_filter( array_map( 'intval', explode( ',', (string) $gallery ) ) );
-    $content     = (string) get_post_field( 'post_content', $product_id );
-    $excerpt     = (string) get_post_field( 'post_excerpt', $product_id );
+    $gallery_ids = array_values( array_filter( array_map( 'intval', explode( ',', (string) $gallery ) ) ) );
+    $content     = mmi_canonical_candidates_plain_text( (string) get_post_field( 'post_content', $product_id ) );
+    $excerpt     = mmi_canonical_candidates_plain_text( (string) get_post_field( 'post_excerpt', $product_id ) );
+
+    // The first few gallery pictures, so galleries can be compared by eye.
+    $shown = array_slice( $gallery_ids, 0, 6 );
+    if ( $shown ) {
+        update_meta_cache( 'post', $shown );
+    }
+    $gallery_thumbs = array_values( array_filter( array_map(
+        static fn( $id ) => (string) wp_get_attachment_image_url( $id, 'thumbnail' ),
+        $shown
+    ) ) );
 
     return [
         // Raw stored value (not get_the_title()) so the preview shown here
@@ -104,22 +114,48 @@ function mmi_canonical_candidates_asset_snapshot( int $product_id ): array {
         // would actually copy if this member is picked as the title winner.
         'title'           => (string) get_post_field( 'post_title', $product_id ),
         'has_image'       => $thumb_id > 0,
+        'image_id'        => $thumb_id,
         'image_thumb_url' => $thumb_id ? (string) wp_get_attachment_image_url( $thumb_id, 'thumbnail' ) : '',
         'gallery_count'   => count( $gallery_ids ),
-        'has_content'     => trim( wp_strip_all_tags( $content ) ) !== '',
-        'content_preview' => mmi_canonical_candidates_text_preview( $content ),
-        'has_excerpt'     => trim( $excerpt ) !== '',
-        'excerpt_preview' => mmi_canonical_candidates_text_preview( $excerpt ),
+        'gallery_key'     => implode( ',', $gallery_ids ),
+        'gallery_thumbs'  => $gallery_thumbs,
+        // Previews long enough to judge a description by, plus a word count
+        // and a fingerprint so the panel can say which listings hold the same text.
+        'has_content'     => $content !== '',
+        'content_preview' => mmi_canonical_candidates_text_preview( $content, 280 ),
+        'content_words'   => mmi_canonical_candidates_word_count( $content ),
+        'content_hash'    => $content !== '' ? md5( $content ) : '',
+        'has_excerpt'     => $excerpt !== '',
+        'excerpt_preview' => mmi_canonical_candidates_text_preview( $excerpt, 200 ),
+        'excerpt_words'   => mmi_canonical_candidates_word_count( $excerpt ),
+        'excerpt_hash'    => $excerpt !== '' ? md5( $excerpt ) : '',
     ];
 }
 
-/** Short plain-text preview for a review-panel cell — not a full render. */
-function mmi_canonical_candidates_text_preview( string $html, int $length = 60 ): string {
-    $text = trim( wp_strip_all_tags( $html ) );
-    if ( $text === '' ) {
-        return '';
+/**
+ * Post HTML as one line of plain text (tags stripped, whitespace collapsed).
+ * A heading or block ending reads as " · " so it doesn't run into the next sentence.
+ */
+function mmi_canonical_candidates_plain_text( string $html ): string {
+    // Blank lines too: plain-text descriptions get their paragraphs from wpautop().
+    $html = (string) preg_replace( '#</(h[1-6]|p|div|li|tr)>|<br\s*/?>|\R[ \t]*\R#i', ' · ', $html );
+    $text = trim( (string) preg_replace( '/\s+/u', ' ', html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES, 'UTF-8' ) ) );
+    // Collapse separators left by empty blocks and trim them from the ends.
+    return trim( (string) preg_replace( '/(\s·\s?)+/u', ' · ', $text ), " ·" );
+}
+
+function mmi_canonical_candidates_word_count( string $text ): int {
+    return $text === '' ? 0 : count( preg_split( '/\s+/u', $text ) );
+}
+
+/** Plain-text preview cut at a word boundary — not a full render. */
+function mmi_canonical_candidates_text_preview( string $text, int $length ): string {
+    if ( mb_strlen( $text ) <= $length ) {
+        return $text;
     }
-    return mb_strlen( $text ) > $length ? mb_substr( $text, 0, $length ) . '…' : $text;
+    $cut   = mb_substr( $text, 0, $length );
+    $space = mb_strrpos( $cut, ' ' );
+    return rtrim( $space > $length * 0.6 ? mb_substr( $cut, 0, $space ) : $cut, " ,.;:-" ) . '…';
 }
 
 /**
