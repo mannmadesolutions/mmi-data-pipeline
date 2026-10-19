@@ -302,20 +302,27 @@ class Taxonomy_Mapping_Handler {
             return $out;
         }
 
+        // postmeta compares case-insensitively but mappings are case-sensitive
+        // (source_value is utf8mb4_bin), so the BINARY test keeps a mapping on
+        // its own value: XChange's EastWest "Effects" and Imaginado "effects"
+        // are different rows, and saving one moved the other's product too
+        // (2026-10-19). The plain equality stays for the meta_value index.
         $src_key = '_mmi_src_' . str_replace( '+', '_', $source_field );
         if ( $supplier_id !== '' ) {
             $ids = $wpdb->get_col( $wpdb->prepare(
                 "SELECT DISTINCT m.post_id FROM {$wpdb->postmeta} m
                  JOIN {$wpdb->postmeta} s ON s.post_id = m.post_id AND s.meta_key = %s
-                 WHERE m.meta_key = %s AND m.meta_value = %s",
+                 WHERE m.meta_key = %s AND m.meta_value = %s AND BINARY m.meta_value = %s",
                 '_mmi_supplier_sku_' . $supplier_id,
                 $src_key,
+                $source_value,
                 $source_value
             ) );
         } else {
             $ids = $wpdb->get_col( $wpdb->prepare(
-                "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %s",
+                "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %s AND BINARY meta_value = %s",
                 $src_key,
+                $source_value,
                 $source_value
             ) );
         }
