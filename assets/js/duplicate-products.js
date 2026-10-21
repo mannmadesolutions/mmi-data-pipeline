@@ -18,6 +18,8 @@
         TOTAL:          '#mmi-dupes-total',
         NEW_COUNT:      '#mmi-dupes-new-count',
         LINKED_COUNT:   '#mmi-dupes-linked-count',
+        NO_SALE_STAT:   '#mmi-dupes-stat-nosale',
+        NO_SALE_COUNT:  '#mmi-dupes-nosale-count',
         STAT_FILTER_BTN:'.mmi-dupes-stat',
         BRAND_FILTER_ROW:      '#mmi-dupes-brand-filter-row',
         BRAND_FILTER_INLINE:   '#mmi-dupes-brand-filters',
@@ -228,6 +230,7 @@
 
     const STOCK_LABELS      = { instock: 'In stock', outofstock: 'Out of stock', onbackorder: 'On backorder' };
     const VISIBILITY_LABELS = { catalog: 'shop only', search: 'search only', hidden: 'hidden' };
+    const SUPPLIER_LABELS   = { xchange: 'XChange', skuport: 'SkuPort', plugivery: 'Plugivery' };
 
     /**
      * The price listings are checked against: the most common list price,
@@ -610,6 +613,12 @@
         }
         const $section = $( '#mmi-duplicate-products-section' );
         $section.removeClass( 'collapsed' );
+        const status = params.get( 'dupes_status' );
+        if ( status && $( `${ SELECTORS.STAT_FILTER_BTN }[data-status-filter="${ status }"]` ).length ) {
+            statusFilter = status;
+            $( SELECTORS.STAT_FILTER_BTN ).removeClass( 'is-active' )
+                .filter( `[data-status-filter="${ status }"]` ).addClass( 'is-active' );
+        }
         if ( params.get( 'detection' ) === 'collisions' ) {
             setDetectionMode( 'collisions' );
         } else {
@@ -667,7 +676,7 @@
         const idsOf  = ( g ) => ( g.members || [] ).map( ( m ) => m.wc_product_id ).filter( Boolean );
         const mpn    = merged.filter( ( g ) => g.source === 'mpn' );
         const legacy = merged.filter( ( g ) => g.source === 'legacy' );
-        mpn.forEach( ( g ) => { g.covers = []; } );
+        mpn.forEach( ( g ) => { g.covers = []; g.nothing_on_sale = false; g.sale_candidate_id = 0; } );
         const contains = ( outer, ids ) => {
             const set = new Set( idsOf( outer ) );
             return ids.every( ( id ) => set.has( id ) );
@@ -685,6 +694,11 @@
                 return ! ( g.source === 'candidate' && legacy.some( ( l ) => contains( l, ids ) ) );
             }
             owner.covers.push( g.source === 'legacy' ? `the existing linked group of #${ g.canonical_product_id }` : 'the brand + name match' );
+            if ( g.nothing_on_sale ) {
+                owner.nothing_on_sale      = true;
+                owner.no_sale_canonical_id = g.canonical_product_id;
+                owner.sale_candidate_id    = owner.sale_candidate_id || g.sale_candidate_id;
+            }
             return false;
         } );
         updateStats();
@@ -935,6 +949,9 @@
         $( SELECTORS.TOTAL ).text( total );
         $( SELECTORS.LINKED_COUNT ).text( linked );
         $( SELECTORS.NEW_COUNT ).text( total - linked );
+        const noSale = allGroups.filter( g => g.nothing_on_sale ).length;
+        $( SELECTORS.NO_SALE_COUNT ).text( noSale );
+        $( SELECTORS.NO_SALE_STAT ).toggleClass( 'mmi-hidden', ! noSale && statusFilter !== 'no_sale' );
         $( SELECTORS.STATS ).removeClass( 'mmi-hidden' );
     }
 
@@ -1030,6 +1047,7 @@
         let groups = allGroups;
         if ( statusFilter === 'new' )    { groups = groups.filter( g => ! g.already_linked ); }
         else if ( statusFilter === 'linked' ) { groups = groups.filter( g => g.already_linked ); }
+        else if ( statusFilter === 'no_sale' ) { groups = groups.filter( g => g.nothing_on_sale ); }
 
         const brandKeys = Object.keys( brandFilter );
         if ( brandKeys.length ) {
@@ -1180,8 +1198,8 @@
      * Actions column.
      */
     function buildGroupRow( group ) {
-        const statusClass = group.already_linked ? 'status-linked' : 'status-new';
-        const statusLabel = group.already_linked ? 'Linked' : 'New';
+        const statusClass = group.nothing_on_sale ? 'status-nosale' : ( group.already_linked ? 'status-linked' : 'status-new' );
+        const statusLabel = group.nothing_on_sale ? 'Nothing on sale' : ( group.already_linked ? 'Linked' : 'New' );
         const isLegacy     = group.source === 'legacy';
         const isMpn        = group.source === 'mpn';
         const sourceClass  = isLegacy ? 'info' : ( isMpn ? 'success' : 'warning' );
@@ -1464,6 +1482,9 @@
             group.multiple_canonicals ? 'More than one is marked canonical: approving keeps the one you pick and folds the other’s links into it.' : '',
             ( group.covers || [] ).length ? `This row replaces ${ group.covers.join( ' and ' ) }; linking here completes it.` : '',
         ] );
+        if ( group.nothing_on_sale ) {
+            $box.children( '.mmi-dupes-verdict' ).after( buildNoSaleAlert( group ) );
+        }
 
         const $list = $( '<ul class="mmi-dupes-listings">' );
         group.members.forEach( ( member ) => {
@@ -1532,6 +1553,9 @@
         const ctx = startReviewBox( $box, group, group.canonical_product_id, [
             'Removing a listing resets it to a plain, unlinked product (it can re-enter this queue later); Make Canonical moves which listing customers see.',
         ] );
+        if ( group.nothing_on_sale ) {
+            $box.children( '.mmi-dupes-verdict' ).after( buildNoSaleAlert( group ) );
+        }
 
         const $list = $( '<ul class="mmi-dupes-listings">' );
         group.members.forEach( function ( member ) {
@@ -1544,6 +1568,7 @@
                 $actions.append(
                     $( '<button type="button" class="mmi-dupes-status status-linked mmi-dupes-status--btn mmi-dupes-make-canonical-btn" title="Make this the canonical (customer-facing) product">' )
                         .text( 'Make Canonical' )
+                        .toggleClass( 'is-suggested', member.wc_product_id === group.sale_candidate_id )
                         .attr( { 'data-canonical-id': group.canonical_product_id, 'data-new-canonical-id': member.wc_product_id } ),
                     $( '<button type="button" class="mmi-dupes-status status-linked mmi-dupes-status--btn mmi-dupes-remove-member-btn" title="Reset this product to a plain, unlinked listing">' )
                         .text( '✕ Remove' )
@@ -1583,6 +1608,27 @@
         $td.append( $box );
         $tr.append( $td );
         return $tr;
+    }
+
+    /**
+     * A linked group nobody can buy from: the canonical is out of stock and its
+     * duplicates are held out of stock. Names the duplicate still in a supplier
+     * feed (sale_candidate_id), whose Make Canonical button is highlighted.
+     */
+    function buildNoSaleAlert( group ) {
+        const candidate = group.members.find( m => m.wc_product_id === group.sale_candidate_id );
+        const $alert    = $( '<div class="mmi-dupes-sale-alert" role="status">' ).append(
+            $( '<span class="dashicons dashicons-warning" aria-hidden="true"></span>' ),
+            $( '<strong>' ).text( 'Nothing in this group is on sale. ' )
+        );
+        const isLegacy = group.source === 'legacy';
+        let text = `Canonical #${ group.no_sale_canonical_id || group.canonical_product_id } is out of stock, and its duplicates are held out of stock.`;
+        text += candidate
+            ? ` #${ candidate.wc_product_id } is still in the ${ SUPPLIER_LABELS[ candidate.supplier ] || candidate.supplier } feed: `
+                + ( isLegacy ? 'Make Canonical on it' : 'picking it as the canonical listing and linking' )
+                + ' puts the product back on sale at the next Catalog Maintenance run.'
+            : ' None of its listings is in a supplier feed now, so there is no listing to switch to.';
+        return $alert.append( document.createTextNode( text ) );
     }
 
     function approveGroup( $reviewRow ) {

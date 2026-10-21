@@ -99,6 +99,10 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                     <button type="button" class="mmi-dupes-stat mmi-dupes-stat-linked" data-status-filter="linked">
                         Already linked: <strong id="mmi-dupes-linked-count">0</strong>
                     </button>
+                    <button type="button" class="mmi-dupes-stat mmi-dupes-stat-nosale mmi-hidden" id="mmi-dupes-stat-nosale" data-status-filter="no_sale"
+                            title="Linked groups whose canonical listing is out of stock while its duplicates are held out of stock">
+                        Nothing on sale: <strong id="mmi-dupes-nosale-count">0</strong>
+                    </button>
                 </div>
             </div>
 

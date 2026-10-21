@@ -57,6 +57,7 @@
 
 .mmi-dupes-stat-new strong  { color: #b32d2e; }
 .mmi-dupes-stat-linked strong { color: var(--mmi-primary, #45852C); }
+.mmi-dupes-stat-nosale strong { color: #c26a12; }
 
 /* Notice area */
 .mmi-dupes-notice {
@@ -247,6 +248,7 @@
 
 .mmi-dupes-status.status-new    { background: #fcf0f1; color: #b32d2e; }
 .mmi-dupes-status.status-linked { background: #eaf4e6; color: var(--mmi-primary, #45852C); }
+.mmi-dupes-status.status-nosale { background: #fcf3e6; color: #a35a0f; }
 
 /* The same badge as a button (member Actions: Make Canonical / Remove), so the
    column reads as one set with the "✓ Canonical" badge. */
@@ -410,6 +412,42 @@ button.mmi-dupes-status--btn:disabled {
 .mmi-dupes-verdict-note {
     font-size: 0.8rem;
     color: var(--mmi-dupes-dark-muted);
+}
+
+/* "Nothing in this group is on sale" — under the verdict card. */
+.mmi-dupes-sale-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #f0c48a;
+    border-left: 4px solid var(--mmi-dupes-off);
+    border-radius: 6px;
+    background: #fcf3e6;
+    color: #5c3305;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.mmi-dupes-sale-alert .dashicons {
+    color: var(--mmi-dupes-off);
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+}
+
+/* The duplicate to switch to when nothing is on sale. */
+button.mmi-dupes-status--btn.is-suggested,
+button.mmi-dupes-status--btn.is-suggested:hover,
+button.mmi-dupes-status--btn.is-suggested:focus-visible {
+    background: var(--mmi-dupes-accent);
+    color: #ffffff;
+}
+
+button.mmi-dupes-status--btn.is-suggested:hover,
+button.mmi-dupes-status--btn.is-suggested:focus-visible {
+    filter: brightness(0.92);
 }
 
 .mmi-dupes-review-hint {

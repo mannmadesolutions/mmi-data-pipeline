@@ -610,6 +610,16 @@ final class Catalog_Phase_Runner {
             MMI_Logger::info( 'Catalog update stock changes this run: ' . count( $changed ) . ' product(s) queued for Reverb resync', [], 'sync', 'Catalog_Phase_Runner' );
         }
 
+        // After feed sync, so a canonical just switched in Duplicates counts as back on sale.
+        if ( function_exists( 'mmi_canonical_candidates_save_nothing_on_sale' ) ) {
+            try {
+                $no_sale = mmi_canonical_candidates_save_nothing_on_sale();
+                MMI_Logger::info( 'Duplicates with nothing on sale: ' . count( $no_sale ), [], 'sync', 'Catalog_Phase_Runner' );
+            } catch ( \Throwable $e ) {
+                MMI_Logger::error( 'Duplicates nothing-on-sale check failed: ' . $e->getMessage(), [], 'sync', 'Catalog_Phase_Runner' );
+            }
+        }
+
         // Phases that caught an exception still let the run finish; keep their names for the health badge.
         $errored = [];
         foreach ( (array) ( $state['results'] ?? [] ) as $r ) {

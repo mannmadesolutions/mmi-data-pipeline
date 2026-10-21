@@ -110,6 +110,12 @@ class Product_Import_Worker {
             // product perpetually "changed". Reads the meta cache
             // wc_get_product() just primed; no extra query.
             $options['locked_fields'] = MMI_Pipeline_Field_Locks::get( (int) $product_id );
+            // A duplicate listing's stock is the Duplicates rule's, never the feed's:
+            // the Pricing profile's constant "instock" would otherwise put it back
+            // on sale on every manual run.
+            if ( self::is_suppressed_duplicate( (int) $product_id ) ) {
+                $options['locked_fields'] = array_merge( $options['locked_fields'], [ '_stock_status', '_stock' ] );
+            }
 
             // Skip the save entirely if no mapped field values have changed.
             if ( ! self::has_product_changes( $product, $data, $mappings, $options ) ) {
@@ -854,6 +860,18 @@ class Product_Import_Worker {
             \MMI_DB::record_field_change_item( $run_id, $supplier, $field_name, $product_id, $sku, $title, $pair['old'], $pair['new'] );
             $count++;
         }
+    }
+
+    /**
+     * Whether a product is a duplicate listing that stays out of stock
+     * (MMI_Pipeline_Catalog_Updater::suppressed_duplicate_ids()), read once per request.
+     */
+    private static function is_suppressed_duplicate( int $product_id ): bool {
+        static $ids = null;
+        if ( $ids === null ) {
+            $ids = class_exists( 'MMI_Pipeline_Catalog_Updater' ) ? \MMI_Pipeline_Catalog_Updater::suppressed_duplicate_ids() : [];
+        }
+        return isset( $ids[ $product_id ] );
     }
 
     /**

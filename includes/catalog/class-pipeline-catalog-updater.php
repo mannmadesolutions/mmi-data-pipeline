@@ -980,7 +980,7 @@ class MMI_Pipeline_Catalog_Updater
      *
      * @param int[]|null $only_ids Limit the writes to these products (the Duplicates
      *                            queue's actions pass the group they just changed).
-     * @return array{checked:int,targets:int,changed:int,deferred:int}
+     * @return array{targets:int,changed:int,deferred:int}
      */
     protected function enforce_canonical_stock_rules( ?array $only_ids = null ): array
     {
@@ -988,12 +988,12 @@ class MMI_Pipeline_Catalog_Updater
 
         $deadline = microtime( true ) + self::CANONICAL_TIME_BUDGET;
 
-        $targets = self::suppressed_duplicate_ids( $checked );
+        $targets = self::suppressed_duplicate_ids();
         if ( $only_ids !== null ) {
             $targets = array_intersect_key( $targets, array_flip( array_map( 'intval', $only_ids ) ) );
         }
 
-        $stats = [ 'checked' => $checked, 'targets' => count( $targets ), 'changed' => 0, 'deferred' => 0 ];
+        $stats = [ 'targets' => count( $targets ), 'changed' => 0, 'deferred' => 0 ];
         if ( ! $targets ) {
             return $stats;
         }
@@ -1031,6 +1031,7 @@ class MMI_Pipeline_Catalog_Updater
         }
 
         $touched_ids = [];
+        $fixes       = [];
         foreach ( $current as $id => $s ) {
             $fix_canonical  = $targets[ $id ] && $s['canonical'] !== 'FALSE';
             // The 'outofstock' term is what "Hide out of stock items" filters on.
@@ -1046,6 +1047,11 @@ class MMI_Pipeline_Catalog_Updater
                 $stats['deferred']++;
                 continue;
             }
+            $fixes[] = "#{$id} (" . implode( ', ', array_keys( array_filter( [
+                'flag'       => $fix_canonical,
+                'stock'      => $fix_stock,
+                'visibility' => $fix_visibility,
+            ] ) ) ) . ')';
             if ( $fix_canonical ) {
                 update_post_meta( $id, 'canonical', 'FALSE' );
             }
@@ -1062,6 +1068,11 @@ class MMI_Pipeline_Catalog_Updater
         }
 
         $this->sync_stock_lookup( $touched_ids );
+
+        // Steady state corrects nothing, so anything here was undone by another writer.
+        if ( $fixes ) {
+            $this->log( 'Canonical rules: corrected ' . count( $fixes ) . ' duplicate listing(s): ' . implode( ' ', array_slice( $fixes, 0, 50 ) ) );
+        }
 
         if ( $stats['deferred'] ) {
             $this->log( "Canonical rules: time budget reached — {$stats['deferred']} product(s) left for the next run" );
@@ -1091,63 +1102,86 @@ class MMI_Pipeline_Catalog_Updater
      * Two bulk reads — per-post get_post_meta() fills the object cache with
      * every meta row of every product and exhausts the 256 MB memory limit.
      *
-     * @param int|null $checked Set to the number of products carrying a canonical value.
      * @return array<int,bool> Product id => whether its canonical flag must be set to FALSE.
      */
-    public static function suppressed_duplicate_ids( ?int &$checked = null ): array
+    public static function suppressed_duplicate_ids(): array
     {
         global $wpdb;
 
-        $canonical_map = [];
-        foreach ( $wpdb->get_results( "
-            SELECT pm.post_id, pm.meta_value AS canonical_value
-            FROM {$wpdb->postmeta} pm
-            JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-            WHERE pm.meta_key = 'canonical'
-              AND p.post_type = 'product'
-        " ) as $row ) {
-            $canonical_map[ (int) $row->post_id ] = $row->canonical_value;
-        }
-        $checked = count( $canonical_map );
-
-        // associated_product_ids of canonical=TRUE products only.
-        $true_ids  = array_keys( array_filter( $canonical_map, static fn( $v ) => $v === 'TRUE' ) );
-        $group_ids = [];
-        foreach ( array_chunk( $true_ids, 2000 ) as $chunk ) {
-            $in = implode( ',', array_map( 'intval', $chunk ) );
-            foreach ( $wpdb->get_results( "
-                SELECT post_id, meta_value
-                FROM {$wpdb->postmeta}
-                WHERE meta_key = 'associated_product_ids'
-                  AND post_id IN ({$in})
-            " ) as $r ) {
-                $pid = (int) $r->post_id;
-                $ids = array_values( array_filter(
-                    self::parse_associated_product_ids( $r->meta_value ),
-                    static fn( int $aid ) => $aid > 0 && $aid !== $pid
-                ) );
-                if ( $ids ) {
-                    $group_ids[ $pid ] = $ids;
-                }
-            }
-        }
-
         $targets = [];
-        foreach ( $group_ids as $ids ) {
+        foreach ( self::duplicate_groups() as $ids ) {
             foreach ( $ids as $aid ) {
-                if ( isset( $group_ids[ $aid ] ) ) {
-                    continue; // Owns a group of its own; the queue merges the two.
-                }
                 $targets[ $aid ] = true;
             }
         }
-        foreach ( $canonical_map as $pid => $canonical ) {
-            if ( $canonical === 'FALSE' ) {
-                $targets[ $pid ] = $targets[ $pid ] ?? false;
-            }
+        foreach ( $wpdb->get_col( "
+            SELECT pm.post_id
+            FROM {$wpdb->postmeta} pm
+            JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'product'
+            WHERE pm.meta_key = 'canonical' AND pm.meta_value = 'FALSE'
+        " ) as $pid ) {
+            $targets[ (int) $pid ] = $targets[ (int) $pid ] ?? false;
         }
 
         return $targets;
+    }
+
+    /**
+     * Every linked group: canonical=TRUE product id => the duplicate listings it
+     * names in associated_product_ids. A named product that owns a group itself
+     * (two half-linked groups of one product, which the Duplicates queue flags
+     * for merging) is left out of the other group.
+     *
+     * Reads only the non-empty associated_product_ids rows, then their owners'
+     * flags by id. Almost every canonical=TRUE product carries an empty row, and
+     * joining those to the flags took 1.6-4 s (no composite postmeta index).
+     *
+     * @return array<int,int[]>
+     */
+    public static function duplicate_groups(): array
+    {
+        global $wpdb;
+
+        $rows = $wpdb->get_results( "
+            SELECT post_id, meta_value
+            FROM {$wpdb->postmeta}
+            WHERE meta_key = 'associated_product_ids'
+              AND meta_value NOT IN ('', 'a:0:{}')
+        " );
+        $owners = [];
+        foreach ( array_chunk( array_unique( array_map( static fn( $r ) => (int) $r->post_id, $rows ) ), 2000 ) as $chunk ) {
+            $in = implode( ',', $chunk );
+            foreach ( $wpdb->get_col( "
+                SELECT c.post_id
+                FROM {$wpdb->postmeta} c
+                JOIN {$wpdb->posts} p ON p.ID = c.post_id AND p.post_type = 'product'
+                WHERE c.meta_key = 'canonical' AND c.meta_value = 'TRUE'
+                  AND c.post_id IN ({$in})
+            " ) as $pid ) {
+                $owners[ (int) $pid ] = true;
+            }
+        }
+
+        $group_ids = [];
+        foreach ( $rows as $r ) {
+            $pid = (int) $r->post_id;
+            if ( ! isset( $owners[ $pid ] ) ) {
+                continue;
+            }
+            $ids = array_values( array_unique( array_filter(
+                self::parse_associated_product_ids( $r->meta_value ),
+                static fn( int $aid ) => $aid > 0 && $aid !== $pid
+            ) ) );
+            if ( $ids ) {
+                $group_ids[ $pid ] = $ids;
+            }
+        }
+
+        foreach ( $group_ids as $pid => $ids ) {
+            $group_ids[ $pid ] = array_values( array_filter( $ids, static fn( int $aid ) => ! isset( $group_ids[ $aid ] ) ) );
+        }
+
+        return array_filter( $group_ids );
     }
 
     /**
@@ -1320,7 +1354,7 @@ class MMI_Pipeline_Catalog_Updater
      * Called by CatalogUpdateController for the 'canonical' phase.
      *
      * @param int[]|null $only_ids See enforce_canonical_stock_rules().
-     * @return array{checked:int,targets:int,changed:int,deferred:int}
+     * @return array{targets:int,changed:int,deferred:int}
      */
     public function enforce_canonical_stock_rules_public( ?array $only_ids = null ): array
     {

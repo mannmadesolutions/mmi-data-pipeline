@@ -597,6 +597,145 @@ function mmi_canonical_candidates_suppress_now( array $product_ids ): int {
     return (int) ( $result['changed'] ?? 0 );
 }
 
+/* ── Groups with nothing on sale ──────────────────────────────────────────── */
+
+const MMI_DUPES_NOTHING_ON_SALE_KEY = 'mmi_duplicates_nothing_on_sale';
+
+/**
+ * Linked groups a customer can buy nothing from: the canonical listing is
+ * published but out of stock, and every duplicate is held out of stock. Usually
+ * the supplier retired the canonical's SKU and still sells the product under a
+ * duplicate's, so a duplicate still in a supplier feed is named: Make Canonical
+ * on it puts the product back on sale at the next Catalog Maintenance run.
+ *
+ * @param array|null $feed_index From mmi_canonical_candidates_build_feed_index().
+ * @return array<int,int> Canonical id => a published duplicate still in a feed (0 when none).
+ */
+function mmi_canonical_candidates_nothing_on_sale( ?array $feed_index = null ): array {
+    global $wpdb;
+
+    if ( ! class_exists( 'MMI_Pipeline_Catalog_Updater' ) ) {
+        return [];
+    }
+    $groups = MMI_Pipeline_Catalog_Updater::duplicate_groups();
+    if ( ! $groups ) {
+        return [];
+    }
+
+    $all_ids = array_merge( array_keys( $groups ), ...array_values( $groups ) );
+    $in      = implode( ',', array_map( 'intval', $all_ids ) );
+    $rows    = $wpdb->get_results( "
+        SELECT p.ID AS id, p.post_status AS status, s.meta_value AS stock
+        FROM {$wpdb->posts} p
+        LEFT JOIN {$wpdb->postmeta} s ON s.post_id = p.ID AND s.meta_key = '_stock_status'
+        WHERE p.ID IN ({$in})
+    ", OBJECT_K );
+
+    $dead = array_filter( $groups, static function ( $ids, $canonical_id ) use ( $rows ) {
+        $c = $rows[ $canonical_id ] ?? null;
+        return $c && $c->status === 'publish' && ! in_array( (string) $c->stock, [ 'instock', 'onbackorder' ], true );
+    }, ARRAY_FILTER_USE_BOTH );
+    if ( ! $dead ) {
+        return [];
+    }
+
+    // Supplier SKUs of the dead groups' duplicates, in one read.
+    $member_ids = array_merge( ...array_values( $dead ) );
+    $skus       = [];
+    foreach ( $wpdb->get_results( "
+        SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta}
+        WHERE post_id IN (" . implode( ',', array_map( 'intval', $member_ids ) ) . ")
+          AND meta_key LIKE '\\_mmi\\_supplier\\_sku\\_%'
+          AND meta_value <> ''
+    " ) as $r ) {
+        $skus[ (int) $r->post_id ][ substr( $r->meta_key, strlen( '_mmi_supplier_sku_' ) ) ] = (string) $r->meta_value;
+    }
+
+    $feed_index = $feed_index ?? mmi_canonical_candidates_build_feed_index();
+    $result     = [];
+    foreach ( $dead as $canonical_id => $ids ) {
+        $result[ $canonical_id ] = 0;
+        foreach ( $ids as $aid ) {
+            if ( ( $rows[ $aid ]->status ?? '' ) !== 'publish' ) {
+                continue;
+            }
+            foreach ( $skus[ $aid ] ?? [] as $supplier => $sku ) {
+                if ( isset( $feed_index[ $supplier ][ $sku ] ) ) {
+                    $result[ $canonical_id ] = $aid;
+                    continue 3;
+                }
+            }
+        }
+    }
+    return $result;
+}
+
+/**
+ * Stores mmi_canonical_candidates_nothing_on_sale() for the dashboard alert and
+ * the Data Pipeline header, which read it on page render. Written by each Catalog
+ * Maintenance run (after feed sync, so a just-switched canonical is counted as
+ * back on sale) and by every Duplicates scan.
+ *
+ * @param array<int,int>|null $map Already computed, or null to compute it now.
+ */
+function mmi_canonical_candidates_save_nothing_on_sale( ?array $map = null ): array {
+    $map  = $map ?? mmi_canonical_candidates_nothing_on_sale();
+    $rows = [];
+    foreach ( $map as $canonical_id => $candidate_id ) {
+        $rows[] = [ 'canonical' => (int) $canonical_id, 'candidate' => (int) $candidate_id ];
+    }
+    MMI_DB::set_setting( MMI_DUPES_NOTHING_ON_SALE_KEY, [ 'checked_at' => time(), 'groups' => $rows ] );
+    return $rows;
+}
+
+/** @return array{count:int,switchable:int} From the stored snapshot. */
+function mmi_canonical_candidates_nothing_on_sale_counts(): array {
+    $groups = (array) ( MMI_DB::get_setting( MMI_DUPES_NOTHING_ON_SALE_KEY, [] )['groups'] ?? [] );
+    return [
+        'count'      => count( $groups ),
+        'switchable' => count( array_filter( $groups, static fn( $g ) => ! empty( $g['candidate'] ) ) ),
+    ];
+}
+
+/** "3 products have nothing on sale" */
+function mmi_canonical_candidates_nothing_on_sale_label( int $count ): string {
+    return sprintf( _n( '%d product has nothing on sale', '%d products have nothing on sale', $count, 'mmi-data-pipeline' ), $count );
+}
+
+function mmi_canonical_candidates_nothing_on_sale_url(): string {
+    return admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_duplicates=1&dupes_status=no_sale' );
+}
+
+/** Drops worked groups from the snapshot until the next run re-checks them. */
+function mmi_canonical_candidates_forget_nothing_on_sale( array $canonical_ids ): void {
+    $snapshot = (array) MMI_DB::get_setting( MMI_DUPES_NOTHING_ON_SALE_KEY, [] );
+    if ( empty( $snapshot['groups'] ) ) {
+        return;
+    }
+    $drop               = array_flip( array_map( 'intval', $canonical_ids ) );
+    $snapshot['groups'] = array_values( array_filter( (array) $snapshot['groups'], static fn( $g ) => ! isset( $drop[ (int) ( $g['canonical'] ?? 0 ) ] ) ) );
+    MMI_DB::set_setting( MMI_DUPES_NOTHING_ON_SALE_KEY, $snapshot );
+}
+
+/* mmi_dashboard_alerts: the MannMade dashboard's "Needs attention" panel. */
+add_filter( 'mmi_dashboard_alerts', function ( $alerts ) {
+    $counts = mmi_canonical_candidates_nothing_on_sale_counts();
+    if ( ! $counts['count'] || ! mmi_data_pipeline_user_can() ) {
+        return $alerts;
+    }
+    $alerts[] = [
+        'severity'    => 'warning',
+        'title'       => 'Duplicates: ' . mmi_canonical_candidates_nothing_on_sale_label( $counts['count'] ),
+        'description' => 'Each one\'s canonical listing is out of stock and its duplicates are held out of stock, so customers can\'t buy it.'
+            . ( $counts['switchable']
+                ? ' For ' . $counts['switchable'] . ' of them a duplicate is still in a supplier feed: Make Canonical on it puts the product back on sale.'
+                : '' ),
+        'url'         => mmi_canonical_candidates_nothing_on_sale_url(),
+        'page_slug'   => 'mmi-data-pipeline',
+    ];
+    return $alerts;
+} );
+
 /* ── Approve a candidate group — write canonical + associated_product_ids ─── */
 add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
     check_ajax_referer( CANONICAL_CANDIDATES_NONCE, 'nonce' );
@@ -663,6 +802,7 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
     update_post_meta( $canonical_id, 'canonical', 'TRUE' );
     update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $associated ) );
     $suppressed = mmi_canonical_candidates_suppress_now( array_merge( [ $canonical_id ], $associated ) );
+    mmi_canonical_candidates_forget_nothing_on_sale( array_merge( [ $canonical_id ], $merged ) );
     // A group is worked once every listing it found is in this link.
     $linked = array_flip( array_merge( [ $canonical_id ], $associated ) );
     mmi_canonical_candidates_drop_from_review_index( static fn( string $key, array $g ) => $g['product_ids'] && ! array_diff_key( array_flip( $g['product_ids'] ), $linked ) );
@@ -954,7 +1094,8 @@ function mmi_canonical_candidates_build_existing_member( int $product_id, bool $
     $msrp_price   = 0.0;
     $vendor       = '';
 
-    if ( $supplier !== '' && isset( $feed_index[ $supplier ][ $supplier_sku ] ) ) {
+    $in_feed = $supplier !== '' && isset( $feed_index[ $supplier ][ $supplier_sku ] );
+    if ( $in_feed ) {
         $item = $feed_index[ $supplier ][ $supplier_sku ];
         $cfg  = $configs[ $supplier ] ?? null;
         if ( $cfg ) {
@@ -979,6 +1120,7 @@ function mmi_canonical_candidates_build_existing_member( int $product_id, bool $
         'product_name'  => get_the_title( $product_id ) ?: '(untitled)',
         'stock_status'  => (string) get_post_meta( $product_id, '_stock_status', true ),
         'visibility'    => (string) ( get_post_meta( $product_id, '_visibility', true ) ?: 'visible' ),
+        'in_feed'       => $in_feed,
         'assets'        => mmi_canonical_candidates_asset_snapshot( $product_id ),
     ];
 }
@@ -1133,6 +1275,8 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
         ) );
 
         $feed_index = mmi_canonical_candidates_build_feed_index();
+        $no_sale    = mmi_canonical_candidates_nothing_on_sale( $feed_index );
+        mmi_canonical_candidates_save_nothing_on_sale( $no_sale );
 
         foreach ( $assoc_rows as $row ) {
             $canonical_id = (int) $row->post_id;
@@ -1172,6 +1316,8 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
                 'members'                => $members,
             ] + $price + [
                 'already_linked'         => true,
+                'nothing_on_sale'        => isset( $no_sale[ $canonical_id ] ),
+                'sale_candidate_id'      => (int) ( $no_sale[ $canonical_id ] ?? 0 ),
                 'recommended_product_id' => $recommended_product_id,
                 'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),
                 'image_url'              => mmi_canonical_candidates_product_thumbnail_url( $canonical_id ),
@@ -1240,6 +1386,7 @@ add_action( 'wp_ajax_mmi_canonical_remove_group_member', function () {
     if ( $dissolved ) {
         delete_post_meta( $canonical_id, 'canonical' );
         delete_post_meta( $canonical_id, 'associated_product_ids' );
+        mmi_canonical_candidates_forget_nothing_on_sale( [ $canonical_id ] );
     } else {
         update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $remaining ) );
     }
@@ -1301,6 +1448,7 @@ add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
     delete_post_meta( $old_canonical_id, 'associated_product_ids' );
 
     mmi_canonical_candidates_suppress_now( array_merge( [ $new_canonical_id ], $new_associated ) );
+    mmi_canonical_candidates_forget_nothing_on_sale( [ $old_canonical_id ] );
 
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 
@@ -1342,6 +1490,7 @@ add_action( 'wp_ajax_mmi_canonical_unlink_group', function () {
     }
     delete_post_meta( $canonical_id, 'canonical' );
     delete_post_meta( $canonical_id, 'associated_product_ids' );
+    mmi_canonical_candidates_forget_nothing_on_sale( [ $canonical_id ] );
 
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 

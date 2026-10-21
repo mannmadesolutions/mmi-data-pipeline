@@ -126,6 +126,14 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
         <?php endif; ?>
         <p class="mmi-header-description">Unified product data workflow — import from supplier feeds or export your catalog, with profiles and a live preview for both directions</p>
         <?php if ( class_exists( 'MMI_Feature_Gate' ) ) { MMI_Feature_Gate::render_works_with( 'mmi-data-pipeline' ); } ?>
+        <?php
+        $_mmi_no_sale = function_exists( 'mmi_canonical_candidates_nothing_on_sale_counts' ) ? mmi_canonical_candidates_nothing_on_sale_counts()['count'] : 0;
+        if ( $_mmi_no_sale ) : ?>
+            <div class="mmi-header-alerts">
+                <a class="mmi-badge warning" href="<?php echo esc_url( mmi_canonical_candidates_nothing_on_sale_url() ); ?>"
+                   title="<?php esc_attr_e( 'Linked duplicates whose canonical listing is out of stock: customers can buy none of their listings', 'mmi-data-pipeline' ); ?>"><?php echo esc_html( 'Duplicates: ' . mmi_canonical_candidates_nothing_on_sale_label( $_mmi_no_sale ) ); ?></a>
+            </div>
+        <?php endif; ?>
     </div>
     <div class="wp-header-end"></div>
 
