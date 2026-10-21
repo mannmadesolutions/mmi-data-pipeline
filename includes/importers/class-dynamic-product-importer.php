@@ -177,6 +177,14 @@ class MMI_Dynamic_Product_Importer {
     protected $stock_override_resolver = null;
 
     /**
+     * Duplicate listings (MMI_Pipeline_Catalog_Updater::suppressed_duplicate_ids()),
+     * keyed by product id. They stay out of stock whatever the feed says.
+     *
+     * @var array<int,bool>
+     */
+    protected $suppressed_duplicate_ids = [];
+
+    /**
      * Attribute & variation mapping config loaded from the Attributes panel.
      *
      * @var array<string, mixed>
@@ -274,6 +282,10 @@ class MMI_Dynamic_Product_Importer {
             $override_rules = [];
         }
         $this->stock_override_resolver = new \MannMade\DataPipeline\Stock_Override_Resolver( $override_rules );
+
+        if ( class_exists( 'MMI_Pipeline_Catalog_Updater' ) ) {
+            $this->suppressed_duplicate_ids = \MMI_Pipeline_Catalog_Updater::suppressed_duplicate_ids();
+        }
 
         // Load attribute & variation config (from Attributes panel)
         if ( function_exists( 'mmi_get_attribute_config' ) ) {
@@ -670,6 +682,17 @@ class MMI_Dynamic_Product_Importer {
                 // Always capture so we can force-write after all WC save() calls below.
                 $override_stock_status = $resolved;
             }
+        }
+
+        // A duplicate listing is never put back on sale. The Pricing profile's
+        // constant "instock" re-stocked every in-feed duplicate each run, and they
+        // stayed buyable until Catalog Maintenance hid them again (2026-10-21).
+        if ( ! empty( $product_id ) && isset( $this->suppressed_duplicate_ids[ (int) $product_id ] ) ) {
+            $product_data['stock_status']   = 'outofstock';
+            $product_data['_stock_status']  = 'outofstock';
+            $product_data['stock_quantity'] = 0;
+            $product_data['_stock']         = 0;
+            $override_stock_status          = 'outofstock';
         }
         
         // Selective-hashing gate (pattern borrowed from WP All Import's

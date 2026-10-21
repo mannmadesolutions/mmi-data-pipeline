@@ -25,6 +25,7 @@
         BRAND_FILTER_SELECT:   '.mmi-dupes-brand-filter-select',
         NOTICE:         '#mmi-dupes-notice',
         TABLE:          '#mmi-dupes-table',
+        TABLE_WRAP:     '#mmi-dupes-table-wrap',
         TBODY:          '#mmi-dupes-tbody',
         EMPTY:          '#mmi-dupes-empty',
         LOADING:        '#mmi-dupes-loading',
@@ -863,10 +864,9 @@
      * "Set as canonical" — writes the SAME canonical/associated_product_ids
      * meta pair the Candidates flow's mmi_approve_duplicate_group already
      * uses (see that endpoint's own docblock); no new resolution mechanism
-     * needed. This is a real, consequential write: the Catalog Maintenance
-     * "canonical" phase (already scheduled — see class-catalog-phase-runner.php)
-     * will force every other member out of stock + shop-only visibility on
-     * its next run, and mmi-reverb-integration's own stock sync (confirmed
+     * needed. This is a real, consequential write: the endpoint forces every
+     * other member out of stock + shop-only visibility at once (the same rule
+     * as Catalog Maintenance's "canonical" phase), and mmi-reverb-integration's own stock sync (confirmed
      * live in class-reverb-product.php) unpublishes a product's Reverb
      * listing once it goes out of stock — so choosing a canonical here can
      * take down a live Reverb listing for whichever member isn't picked.
@@ -905,7 +905,7 @@
                     $btn.prop( 'disabled', false ).text( 'Set as canonical' );
                     return;
                 }
-                showNotice( `#${ canonicalId } set as canonical — the other product(s) will be suppressed on the next Catalog Maintenance run.`, 'success' );
+                showNotice( `#${ canonicalId } set as canonical — the other product(s) are now out of stock and off the shop search.`, 'success' );
                 scanCollisions( true ); // Re-scan so this group's status/actions reflect the write just made.
             } )
             .fail( function ( xhr ) {
@@ -1282,7 +1282,7 @@
             const canonicalId    = parseInt( $btn.data( 'canonical-id' ), 10 );
             const newCanonicalId = parseInt( $btn.data( 'new-canonical-id' ), 10 );
 
-            if ( ! confirm( `Make product #${ newCanonicalId } the canonical listing? #${ canonicalId } and the other member(s) will be suppressed on the next Catalog Maintenance run.` ) ) {
+            if ( ! confirm( `Make product #${ newCanonicalId } the canonical listing? #${ canonicalId } and the other member(s) go out of stock and off the shop search right away.` ) ) {
                 return;
             }
 
@@ -1432,6 +1432,14 @@
         // acting on without needing 'tr.mmi-dupes-row' as an ancestor.
         $reviewRow.attr( 'data-group-key', groupKey );
         $row.after( $reviewRow );
+
+        // The opened group goes to the top of the scroll box, under the sticky
+        // header, so its whole panel is on screen at once.
+        const wrap = $( SELECTORS.TABLE_WRAP )[ 0 ];
+        if ( wrap ) {
+            const headHeight = $( SELECTORS.TABLE ).children( 'thead' ).outerHeight() || 0;
+            wrap.scrollTop += $row[ 0 ].getBoundingClientRect().top - wrap.getBoundingClientRect().top - headHeight;
+        }
     }
 
     function buildReviewRow( group ) {

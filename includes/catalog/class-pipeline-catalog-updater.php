@@ -978,65 +978,22 @@ class MMI_Pipeline_Catalog_Updater
      * 3 (2026-09-29/30). All state is read in bulk up front; the steady state
      * does no writes.
      *
+     * @param int[]|null $only_ids Limit the writes to these products (the Duplicates
+     *                            queue's actions pass the group they just changed).
      * @return array{checked:int,targets:int,changed:int,deferred:int}
      */
-    protected function enforce_canonical_stock_rules(): array
+    protected function enforce_canonical_stock_rules( ?array $only_ids = null ): array
     {
         global $wpdb;
 
         $deadline = microtime( true ) + self::CANONICAL_TIME_BUDGET;
 
-        // Single query: load all canonical values for product posts.
-        // Avoids per-post get_post_meta() which fills the WP object cache with
-        // every meta row for each post, exhausting the 256 MB memory limit.
-        $rows = $wpdb->get_results( "
-            SELECT pm.post_id, pm.meta_value AS canonical_value
-            FROM {$wpdb->postmeta} pm
-            JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-            WHERE pm.meta_key = 'canonical'
-              AND p.post_type = 'product'
-        " );
-
-        $canonical_map = [];
-        foreach ( $rows as $row ) {
-            $canonical_map[ (int) $row->post_id ] = $row->canonical_value;
+        $targets = self::suppressed_duplicate_ids( $checked );
+        if ( $only_ids !== null ) {
+            $targets = array_intersect_key( $targets, array_flip( array_map( 'intval', $only_ids ) ) );
         }
 
-        // Second query: load associated_product_ids only for canonical=TRUE products.
-        $true_ids = array_keys( array_filter( $canonical_map, static fn( $v ) => $v === 'TRUE' ) );
-        $assoc_map = [];
-        if ( ! empty( $true_ids ) ) {
-            $placeholders = implode( ',', array_map( 'intval', $true_ids ) );
-            $assoc_rows   = $wpdb->get_results( "
-                SELECT post_id, meta_value
-                FROM {$wpdb->postmeta}
-                WHERE meta_key = 'associated_product_ids'
-                  AND post_id IN ({$placeholders})
-            " );
-            foreach ( $assoc_rows as $r ) {
-                $assoc_map[ (int) $r->post_id ] = $r->meta_value;
-            }
-        }
-
-        // Target id => whether its canonical flag must also be forced to FALSE
-        // (associated members of a TRUE group; FALSE products already are).
-        $targets = [];
-        foreach ( $canonical_map as $pid => $canonical ) {
-            if ( $canonical === 'TRUE' ) {
-                foreach ( $this->parse_associated_product_ids( $assoc_map[ $pid ] ?? '' ) as $aid ) {
-                    $aid = intval( $aid );
-                    if ( ! $aid || $aid === $pid || ( $canonical_map[ $aid ] ?? '' ) === 'TRUE' ) {
-                        continue; // Skip; associated product is itself canonical.
-                    }
-                    $targets[ $aid ] = true;
-                }
-            } elseif ( $canonical === 'FALSE' ) {
-                $targets[ $pid ] = $targets[ $pid ] ?? false;
-            }
-            // Empty / NULL canonical value — no action required.
-        }
-
-        $stats = [ 'checked' => count( $canonical_map ), 'targets' => count( $targets ), 'changed' => 0, 'deferred' => 0 ];
+        $stats = [ 'checked' => $checked, 'targets' => count( $targets ), 'changed' => 0, 'deferred' => 0 ];
         if ( ! $targets ) {
             return $stats;
         }
@@ -1065,7 +1022,7 @@ class MMI_Pipeline_Catalog_Updater
                 JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_visibility'
                 JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
                 WHERE tr.object_id IN ({$in})
-                  AND t.slug IN ('exclude-from-search', 'exclude-from-catalog', 'featured')
+                  AND t.slug IN ('exclude-from-search', 'exclude-from-catalog', 'featured', 'outofstock')
             " ) as $r ) {
                 if ( isset( $current[ (int) $r->object_id ] ) ) {
                     $current[ (int) $r->object_id ]['terms'][ $r->slug ] = true;
@@ -1076,7 +1033,8 @@ class MMI_Pipeline_Catalog_Updater
         $touched_ids = [];
         foreach ( $current as $id => $s ) {
             $fix_canonical  = $targets[ $id ] && $s['canonical'] !== 'FALSE';
-            $fix_stock      = $s['stock'] !== 'outofstock';
+            // The 'outofstock' term is what "Hide out of stock items" filters on.
+            $fix_stock      = $s['stock'] !== 'outofstock' || empty( $s['terms']['outofstock'] );
             $fix_visibility = $s['visibility'] !== 'catalog'
                 || empty( $s['terms']['exclude-from-search'] )
                 || ! empty( $s['terms']['exclude-from-catalog'] )
@@ -1093,6 +1051,7 @@ class MMI_Pipeline_Catalog_Updater
             }
             if ( $fix_stock ) {
                 update_post_meta( $id, '_stock_status', 'outofstock' );
+                wp_set_object_terms( $id, 'outofstock', 'product_visibility', true );
                 $touched_ids[] = $id;
             }
             if ( $fix_visibility ) {
@@ -1119,6 +1078,79 @@ class MMI_Pipeline_Catalog_Updater
     }
 
     /**
+     * Every product that must stay out of stock as a duplicate listing: each
+     * canonical=FALSE product, and each product a canonical=TRUE product names
+     * in its associated_product_ids. Most of the catalog carries a legacy
+     * canonical=TRUE with no group of its own, so a member with that flag is
+     * still a duplicate; it is left alone only when it owns a group itself
+     * (two half-linked groups of one product, which the Duplicates queue
+     * flags for merging). Skipping every TRUE-flagged member left four
+     * Premier Sound Factory duplicates on sale beside their canonicals
+     * (2026-10-21).
+     *
+     * Two bulk reads — per-post get_post_meta() fills the object cache with
+     * every meta row of every product and exhausts the 256 MB memory limit.
+     *
+     * @param int|null $checked Set to the number of products carrying a canonical value.
+     * @return array<int,bool> Product id => whether its canonical flag must be set to FALSE.
+     */
+    public static function suppressed_duplicate_ids( ?int &$checked = null ): array
+    {
+        global $wpdb;
+
+        $canonical_map = [];
+        foreach ( $wpdb->get_results( "
+            SELECT pm.post_id, pm.meta_value AS canonical_value
+            FROM {$wpdb->postmeta} pm
+            JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+            WHERE pm.meta_key = 'canonical'
+              AND p.post_type = 'product'
+        " ) as $row ) {
+            $canonical_map[ (int) $row->post_id ] = $row->canonical_value;
+        }
+        $checked = count( $canonical_map );
+
+        // associated_product_ids of canonical=TRUE products only.
+        $true_ids  = array_keys( array_filter( $canonical_map, static fn( $v ) => $v === 'TRUE' ) );
+        $group_ids = [];
+        foreach ( array_chunk( $true_ids, 2000 ) as $chunk ) {
+            $in = implode( ',', array_map( 'intval', $chunk ) );
+            foreach ( $wpdb->get_results( "
+                SELECT post_id, meta_value
+                FROM {$wpdb->postmeta}
+                WHERE meta_key = 'associated_product_ids'
+                  AND post_id IN ({$in})
+            " ) as $r ) {
+                $pid = (int) $r->post_id;
+                $ids = array_values( array_filter(
+                    self::parse_associated_product_ids( $r->meta_value ),
+                    static fn( int $aid ) => $aid > 0 && $aid !== $pid
+                ) );
+                if ( $ids ) {
+                    $group_ids[ $pid ] = $ids;
+                }
+            }
+        }
+
+        $targets = [];
+        foreach ( $group_ids as $ids ) {
+            foreach ( $ids as $aid ) {
+                if ( isset( $group_ids[ $aid ] ) ) {
+                    continue; // Owns a group of its own; the queue merges the two.
+                }
+                $targets[ $aid ] = true;
+            }
+        }
+        foreach ( $canonical_map as $pid => $canonical ) {
+            if ( $canonical === 'FALSE' ) {
+                $targets[ $pid ] = $targets[ $pid ] ?? false;
+            }
+        }
+
+        return $targets;
+    }
+
+    /**
      * Parses associated_product_ids in whatever shape it's actually stored as.
      * Two real shapes exist in production data: a flat comma/pipe/whitespace-
      * delimited string (written by CanonicalCandidatesController.php's
@@ -1138,7 +1170,7 @@ class MMI_Pipeline_Catalog_Updater
      * @param mixed $raw
      * @return int[]
      */
-    private function parse_associated_product_ids( $raw ): array
+    private static function parse_associated_product_ids( $raw ): array
     {
         if ( ! is_string( $raw ) || trim( $raw ) === '' ) {
             return [];
@@ -1287,11 +1319,12 @@ class MMI_Pipeline_Catalog_Updater
      * Public wrapper: enforce canonical stock rules.
      * Called by CatalogUpdateController for the 'canonical' phase.
      *
+     * @param int[]|null $only_ids See enforce_canonical_stock_rules().
      * @return array{checked:int,targets:int,changed:int,deferred:int}
      */
-    public function enforce_canonical_stock_rules_public(): array
+    public function enforce_canonical_stock_rules_public( ?array $only_ids = null ): array
     {
-        return $this->enforce_canonical_stock_rules();
+        return $this->enforce_canonical_stock_rules( $only_ids );
     }
 
     /**

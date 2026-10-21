@@ -581,6 +581,22 @@ add_action( 'wp_ajax_mmi_dismiss_duplicate_group', function () {
     wp_send_json_success( [ 'message' => 'Dismissed' ] );
 } );
 
+/**
+ * Takes a group's duplicate listings off sale now (out of stock, canonical=FALSE,
+ * shop-only), rather than at the next Catalog Maintenance run up to an hour away.
+ * The same rule and writes as that run's canonical phase, limited to these products.
+ *
+ * @param int[] $product_ids Every member of the group, canonical included.
+ * @return int Products changed.
+ */
+function mmi_canonical_candidates_suppress_now( array $product_ids ): int {
+    if ( ! class_exists( 'MMI_Pipeline_Catalog_Updater' ) ) {
+        return 0;
+    }
+    $result = ( new MMI_Pipeline_Catalog_Updater() )->enforce_canonical_stock_rules_public( $product_ids );
+    return (int) ( $result['changed'] ?? 0 );
+}
+
 /* ── Approve a candidate group — write canonical + associated_product_ids ─── */
 add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
     check_ajax_referer( CANONICAL_CANDIDATES_NONCE, 'nonce' );
@@ -646,6 +662,7 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
 
     update_post_meta( $canonical_id, 'canonical', 'TRUE' );
     update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $associated ) );
+    $suppressed = mmi_canonical_candidates_suppress_now( array_merge( [ $canonical_id ], $associated ) );
     // A group is worked once every listing it found is in this link.
     $linked = array_flip( array_merge( [ $canonical_id ], $associated ) );
     mmi_canonical_candidates_drop_from_review_index( static fn( string $key, array $g ) => $g['product_ids'] && ! array_diff_key( array_flip( $g['product_ids'] ), $linked ) );
@@ -657,7 +674,7 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
         'object_type' => 'product',
         'object_id'   => $canonical_id,
         'outcome'     => 'success',
-        'details'     => [ 'associated_product_ids' => array_values( $associated ) ],
+        'details'     => [ 'associated_product_ids' => array_values( $associated ), 'suppressed' => $suppressed ],
     ] );
     wp_send_json_success( [
         'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ),
@@ -1245,11 +1262,11 @@ add_action( 'wp_ajax_mmi_canonical_remove_group_member', function () {
 
 /**
  * Reassign which member is canonical. The old canonical becomes an ordinary
- * associated member of the new one — enforce_canonical_stock_rules() will
- * correctly suppress it (canonical=FALSE, out of stock, shop-only) the next
- * time it runs because the new canonical's own associated_product_ids now
- * names it; nothing needs writing on the old canonical beyond clearing its
- * now-stale group-owner meta.
+ * associated member of the new one and is suppressed at once
+ * (mmi_canonical_candidates_suppress_now()). The new canonical keeps whatever
+ * stock it had as a duplicate; its supplier feed's next import or Catalog
+ * Maintenance run puts it back on sale and in search, now that it is no
+ * longer a duplicate.
  */
 add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
     check_ajax_referer( CANONICAL_CANDIDATES_NONCE, 'nonce' );
@@ -1283,6 +1300,8 @@ add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
     delete_post_meta( $old_canonical_id, 'canonical' );
     delete_post_meta( $old_canonical_id, 'associated_product_ids' );
 
+    mmi_canonical_candidates_suppress_now( array_merge( [ $new_canonical_id ], $new_associated ) );
+
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 
     mmi_data_pipeline_audit( 'canonical.reassign', [
@@ -1292,7 +1311,8 @@ add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
         'details'     => [ 'old_canonical_id' => $old_canonical_id ],
     ] );
     wp_send_json_success( [
-        'message'                => 'Product #' . $new_canonical_id . ' is now canonical — the other member(s) will be suppressed on the next Catalog Maintenance run.',
+        'message'                => 'Product #' . $new_canonical_id . ' is now canonical; the other member(s) are out of stock and off the shop search now.'
+            . ( get_post_meta( $new_canonical_id, '_stock_status', true ) === 'instock' ? '' : ' #' . $new_canonical_id . ' goes back on sale when its supplier feed next imports.' ),
         'canonical_product_id'   => $new_canonical_id,
         'associated_product_ids' => $new_associated,
     ] );
