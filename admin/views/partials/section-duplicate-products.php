@@ -103,6 +103,10 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                             title="Linked groups whose canonical listing is out of stock while its duplicates are held out of stock">
                         Nothing on sale: <strong id="mmi-dupes-nosale-count">0</strong>
                     </button>
+                    <button type="button" class="mmi-dupes-stat mmi-dupes-stat-notsold mmi-hidden" id="mmi-dupes-stat-notsold" data-status-filter="not_sold"
+                            title="Groups whose every listing is out of stock and gone from its supplier's feed: the canonical pick changes nothing customers can buy">
+                        Not sold: <strong id="mmi-dupes-notsold-count">0</strong>
+                    </button>
                 </div>
             </div>
 
@@ -135,6 +139,10 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                             <th class="col-spread sortable" data-col="price_spread" data-resize-col="spread" title="Selling price: the supplier feed's MAP, else the store price. Sorts by how far apart the listings' prices are.">
                                 Price <span class="sort-icon"></span>
                                 <span class="mmi-dupes-th-resize" data-resize-col="spread"></span>
+                            </th>
+                            <th class="col-stock sortable" data-col="stock" data-resize-col="stock" title="Whether any listing is in stock, and whether a supplier still sells one. Not sold = every listing is out of stock and gone from its supplier's feed.">
+                                Stock <span class="sort-icon"></span>
+                                <span class="mmi-dupes-th-resize" data-resize-col="stock"></span>
                             </th>
                             <th class="col-source sortable" data-col="source" data-resize-col="source" title="Legacy link = a real, pre-existing canonical/associated_product_ids link found in the database. Fresh match = detected just now by matching brand + product name across live supplier feeds.">
                                 Source <span class="sort-icon"></span>

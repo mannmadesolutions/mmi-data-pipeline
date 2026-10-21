@@ -20,6 +20,8 @@
         LINKED_COUNT:   '#mmi-dupes-linked-count',
         NO_SALE_STAT:   '#mmi-dupes-stat-nosale',
         NO_SALE_COUNT:  '#mmi-dupes-nosale-count',
+        NOT_SOLD_STAT:  '#mmi-dupes-stat-notsold',
+        NOT_SOLD_COUNT: '#mmi-dupes-notsold-count',
         STAT_FILTER_BTN:'.mmi-dupes-stat',
         BRAND_FILTER_ROW:      '#mmi-dupes-brand-filter-row',
         BRAND_FILTER_INLINE:   '#mmi-dupes-brand-filters',
@@ -228,9 +230,60 @@
        summary(). Listings are compared on it, not on cost: many have no cost,
        and an identical selling price is the stronger sign of one item. */
 
-    const STOCK_LABELS      = { instock: 'In stock', outofstock: 'Out of stock', onbackorder: 'On backorder' };
     const VISIBILITY_LABELS = { catalog: 'shop only', search: 'search only', hidden: 'hidden' };
     const SUPPLIER_LABELS   = { xchange: 'XChange', skuport: 'SkuPort', plugivery: 'Plugivery' };
+
+    /* ── Availability ──────────────────────────────────────────────────────────
+       Whether a listing can be bought, and whether its supplier still sells it.
+       member.in_feed: true = the supplier's feed lists it, false = the supplier
+       dropped it, null = no feed to check (hand-added, or a feed not read here),
+       which never counts as dropped. */
+
+    /** A listing's state: key into MEMBER_AVAILABILITY. */
+    function memberAvailability( member ) {
+        if ( ! member.wc_product_id ) { return 'unimported'; }
+        if ( member.stock_status === 'instock' )     { return 'instock'; }
+        if ( member.stock_status === 'onbackorder' ) { return 'backorder'; }
+        if ( member.in_feed === false ) { return 'gone'; }
+        return member.in_feed === null ? 'out' : 'held';
+    }
+
+    const MEMBER_AVAILABILITY = {
+        instock:    { badge: 'success', label: () => 'In stock',     title: () => 'Customers can buy this listing' },
+        backorder:  { badge: 'success', label: () => 'On backorder', title: () => 'Customers can order this listing' },
+        held:       { badge: 'warning', label: ( s ) => `Out of stock · ${ s } sells it`, title: ( s ) => `Out of stock here, but the ${ s } feed still lists it, so it can go back on sale` },
+        out:        { badge: 'error',   label: () => 'Out of stock', title: () => 'Out of stock, and not from a supplier feed this screen reads' },
+        gone:       { badge: '',        label: () => 'No longer sold', title: ( s ) => `Out of stock, and the ${ s } feed no longer lists it: the supplier doesn’t sell it any more` },
+        unimported: { badge: 'info',    label: () => 'Not imported', title: ( s ) => `In the ${ s } feed, not imported into the store yet` },
+    };
+
+    /** The shared badge for one listing's availability. */
+    function buildAvailabilityBadge( member ) {
+        const def      = MEMBER_AVAILABILITY[ memberAvailability( member ) ];
+        const supplier = SUPPLIER_LABELS[ member.supplier ] || member.supplier || 'supplier';
+        return $( '<span class="mmi-badge mmi-dupes-avail">' ).addClass( def.badge )
+            .attr( 'title', def.title( supplier ) )
+            .text( def.label( supplier ) );
+    }
+
+    /**
+     * A group's state, key into GROUP_AVAILABILITY: something on sale; nothing on
+     * sale but a supplier still sells a listing; nothing a supplier sells at all
+     * (the canonical pick changes nothing customers can buy); otherwise out.
+     */
+    function groupAvailability( group ) {
+        const keys = group.members.map( memberAvailability );
+        if ( keys.some( ( k ) => k === 'instock' || k === 'backorder' ) ) { return 'onsale'; }
+        if ( keys.some( ( k ) => k === 'held' || k === 'unimported' ) )   { return 'sellable'; }
+        return keys.every( ( k ) => k === 'gone' ) ? 'notsold' : 'out';
+    }
+
+    const GROUP_AVAILABILITY = {
+        onsale:   { rank: 0, badge: 'success', label: 'In stock',         title: 'At least one listing can be bought' },
+        sellable: { rank: 1, badge: 'warning', label: 'Supplier sells it', title: 'Nothing is in stock, but a supplier feed still lists one of these listings' },
+        out:      { rank: 2, badge: 'error',   label: 'Out of stock',     title: 'Nothing is in stock' },
+        notsold:  { rank: 3, badge: '',        label: 'Not sold',         title: 'No supplier sells any of these listings any more, so which one is canonical changes nothing customers can buy' },
+    };
 
     /**
      * The price listings are checked against: the most common list price,
@@ -337,11 +390,8 @@
             : $( '<span class="mmi-dupes-listing-title">' ).text( title || 'Not imported yet' );
 
         const facts = [ member.supplier, member.vendor, member.sku ? `SKU ${ member.sku }` : '' ];
-        if ( resolved ) {
-            facts.push( STOCK_LABELS[ member.stock_status ] || member.stock_status || '' );
-            if ( member.visibility && member.visibility !== 'visible' ) { facts.push( VISIBILITY_LABELS[ member.visibility ] || member.visibility ); }
-        } else {
-            facts.push( 'not imported yet' );
+        if ( resolved && member.visibility && member.visibility !== 'visible' ) {
+            facts.push( VISIBILITY_LABELS[ member.visibility ] || member.visibility );
         }
 
         const cost     = Number( member.dealer_price ) || 0;
@@ -363,6 +413,7 @@
 
         const $li = $( '<li class="mmi-dupes-listing">' )
             .addClass( 'is-price-' + state )
+            .addClass( 'is-avail-' + memberAvailability( member ) )
             .toggleClass( 'is-unresolved', ! resolved )
             .toggleClass( 'is-canonical', !! resolved && member.wc_product_id === ctx.canonicalId );
         return $li.append(
@@ -374,7 +425,8 @@
             $( '<div class="mmi-dupes-listing-name">' ).append(
                 $( '<span class="mmi-dupes-listing-head">' ).append(
                     $title,
-                    resolved ? $( '<span class="mmi-dupes-listing-id">' ).text( '#' + member.wc_product_id ) : null
+                    resolved ? $( '<span class="mmi-dupes-listing-id">' ).text( '#' + member.wc_product_id ) : null,
+                    buildAvailabilityBadge( member )
                 ),
                 $( '<span class="mmi-dupes-listing-meta">' ).text( facts.filter( Boolean ).join( ' · ' ) )
             ),
@@ -701,6 +753,7 @@
             }
             return false;
         } );
+        allGroups.forEach( ( g ) => { g.availability = groupAvailability( g ); } );
         updateStats();
         updateBrandFilterAvailability( allGroups );
         sortAndRerender();
@@ -952,6 +1005,9 @@
         const noSale = allGroups.filter( g => g.nothing_on_sale ).length;
         $( SELECTORS.NO_SALE_COUNT ).text( noSale );
         $( SELECTORS.NO_SALE_STAT ).toggleClass( 'mmi-hidden', ! noSale && statusFilter !== 'no_sale' );
+        const notSold = allGroups.filter( g => g.availability === 'notsold' ).length;
+        $( SELECTORS.NOT_SOLD_COUNT ).text( notSold );
+        $( SELECTORS.NOT_SOLD_STAT ).toggleClass( 'mmi-hidden', ! notSold && statusFilter !== 'not_sold' );
         $( SELECTORS.STATS ).removeClass( 'mmi-hidden' );
     }
 
@@ -1048,6 +1104,7 @@
         if ( statusFilter === 'new' )    { groups = groups.filter( g => ! g.already_linked ); }
         else if ( statusFilter === 'linked' ) { groups = groups.filter( g => g.already_linked ); }
         else if ( statusFilter === 'no_sale' ) { groups = groups.filter( g => g.nothing_on_sale ); }
+        else if ( statusFilter === 'not_sold' ) { groups = groups.filter( g => g.availability === 'notsold' ); }
 
         const brandKeys = Object.keys( brandFilter );
         if ( brandKeys.length ) {
@@ -1119,6 +1176,7 @@
             if ( col === 'members' )      { va = a.members.length; vb = b.members.length; }
             else if ( col === 'price_spread' ) { va = a.price_spread;  vb = b.price_spread;  }
             else if ( col === 'status' )  { va = a.already_linked ? 1 : 0; vb = b.already_linked ? 1 : 0; }
+            else if ( col === 'stock' )   { va = GROUP_AVAILABILITY[ a.availability ].rank; vb = GROUP_AVAILABILITY[ b.availability ].rank; }
             else if ( col === 'source' )  { va = a.source || ''; vb = b.source || ''; }
             else if ( col === 'brand' )   { va = ( a.brand || '' ).toLowerCase(); vb = ( b.brand || '' ).toLowerCase(); }
             else                           { va = ( a.name  || '' ).toLowerCase(); vb = ( b.name  || '' ).toLowerCase(); }
@@ -1179,6 +1237,21 @@
         return $td;
     }
 
+    /** Queue Stock cell: the group's availability, with how many listings are in stock. */
+    function buildStockCell( group ) {
+        const def     = GROUP_AVAILABILITY[ group.availability ];
+        const inStock = group.members.filter( ( m ) => [ 'instock', 'backorder' ].includes( memberAvailability( m ) ) ).length;
+        const $td     = $( '<td class="col-stock">' ).append(
+            $( '<span class="mmi-badge">' ).addClass( def.badge ).attr( 'title', def.title ).text( def.label )
+        );
+        if ( inStock ) {
+            $td.append( ' ', $( '<span class="mmi-dupes-stock-count">' )
+                .attr( 'title', `${ inStock } of ${ group.members.length } listings in stock` )
+                .text( `${ inStock }/${ group.members.length }` ) );
+        }
+        return $td;
+    }
+
     /**
      * Renders a term/product thumbnail cell prefix, or nothing when the group
      * has no real image to show — an empty group.brand_thumbnail_url/image_url
@@ -1211,6 +1284,7 @@
                 : 'Detected by matching brand + product name across live supplier feeds' );
 
         const $tr = $( '<tr class="mmi-dupes-row" role="button" tabindex="0">' )
+            .toggleClass( 'is-not-sold', group.availability === 'notsold' )
             .attr( 'data-group-key', group.group_key )
             .attr( 'data-source', group.source || 'candidate' )
             .attr( 'title', group.already_linked ? 'Click to manage this group' : 'Click to review this group' );
@@ -1228,6 +1302,7 @@
         );
         $tr.append( $( '<td class="col-members">' ).text( group.members.length ) );
         $tr.append( buildPriceCell( group ) );
+        $tr.append( buildStockCell( group ) );
         $tr.append( $( `<td class="col-source"><span class="mmi-badge ${ sourceClass }" title="${ escHtml( sourceTitle ) }">${ sourceLabel }</span></td>` ) );
         $tr.append( $( `<td class="col-status"><span class="mmi-dupes-status ${ statusClass }">${ statusLabel }</span></td>` ) );
 
@@ -1461,7 +1536,7 @@
     }
 
     function buildReviewRow( group ) {
-        const colspan = 7;
+        const colspan = 8;
         const $tr  = $( '<tr class="mmi-dupes-review-row">' );
         const $td  = $( '<td>' ).attr( 'colspan', colspan );
         const $box = $( '<div class="mmi-dupes-review-box">' );
@@ -1482,9 +1557,7 @@
             group.multiple_canonicals ? 'More than one is marked canonical: approving keeps the one you pick and folds the other’s links into it.' : '',
             ( group.covers || [] ).length ? `This row replaces ${ group.covers.join( ' and ' ) }; linking here completes it.` : '',
         ] );
-        if ( group.nothing_on_sale ) {
-            $box.children( '.mmi-dupes-verdict' ).after( buildNoSaleAlert( group ) );
-        }
+        addAvailabilityAlert( $box, group );
 
         const $list = $( '<ul class="mmi-dupes-listings">' );
         group.members.forEach( ( member ) => {
@@ -1545,7 +1618,7 @@
      * candidate. See changelog.md 1.72.0 for the original design rationale.
      */
     function buildLegacyReviewRow( group ) {
-        const colspan = 7;
+        const colspan = 8;
         const $tr  = $( '<tr class="mmi-dupes-review-row">' );
         const $td  = $( '<td>' ).attr( 'colspan', colspan );
         const $box = $( '<div class="mmi-dupes-review-box">' );
@@ -1553,9 +1626,7 @@
         const ctx = startReviewBox( $box, group, group.canonical_product_id, [
             'Removing a listing resets it to a plain, unlinked product (it can re-enter this queue later); Make Canonical moves which listing customers see.',
         ] );
-        if ( group.nothing_on_sale ) {
-            $box.children( '.mmi-dupes-verdict' ).after( buildNoSaleAlert( group ) );
-        }
+        addAvailabilityAlert( $box, group );
 
         const $list = $( '<ul class="mmi-dupes-listings">' );
         group.members.forEach( function ( member ) {
@@ -1608,6 +1679,27 @@
         $td.append( $box );
         $tr.append( $td );
         return $tr;
+    }
+
+    /**
+     * Under the verdict: a group no supplier sells gets the "not sold" note (the
+     * stronger statement, so it replaces the nothing-on-sale alert); else a group
+     * with nothing on sale gets that alert.
+     */
+    function addAvailabilityAlert( $box, group ) {
+        let $alert = null;
+        if ( group.availability === 'notsold' ) {
+            $alert = $( '<div class="mmi-dupes-sale-alert is-not-sold" role="status">' ).append(
+                $( '<span class="dashicons dashicons-dismiss" aria-hidden="true"></span>' ),
+                $( '<strong>' ).text( 'No supplier sells this product any more. ' ),
+                document.createTextNode( 'Every listing is out of stock and gone from its supplier’s feed, so which one is canonical changes nothing customers can buy. It can be left as it is.' )
+            );
+        } else if ( group.nothing_on_sale ) {
+            $alert = buildNoSaleAlert( group );
+        }
+        if ( $alert ) {
+            $box.children( '.mmi-dupes-verdict' ).after( $alert );
+        }
     }
 
     /**

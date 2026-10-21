@@ -406,6 +406,7 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
                 'dealer_price' => (float) ( $item[ $cfg['dealer_field'] ] ?? 0 ),
                 'map_price'    => (float) ( $item[ $cfg['map_field']    ] ?? 0 ),
                 'msrp_price'   => (float) ( $item[ $cfg['msrp_field']   ] ?? 0 ),
+                'in_feed'      => true,
             ];
         }
     }
@@ -1012,11 +1013,23 @@ add_action( 'wp_ajax_mmi_scan_pk_collisions', function () {
 } );
 
 /**
+ * Supplier feeds read only to tell whether a supplier still sells a listing
+ * (SKU present), not for brand + name matching or prices: Plugivery's feed has
+ * no MAP/cost fields the review compares.
+ */
+function mmi_canonical_candidates_presence_feeds(): array {
+    return [
+        'plugivery' => [ 'file' => 'plugivery-products.json', 'sku_field' => 'id' ],
+    ];
+}
+
+/**
  * Builds a supplier => [sku => raw feed item] index from the same feed files
- * mmi_scan_duplicate_candidates() reads, for the existing-groups scan's cost
- * enrichment below. Read once per scan (itself 10-minute transient-cached),
- * not per product — the same file-read-cost discipline the Candidates scan
- * already follows.
+ * mmi_scan_duplicate_candidates() reads (plus the presence-only feeds), for the
+ * existing-groups scan's cost enrichment and "still sold" check below. Read once
+ * per scan (itself 10-minute transient-cached), not per product — the same
+ * file-read-cost discipline the Candidates scan already follows. A supplier with
+ * no readable feed has no key, which callers read as "unknown", not "dropped".
  *
  * @return array<string, array<string, array>>
  */
@@ -1024,7 +1037,7 @@ function mmi_canonical_candidates_build_feed_index(): array {
     $json_dir = mmi_shared_lib_json_dir();
 
     $index = [];
-    foreach ( mmi_canonical_candidates_feed_configs() as $supplier => $cfg ) {
+    foreach ( mmi_canonical_candidates_feed_configs() + mmi_canonical_candidates_presence_feeds() as $supplier => $cfg ) {
         $json_file = $json_dir . $cfg['file'];
         if ( ! file_exists( $json_file ) ) {
             continue;
@@ -1095,15 +1108,13 @@ function mmi_canonical_candidates_build_existing_member( int $product_id, bool $
     $vendor       = '';
 
     $in_feed = $supplier !== '' && isset( $feed_index[ $supplier ][ $supplier_sku ] );
-    if ( $in_feed ) {
-        $item = $feed_index[ $supplier ][ $supplier_sku ];
-        $cfg  = $configs[ $supplier ] ?? null;
-        if ( $cfg ) {
-            $dealer_price = (float) ( $item[ $cfg['dealer_field'] ] ?? 0 );
-            $map_price    = (float) ( $item[ $cfg['map_field']    ] ?? 0 );
-            $msrp_price   = (float) ( $item[ $cfg['msrp_field']   ] ?? 0 );
-            $vendor       = $cfg['vendor_field'] ? (string) ( $item[ $cfg['vendor_field'] ] ?? '' ) : '';
-        }
+    $cfg     = $in_feed ? ( $configs[ $supplier ] ?? null ) : null;
+    if ( $cfg ) {
+        $item         = $feed_index[ $supplier ][ $supplier_sku ];
+        $dealer_price = (float) ( $item[ $cfg['dealer_field'] ] ?? 0 );
+        $map_price    = (float) ( $item[ $cfg['map_field']    ] ?? 0 );
+        $msrp_price   = (float) ( $item[ $cfg['msrp_field']   ] ?? 0 );
+        $vendor       = $cfg['vendor_field'] ? (string) ( $item[ $cfg['vendor_field'] ] ?? '' ) : '';
     } elseif ( function_exists( 'mmi_get_cog_meta_key' ) ) {
         $dealer_price = (float) get_post_meta( $product_id, mmi_get_cog_meta_key(), true );
     }
@@ -1120,7 +1131,8 @@ function mmi_canonical_candidates_build_existing_member( int $product_id, bool $
         'product_name'  => get_the_title( $product_id ) ?: '(untitled)',
         'stock_status'  => (string) get_post_meta( $product_id, '_stock_status', true ),
         'visibility'    => (string) ( get_post_meta( $product_id, '_visibility', true ) ?: 'visible' ),
-        'in_feed'       => $in_feed,
+        // null: no feed to check (hand-added, or a supplier whose feed isn't read here).
+        'in_feed'       => isset( $feed_index[ $supplier ] ) ? $in_feed : null,
         'assets'        => mmi_canonical_candidates_asset_snapshot( $product_id ),
     ];
 }

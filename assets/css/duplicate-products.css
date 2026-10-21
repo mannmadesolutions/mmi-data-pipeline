@@ -58,6 +58,7 @@
 .mmi-dupes-stat-new strong  { color: #b32d2e; }
 .mmi-dupes-stat-linked strong { color: var(--mmi-primary, #45852C); }
 .mmi-dupes-stat-nosale strong { color: #c26a12; }
+.mmi-dupes-stat-notsold strong { color: #646970; }
 
 /* Notice area */
 .mmi-dupes-notice {
@@ -183,6 +184,7 @@
 .mmi-dupes-table .col-name    { width: 28%; }
 .mmi-dupes-table .col-members { width: 90px; text-align: center; }
 .mmi-dupes-table .col-spread  { width: 190px; white-space: nowrap; }
+.mmi-dupes-table .col-stock   { width: 130px; white-space: nowrap; }
 .mmi-dupes-table .col-source  { width: 110px; }
 .mmi-dupes-table .col-status  { width: 100px; }
 
@@ -287,6 +289,18 @@ button.mmi-dupes-status--btn:disabled {
     background: #fceaea;
     color: #8a1f1f;
     border-color: #8a1f1f;
+}
+
+/* Queue Stock cell (buildStockCell()): in-stock count beside the badge, and a
+   group no supplier sells reads muted. */
+.mmi-dupes-stock-count {
+    font-size: 0.75rem;
+    color: #646970;
+}
+
+.mmi-dupes-table > tbody > tr.mmi-dupes-row.is-not-sold > td.col-brand,
+.mmi-dupes-table > tbody > tr.mmi-dupes-row.is-not-sold > td.col-name {
+    color: #8c8f94;
 }
 
 /* Queue Price cell (buildPriceCell()): a dash when no listing has a price,
@@ -435,6 +449,18 @@ button.mmi-dupes-status--btn:disabled {
     font-size: 18px;
     width: 18px;
     height: 18px;
+}
+
+/* A group no supplier sells: informational, not a warning. */
+.mmi-dupes-sale-alert.is-not-sold {
+    border-color: var(--mmi-dupes-border);
+    border-left-color: var(--mmi-dupes-none);
+    background: var(--mmi-dupes-subtle);
+    color: #3c434a;
+}
+
+.mmi-dupes-sale-alert.is-not-sold .dashicons {
+    color: var(--mmi-dupes-muted);
 }
 
 /* The duplicate to switch to when nothing is on sale. */
@@ -607,6 +633,20 @@ a.mmi-dupes-listing-title:focus-visible {
     white-space: nowrap;
     font-size: 0.75rem;
     color: var(--mmi-dupes-muted);
+}
+
+/* Availability badge (shared .mmi-badge) after the title and id. */
+.mmi-dupes-listing-head .mmi-dupes-avail {
+    flex: none;
+    align-self: center;
+}
+
+/* A listing no supplier sells any more: faded, so the live ones stand out. */
+.mmi-dupes-listing.is-avail-gone .mmi-dupes-listing-thumb,
+.mmi-dupes-listing.is-avail-gone .mmi-dupes-listing-title,
+.mmi-dupes-listing.is-avail-gone .mmi-dupes-bar,
+.mmi-dupes-listing.is-avail-gone .mmi-dupes-figure {
+    opacity: 0.55;
 }
 
 /* Price bar — sized against the group's highest price. */
