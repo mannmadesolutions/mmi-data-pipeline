@@ -1947,11 +1947,12 @@ div.wrap div.mmi-header p,
   gap: 3px;
   height: 22px;
   padding: 0 8px 0 5px;
-  border: 1px solid var(--mmi-border-primary);
-  border-radius: var(--mmi-radius-full);
+  border: 1px solid var(--mmi-card-border-color);
+  border-radius: var(--mmi-radius-sm);
   background: var(--mmi-bg-white);
   color: var(--mmi-text-primary);
   cursor: help;
+  transition: border-color var(--mmi-transition-fast), box-shadow var(--mmi-transition-fast);
 }
 
 .mmi-works-with__chip .dashicons {
@@ -1967,13 +1968,15 @@ div.wrap div.mmi-header p,
 .mmi-works-with__chip.mmi-is-locked {
   background: var(--mmi-gray-100);
   color: var(--mmi-text-secondary);
-  border-style: dashed;
 }
 
+/* Borders come from Style Manager only: Cards & Footers' Border at rest, the
+   card's hover border when hovered or its tooltip is open. */
 .mmi-works-with__chip:hover,
 .mmi-works-with__chip:focus-visible,
 .mmi-works-with__chip.mmi-gate-is-open {
-  border-color: var(--mmi-gray-500);
+  border-color: var(--mmi-green-light);
+  box-shadow: var(--mmi-shadow-sm);
   outline: none;
 }
 
@@ -3810,7 +3813,12 @@ body.mmi-page .mmi-filters-section .mmi-ms-trigger {
     gap: 4px;
 }
 
-.mmi-filters-section .mmi-pill {
+/* The same pills anywhere in a .mmi-filter-pills group, panel or not (owner, 2026-10-22:
+   Vendor pages' reason pills and other bare groups fell back to the browser's button).
+   :where() keeps those at the specificity of .mmi-pill, so a plugin's own pill rules win; Data
+   Pipeline's .mmi-filter-bar pills keep their own look (sized to its status buttons). */
+.mmi-filters-section .mmi-pill,
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill {
     display: inline-block;
     padding: 4px 11px;
     border: 1px solid #c3c4c7;
@@ -3825,31 +3833,36 @@ body.mmi-page .mmi-filters-section .mmi-ms-trigger {
     transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-.mmi-filters-section .mmi-pill:hover {
+.mmi-filters-section .mmi-pill:hover,
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill:hover {
     border-color: rgba(69, 133, 44, 0.1);
     color: #3a3a3a;
     background: rgba(69, 133, 44, 0.1);
 }
 
-.mmi-filters-section .mmi-pill.active {
+.mmi-filters-section .mmi-pill.active,
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill.active {
     background: var(--mmi-primary, #45852C);
     border-color: var(--mmi-primary, #45852C);
     color: #fff;
 }
 
-.mmi-filters-section .mmi-pill.active:hover {
+.mmi-filters-section .mmi-pill.active:hover,
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill.active:hover {
     background: var(--mmi-primary, #45852C);
     border-color: var(--mmi-primary, #45852C);
     color: #c4c4c4;
 }
 
 /* ── Pill count badge ────────────────────────────────────────────────────── */
-.mmi-filters-section .mmi-pill-count {
+.mmi-filters-section .mmi-pill-count,
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill .mmi-pill-count {
     font-size: 10px;
     color: #8c8f94;
     font-weight: 400;
 }
-.mmi-filters-section .mmi-pill.active .mmi-pill-count {
+.mmi-filters-section .mmi-pill.active .mmi-pill-count,
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill.active .mmi-pill-count {
     color: rgba(255,255,255,0.75);
 }
 
