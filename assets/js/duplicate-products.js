@@ -237,7 +237,9 @@
        Whether a listing can be bought, and whether its supplier still sells it.
        member.in_feed: true = the supplier's feed lists it, false = the supplier
        dropped it, null = no feed to check (hand-added, or a feed not read here),
-       which never counts as dropped. */
+       which never counts as dropped. member.held_by names the stock override or
+       Custom Rule that keeps a listing out of stock although its feed lists it
+       (the owner's "Out of Stock Rule" holds Apogee Digital and Prism Sound). */
 
     /** A listing's state: key into MEMBER_AVAILABILITY. */
     function memberAvailability( member ) {
@@ -245,6 +247,7 @@
         if ( member.stock_status === 'instock' )     { return 'instock'; }
         if ( member.stock_status === 'onbackorder' ) { return 'backorder'; }
         if ( member.in_feed === false ) { return 'gone'; }
+        if ( member.held_by )           { return 'ruled'; }
         return member.in_feed === null ? 'out' : 'held';
     }
 
@@ -254,6 +257,7 @@
         held:       { badge: 'warning', label: ( s ) => `Out of stock · ${ s } sells it`, title: ( s ) => `Out of stock here, but the ${ s } feed still lists it, so it can go back on sale` },
         out:        { badge: 'error',   label: () => 'Out of stock', title: () => 'Out of stock, and not from a supplier feed this screen reads' },
         gone:       { badge: '',        label: () => 'No longer sold', title: ( s ) => `Out of stock, and the ${ s } feed no longer lists it: the supplier doesn’t sell it any more` },
+        ruled:      { badge: '',        label: () => 'Held out by rule', title: ( s, m ) => `Out of stock: ${ m.held_by } keeps it off sale, although the ${ s } feed lists it` },
         unimported: { badge: 'info',    label: () => 'Not imported', title: ( s ) => `In the ${ s } feed, not imported into the store yet` },
     };
 
@@ -262,7 +266,7 @@
         const def      = MEMBER_AVAILABILITY[ memberAvailability( member ) ];
         const supplier = SUPPLIER_LABELS[ member.supplier ] || member.supplier || 'supplier';
         return $( '<span class="mmi-badge mmi-dupes-avail">' ).addClass( def.badge )
-            .attr( 'title', def.title( supplier ) )
+            .attr( 'title', def.title( supplier, member ) )
             .text( def.label( supplier ) );
     }
 
@@ -275,14 +279,14 @@
         const keys = group.members.map( memberAvailability );
         if ( keys.some( ( k ) => k === 'instock' || k === 'backorder' ) ) { return 'onsale'; }
         if ( keys.some( ( k ) => k === 'held' || k === 'unimported' ) )   { return 'sellable'; }
-        return keys.every( ( k ) => k === 'gone' ) ? 'notsold' : 'out';
+        return keys.every( ( k ) => k === 'gone' || k === 'ruled' ) ? 'notsold' : 'out';
     }
 
     const GROUP_AVAILABILITY = {
         onsale:   { rank: 0, badge: 'success', label: 'In stock',         title: 'At least one listing can be bought' },
         sellable: { rank: 1, badge: 'warning', label: 'Supplier sells it', title: 'Nothing is in stock, but a supplier feed still lists one of these listings' },
         out:      { rank: 2, badge: 'error',   label: 'Out of stock',     title: 'Nothing is in stock' },
-        notsold:  { rank: 3, badge: '',        label: 'Not sold',         title: 'No supplier sells any of these listings any more, so which one is canonical changes nothing customers can buy' },
+        notsold:  { rank: 3, badge: '',        label: 'Not sold',         title: 'No listing can be sold: each is gone from its supplier’s feed or held out by a stock rule, so which one is canonical changes nothing customers can buy' },
     };
 
     /**
@@ -1392,8 +1396,7 @@
                     $btn.prop( 'disabled', false );
                     return;
                 }
-                showNotice( resp.data.message, 'success' );
-                scanExistingGroups( true );
+                applyGroupAction( resp, $btn.closest( 'tr.mmi-dupes-review-row' ).attr( 'data-group-key' ) );
             } )
             .fail( function ( xhr ) {
                 showNotice( 'AJAX error: ' + xhr.statusText, 'error' );
@@ -1423,8 +1426,7 @@
                     $btn.prop( 'disabled', false );
                     return;
                 }
-                showNotice( resp.data.message, 'success' );
-                scanExistingGroups( true );
+                applyGroupAction( resp, $btn.closest( 'tr.mmi-dupes-review-row' ).attr( 'data-group-key' ) );
             } )
             .fail( function ( xhr ) {
                 showNotice( 'AJAX error: ' + xhr.statusText, 'error' );
@@ -1456,8 +1458,7 @@
                     $btn.prop( 'disabled', false );
                     return;
                 }
-                showNotice( resp.data.message, 'success' );
-                scanExistingGroups( true );
+                applyGroupAction( resp, $btn.closest( 'tr.mmi-dupes-review-row' ).attr( 'data-group-key' ) );
             } )
             .fail( function ( xhr ) {
                 showNotice( 'AJAX error: ' + xhr.statusText, 'error' );
@@ -1485,14 +1486,54 @@
                     $btn.prop( 'disabled', false );
                     return;
                 }
-                showNotice( resp.data.message, 'success' );
-                scanExistingGroups( true );
+                applyGroupAction( resp, $btn.closest( 'tr.mmi-dupes-review-row' ).attr( 'data-group-key' ) );
             } )
             .fail( function ( xhr ) {
                 showNotice( 'AJAX error: ' + xhr.statusText, 'error' );
                 $btn.prop( 'disabled', false );
             } );
         } );
+    }
+
+    /**
+     * Swaps one group's row (and its open panel) for the server's re-read of it
+     * after a Duplicates action, instead of rescanning every group. newGroup null
+     * = the group is gone (unlinked or dissolved): its row is removed.
+     */
+    function replaceGroup( oldKey, newGroup, message ) {
+        const swap = ( list ) => {
+            const i = list.findIndex( ( g ) => g.group_key === oldKey );
+            if ( i < 0 ) { return; }
+            if ( newGroup ) { list.splice( i, 1, newGroup ); } else { list.splice( i, 1 ); }
+        };
+        if ( newGroup ) { newGroup.availability = groupAvailability( newGroup ); }
+        swap( existingGroups );
+        swap( allGroups );
+
+        const $row     = $( SELECTORS.TBODY + ' tr.mmi-dupes-row' ).filter( ( _, el ) => el.getAttribute( 'data-group-key' ) === oldKey );
+        const $panel   = $row.next( 'tr.mmi-dupes-review-row' );
+        const wasOpen  = $panel.length > 0;
+        $panel.remove();
+        if ( newGroup && $row.length ) {
+            const $newRow = buildGroupRow( newGroup );
+            $row.replaceWith( $newRow );
+            if ( wasOpen ) {
+                toggleReviewRow( $newRow );
+                if ( message ) {
+                    $newRow.next( 'tr.mmi-dupes-review-row' ).find( '.mmi-dupes-review-box' )
+                        .prepend( $( '<div class="mmi-dupes-notice notice-success" role="status">' ).text( message ) );
+                }
+            }
+        } else {
+            $row.remove();
+        }
+        updateStats();
+    }
+
+    /** Shared success path of the linked-group actions: message, then the one row. */
+    function applyGroupAction( resp, oldKey ) {
+        showNotice( resp.data.message, 'success' );
+        replaceGroup( resp.data.old_group_key || oldKey, resp.data.group || null, resp.data.message );
     }
 
     function toggleReviewRow( $row ) {
@@ -1691,8 +1732,8 @@
         if ( group.availability === 'notsold' ) {
             $alert = $( '<div class="mmi-dupes-sale-alert is-not-sold" role="status">' ).append(
                 $( '<span class="dashicons dashicons-dismiss" aria-hidden="true"></span>' ),
-                $( '<strong>' ).text( 'No supplier sells this product any more. ' ),
-                document.createTextNode( 'Every listing is out of stock and gone from its supplier’s feed, so which one is canonical changes nothing customers can buy. It can be left as it is.' )
+                $( '<strong>' ).text( 'Nothing here can be sold. ' ),
+                document.createTextNode( 'Every listing is out of stock and either gone from its supplier’s feed or held out by a stock rule, so which one is canonical changes nothing customers can buy. It can be left as it is.' )
             );
         } else if ( group.nothing_on_sale ) {
             $alert = buildNoSaleAlert( group );

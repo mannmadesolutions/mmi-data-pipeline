@@ -1362,6 +1362,27 @@ class MMI_Pipeline_Catalog_Updater
     }
 
     /**
+     * Puts one listing back on sale the way a feed sync's "back" step does: in
+     * stock (and the 'outofstock' visibility term gone), a restock quantity when
+     * it manages stock and has none, shop + search visibility, the lookup table,
+     * and a Reverb resync. The caller decides it should be on sale (the Duplicates
+     * queue, when a listing its supplier still sells becomes canonical).
+     */
+    public function put_on_sale_public( int $product_id ): void
+    {
+        \MannMade\DataPipeline\Stock_Override_Resolver::force_stock_status( $product_id, 'instock' );
+        if ( get_post_meta( $product_id, '_manage_stock', true ) === 'yes' && (float) get_post_meta( $product_id, '_stock', true ) <= 0 ) {
+            update_post_meta( $product_id, '_stock', self::RESTOCK_QUANTITY );
+        }
+        $this->set_catalog_visibility_visible( $product_id );
+        $this->sync_stock_lookup( [ $product_id ] );
+        clean_post_cache( $product_id );
+        if ( function_exists( 'mmi_reverb_queue_resync' ) ) {
+            mmi_reverb_queue_resync( [ $product_id ] );
+        }
+    }
+
+    /**
      * Sync stock for a single supplier's feed diff.
      * Called by CatalogUpdateController for each 'feed_sync' phase.
      *

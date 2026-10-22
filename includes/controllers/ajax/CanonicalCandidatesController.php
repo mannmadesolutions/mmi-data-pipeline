@@ -17,6 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use MannMade\DataPipeline\Importers\Product_CRUD_Manager;
+use MannMade\DataPipeline\Stock_Override_Resolver;
 
 /* ── Nonce used by all duplicate-products AJAX calls ──────────────────────── */
 const CANONICAL_CANDIDATES_NONCE = 'mmi_pipeline_canonical_candidates';
@@ -226,6 +227,23 @@ function mmi_canonical_candidates_product_thumbnail_url( int $product_id ): stri
 }
 
 /**
+ * A group's row picture: the first of these products (canonical or recommended
+ * listing first) that has a featured image, so a canonical with none still
+ * shows the product (owner, 2026-10-22: DigiLink's new canonical had none).
+ *
+ * @param int[] $product_ids In order of preference.
+ */
+function mmi_canonical_candidates_group_image_url( array $product_ids ): string {
+    foreach ( $product_ids as $id ) {
+        $url = mmi_canonical_candidates_product_thumbnail_url( (int) $id );
+        if ( $url !== '' ) {
+            return $url;
+        }
+    }
+    return '';
+}
+
+/**
  * Parses associated_product_ids into a clean int[] regardless of storage
  * shape. Two real shapes exist in production data: a flat delimited string
  * (written by mmi_approve_duplicate_group below) and a nested repeater-style
@@ -407,6 +425,7 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
                 'map_price'    => (float) ( $item[ $cfg['map_field']    ] ?? 0 ),
                 'msrp_price'   => (float) ( $item[ $cfg['msrp_field']   ] ?? 0 ),
                 'in_feed'      => true,
+                '_raw'         => $item,
             ];
         }
     }
@@ -433,7 +452,9 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
                 // Matches the legacy member builder's own field so the review
                 // table's Status column reads the same way for either source.
                 $member['stock_status'] = (string) get_post_meta( $product_id, '_stock_status', true );
+                $member['held_by']      = mmi_canonical_candidates_held_by_rule( (int) $product_id, $member['_raw'], $supplier );
             }
+            unset( $member['_raw'] );
         }
         unset( $member );
 
@@ -478,7 +499,7 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
             'already_linked'         => $already_linked,
             'recommended_product_id' => $recommended_product_id,
             'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $group['brand'] ),
-            'image_url'              => mmi_canonical_candidates_product_thumbnail_url( (int) $recommended_product_id ),
+            'image_url'              => mmi_canonical_candidates_group_image_url( array_merge( [ (int) $recommended_product_id ], $resolved_ids ) ),
         ];
     }
 
@@ -661,7 +682,8 @@ function mmi_canonical_candidates_nothing_on_sale( ?array $feed_index = null ): 
                 continue;
             }
             foreach ( $skus[ $aid ] ?? [] as $supplier => $sku ) {
-                if ( isset( $feed_index[ $supplier ][ $sku ] ) ) {
+                if ( isset( $feed_index[ $supplier ][ $sku ] )
+                    && mmi_canonical_candidates_held_by_rule( (int) $aid, $feed_index[ $supplier ][ $sku ], $supplier ) === '' ) {
                     $result[ $canonical_id ] = $aid;
                     continue 3;
                 }
@@ -803,6 +825,7 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
     update_post_meta( $canonical_id, 'canonical', 'TRUE' );
     update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $associated ) );
     $suppressed = mmi_canonical_candidates_suppress_now( array_merge( [ $canonical_id ], $associated ) );
+    $on_sale    = mmi_canonical_candidates_put_canonical_on_sale( $canonical_id );
     mmi_canonical_candidates_forget_nothing_on_sale( array_merge( [ $canonical_id ], $merged ) );
     // A group is worked once every listing it found is in this link.
     $linked = array_flip( array_merge( [ $canonical_id ], $associated ) );
@@ -818,7 +841,7 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
         'details'     => [ 'associated_product_ids' => array_values( $associated ), 'suppressed' => $suppressed ],
     ] );
     wp_send_json_success( [
-        'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ),
+        'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ) . '.' . $on_sale,
         'canonical_product_id'   => $canonical_id,
         'associated_product_ids' => $associated,
         'fields_applied'         => $fields_applied,
@@ -877,6 +900,7 @@ add_action( 'wp_ajax_mmi_canonical_apply_field_winners', function () {
     wp_send_json_success( [
         'message'        => 'Applied ' . count( $applied['fields_applied'] ) . ' field(s) to the canonical product',
         'fields_applied' => $applied['fields_applied'],
+        'group'          => mmi_canonical_candidates_refresh_legacy_group( $canonical_id ),
     ] );
 } );
 
@@ -1013,6 +1037,69 @@ add_action( 'wp_ajax_mmi_scan_pk_collisions', function () {
 } );
 
 /**
+ * What keeps a listing out of stock although its supplier's feed lists it: a
+ * per-product stock override or a Custom Rule that forces out of stock (the
+ * owner's "Out of Stock Rule" holds every Apogee Digital and Prism Sound product,
+ * which suppliers still list). The same resolver imports and Catalog Maintenance
+ * use, asked what it would do with an in-stock feed row.
+ *
+ * @return string '' when nothing does, else a phrase naming it.
+ */
+function mmi_canonical_candidates_held_by_rule( int $product_id, array $raw_item, string $supplier ): string {
+    static $rules = null, $resolver = null;
+    if ( ! $product_id || ! class_exists( Stock_Override_Resolver::class ) ) {
+        return '';
+    }
+    if ( $resolver === null ) {
+        $rules    = (array) MMI_DB::get_setting( 'mmi_stock_override_rules', [] );
+        $resolver = new Stock_Override_Resolver( $rules );
+    }
+    if ( $resolver->resolve( $product_id, 'instock', $raw_item, $supplier ) !== 'outofstock' ) {
+        return '';
+    }
+    if ( get_post_meta( $product_id, '_mmi_stock_override', true ) === 'force_outofstock' ) {
+        return 'a per-product stock override';
+    }
+    foreach ( $rules as $rule ) {
+        $n = Stock_Override_Resolver::normalize_rule( (array) $rule );
+        if ( ! empty( $n['enabled'] ) && ( $n['action'] ?? '' ) === 'force_outofstock'
+            && Stock_Override_Resolver::rule_matches_product( (array) $rule, $product_id, $raw_item ) ) {
+            return 'the Custom Rule "' . ( $n['name'] ?? 'unnamed' ) . '"';
+        }
+    }
+    return 'a stock rule';
+}
+
+/**
+ * Puts a listing that just became canonical on sale now, when it should be: its
+ * supplier's feed lists it and no stock override or Custom Rule holds it out.
+ * Until 2.58.18 it waited for the next Catalog Maintenance run (hourly), still
+ * shop-only and out of search from its time as a duplicate.
+ *
+ * @return string A sentence for the action's message ('' when already on sale).
+ */
+function mmi_canonical_candidates_put_canonical_on_sale( int $product_id ): string {
+    if ( get_post_status( $product_id ) !== 'publish' || ! class_exists( 'MMI_Pipeline_Catalog_Updater' ) ) {
+        return '';
+    }
+    $in_stock = in_array( get_post_meta( $product_id, '_stock_status', true ), [ 'instock', 'onbackorder' ], true );
+    $hidden   = has_term( 'exclude-from-search', 'product_visibility', $product_id );
+    if ( $in_stock && ! $hidden ) {
+        return '';
+    }
+    $raw = Stock_Override_Resolver::raw_feed_item( $product_id );
+    if ( ! $raw ) {
+        return $in_stock ? '' : " #{$product_id} stays out of stock: no supplier feed lists it.";
+    }
+    $held = mmi_canonical_candidates_held_by_rule( $product_id, $raw, Stock_Override_Resolver::product_supplier( $product_id ) );
+    if ( $held !== '' ) {
+        return $in_stock ? '' : " #{$product_id} stays out of stock: {$held} keeps it off sale.";
+    }
+    ( new MMI_Pipeline_Catalog_Updater() )->put_on_sale_public( $product_id );
+    return " #{$product_id} is on sale now.";
+}
+
+/**
  * Supplier feeds read only to tell whether a supplier still sells a listing
  * (SKU present), not for brand + name matching or prices: Plugivery's feed has
  * no MAP/cost fields the review compares.
@@ -1133,6 +1220,7 @@ function mmi_canonical_candidates_build_existing_member( int $product_id, bool $
         'visibility'    => (string) ( get_post_meta( $product_id, '_visibility', true ) ?: 'visible' ),
         // null: no feed to check (hand-added, or a supplier whose feed isn't read here).
         'in_feed'       => isset( $feed_index[ $supplier ] ) ? $in_feed : null,
+        'held_by'       => $in_feed ? mmi_canonical_candidates_held_by_rule( $product_id, $feed_index[ $supplier ][ $supplier_sku ], $supplier ) : '',
         'assets'        => mmi_canonical_candidates_asset_snapshot( $product_id ),
     ];
 }
@@ -1226,10 +1314,81 @@ function mmi_canonical_candidates_mpn_groups( array $feed_index ): array {
             'already_linked'         => false,
             'recommended_product_id' => $recommended_product_id,
             'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),
-            'image_url'              => mmi_canonical_candidates_product_thumbnail_url( (int) ( $recommended_product_id ?: $name_id ) ),
+            'image_url'              => mmi_canonical_candidates_group_image_url( array_merge( [ (int) ( $recommended_product_id ?: $name_id ) ], $ids ) ),
         ];
     }
     return $groups;
+}
+
+/**
+ * One existing linked group (source 'legacy') in the queue's group shape: the
+ * canonical plus every real product its associated_product_ids names. Null when
+ * it names none (canonical=TRUE with no real link is the ambient default, not a
+ * group). Used by the full scan and by the single-group refresh after a
+ * Duplicates action.
+ *
+ * @param mixed $assoc_raw  associated_product_ids, either storage shape.
+ * @param array $feed_index From mmi_canonical_candidates_build_feed_index().
+ * @param array $no_sale    From mmi_canonical_candidates_nothing_on_sale().
+ */
+function mmi_canonical_candidates_legacy_group( int $canonical_id, $assoc_raw, array $feed_index, array $no_sale ): ?array {
+    $assoc_ids = array_values( array_unique( array_filter(
+        mmi_canonical_candidates_parse_associated_ids( $assoc_raw ),
+        fn( $id ) => $id > 0 && $id !== $canonical_id && get_post_type( $id ) === 'product'
+    ) ) );
+    if ( empty( $assoc_ids ) ) {
+        return null;
+    }
+
+    $members = [ mmi_canonical_candidates_build_existing_member( $canonical_id, true, $feed_index ) ];
+    foreach ( $assoc_ids as $aid ) {
+        $members[] = mmi_canonical_candidates_build_existing_member( $aid, false, $feed_index );
+    }
+
+    $brand_terms = wp_get_post_terms( $canonical_id, 'product_brand', [ 'fields' => 'names' ] );
+    $brand       = ( ! is_wp_error( $brand_terms ) && ! empty( $brand_terms ) ) ? $brand_terms[0] : '';
+
+    $recommended            = mmi_canonical_candidates_recommend( $members );
+    $recommended_product_id = $recommended['wc_product_id'] ?? null;
+    foreach ( $members as &$member ) {
+        $member['is_recommended'] = $recommended_product_id !== null
+            && $member['wc_product_id'] === $recommended_product_id;
+    }
+    unset( $member );
+
+    $price = mmi_canonical_candidates_price_summary( $members );
+
+    return [
+        'group_key'              => 'legacy-' . $canonical_id,
+        'source'                 => 'legacy',
+        'canonical_product_id'   => $canonical_id,
+        'brand'                  => $brand,
+        'name'                   => get_the_title( $canonical_id ) ?: '(untitled)',
+        'members'                => $members,
+    ] + $price + [
+        'already_linked'         => true,
+        'nothing_on_sale'        => isset( $no_sale[ $canonical_id ] ),
+        'sale_candidate_id'      => (int) ( $no_sale[ $canonical_id ] ?? 0 ),
+        'recommended_product_id' => $recommended_product_id,
+        'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),
+        'image_url'              => mmi_canonical_candidates_group_image_url( array_merge( [ $canonical_id ], $assoc_ids ) ),
+    ];
+}
+
+/**
+ * A changed linked group re-read for the queue, so the page swaps that one row
+ * instead of rescanning every group. Also drops the full scan's cache (the
+ * next Reload rescans). Null when the group no longer exists.
+ */
+function mmi_canonical_candidates_refresh_legacy_group( int $canonical_id ): ?array {
+    delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
+    if ( ! $canonical_id || get_post_meta( $canonical_id, 'canonical', true ) !== 'TRUE' ) {
+        return null;
+    }
+    $feed_index = mmi_canonical_candidates_build_feed_index();
+    $no_sale    = mmi_canonical_candidates_nothing_on_sale( $feed_index );
+    mmi_canonical_candidates_save_nothing_on_sale( $no_sale );
+    return mmi_canonical_candidates_legacy_group( $canonical_id, get_post_meta( $canonical_id, 'associated_product_ids', true ), $feed_index, $no_sale );
 }
 
 /**
@@ -1291,49 +1450,10 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
         mmi_canonical_candidates_save_nothing_on_sale( $no_sale );
 
         foreach ( $assoc_rows as $row ) {
-            $canonical_id = (int) $row->post_id;
-            $assoc_ids    = mmi_canonical_candidates_parse_associated_ids( $row->meta_value );
-            $assoc_ids    = array_values( array_unique( array_filter(
-                $assoc_ids,
-                fn( $id ) => $id > 0 && $id !== $canonical_id && get_post_type( $id ) === 'product'
-            ) ) );
-            if ( empty( $assoc_ids ) ) {
-                continue; // canonical=TRUE with no real link — the ambient default, not a group (see this file's own already_linked note above).
+            $group = mmi_canonical_candidates_legacy_group( (int) $row->post_id, $row->meta_value, $feed_index, $no_sale );
+            if ( $group ) {
+                $groups[] = $group;
             }
-
-            $members = [ mmi_canonical_candidates_build_existing_member( $canonical_id, true, $feed_index ) ];
-            foreach ( $assoc_ids as $aid ) {
-                $members[] = mmi_canonical_candidates_build_existing_member( $aid, false, $feed_index );
-            }
-
-            $brand_terms = wp_get_post_terms( $canonical_id, 'product_brand', [ 'fields' => 'names' ] );
-            $brand       = ( ! is_wp_error( $brand_terms ) && ! empty( $brand_terms ) ) ? $brand_terms[0] : '';
-
-            $recommended            = mmi_canonical_candidates_recommend( $members );
-            $recommended_product_id = $recommended['wc_product_id'] ?? null;
-            foreach ( $members as &$member ) {
-                $member['is_recommended'] = $recommended_product_id !== null
-                    && $member['wc_product_id'] === $recommended_product_id;
-            }
-            unset( $member );
-
-            $price = mmi_canonical_candidates_price_summary( $members );
-
-            $groups[] = [
-                'group_key'              => 'legacy-' . $canonical_id,
-                'source'                 => 'legacy',
-                'canonical_product_id'   => $canonical_id,
-                'brand'                  => $brand,
-                'name'                   => get_the_title( $canonical_id ) ?: '(untitled)',
-                'members'                => $members,
-            ] + $price + [
-                'already_linked'         => true,
-                'nothing_on_sale'        => isset( $no_sale[ $canonical_id ] ),
-                'sale_candidate_id'      => (int) ( $no_sale[ $canonical_id ] ?? 0 ),
-                'recommended_product_id' => $recommended_product_id,
-                'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),
-                'image_url'              => mmi_canonical_candidates_product_thumbnail_url( $canonical_id ),
-            ];
         }
     }
 
@@ -1403,8 +1523,6 @@ add_action( 'wp_ajax_mmi_canonical_remove_group_member', function () {
         update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $remaining ) );
     }
 
-    delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
-
     mmi_data_pipeline_audit( 'canonical.remove_member', [
         'object_type' => 'product',
         'object_id'   => $canonical_id,
@@ -1416,6 +1534,7 @@ add_action( 'wp_ajax_mmi_canonical_remove_group_member', function () {
             . ( $dissolved ? ' The group had no members left and was dissolved.' : '' ),
         'dissolved'            => $dissolved,
         'remaining_member_ids' => $remaining,
+        'group'                => mmi_canonical_candidates_refresh_legacy_group( $canonical_id ),
     ] );
 } );
 
@@ -1460,9 +1579,8 @@ add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
     delete_post_meta( $old_canonical_id, 'associated_product_ids' );
 
     mmi_canonical_candidates_suppress_now( array_merge( [ $new_canonical_id ], $new_associated ) );
+    $on_sale = mmi_canonical_candidates_put_canonical_on_sale( $new_canonical_id );
     mmi_canonical_candidates_forget_nothing_on_sale( [ $old_canonical_id ] );
-
-    delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 
     mmi_data_pipeline_audit( 'canonical.reassign', [
         'object_type' => 'product',
@@ -1471,10 +1589,11 @@ add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
         'details'     => [ 'old_canonical_id' => $old_canonical_id ],
     ] );
     wp_send_json_success( [
-        'message'                => 'Product #' . $new_canonical_id . ' is now canonical; the other member(s) are out of stock and off the shop search now.'
-            . ( get_post_meta( $new_canonical_id, '_stock_status', true ) === 'instock' ? '' : ' #' . $new_canonical_id . ' goes back on sale when its supplier feed next imports.' ),
+        'message'                => 'Product #' . $new_canonical_id . ' is now canonical; the other member(s) are out of stock and off the shop search now.' . $on_sale,
         'canonical_product_id'   => $new_canonical_id,
         'associated_product_ids' => $new_associated,
+        'old_group_key'          => 'legacy-' . $old_canonical_id,
+        'group'                  => mmi_canonical_candidates_refresh_legacy_group( $new_canonical_id ),
     ] );
 } );
 
@@ -1504,7 +1623,7 @@ add_action( 'wp_ajax_mmi_canonical_unlink_group', function () {
     delete_post_meta( $canonical_id, 'associated_product_ids' );
     mmi_canonical_candidates_forget_nothing_on_sale( [ $canonical_id ] );
 
-    delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
+    mmi_canonical_candidates_refresh_legacy_group( 0 ); // drops the scan cache
 
     mmi_data_pipeline_audit( 'canonical.unlink', [
         'object_type' => 'product',

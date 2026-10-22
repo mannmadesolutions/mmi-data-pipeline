@@ -104,7 +104,7 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                         Nothing on sale: <strong id="mmi-dupes-nosale-count">0</strong>
                     </button>
                     <button type="button" class="mmi-dupes-stat mmi-dupes-stat-notsold mmi-hidden" id="mmi-dupes-stat-notsold" data-status-filter="not_sold"
-                            title="Groups whose every listing is out of stock and gone from its supplier's feed: the canonical pick changes nothing customers can buy">
+                            title="Groups where no listing can be sold: each is out of stock and either gone from its supplier's feed or held out by a stock rule. The canonical pick changes nothing customers can buy.">
                         Not sold: <strong id="mmi-dupes-notsold-count">0</strong>
                     </button>
                 </div>
@@ -140,7 +140,7 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                                 Price <span class="sort-icon"></span>
                                 <span class="mmi-dupes-th-resize" data-resize-col="spread"></span>
                             </th>
-                            <th class="col-stock sortable" data-col="stock" data-resize-col="stock" title="Whether any listing is in stock, and whether a supplier still sells one. Not sold = every listing is out of stock and gone from its supplier's feed.">
+                            <th class="col-stock sortable" data-col="stock" data-resize-col="stock" title="Whether any listing is in stock, and whether a supplier still sells one. Not sold = every listing is out of stock and either gone from its supplier's feed or held out by a stock rule.">
                                 Stock <span class="sort-icon"></span>
                                 <span class="mmi-dupes-th-resize" data-resize-col="stock"></span>
                             </th>
