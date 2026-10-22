@@ -13,6 +13,9 @@
  *                      {mmi_spec_item_text} "4 GB" · {mmi_spec_item_id} (YouTube id)
  *   Product tags       {mmi_spec_{concept}}        all rows joined with ", "
  *                      {mmi_spec_{concept}_count}  row count (for conditions)
+ *                      {mmi_spec_{concept}_ids}    row ids joined with ", " ("mac, windows")
+ *   Query filters      Provider "MMI Product Content" for checkbox/radio/select
+ *                      filters on a list concept (Field_Mmi), e.g. platforms.
  *
  * Only active when the Bricks theme is running.
  *
@@ -30,6 +33,9 @@ class MMI_Product_Content_Bricks {
 
     /** Contexts whose output Bricks uses as a URL/value, not HTML text — left unescaped. */
     const RAW_CONTEXTS = [ 'link', 'image', 'media', 'url' ];
+
+    /** List concepts whose rows carry a machine id worth exposing as {mmi_spec_{concept}_ids}. */
+    const ID_CONCEPTS = [ 'platforms', 'videos' ];
 
     /** Loop-scoped tag → row field. */
     const ITEM_TAGS = [
@@ -55,6 +61,16 @@ class MMI_Product_Content_Bricks {
         add_filter( 'bricks/dynamic_data/render_tag', [ __CLASS__, 'render_tag' ], 20, 3 );
         add_filter( 'bricks/dynamic_data/render_content', [ __CLASS__, 'render_content' ], 20, 3 );
         add_filter( 'bricks/frontend/render_data', [ __CLASS__, 'render_content' ], 20, 2 );
+        add_filter( 'bricks/query_filters_cf_integration/register_providers', [ __CLASS__, 'register_filter_provider' ] );
+    }
+
+    /** Bricks loads a provider as Bricks\Integrations\Query_Filters\Field_{Key}; define it only once Bricks asks. */
+    public static function register_filter_provider( $providers ) {
+        if ( class_exists( '\Bricks\Query_Filters' ) ) {
+            require_once __DIR__ . '/class-product-content-bricks-filter.php';
+            $providers[] = 'mmi';
+        }
+        return $providers;
     }
 
     /* ── Query loops ──────────────────────────────────────────────────────── */
@@ -117,6 +133,9 @@ class MMI_Product_Content_Bricks {
             if ( $def['type'] === 'list' ) {
                 $tags[] = [ 'name' => '{' . self::QUERY_PREFIX . $concept . '_count}', 'label' => $def['label'] . ' (count)', 'group' => self::TAG_GROUP ];
             }
+            if ( in_array( $concept, self::ID_CONCEPTS, true ) ) {
+                $tags[] = [ 'name' => '{' . self::QUERY_PREFIX . $concept . '_ids}', 'label' => $def['label'] . ' (ids)', 'group' => self::TAG_GROUP ];
+            }
         }
         return $tags;
     }
@@ -142,6 +161,9 @@ class MMI_Product_Content_Bricks {
             $count = MMI_Product_Content_Registry::count( $product_id, substr( $concept, 0, -6 ) );
             // Empty string (not "0") so Bricks' "is not empty" conditions work on counts too.
             return $count > 0 ? (string) $count : '';
+        }
+        if ( substr( $concept, -4 ) === '_ids' && in_array( substr( $concept, 0, -4 ), self::ID_CONCEPTS, true ) ) {
+            return implode( ', ', array_filter( array_column( MMI_Product_Content_Registry::get_items( $product_id, substr( $concept, 0, -4 ) ), 'id' ) ) );
         }
         return MMI_Product_Content_Registry::exists( $concept )
             ? MMI_Product_Content_Registry::get_text( $product_id, $concept )

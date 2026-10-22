@@ -60,6 +60,7 @@ class Product_CRUD_Manager {
 
         $product_id = $product->save();
         update_post_meta( (int) $product_id, '_mmi_pipeline_updated_at', current_time( 'mysql' ) );
+        \MMI_Product_Content_Registry::sync_platforms( (int) $product_id );
 
         if ( $this->import_rules['image_sync'] && ! empty( $data['images'] ) ) {
             $this->set_product_images( $product_id, $data['images'] );
@@ -101,6 +102,11 @@ class Product_CRUD_Manager {
         // when the main image is locked.
         $data = \MMI_Pipeline_Field_Locks::filter_data( $data, \MMI_Pipeline_Field_Locks::get( $product_id ) );
 
+        // Product content (requirements, platforms, …) is only ever added to by an import.
+        foreach ( $data as $field => $value ) {
+            $data[ $field ] = \MMI_Product_Content_Registry::import_value( $product_id, (string) $field, $value );
+        }
+
         $has_changes = false;
         foreach ( $data as $field => $new_value ) {
             if ( in_array( $field, self::NOOP_FIELDS, true ) ) {
@@ -127,6 +133,7 @@ class Product_CRUD_Manager {
         $stock_updated_count = $this->apply_fields_to_product( $product, $data );
         $product->save();
         update_post_meta( (int) $product_id, '_mmi_pipeline_updated_at', current_time( 'mysql' ) );
+        \MMI_Product_Content_Registry::sync_platforms( (int) $product_id );
 
         if ( $this->import_rules['image_sync'] && ! empty( $data['images'] ) ) {
             $this->set_product_images( $product_id, $data['images'] );

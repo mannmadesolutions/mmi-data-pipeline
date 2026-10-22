@@ -2,26 +2,27 @@
 /**
  * Product Content Registry — one read model for structured product content
  *
- * Product specs (system requirements, features, videos, licensing, …) reach
- * this store through several writers over the years: this plugin's
- * enrichment field mappings write `_mmi_*` JSON keys, while an older
- * JetEngine meta-box layer holds the same concepts in its own repeater
- * format. Templates, schema and health rules should not care which one a
- * given product happens to have — they ask this registry for a concept
- * ("requirements_mac") and get display-ready rows back, plus which meta key
- * supplied them (provenance).
+ * Product specs (system requirements, features, videos, licensing, …) are
+ * written by this plugin's enrichment field mappings, the Product Content
+ * editor and sibling tools, each into one canonical `_mmi_*` key. Templates,
+ * schema and health rules ask this registry for a concept ("requirements_mac")
+ * and get display-ready rows back, plus which meta key supplied them
+ * (provenance).
  *
- * Source order per concept is deliberate, not "newest format wins":
- *  - Requirements/videos/features: `_mmi_*` first — pipeline-written, filled
- *    on ~3,200 products vs. ~500 for the JetEngine twins, and not
- *    title-cased the way the legacy `features` copies were.
- *  - Specs: the JetEngine `specs_table` only — `_mmi_specs_table` holds
- *    labels without values and is never read.
+ * The older JetEngine repeater copies (mac-requirements, features,
+ * youtube_urls, specs_table, …) were migrated into the `_mmi_*` keys
+ * (2026-09-25, and the corrupt requirement repeaters 2026-10-22) and are no
+ * longer read. `_mmi_specs_table` holds labels without values and is never read.
  *
  * Writes: every stored concept has one canonical `_mmi_*` key (its `store`
  * entry) and store() is the only writer the editor and migrations use, so
- * the storage shape lives in one place. Legacy JetEngine keys remain as
- * read-only fallbacks until they're migrated and retired.
+ * the storage shape lives in one place.
+ *
+ * Operating systems: `_mmi_platforms` is the one answer to "which OSes does
+ * this run on" (the storefront's OS icons and shop filter read it). Every
+ * process only adds to it: an OS with requirements is listed (sync_platforms()),
+ * and an import merges its feed value in (import_value()). Only a person
+ * removes one, in the Product Content editor, which locks the field.
  *
  * Reads go through get_post_meta(), so the post-meta cache WordPress primes
  * for the current product makes repeated lookups free.
@@ -50,28 +51,28 @@ class MMI_Product_Content_Registry {
             'label'   => 'Mac system requirements',
             'group'   => 'requirements',
             'type'    => 'list',
-            'sources' => [ [ '_mmi_mac_requirements', 'requirements' ], [ 'mac-requirements', 'repeater', 'mac-requirement' ] ],
+            'sources' => [ [ '_mmi_mac_requirements', 'requirements' ] ],
             'store'   => [ '_mmi_mac_requirements', 'requirements' ],
         ],
         'requirements_windows' => [
             'label'   => 'Windows system requirements',
             'group'   => 'requirements',
             'type'    => 'list',
-            'sources' => [ [ '_mmi_windows_requirements', 'requirements' ], [ 'windows-requirements', 'repeater', 'windows-requirement' ] ],
+            'sources' => [ [ '_mmi_windows_requirements', 'requirements' ] ],
             'store'   => [ '_mmi_windows_requirements', 'requirements' ],
         ],
         'requirements_linux'   => [
             'label'   => 'Linux system requirements',
             'group'   => 'requirements',
             'type'    => 'list',
-            'sources' => [ [ '_mmi_linux_requirements', 'requirements' ], [ 'linux-requirements', 'repeater', 'linux-requirement' ] ],
+            'sources' => [ [ '_mmi_linux_requirements', 'requirements' ] ],
             'store'   => [ '_mmi_linux_requirements', 'requirements' ],
         ],
         'features'             => [
             'label'   => 'Features',
             'group'   => 'features',
             'type'    => 'list',
-            'sources' => [ [ '_mmi_features', 'list' ], [ 'features', 'repeater', 'feature' ] ],
+            'sources' => [ [ '_mmi_features', 'list' ] ],
             'store'   => [ '_mmi_features', 'list' ],
         ],
         // First 4 features, matching the Single Product design's original
@@ -89,14 +90,14 @@ class MMI_Product_Content_Registry {
             'label'   => 'Top features (curated)',
             'group'   => 'features',
             'type'    => 'list',
-            'sources' => [ [ '_mmi_top_features', 'list', 'top_feature' ], [ 'top_features', 'repeater', 'top_feature' ] ],
+            'sources' => [ [ '_mmi_top_features', 'list', 'top_feature' ] ],
             'store'   => [ '_mmi_top_features', 'list' ],
         ],
         'videos'               => [
             'label'   => 'Videos',
             'group'   => 'media',
             'type'    => 'list',
-            'sources' => [ [ '_mmi_youtube_urls', 'videos' ], [ 'youtube_urls', 'repeater_videos', 'youtube_url' ] ],
+            'sources' => [ [ '_mmi_youtube_urls', 'videos' ] ],
             'store'   => [ '_mmi_youtube_urls', 'videos' ],
         ],
         'video_primary'        => [
@@ -111,8 +112,7 @@ class MMI_Product_Content_Registry {
             'label'   => 'Specifications',
             'group'   => 'features',
             'type'    => 'list',
-            // _mmi_specs_table (labels only, no values) is a broken historical copy — never read.
-            'sources' => [ [ '_mmi_specs', 'pairs' ], [ 'specs_table', 'pairs' ] ],
+            'sources' => [ [ '_mmi_specs', 'pairs' ] ],
             'store'   => [ '_mmi_specs', 'pairs' ],
         ],
         'licensing'            => [
@@ -159,7 +159,7 @@ class MMI_Product_Content_Registry {
             'label'   => 'Disclaimer',
             'group'   => 'notes',
             'type'    => 'text',
-            'sources' => [ [ '_mmi_disclaimer', 'text' ], [ 'disclaimer', 'text' ] ],
+            'sources' => [ [ '_mmi_disclaimer', 'text' ] ],
             'store'   => [ '_mmi_disclaimer', 'text' ],
         ],
         'mpn'                  => [
@@ -272,7 +272,7 @@ class MMI_Product_Content_Registry {
     private static function read_source( int $product_id, array $source ): array {
         [ $meta_key, $format ] = $source;
         $raw = get_post_meta( $product_id, $meta_key, true );
-        if ( is_string( $raw ) && $raw !== '' && in_array( $format, [ 'requirements', 'list', 'videos', 'licensing', 'platforms', 'pairs', 'links', 'repeater', 'repeater_videos' ], true ) ) {
+        if ( is_string( $raw ) && $raw !== '' && in_array( $format, [ 'requirements', 'list', 'videos', 'licensing', 'platforms', 'pairs', 'links' ], true ) ) {
             $decoded = json_decode( $raw, true );
             if ( json_last_error() === JSON_ERROR_NONE ) {
                 $raw = $decoded;
@@ -284,16 +284,14 @@ class MMI_Product_Content_Registry {
                 return is_array( $raw ) ? self::requirements_rows( $raw ) : [];
             case 'list':
                 return self::rows_from_strings( self::repeater_strings( $raw, $source[2] ?? '' ) );
-            case 'repeater':
-                return self::rows_from_strings( self::repeater_strings( $raw, $source[2] ?? '' ) );
-            case 'repeater_videos':
-                return self::video_rows( self::repeater_strings( $raw, $source[2] ?? '' ) );
             case 'videos':
                 return self::video_rows( $raw );
             case 'licensing':
                 return is_array( $raw ) ? self::licensing_rows( $raw ) : [];
             case 'platforms':
-                return is_array( $raw ) ? self::rows_from_strings( array_map( static fn( $p ) => self::PLATFORM_LABELS[ strtolower( (string) $p ) ] ?? (string) $p, $raw ) ) : [];
+                // Fixed order, label as the value, the key ("mac") as the row id for conditions and filters.
+                $keys = is_array( $raw ) ? array_intersect( array_keys( self::PLATFORM_LABELS ), array_map( 'strtolower', array_map( 'strval', $raw ) ) ) : [];
+                return array_map( static fn( $k ) => self::row( self::PLATFORM_LABELS[ $k ], '', $k ), array_values( $keys ) );
             case 'pairs':
             case 'links':
                 return is_array( $raw ) ? self::pair_rows( $raw ) : [];
@@ -646,6 +644,85 @@ class MMI_Product_Content_Registry {
         foreach ( array_keys( self::CONCEPTS ) as $concept ) {
             unset( self::$memo[ $product_id . ':' . $concept ] );
         }
+    }
+
+    /* ── Operating systems ────────────────────────────────────────────────── */
+
+    /** Platform key → the requirements concept that implies it. */
+    const PLATFORM_REQUIREMENTS = [ 'mac' => 'requirements_mac', 'windows' => 'requirements_windows', 'linux' => 'requirements_linux' ];
+
+    /** Platforms the product states requirements for (a requirements object that yields rows). @return string[] */
+    public static function implied_platforms( int $product_id ): array {
+        return array_keys( array_filter( self::PLATFORM_REQUIREMENTS, static fn( $concept ) => self::count( $product_id, $concept ) > 0 ) );
+    }
+
+    /**
+     * Add platforms to `_mmi_platforms`, never removing one. Locks are the
+     * caller's business (a lock means a person or the maker's page decided).
+     *
+     * @return string[] The platforms that were added.
+     */
+    public static function merge_platforms( int $product_id, array $platforms ): array {
+        $current = (array) self::canonical_value( $product_id, 'platforms' );
+        $merged  = self::normalize_for_storage( 'platforms', array_merge( $current, $platforms ) );
+        $added   = array_values( array_diff( $merged, self::normalize_for_storage( 'platforms', $current ) ) );
+        if ( $added ) {
+            self::store( $product_id, 'platforms', $merged );
+        }
+        return $added;
+    }
+
+    /**
+     * List every OS the product has requirements for, unless the platforms are
+     * locked. Called after any write that can add requirements.
+     *
+     * @return string[] The platforms that were added.
+     */
+    public static function sync_platforms( int $product_id ): array {
+        if ( $product_id <= 0 || ( class_exists( 'MMI_Pipeline_Field_Locks' ) && MMI_Pipeline_Field_Locks::is_locked( $product_id, self::canonical_key( 'platforms' ) ) ) ) {
+            return [];
+        }
+        return self::merge_platforms( $product_id, self::implied_platforms( $product_id ) );
+    }
+
+    /**
+     * The value an import may write to a registry key on an existing product.
+     * Imports add, they never take away: a feed value that holds nothing
+     * keeps what's stored, and platforms merge with the stored list. Any
+     * other key, a new product, or a real value passes through unchanged.
+     *
+     * @param mixed $value The import's value for $field (usually a JSON string).
+     * @return mixed
+     */
+    public static function import_value( int $product_id, string $field, $value ) {
+        if ( $product_id <= 0 ) {
+            return $value;
+        }
+        $concept = '';
+        foreach ( self::CONCEPTS as $name => $def ) {
+            if ( ( $def['store'][0] ?? '' ) === $field ) {
+                $concept = $name;
+                break;
+            }
+        }
+        if ( $concept === '' ) {
+            return $value;
+        }
+        $shape    = self::CONCEPTS[ $concept ]['store'][1];
+        $decoded  = is_string( $value ) && $value !== '' && $shape !== 'text' ? json_decode( $value, true ) : $value;
+        $incoming = self::normalize_for_storage( $shape, json_last_error() === JSON_ERROR_NONE ? $decoded : $value );
+        $current  = self::canonical_value( $product_id, $concept );
+        $stored   = self::normalize_for_storage( $shape, $current );
+
+        if ( $shape === 'platforms' ) {
+            $merged = self::normalize_for_storage( 'platforms', array_merge( $stored, (array) $incoming ) );
+            return $merged ? wp_json_encode( $merged, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : $value;
+        }
+        if ( ! $incoming && ( $stored || self::count( $product_id, $concept ) > 0 ) ) {
+            // Write back the stored value itself so the importer sees no change.
+            return get_post_meta( $product_id, $field, true );
+        }
+        return $value;
     }
 
     /** @return mixed Normalized storage value; empty array/string when nothing survives. */

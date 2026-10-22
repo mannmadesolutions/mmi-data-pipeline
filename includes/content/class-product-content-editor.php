@@ -129,6 +129,7 @@ class MMI_Product_Content_Editor {
 
             <?php $platforms = (array) $R::canonical_value( $id, 'platforms' ); ?>
             <?php self::checkboxes( 'platforms', __( 'Platforms', 'mmi-data-pipeline' ), self::PLATFORM_CHOICES, $platforms ); ?>
+            <p class="description"><?php esc_html_e( 'The storefront\'s OS icons and shop filter show these. Imports and vendor pages only add platforms, and an OS with requirements is added; unticking one here keeps it off.', 'mmi-data-pipeline' ); ?></p>
 
             <?php $lic = (array) $R::canonical_value( $id, 'licensing' ); ?>
             <div class="mmi-specs-editor__pair">
@@ -237,6 +238,11 @@ class MMI_Product_Content_Editor {
             if ( MMI_Product_Content_Registry::store( $post_id, $concept, $value ) ) {
                 $changed[] = $concept;
             }
+        }
+        // Requirements entered here list their OS, unless the platforms were set by hand in this save.
+        // Not a hand edit, so it isn't locked.
+        if ( ! in_array( 'platforms', $changed, true ) ) {
+            MMI_Product_Content_Registry::sync_platforms( $post_id );
         }
         if ( ! $changed ) {
             return;

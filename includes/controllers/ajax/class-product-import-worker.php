@@ -368,6 +368,9 @@ class Product_Import_Worker {
 
             $value = MMI_Pipeline_Field_Resolver::apply_transform( $value, $mapping['transform'] );
 
+            // Product content (requirements, platforms, …) is only ever added to by an import.
+            $value = \MMI_Product_Content_Registry::import_value( (int) $product->get_id(), (string) $field_name, $value );
+
             $old = self::get_product_field( $product, $field_name );
             self::set_product_field( $product, $field_name, $value );
             self::track_field_change_with_detail( $field_stats, $change_details, $supplier, $field_name, $old, (string) $value );
@@ -392,6 +395,9 @@ class Product_Import_Worker {
         $product->update_meta_data( '_supplier_name', $supplier );
         $product->update_meta_data( '_supplier_updated_at', current_time( 'mysql' ) );
         $product->save();
+
+        // An OS the feed gave requirements for is listed among the product's platforms.
+        \MMI_Product_Content_Registry::sync_platforms( (int) $product->get_id() );
 
         // Flush this product's changed-field details, now that a real post ID
         // exists — powers the "Field changes" table's row-expand spot-check UI.
