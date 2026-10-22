@@ -1335,6 +1335,24 @@ class MMI_Pipeline_Field_Resolver {
             return [];
         }
 
+        // A value excluded from Taxonomy Mapping (a supplier's test vendor)
+        // resolves like Skip: no term, and callers leave the product's terms
+        // as they are. Checked before the alias rows, since the excluded
+        // field may have none.
+        foreach ( MMI_Pipeline_Taxmap_Exclusions::for_taxonomy( $supplier, $wc_taxonomy ) as $excluded ) {
+            $values = [];
+            foreach ( array_map( 'trim', explode( '+', $excluded['source_field'] ) ) as $part ) {
+                $v = (string) ( $item[ $part ] ?? '' );
+                if ( $v !== '' ) {
+                    $values[] = $v;
+                }
+            }
+            if ( $values && implode( ' / ', $values ) === $excluded['source_value'] ) {
+                $explicitly_skipped = true;
+                return [];
+            }
+        }
+
         // Pool discovery (which source_fields have ANY alias coverage for this
         // supplier+taxonomy) stays supplier-scoped only, not profile-scoped —
         // a taxonomy with alias rows at any profile scope is still

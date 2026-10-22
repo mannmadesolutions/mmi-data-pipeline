@@ -38,6 +38,8 @@
         UNMAPPED_COUNT:   '#mmi-taxmap-unmapped-count',
         MISSING_STAT:     '#mmi-taxmap-stat-missing',
         MISSING_COUNT:    '#mmi-taxmap-missing-count',
+        EXCLUDED_STAT:    '#mmi-taxmap-stat-excluded',
+        EXCLUDED_COUNT:   '#mmi-taxmap-excluded-count',
         TABLE:            '#mmi-taxmap-table',
         TBODY:            '#mmi-taxmap-tbody',
         EMPTY:            '#mmi-taxmap-empty',
@@ -196,7 +198,11 @@
     /** Active source filter: { supplier: string, sourceField: string } — both '' means show all */
     let activeFilter = { supplier: '', sourceField: '' };
 
-    /** Active status filter, driven by clicking the Total/Mapped/Unmapped/Deleted-term stat — 'all' | 'mapped' | 'unmapped' | 'term_missing' */
+    /**
+     * Active status filter, driven by clicking the Total/Mapped/Unmapped/Deleted-term/Excluded
+     * stat — 'all' | 'mapped' | 'unmapped' | 'term_missing' | 'excluded'. Excluded rows show
+     * under 'excluded' only.
+     */
     let statusFilter = 'all';
 
     /** Current sort state: { col: string, dir: 'asc'|'desc' } */
@@ -756,8 +762,8 @@
                 va = a.count;
                 vb = b.count;
             } else if ( col === 'status' ) {
-                // order: unmapped < skip < mapped
-                const rank = r => r.wc_term_id === 0 ? 0 : r.wc_term_id === -1 ? 1 : 2;
+                // order: unmapped < skip < mapped < excluded
+                const rank = r => r.excluded ? 3 : r.wc_term_id === 0 ? 0 : r.wc_term_id === -1 ? 1 : 2;
                 va = rank( a );
                 vb = rank( b );
             } else if ( col === 'source_file' ) {
@@ -1127,7 +1133,7 @@
             );
             allRows = allRows.concat( newRows );
 
-            updateStats( allRows.length, allRows.filter( r => r.wc_term_id !== 0 ).length );
+            refreshStats();
             updateSortIcons();
             sortAndRerender();
             showNotice( `Added ${ newRows.length } values from ${ cfg.sourceField }`, 'success' );
@@ -1169,6 +1175,10 @@
      * @returns {jQuery}
      */
     function buildRow( row ) {
+        // Excluded from the mapper (a supplier's test vendor): listed only
+        // under the Excluded stat, read-only, with Restore as its one action.
+        // Its saved mapping, if any, is kept and shown greyed.
+        const isExcluded  = !! row.excluded;
         const isMapped    = row.wc_term_id !== 0;
         const isSkipped   = row.wc_term_id === -1;
         const viaRule     = !! row.via_rule;
@@ -1176,9 +1186,11 @@
         // wc_term_id 0 plus the old id, since imports no longer apply it.
         const termMissing = ( row.missing_term_id || 0 ) > 0;
 
-        const statusClass = isSkipped ? 'status-skip'
+        const statusClass = isExcluded ? 'status-excluded'
+            : isSkipped ? 'status-skip'
             : isMapped ? 'status-mapped' : 'status-unmapped';
-        const statusLabel = isSkipped ? 'Skip'
+        const statusLabel = isExcluded ? 'Excluded'
+            : isSkipped ? 'Skip'
             : isMapped ? ( viaRule ? 'Mapped (rule)' : 'Mapped' )
             : termMissing ? 'Term deleted' : 'Unmapped';
 
@@ -1187,6 +1199,7 @@
         const $tr = $( '<tr>' )
             .addClass( 'mmi-taxmap-row' )
             .addClass( isSkipped ? 'is-skipped' : isMapped ? 'is-mapped' : 'is-unmapped' )
+            .toggleClass( 'is-excluded', isExcluded )
             .toggleClass( 'is-term-missing', termMissing )
             .attr( 'data-source-value', row.source_value )
             .attr( 'data-source-field', row.source_field  || '' )
@@ -1243,15 +1256,26 @@
         // a term. Color-coded the same way the old static chip was, just interactive.
         const $taxonomySelect = $( '<select class="mmi-taxmap-taxonomy-select">' )
             .html( $( SELECTORS.WC_TAXONOMY ).html() )
-            .val( row.wc_taxonomy || '' );
+            .val( row.wc_taxonomy || '' )
+            .prop( 'disabled', isExcluded );
         applyTaxonomySelectColor( $taxonomySelect, row.wc_taxonomy );
         const $termCell  = $( '<td class="col-target">' ).append( $taxonomySelect );
         const $termInput = $( '<input type="text" class="mmi-taxmap-term-input">' )
-            .attr( 'placeholder', isSkipped ? '(skipped)' : termMissing ? 'Pick a replacement term…' : 'Type to search terms…' )
+            .attr( 'placeholder', isExcluded ? '(excluded)' : isSkipped ? '(skipped)' : termMissing ? 'Pick a replacement term…' : 'Type to search terms…' )
             .val( termInputVal )
-            .attr( 'disabled', isSkipped );
+            .attr( 'disabled', isSkipped || isExcluded );
         $termCell.append( $termInput );
         $termCell.append( $( '<div class="mmi-taxmap-row-note mmi-hidden">' ) );
+
+        if ( isExcluded ) {
+            $tr.append( $termCell );
+            $tr.append( $( `<td class="col-status"><span class="mmi-taxmap-status ${ statusClass }">${ statusLabel }</span></td>` ) );
+            $tr.data( 'exclusion', { at: row.excluded_at || '', by: row.excluded_by || '' } );
+            $tr.data( 'savedTermName', isMapped && ! isSkipped && ! viaRule ? ( row.wc_term_name || '' ) : '' );
+            updateRowNote( $tr );
+            $tr.append( $( '<td class="col-actions">' ).append( restoreButtonHtml() ) );
+            return $tr;
+        }
 
         // Profile-specific overrides for this value are opt-in and per-value —
         // see buildVariantRow() and the 2026-08-30 redesign entry in
@@ -1298,6 +1322,7 @@
                     .html( '<span class="dashicons dashicons-no-alt"></span>' )
             );
         }
+        $actions.append( excludeButtonHtml() );
         $tr.append( $actions );
 
         return $tr;
@@ -1425,16 +1450,19 @@
             const isMapped    = $tr.hasClass( 'is-mapped' );
             const isSkipped   = $tr.hasClass( 'is-skipped' );
             const isUnmapped  = $tr.hasClass( 'is-unmapped' );
+            const isExcluded  = $tr.hasClass( 'is-excluded' );
 
-            // Status filter — driven by clicking the Total/Mapped/Unmapped stat counter
-            let showByFilter = true;
-            if ( statusFilter === 'mapped' )   { showByFilter = isMapped || isSkipped; }
-            if ( statusFilter === 'unmapped' ) { showByFilter = isUnmapped;             }
+            // Status filter — driven by clicking the Total/Mapped/Unmapped stat counter.
+            // Excluded rows appear under the Excluded stat and nowhere else.
+            let showByFilter = ! isExcluded;
+            if ( statusFilter === 'mapped' )   { showByFilter = ! isExcluded && ( isMapped || isSkipped ); }
+            if ( statusFilter === 'unmapped' ) { showByFilter = ! isExcluded && isUnmapped;              }
             if ( statusFilter === 'term_missing' ) {
                 const $variantTr = $tr.next( '.mmi-taxmap-variant-row' );
-                showByFilter = $tr.hasClass( 'is-term-missing' )
-                    || $variantTr.find( '.mmi-taxmap-variant-item.is-term-missing' ).length > 0;
+                showByFilter = ! isExcluded && ( $tr.hasClass( 'is-term-missing' )
+                    || $variantTr.find( '.mmi-taxmap-variant-item.is-term-missing' ).length > 0 );
             }
+            if ( statusFilter === 'excluded' ) { showByFilter = isExcluded; }
 
             // Source pill filter
             let showByPill = true;
@@ -1749,6 +1777,70 @@
         const $tr = $( this ).closest( 'tr' );
         clearMapping( $tr );
     } );
+
+    $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-exclude-btn', function () {
+        setValueExcluded( $( this ).closest( 'tr' ), true );
+    } );
+
+    $( document ).on( 'click', SELECTORS.TBODY + ' .mmi-taxmap-restore-btn', function () {
+        setValueExcluded( $( this ).closest( 'tr' ), false );
+    } );
+
+    /**
+     * Exclude a value from the mapper, or restore it, then rebuild just that
+     * row: an excluded row leaves the current view for the Excluded stat, a
+     * restored one returns with its saved mapping (which excluding kept).
+     *
+     * @param {jQuery}  $tr
+     * @param {boolean} exclude
+     */
+    function setValueExcluded( $tr, exclude ) {
+        const supplier    = $tr.attr( 'data-supplier' )     || '';
+        const sourceField = $tr.attr( 'data-source-field' ) || '';
+        const sourceValue = $tr.attr( 'data-source-value' );
+
+        $tr.addClass( 'is-saving' );
+        $.post( AJAX_URL, {
+            action:       'mmi_set_taxonomy_value_excluded',
+            nonce:        NONCE,
+            supplier_id:  supplier,
+            source_field: sourceField,
+            // Keyed by the taxonomy the field feeds, not a redirect's.
+            wc_taxonomy:  $tr.attr( 'data-home-taxonomy' ) || $tr.attr( 'data-wc-taxonomy' ) || '',
+            source_value: sourceValue,
+            excluded:     exclude ? 1 : 0,
+        } )
+        .done( function ( resp ) {
+            $tr.removeClass( 'is-saving' );
+            if ( ! resp.success ) {
+                showNotice( ( exclude ? 'Exclude failed: ' : 'Restore failed: ' ) + ( resp.data?.message || 'Unknown error' ), 'error' );
+                return;
+            }
+            const entry = allRows.find( r =>
+                r.supplier     === supplier    &&
+                r.source_field === sourceField &&
+                r.source_value === sourceValue
+            );
+            if ( ! entry ) { return; }
+            entry.excluded    = !! resp.data.excluded;
+            entry.excluded_at = resp.data.excluded_at || '';
+            entry.excluded_by = resp.data.excluded_by || '';
+
+            hideAutocomplete();
+            $tr.next( SELECTORS.VARIANT_ROW ).addClass( 'mmi-hidden' );
+            $tr.replaceWith( buildRow( entry ) );
+            refreshStats();
+            applyTableFilter();
+
+            showNotice( exclude
+                ? `"${ sourceValue }" is excluded from Taxonomy Mapping. Imports leave it unmapped. Restore it from Excluded at any time.`
+                : `"${ sourceValue }" is back in Taxonomy Mapping.`, 'success' );
+        } )
+        .fail( function ( xhr ) {
+            $tr.removeClass( 'is-saving' );
+            showNotice( 'AJAX error: ' + xhr.statusText, 'error' );
+        } );
+    }
 
     /* ── Autocomplete ───────────────────────────────────────────────────── */
 
@@ -2218,6 +2310,20 @@
         // Option text is "Product brands (product_brand)" plus template whitespace.
         const label     = slug => taxonomyLabel( slug ).replace( /\s+/g, ' ' ).trim().replace( / \([^)]*\)$/, '' );
 
+        if ( $tr.hasClass( 'is-excluded' ) ) {
+            const ex    = $tr.data( 'exclusion' ) || {};
+            const when  = ex.at ? ` on ${ escHtml( ex.at.slice( 0, 10 ) ) }` : '';
+            const who   = ex.by ? ` by ${ escHtml( ex.by ) }` : '';
+            const saved = $tr.data( 'savedTermName' )
+                ? ` Its saved mapping to "${ escHtml( $tr.data( 'savedTermName' ) ) }" is kept and applies again once restored.`
+                : '';
+            $note.html(
+                `<span class="mmi-taxmap-row-note-excluded"><span class="dashicons dashicons-hidden"></span> `
+                + `Excluded${ when }${ who }. Imports leave this value unmapped and its products' terms as they are.${ saved }</span>`
+            ).removeClass( 'mmi-hidden' );
+            return;
+        }
+
         if ( missingId > 0 ) {
             const what = $tr.data( 'autoCreate' )
                 ? `The next import will create a new term named "${ escHtml( $tr.attr( 'data-source-value' ) ) }".`
@@ -2266,6 +2372,17 @@
                     .html( '<span class="dashicons dashicons-no-alt"></span>' )
             );
         }
+        $cell.append( excludeButtonHtml() );
+    }
+
+    function excludeButtonHtml() {
+        return $( '<button class="button mmi-action-btn mmi-button-small mmi-taxmap-exclude-btn" title="Exclude from Taxonomy Mapping: hide this value (e.g. a test vendor) and never map it, until you restore it from Excluded">' )
+            .html( '<span class="dashicons dashicons-hidden"></span>' );
+    }
+
+    function restoreButtonHtml() {
+        return $( '<button class="button mmi-action-btn mmi-button-small mmi-taxmap-restore-btn" title="Put this value back in Taxonomy Mapping">' )
+            .html( '<span class="dashicons dashicons-visibility"></span> Restore' );
     }
 
     /**
@@ -2320,10 +2437,16 @@
         // The deleted-term check: values whose mapping (or one of whose
         // profile variations) points at a term that no longer exists. Only
         // shown when there are some.
-        const missing = allRows.filter( rowHasMissingTerm ).length;
+        const missing = allRows.filter( r => ! r.excluded && rowHasMissingTerm( r ) ).length;
         $( SELECTORS.MISSING_COUNT ).text( missing );
         $( SELECTORS.MISSING_STAT ).toggleClass( 'mmi-hidden', missing === 0 );
-        if ( missing === 0 && statusFilter === 'term_missing' ) {
+
+        // Excluded values: in none of the counts above, listed by this stat.
+        const excluded = allRows.filter( r => r.excluded ).length;
+        $( SELECTORS.EXCLUDED_COUNT ).text( excluded );
+        $( SELECTORS.EXCLUDED_STAT ).toggleClass( 'mmi-hidden', excluded === 0 );
+
+        if ( ( missing === 0 && statusFilter === 'term_missing' ) || ( excluded === 0 && statusFilter === 'excluded' ) ) {
             $( SELECTORS.STAT_FILTER_BTN + '[data-status-filter="all"]' ).trigger( 'click' );
         }
     }
@@ -2334,9 +2457,8 @@
     }
 
     function refreshStats() {
-        const total   = allRows.length;
-        const mapped  = allRows.filter( r => r.wc_term_id !== 0 ).length;
-        updateStats( total, mapped );
+        const inMapper = allRows.filter( r => ! r.excluded );
+        updateStats( inMapper.length, inMapper.filter( r => r.wc_term_id !== 0 ).length );
     }
 
     /**
@@ -2357,7 +2479,7 @@
             $el.addClass( 'mmi-hidden' ).empty();
             return;
         }
-        const bySupplier = allRows.filter( r => r.supplier === supplierId );
+        const bySupplier = allRows.filter( r => r.supplier === supplierId && ! r.excluded );
         const byTaxonomy = {};
         bySupplier.forEach( r => {
             if ( r.wc_term_id === 0 ) { return; }

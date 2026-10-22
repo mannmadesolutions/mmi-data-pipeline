@@ -105,6 +105,12 @@ add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
         wp_send_json_error( [ 'message' => 'source_field and wc_taxonomy are required' ] );
     }
 
+    // Imports ignore an excluded value, so a mapping saved now would look
+    // applied while doing nothing.
+    if ( MMI_Pipeline_Taxmap_Exclusions::is_excluded_any_taxonomy( $supplier, $source_field, $source_value ) ) {
+        wp_send_json_error( [ 'message' => "\"{$source_value}\" is excluded from Taxonomy Mapping. Restore it before mapping it." ] );
+    }
+
     // If wc_term_id === 0 and a term_name was passed, try to find or create the term
     $term_name = sanitize_text_field( $_POST['term_name'] ?? '' );
     if ( $wc_term_id === 0 && $term_name !== '' && $term_name !== '__skip__' ) {
@@ -234,6 +240,42 @@ add_action( 'wp_ajax_mmi_delete_taxonomy_mapping', function () {
     }
     $ok ? wp_send_json_success( [ 'message' => 'Mapping deleted' ] )
         : wp_send_json_error( [ 'message' => 'Delete failed' ] );
+} );
+
+/* ── Exclude a source value from the mapper, or restore it ──────────────────
+ * See MMI_Pipeline_Taxmap_Exclusions. wc_taxonomy is the taxonomy the value's
+ * field feeds (the row's home taxonomy), not a redirect's. */
+add_action( 'wp_ajax_mmi_set_taxonomy_value_excluded', function () {
+    check_ajax_referer( TAXMAP_NONCE, 'nonce' );
+    if ( ! mmi_data_pipeline_user_can() ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+    }
+
+    // Unslashed: an exclusion must equal the feed value exactly, apostrophes included.
+    $supplier     = sanitize_text_field( wp_unslash( $_POST['supplier_id']  ?? '' ) );
+    $source_field = sanitize_text_field( wp_unslash( $_POST['source_field'] ?? '' ) );
+    $wc_taxonomy  = sanitize_text_field( wp_unslash( $_POST['wc_taxonomy']  ?? '' ) );
+    $source_value = sanitize_text_field( wp_unslash( $_POST['source_value'] ?? '' ) );
+    $exclude      = ! empty( $_POST['excluded'] );
+
+    if ( $supplier === '' || $source_field === '' || $source_value === '' || ! taxonomy_exists( $wc_taxonomy ) ) {
+        wp_send_json_error( [ 'message' => 'supplier_id, source_field, source_value and a real wc_taxonomy are required' ] );
+    }
+
+    if ( $exclude ) {
+        MMI_Pipeline_Taxmap_Exclusions::exclude( $supplier, $source_field, $wc_taxonomy, $source_value );
+    } else {
+        MMI_Pipeline_Taxmap_Exclusions::restore( $supplier, $source_field, $wc_taxonomy, $source_value );
+    }
+
+    mmi_data_pipeline_audit( $exclude ? 'taxonomy.exclude' : 'taxonomy.restore', [
+        'object_type' => 'taxonomy_mapping',
+        'object_id'   => $supplier,
+        'outcome'     => 'success',
+        'details'     => [ 'source_field' => $source_field, 'wc_taxonomy' => $wc_taxonomy, 'source_value' => $source_value ],
+    ] );
+
+    wp_send_json_success( MMI_Pipeline_Taxmap_Exclusions::row_fields( $supplier, $source_field, $wc_taxonomy, $source_value ) );
 } );
 
 /* ── List every saved profile-specific variation, flat ─────────────────────
@@ -700,13 +742,16 @@ add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
             'source_file'     => $source_file,
             'sample_products' => $sample_products[ $value ] ?? [],
             'variants'        => $variants,
-        ];
+        ] + MMI_Pipeline_Taxmap_Exclusions::row_fields( $supplier, $source_field, $wc_taxonomy, (string) $value );
     }
 
+    // Excluded values are left out of the counts, as the table leaves them out.
+    $in_mapper = array_filter( $result, fn( $r ) => ! $r['excluded'] );
     wp_send_json_success( [
         'values'      => $result,
-        'total'       => count( $result ),
-        'mapped'      => count( array_filter( $result, fn( $r ) => $r['wc_term_id'] !== 0 ) ),
+        'total'       => count( $in_mapper ),
+        'mapped'      => count( array_filter( $in_mapper, fn( $r ) => $r['wc_term_id'] !== 0 ) ),
+        'excluded'    => count( $result ) - count( $in_mapper ),
         'source_file' => $source_file,
     ] );
 } );
@@ -825,6 +870,10 @@ add_action( 'wp_ajax_mmi_apply_taxonomy_mappings', function () {
     foreach ( $rows as $row ) {
         $product_id  = (int) $row['post_id'];
         $source_val  = (string) $row['meta_value'];
+        if ( MMI_Pipeline_Taxmap_Exclusions::is_excluded( $supplier, $source_field, $wc_taxonomy, $source_val ) ) {
+            $skipped++;
+            continue;
+        }
         $mapped_tid  = $mappings[ $source_val ]
             ?? MMI_DB::match_taxmap_alias_rule( $supplier, $source_field, $source_val, $wc_taxonomy );
 
@@ -1275,20 +1324,22 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
                 'source_file'     => $json_filename,
                 'sample_products' => $source['samples'][ $value ] ?? [],
                 'variants'        => $variant_list,
-            ];
+                // Keyed by the field's own taxonomy, not a redirect's.
+            ] + MMI_Pipeline_Taxmap_Exclusions::row_fields( $supplier, $source_field, $wc_taxonomy, (string) $value );
         }
     }
 
     // Sort by count descending by default
     usort( $result, fn( $a, $b ) => $b['count'] - $a['count'] );
 
-    $total  = count( $result );
-    $mapped = count( array_filter( $result, fn( $r ) => $r['wc_term_id'] !== 0 ) );
+    // Excluded values are left out of the counts, as the table leaves them out.
+    $in_mapper = array_filter( $result, fn( $r ) => ! $r['excluded'] );
 
     wp_send_json_success( [
-        'values' => $result,
-        'total'  => $total,
-        'mapped' => $mapped,
+        'values'   => $result,
+        'total'    => count( $in_mapper ),
+        'mapped'   => count( array_filter( $in_mapper, fn( $r ) => $r['wc_term_id'] !== 0 ) ),
+        'excluded' => count( $result ) - count( $in_mapper ),
     ] );
 } );
 
@@ -1409,6 +1460,7 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
 
             $source_value = $sku_to_value[ $supplier_sku ] ?? null;
             if ( $source_value === null ) { $total_skipped++; continue; }
+            if ( MMI_Pipeline_Taxmap_Exclusions::is_excluded( $profile['supplier'], $profile['source_field'], $profile['wc_taxonomy'], $source_value ) ) { $total_skipped++; continue; }
 
             // Added to the other taxonomy, never replacing what is there,
             // and only if that taxonomy is not locked on this product.

@@ -112,7 +112,9 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources() as
             Saving a mapping here applies it right away to existing products with that source
             value (unless the field is locked on the product), and every import applies it to
             new and changed products. Alias Rules apply at import; use Apply All to Existing
-            Products to push them onto products already in the store.
+            Products to push them onto products already in the store. A value that should never
+            be mapped (a supplier's test vendor) can be excluded: it leaves this table, and imports
+            leave it unmapped until you restore it.
         </p>
     </div>
 
@@ -358,6 +360,11 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources() as
         <?php /* Deleted-term check: only shown (by taxonomy-mapping.js) when a mapping points at a term that no longer exists. */ ?>
         <button type="button" class="mmi-taxmap-stat mmi-taxmap-stat-missing mmi-hidden" id="mmi-taxmap-stat-missing" data-status-filter="term_missing">
             <span class="dashicons dashicons-warning"></span> Deleted terms: <strong id="mmi-taxmap-missing-count">0</strong>
+        </button>
+        <?php /* Values excluded from the mapper (MMI_Pipeline_Taxmap_Exclusions): left out of the other counts, listed here to restore. Shown only when there are some. */ ?>
+        <button type="button" class="mmi-taxmap-stat mmi-taxmap-stat-excluded mmi-hidden" id="mmi-taxmap-stat-excluded" data-status-filter="excluded"
+                title="Values left out of Taxonomy Mapping. Click to list them and restore any of them.">
+            <span class="dashicons dashicons-hidden"></span> Excluded: <strong id="mmi-taxmap-excluded-count">0</strong>
         </button>
 
         <!-- Search within loaded values -->

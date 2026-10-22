@@ -224,6 +224,12 @@ class Taxonomy_Mapping_Handler {
                 update_post_meta( $product_id, '_mmi_src_' . str_replace( '+', '_', $source_field ), $raw_value );
             }
 
+            // Excluded from Taxonomy Mapping: no term from this value, in this
+            // taxonomy or a redirect, until it is restored.
+            if ( \MMI_Pipeline_Taxmap_Exclusions::is_excluded( $this->supplier_name, $source_field, (string) $wc_field, $raw_value ) ) {
+                continue;
+            }
+
             // Bad supplier data: a value that belongs to another taxonomy
             // (Xchange sends "BUNDLES" as a brand). Its row in the Taxonomy
             // Mapping table was pointed at that taxonomy, so this field's own
@@ -485,7 +491,8 @@ class Taxonomy_Mapping_Handler {
                 $value = (string) $value;
                 $lower = mb_strtolower( $value );
                 if ( isset( $saved[ $supplier . '|' . $field . '|' . $taxonomy . '|' . $lower ] )
-                    || isset( $saved[ '|' . $field . '|' . $taxonomy . '|' . $lower ] ) ) {
+                    || isset( $saved[ '|' . $field . '|' . $taxonomy . '|' . $lower ] )
+                    || \MMI_Pipeline_Taxmap_Exclusions::is_excluded( $supplier, $field, $taxonomy, $value ) ) {
                     continue;
                 }
                 $term_id = \MMI_DB::match_taxmap_alias_rule( $supplier, $field, $value, $taxonomy );

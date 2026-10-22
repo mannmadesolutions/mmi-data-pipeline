@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     2.58.19
+ * Version:     2.58.20
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.58.19' );
+define( 'MMI_PIPELINE_VERSION', '2.58.20' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -249,6 +249,10 @@ add_action( 'plugins_loaded', function () {
     // read by the worker, the dynamic importer and Import Preview below.
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-field-locks.php';
     MMI_Pipeline_Field_Locks::init();
+
+    // Source values left out of Taxonomy Mapping (a supplier's test vendor):
+    // read by the mapper and by every import path that resolves a term.
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-taxmap-exclusions.php';
 
     // Two automated writers on one field (profile vs profile, profile vs
     // Catalog Maintenance) — reported where the conflict is created.

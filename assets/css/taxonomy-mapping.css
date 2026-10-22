@@ -521,6 +521,17 @@
     color: var(--mmi-warning-border, #ff9800);
 }
 
+.mmi-taxmap-stat-excluded strong {
+    color: var(--mmi-gray-700, #50575e);
+}
+
+.mmi-taxmap-stat-excluded .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--mmi-gray-600, #646970);
+}
+
 .mmi-taxmap-search input[type="search"] {
     font-size: 0.8rem;
     padding: 3px 7px;
@@ -633,7 +644,8 @@
 .mmi-taxmap-table .col-arrow       { width: 28px; text-align: center; color: #c3c4c7; }
 .mmi-taxmap-table .col-target      { width: 320px; }
 .mmi-taxmap-table .col-status      { width: 90px; }
-.mmi-taxmap-table .col-actions     { width: 80px; white-space: nowrap; }
+/* Up to three 28px buttons (create/skip/clear + exclude), or the labelled Restore. */
+.mmi-taxmap-table .col-actions     { width: 112px; white-space: nowrap; }
 
 /* The term-input + chip stacking layout belongs to the body cell only — applying
    it to th.col-target too (as a single ".col-target" rule used to) made the
@@ -1026,6 +1038,16 @@ th.sort-active .sort-icon {
     color: var(--mmi-info-text, #1565c0);
 }
 
+.mmi-taxmap-row-note-excluded {
+    color: var(--mmi-gray-600, #646970);
+}
+
+/* Excluded from the mapper: shown only under the Excluded stat, read-only */
+.mmi-taxmap-status.status-excluded {
+    background: var(--mmi-gray-300, #e5e5e5);
+    color: var(--mmi-gray-700, #50575e);
+}
+
 .mmi-taxmap-variant-item.is-term-missing .mmi-taxmap-variant-term,
 #mmi-taxmap-variations-panel tr.is-term-missing .col-term {
     color: var(--mmi-warning-text, #856404);
@@ -1048,6 +1070,18 @@ th.sort-active .sort-icon {
 .mmi-taxmap-table tr.is-skipped td:first-child {
     text-decoration: line-through;
     color: #8c8f94;
+}
+
+/* After is-mapped/is-skipped: an excluded row keeps those classes (its saved
+   mapping is kept) but must read as excluded. */
+.mmi-taxmap-table tr.is-excluded {
+    background: var(--mmi-gray-100, #f9f9f9);
+}
+
+.mmi-taxmap-table tr.is-excluded td:first-child {
+    border-left: 3px solid var(--mmi-gray-400, #ccd0d4);
+    color: var(--mmi-gray-600, #646970);
+    text-decoration: none;
 }
 
 /* Action buttons in table — sizing/coloring is fully owned by the shared
