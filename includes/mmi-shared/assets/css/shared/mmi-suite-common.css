@@ -3861,6 +3861,11 @@ body.mmi-page .mmi-filters-section .mmi-ms-trigger {
     color: #8c8f94;
     font-weight: 400;
 }
+.mmi-filters-section .mmi-pill[hidden],
+:where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill[hidden] {
+    display: none; /* the pill rule above sets display, which would beat the browser's own [hidden] */
+}
+
 .mmi-filters-section .mmi-pill.active .mmi-pill-count,
 :where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill.active .mmi-pill-count {
     color: rgba(255,255,255,0.75);
