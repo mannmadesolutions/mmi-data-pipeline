@@ -3817,9 +3817,13 @@ body.mmi-page .mmi-filters-section .mmi-ms-trigger {
    Vendor pages' reason pills and other bare groups fell back to the browser's button).
    :where() keeps those at the specificity of .mmi-pill, so a plugin's own pill rules win; Data
    Pipeline's .mmi-filter-bar pills keep their own look (sized to its status buttons). */
+/* inline-flex + gap: the label and its count are always apart by the same space, whether the markup has a space
+   between them or not (owner, 2026-10-23: "The counts are too close to the label"); a space text node collapses. */
 .mmi-filters-section .mmi-pill,
 :where(.mmi-filter-pills:not(.mmi-filter-bar *)) > .mmi-pill {
-    display: inline-block;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
     padding: 4px 11px;
     border: 1px solid #c3c4c7;
     border-radius: 20px;
