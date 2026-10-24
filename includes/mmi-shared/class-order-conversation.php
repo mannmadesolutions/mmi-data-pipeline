@@ -56,6 +56,12 @@
  * in the composer — into a message, like Reverb's own composer. They are
  * stored as snapshots and shown as cards in every view and email.
  *
+ * Orders handled elsewhere: a plugin can turn the thread off for an order
+ * ('mmi_order_conversation_enabled'); nothing is stored or shown for it, and
+ * the order's box shows that plugin's pointer instead
+ * ('mmi_order_conversation_elsewhere'). mmi-reverb-integration does this for
+ * Reverb orders: their messages stay in Reverb → Messages (owner, 2026-10-24).
+ *
  * Plain text only: bodies are sanitize_textarea_field()'d, capped at
  * MAX_LENGTH, escaped on output; links in customer messages stay plain text.
  * A customer may post RATE_LIMIT messages per order per hour.
@@ -211,6 +217,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		 */
 		public static function add( \WC_Order $order, string $sender, string $body, array $args = array() ): int {
 			global $wpdb;
+			if ( ! self::enabled( $order ) ) {
+				return 0;
+			}
 			if ( ! in_array( $sender, array( self::SENDER_CUSTOMER, self::SENDER_STAFF, self::SENDER_SYSTEM ), true ) ) {
 				return 0;
 			}
@@ -382,6 +391,17 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 		public static function staff_url( \WC_Order $order ): string {
 			return $order->get_edit_order_url() . '#' . self::ANCHOR;
+		}
+
+		/** Whether this order has a thread here (false: a plugin handles its messages elsewhere). */
+		public static function enabled( \WC_Order $order ): bool {
+			return (bool) apply_filters( 'mmi_order_conversation_enabled', true, $order );
+		}
+
+		/** The order box's note for an order whose messages live elsewhere. */
+		private static function elsewhere_html( \WC_Order $order ): string {
+			$html = (string) apply_filters( 'mmi_order_conversation_elsewhere', '', $order );
+			return $html !== '' ? wp_kses_post( $html ) : '<p class="mmi-conv-hint">' . esc_html__( 'Messages for this order are handled outside this thread.', 'mmi-shared' ) . '</p>';
 		}
 
 		/** How staff messages reach this order's customer: 'email' or a plugin's channel. */
@@ -766,7 +786,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			$order    = $order_id ? wc_get_order( $order_id ) : false;
 			$stored   = $order instanceof \WC_Order ? (string) $order->get_meta( self::META_TOKEN ) : '';
 
-			if ( $stored === '' || $token === '' || ! hash_equals( $stored, $token ) ) {
+			if ( $stored === '' || $token === '' || ! hash_equals( $stored, $token ) || ! self::enabled( $order ) ) {
 				self::render_page( __( 'This link is not valid', 'mmi-shared' ), '<p>' . esc_html__( 'If you need help with an order, reply to the email we sent you.', 'mmi-shared' ) . '</p>', 403 );
 			}
 
@@ -843,7 +863,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		/** woocommerce_view_order — WooCommerce already checked view_order for this user. */
 		public static function render_account_section( $order_id ): void {
 			$order = wc_get_order( (int) $order_id );
-			if ( ! $order || ! current_user_can( 'view_order', $order->get_id() ) ) {
+			if ( ! $order || ! current_user_can( 'view_order', $order->get_id() ) || ! self::enabled( $order ) ) {
 				return;
 			}
 			self::customer_viewed( $order );
@@ -961,7 +981,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '</tr></thead><tbody>';
 			foreach ( $rows as $m ) {
 				$order = wc_get_order( (int) $m->order_id );
-				if ( ! $order ) {
+				if ( ! $order || ! self::enabled( $order ) ) {
 					continue;
 				}
 				$unread  = self::customer_unread_count( $order );
@@ -1001,6 +1021,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				echo '<p>' . esc_html__( 'Save the order first to message the customer.', 'mmi-shared' ) . '</p>';
 				return;
 			}
+			if ( ! self::enabled( $order ) ) {
+				echo self::elsewhere_html( $order ); // phpcs:ignore WordPress.Security.EscapeOutput -- kses'd inside.
+				return;
+			}
 			echo self::styles(); // phpcs:ignore WordPress.Security.EscapeOutput -- static CSS.
 			// The storefront's own type, so the box reads like the customer's page (a site supplies it).
 			$site_css = (string) apply_filters( 'mmi_order_conversation_staff_css', '', $order );
@@ -1018,6 +1042,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		 * customer messages. Needs enqueue_staff_assets() and styles().
 		 */
 		public static function staff_panel_html( \WC_Order $order ): string {
+			if ( ! self::enabled( $order ) ) {
+				return self::elsewhere_html( $order );
+			}
 			do_action( 'mmi_order_conversation_sync', $order, self::SENDER_STAFF );
 			if ( self::unread_count( $order ) > 0 ) {
 				$order->update_meta_data( self::META_UNREAD, 0 );
@@ -1265,7 +1292,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				return;
 			}
 			$order  = $order_or_id instanceof \WC_Order ? $order_or_id : wc_get_order( (int) $order_or_id );
-			$unread = $order ? self::unread_count( $order ) : 0;
+			$unread = $order && self::enabled( $order ) ? self::unread_count( $order ) : 0;
 			if ( $unread < 1 ) {
 				return;
 			}
