@@ -51,6 +51,11 @@
  * never gets. Customers see the store's name on every reply, in My Account
  * and in email; system lines are staff-only.
  *
+ * Attachments (MMI_Order_Conversation_Attachments): staff can put a product
+ * (or, on a Reverb order, its Reverb listing) and a coupon — existing or made
+ * in the composer — into a message, like Reverb's own composer. They are
+ * stored as snapshots and shown as cards in every view and email.
+ *
  * Plain text only: bodies are sanitize_textarea_field()'d, capped at
  * MAX_LENGTH, escaped on output; links in customer messages stay plain text.
  * A customer may post RATE_LIMIT messages per order per hour.
@@ -66,7 +71,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 	class MMI_Order_Conversation {
 
-		const DB_VERSION = '2';
+		const DB_VERSION = '3';
 		const DB_OPTION  = 'mmi_order_messages_db_version';
 
 		const SENDER_CUSTOMER = 'customer';
@@ -156,6 +161,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( class_exists( 'MMI_Order_Conversation_Gmail' ) ) {
 				MMI_Order_Conversation_Gmail::init();
 			}
+			if ( class_exists( 'MMI_Order_Conversation_Attachments' ) ) {
+				MMI_Order_Conversation_Attachments::init();
+			}
 		}
 
 		/* ── Storage ────── */
@@ -177,6 +185,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 						created_at datetime NOT NULL,
 						notified tinyint(1) NOT NULL DEFAULT 0,
 						external_id varchar(100) NOT NULL DEFAULT '',
+						attachments longtext NULL,
 						PRIMARY KEY  (id),
 						KEY order_id (order_id),
 						KEY external_id (external_id)
@@ -194,7 +203,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		 * @param array $args {
 		 *     author?: string, user_id?: int, time?: int (unix), notify?: bool,
 		 *     external_id?: string — where the message came from (e.g.
-		 *     'gmail:<id>', 'reverb:<id>'); a second add with the same id is a no-op.
+		 *     'gmail:<id>', 'reverb:<id>'); a second add with the same id is a no-op,
+		 *     attachments?: array — snapshots from MMI_Order_Conversation_Attachments::build();
+		 *     a message may be attachments only.
 		 * }
 		 * @return int Message id, 0 when nothing was stored (empty body, bad sender, duplicate).
 		 */
@@ -204,8 +215,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				return 0;
 			}
 			$body = trim( sanitize_textarea_field( $body ) );
-			$body = function_exists( 'mb_substr' ) ? mb_substr( $body, 0, self::MAX_LENGTH ) : substr( $body, 0, self::MAX_LENGTH );
-			if ( $body === '' ) {
+			$body        = function_exists( 'mb_substr' ) ? mb_substr( $body, 0, self::MAX_LENGTH ) : substr( $body, 0, self::MAX_LENGTH );
+			$attachments = $sender === self::SENDER_STAFF ? array_values( (array) ( $args['attachments'] ?? array() ) ) : array();
+			if ( $body === '' && ! $attachments ) {
 				return 0;
 			}
 			$external_id = substr( (string) ( $args['external_id'] ?? '' ), 0, 100 );
@@ -232,6 +244,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				'created_at'  => gmdate( 'Y-m-d H:i:s', (int) ( $args['time'] ?? time() ) ),
 				'notified'    => $notify ? 0 : 1,
 				'external_id' => $external_id,
+				'attachments' => $attachments ? wp_json_encode( $attachments ) : null,
 			) );
 			$id = (int) $wpdb->insert_id;
 			if ( ! $id ) {
@@ -270,14 +283,21 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( $sender === self::SENDER_STAFF ) {
 				$table = self::table();
 				$time  = (int) ( $args['time'] ?? time() );
-				$match = (int) $wpdb->get_var( $wpdb->prepare(
-					"SELECT id FROM {$table} WHERE order_id = %d AND sender = %s AND external_id = '' AND body = %s AND created_at BETWEEN %s AND %s ORDER BY id ASC LIMIT 1",
+				// Compared as sent: the text plus any attachments' lines (message_text()).
+				$want  = self::normalize( sanitize_textarea_field( $body ) );
+				$match = 0;
+				foreach ( (array) $wpdb->get_results( $wpdb->prepare(
+					"SELECT * FROM {$table} WHERE order_id = %d AND sender = %s AND external_id = '' AND created_at BETWEEN %s AND %s ORDER BY id ASC LIMIT 50",
 					$order->get_id(),
 					self::SENDER_STAFF,
-					trim( sanitize_textarea_field( $body ) ),
 					gmdate( 'Y-m-d H:i:s', $time - DAY_IN_SECONDS ),
 					gmdate( 'Y-m-d H:i:s', $time + DAY_IN_SECONDS )
-				) );
+				) ) as $candidate ) {
+					if ( self::normalize( self::message_text( $candidate ) ) === $want ) {
+						$match = (int) $candidate->id;
+						break;
+					}
+				}
 				if ( $match ) {
 					$wpdb->update( $table, array( 'external_id' => substr( $external_id, 0, 100 ) ), array( 'id' => $match ) );
 					return $match;
@@ -288,6 +308,28 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				'notify'      => false,
 				'user_id'     => 0,
 			) ) );
+		}
+
+		/** Whitespace-insensitive form, for matching a message seen again on its channel. */
+		private static function normalize( string $text ): string {
+			return trim( preg_replace( '/\s+/', ' ', $text ) );
+		}
+
+		/** A message's attachment snapshots. */
+		public static function attachments_of( $m ): array {
+			$raw = (string) ( $m->attachments ?? '' );
+			$out = $raw !== '' ? json_decode( $raw, true ) : null;
+			return is_array( $out ) ? $out : array();
+		}
+
+		/** The message as plain text: body, then its attachments as lines (Reverb, previews). */
+		public static function message_text( $m ): string {
+			$atts = self::attachments_of( $m );
+			$text = trim( (string) $m->body );
+			if ( $atts && class_exists( 'MMI_Order_Conversation_Attachments' ) ) {
+				$text = trim( $text . "\n\n" . MMI_Order_Conversation_Attachments::text( $atts ) );
+			}
+			return $text;
 		}
 
 		public static function has_external( string $external_id ): bool {
@@ -558,7 +600,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			foreach ( $messages as $m ) {
 				$html .= '<div style="margin:0 0 14px;padding:10px 14px;border-left:3px solid #d0d0d0;background:#f8f8f8;">'
 					. '<div style="font-size:12px;color:#767676;margin-bottom:4px;">' . esc_html( ( $as !== '' ? $as : $m->author ) . ' · ' . self::format_time( $m->created_at ) ) . '</div>'
-					. '<div>' . nl2br( esc_html( $m->body ) ) . '</div></div>';
+					. '<div>' . nl2br( esc_html( $m->body ) ) . '</div>'
+					. ( class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::html( self::attachments_of( $m ), 'email' ) : '' )
+					. '</div>';
 			}
 			return $html;
 		}
@@ -644,10 +688,12 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 						$note[] = $source;
 					}
 				}
-				$body = $customer ? esc_html( $m->body ) : make_clickable( esc_html( $m->body ) );
+				$body  = $customer ? esc_html( $m->body ) : make_clickable( esc_html( $m->body ) );
+				$cards = class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::html( self::attachments_of( $m ), 'thread' ) : '';
 				$html .= '<div class="mmi-conv-msg mmi-conv-msg--' . esc_attr( $m->sender ) . ( $customer ? ' is-mine' : '' ) . '">'
 					. '<div class="mmi-conv-meta"><strong>' . esc_html( $name ) . '</strong> · ' . esc_html( self::format_time( $m->created_at ) ) . '</div>'
-					. '<div class="mmi-conv-body">' . $body . '</div>'
+					. ( trim( (string) $m->body ) !== '' ? '<div class="mmi-conv-body">' . $body . '</div>' : '' )
+					. $cards
 					. ( $note ? '<div class="mmi-conv-staffnote">' . esc_html( implode( ' · ', $note ) ) . '</div>' : '' )
 					. '</div>';
 			}
@@ -676,6 +722,30 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '.mmi-conv-hint{font-size:13px;color:#646970}'
 				. '.mmi-conv-inbox .mmi-conv-unread{display:inline-block;margin-left:6px;padding:0 7px;border-radius:9px;background:#d63638;color:#fff;font-size:11px;line-height:18px;font-weight:600}'
 				. '.mmi-conv-inbox .mmi-conv-preview{color:#646970}'
+				. ( class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::styles() : '' )
+				. '.mmi-conv-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}'
+				. '.mmi-conv-tools .dashicons{font-size:16px;width:16px;height:16px;vertical-align:text-bottom}'
+				. '.mmi-conv-tool[aria-expanded="true"]{background:#f0f6fc;border-color:#2271b1}'
+				. '.mmi-conv-pane{margin-top:8px;padding:10px;border:1px solid #dcdcde;border-radius:8px;background:#fcfcfc}'
+				. '.mmi-conv-pane[hidden],.mmi-conv-chips[hidden]{display:none}'
+				. '.mmi-conv-search{width:100%;max-width:420px}'
+				. '.mmi-conv-results{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;max-width:560px}'
+				. '.mmi-conv-result{display:flex;justify-content:space-between;gap:12px;width:100%;padding:6px 10px;border:1px solid #dcdcde;border-radius:6px;background:#fff;text-align:left;cursor:pointer;font:inherit}'
+				. '.mmi-conv-result:hover:not([disabled]){border-color:#2271b1}'
+				. '.mmi-conv-result[disabled]{opacity:.55;cursor:not-allowed}'
+				. '.mmi-conv-result span,.mmi-conv-result-note{color:#646970;font-size:12px}'
+				. '.mmi-conv-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}'
+				. '.mmi-conv-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 8px;border:1px solid #c3c4c7;border-radius:12px;background:#f6f7f7;font-size:12px}'
+				. '.mmi-conv-chip .dashicons{font-size:14px;width:14px;height:14px}'
+				. '.mmi-conv-chip-remove{border:0;background:none;cursor:pointer;font-size:14px;line-height:1;padding:0 4px;color:#646970}'
+				. '.mmi-conv-coupon-tabs{display:flex;gap:6px;margin-bottom:8px}'
+				. '.mmi-conv-coupon-tab{padding:3px 10px;border:1px solid #c3c4c7;border-radius:12px;background:#fff;cursor:pointer;font:inherit;font-size:12px}'
+				. '.mmi-conv-coupon-tab.active{background:#2271b1;border-color:#2271b1;color:#fff}'
+				. '.mmi-conv-coupon-tab[hidden],.mmi-conv-coupon-new[hidden],.mmi-conv-search[hidden],.mmi-conv-results[hidden]{display:none}'
+				. '.mmi-conv-coupon-grid{display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;align-items:center}'
+				. '.mmi-conv-coupon-grid > label{font-weight:600;margin:0}'
+				. '.mmi-conv-coupon-checks{display:flex;flex-direction:column;gap:4px}'
+				. '.mmi-conv-coupon-checks label{font-weight:400}'
 				. '</style>';
 		}
 
@@ -895,7 +965,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 					continue;
 				}
 				$unread  = self::customer_unread_count( $order );
-				$preview = ( $m->sender === self::SENDER_CUSTOMER ? __( 'You: ', 'mmi-shared' ) : '' ) . wp_html_excerpt( $m->body, 110, '…' );
+				$preview = ( $m->sender === self::SENDER_CUSTOMER ? __( 'You: ', 'mmi-shared' ) : '' ) . wp_html_excerpt( self::message_text( $m ), 110, '…' );
 				$url     = $order->get_view_order_url() . '#' . self::ANCHOR;
 				echo '<tr>'
 					. '<td data-title="' . esc_attr__( 'Order', 'mmi-shared' ) . '"><a href="' . esc_url( $url ) . '">#' . esc_html( $order->get_order_number() ) . '</a>'
@@ -915,6 +985,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( function_exists( 'wc_get_page_screen_id' ) ) {
 				$screens[] = wc_get_page_screen_id( 'shop-order' );
 			}
+			$current = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+			if ( $current && in_array( $current->id, $screens, true ) ) {
+				self::enqueue_staff_assets(); // Order screens only, not every editor.
+			}
 			foreach ( array_unique( $screens ) as $screen ) {
 				add_meta_box( self::ANCHOR, __( 'Conversation with customer', 'mmi-shared' ), array( __CLASS__, 'render_meta_box' ), $screen, 'normal', 'high' );
 			}
@@ -927,8 +1001,24 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				echo '<p>' . esc_html__( 'Save the order first to message the customer.', 'mmi-shared' ) . '</p>';
 				return;
 			}
+			echo self::styles(); // phpcs:ignore WordPress.Security.EscapeOutput -- static CSS.
+			// The storefront's own type, so the box reads like the customer's page (a site supplies it).
+			$site_css = (string) apply_filters( 'mmi_order_conversation_staff_css', '', $order );
+			if ( $site_css !== '' ) {
+				echo '<style>' . wp_strip_all_tags( $site_css ) . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput -- CSS, tags stripped.
+			}
+			echo self::staff_panel_html( $order ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
+		}
+
+		/**
+		 * One staff panel: the thread exactly as the customer sees it, the
+		 * composer (text, product/listing and coupon attachments, Claude
+		 * draft) and where messages go. Used by the order screen's box and
+		 * by MMI Admin → Customer Messages; opening it reads the order's
+		 * customer messages. Needs enqueue_staff_assets() and styles().
+		 */
+		public static function staff_panel_html( \WC_Order $order ): string {
 			do_action( 'mmi_order_conversation_sync', $order, self::SENDER_STAFF );
-			// Opening the order is reading its messages.
 			if ( self::unread_count( $order ) > 0 ) {
 				$order->update_meta_data( self::META_UNREAD, 0 );
 				$order->save_meta_data();
@@ -951,87 +1041,95 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				$hint .= ' ' . sprintf( __( 'Customer last opened the thread %s.', 'mmi-shared' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $seen ) );
 			}
 
-			echo self::styles(); // phpcs:ignore WordPress.Security.EscapeOutput -- static CSS.
-			// The storefront's own type, so the box reads like the customer's page (a site supplies it).
-			$site_css = (string) apply_filters( 'mmi_order_conversation_staff_css', '', $order );
-			if ( $site_css !== '' ) {
-				echo '<style>' . wp_strip_all_tags( $site_css ) . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput -- CSS, tags stripped.
-			}
-			echo '<div class="mmi-conv-staff" data-order="' . esc_attr( (string) $order->get_id() ) . '" data-nonce="' . esc_attr( wp_create_nonce( self::AJAX_STAFF . '_' . $order->get_id() ) ) . '">'
-				. '<div class="mmi-conv-thread-wrap">' . self::render_thread( $order, self::SENDER_STAFF ) . '</div>' // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
+			$id      = $order->get_id();
+			$tools   = class_exists( 'MMI_Order_Conversation_Attachments' );
+			$coupons = $tools && MMI_Order_Conversation_Attachments::coupons_allowed( $order );
+			$field   = 'mmi-conv-staff-body-' . $id;
+			$html    = '<div class="mmi-conv-staff" data-order="' . esc_attr( (string) $id ) . '" data-nonce="' . esc_attr( wp_create_nonce( self::AJAX_STAFF . '_' . $id ) ) . '"'
+				. ( $tools ? ' data-tools-nonce="' . esc_attr( wp_create_nonce( MMI_Order_Conversation_Attachments::NONCE ) ) . '"' : '' ) . ' data-channel="' . esc_attr( $channel ) . '">'
+				. '<div class="mmi-conv-thread-wrap">' . self::render_thread( $order, self::SENDER_STAFF ) . '</div>'
 				. '<div class="mmi-conv-form">'
-				. '<label for="mmi-conv-staff-body">' . esc_html__( 'Message to the customer', 'mmi-shared' ) . '</label>'
-				. '<textarea id="mmi-conv-staff-body" maxlength="' . (int) self::MAX_LENGTH . '"></textarea>'
-				. '<div class="mmi-conv-actions"><button type="button" class="button button-primary mmi-conv-send">' . esc_html__( 'Send to customer', 'mmi-shared' ) . '</button>'
+				. '<label for="' . esc_attr( $field ) . '">' . esc_html__( 'Message to the customer', 'mmi-shared' ) . '</label>'
+				. '<div class="mmi-conv-chips" hidden></div>'
+				. '<textarea id="' . esc_attr( $field ) . '" class="mmi-conv-input" maxlength="' . (int) self::MAX_LENGTH . '"></textarea>';
+			if ( $tools ) {
+				$html .= '<div class="mmi-conv-tools">'
+					. '<button type="button" class="button mmi-conv-tool" data-tool="product" aria-expanded="false"><span class="dashicons dashicons-products" aria-hidden="true"></span> '
+					. esc_html( $channel === self::CHANNEL_EMAIL ? __( 'Link a product', 'mmi-shared' ) : __( 'Link a Reverb listing', 'mmi-shared' ) ) . '</button>'
+					. ( $coupons
+						? '<button type="button" class="button mmi-conv-tool" data-tool="coupon" aria-expanded="false"><span class="dashicons dashicons-tickets-alt" aria-hidden="true"></span> ' . esc_html__( 'Coupon', 'mmi-shared' ) . '</button>'
+						: '<span class="mmi-conv-hint">' . esc_html__( 'Coupons can\'t be sent to Reverb buyers: use a Reverb offer.', 'mmi-shared' ) . '</span>' )
+					. '</div>'
+					. '<div class="mmi-conv-pane" hidden>'
+					. ( $coupons ? '<div class="mmi-conv-coupon-tabs"><button type="button" class="mmi-conv-coupon-tab active" data-tab="existing" hidden>' . esc_html__( 'Use an existing coupon', 'mmi-shared' ) . '</button>'
+						. '<button type="button" class="mmi-conv-coupon-tab" data-tab="new" hidden>' . esc_html__( 'New coupon', 'mmi-shared' ) . '</button></div>' : '' )
+					. '<input type="search" class="mmi-conv-search" aria-label="' . esc_attr__( 'Search', 'mmi-shared' ) . '">'
+					. '<ul class="mmi-conv-results"></ul>'
+					. ( $coupons ? self::coupon_form_html( $order ) : '<div class="mmi-conv-coupon-new" hidden></div>' )
+					. '</div>';
+			}
+			$html .= '<div class="mmi-conv-actions"><button type="button" class="button button-primary mmi-conv-send">' . esc_html__( 'Send to customer', 'mmi-shared' ) . '</button>'
 				. ( has_filter( 'mmi_order_conversation_ai_draft' ) ? '<button type="button" class="button mmi-conv-draft">' . esc_html( (string) apply_filters( 'mmi_order_conversation_ai_label', __( 'Draft answer', 'mmi-shared' ) ) ) . '</button>' : '' )
 				. '<span class="mmi-conv-status" role="status"></span></div>'
 				. '<p class="mmi-conv-hint">' . esc_html( $hint ) . '</p>'
 				. '</div></div>';
-			?>
-			<script>
-			( function () {
-				var box = document.querySelector( '.mmi-conv-staff' );
-				if ( ! box ) { return; }
-				var btn = box.querySelector( '.mmi-conv-send' ), field = box.querySelector( 'textarea' ), status = box.querySelector( '.mmi-conv-status' );
-				btn.addEventListener( 'click', function () {
-					if ( ! field.value.trim() ) { field.focus(); return; }
-					var data = new FormData();
-					data.append( 'action', <?php echo wp_json_encode( self::AJAX_STAFF ); ?> );
-					data.append( 'order_id', box.dataset.order );
-					data.append( 'nonce', box.dataset.nonce );
-					data.append( 'body', field.value );
-					btn.disabled = true;
-					status.textContent = <?php echo wp_json_encode( __( 'Sending…', 'mmi-shared' ) ); ?>;
-					fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: data } )
-						.then( function ( r ) { return r.json(); } )
-						.then( function ( res ) {
-							if ( ! res || ! res.success ) { throw new Error( res && res.data ? res.data : '' ); }
-							box.querySelector( '.mmi-conv-thread-wrap' ).innerHTML = res.data.thread;
-							field.value = '';
-							status.textContent = res.data.message;
-						} )
-						.catch( function ( e ) {
-							status.textContent = e.message || <?php echo wp_json_encode( __( 'Not sent. Check your connection and try again.', 'mmi-shared' ) ); ?>;
-						} )
-						.finally( function () { btn.disabled = false; } );
-				} );
-				var draft = box.querySelector( '.mmi-conv-draft' );
-				if ( draft ) {
-					draft.addEventListener( 'click', function () {
-						if ( field.value.trim() && ! window.confirm( <?php echo wp_json_encode( __( 'Replace what is in the message box with a drafted answer?', 'mmi-shared' ) ); ?> ) ) { return; }
-						var tries = 0;
-						var ask = function ( request ) {
-							var data = new FormData();
-							data.append( 'action', <?php echo wp_json_encode( self::AJAX_DRAFT ); ?> );
-							data.append( 'order_id', box.dataset.order );
-							data.append( 'nonce', box.dataset.nonce );
-							if ( request ) { data.append( 'request', request ); }
-							return fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: data } )
-								.then( function ( r ) { return r.json(); } )
-								.then( function ( res ) {
-									if ( ! res || ! res.success ) { throw new Error( res && res.data ? res.data : '' ); }
-									if ( res.data.pending ) {
-										status.textContent = res.data.message;
-										if ( ++tries > 60 ) { throw new Error( <?php echo wp_json_encode( __( 'Still drafting after 4 minutes. Try again later, or write the answer yourself.', 'mmi-shared' ) ); ?> ); }
-										return new Promise( function ( done ) { setTimeout( done, 4000 ); } ).then( function () { return ask( res.data.pending ); } );
-									}
-									field.value = res.data.text;
-									field.focus();
-									status.textContent = res.data.message;
-								} );
-						};
-						draft.disabled = btn.disabled = true;
-						status.textContent = <?php echo wp_json_encode( __( 'Drafting an answer from the order\'s sources…', 'mmi-shared' ) ); ?>;
-						ask( '' )
-							.catch( function ( e ) {
-								status.textContent = e.message || <?php echo wp_json_encode( __( 'No draft. Check your connection and try again.', 'mmi-shared' ) ); ?>;
-							} )
-							.finally( function () { draft.disabled = btn.disabled = false; } );
-					} );
-				}
-			} )();
-			</script>
-			<?php
+			return $html;
+		}
+
+		/** The composer's "New coupon" form: stated terms, one click to make it. */
+		private static function coupon_form_html( \WC_Order $order ): string {
+			$email = sanitize_email( $order->get_billing_email() );
+			$id    = 'mmi-conv-coupon-' . $order->get_id();
+			return '<div class="mmi-conv-coupon-new" hidden><div class="mmi-conv-coupon-grid">'
+				. '<label for="' . esc_attr( $id ) . '-type">' . esc_html__( 'Discount', 'mmi-shared' ) . '</label>'
+				. '<span><input type="number" name="amount" min="0.01" step="0.01" value="10" class="small-text" aria-label="' . esc_attr__( 'Amount', 'mmi-shared' ) . '"> '
+				. '<select name="discount_type" id="' . esc_attr( $id ) . '-type"><option value="percent">' . esc_html__( '% off the order', 'mmi-shared' ) . '</option><option value="fixed_cart">' . esc_html( sprintf( __( '%s off the order', 'mmi-shared' ), html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ) ) ) . '</option></select></span>'
+				. '<label for="' . esc_attr( $id ) . '-days">' . esc_html__( 'Good for', 'mmi-shared' ) . '</label>'
+				. '<span><input type="number" name="days" id="' . esc_attr( $id ) . '-days" min="1" max="365" value="30" class="small-text"> ' . esc_html__( 'days', 'mmi-shared' ) . '</span>'
+				. '<label for="' . esc_attr( $id ) . '-code">' . esc_html__( 'Code', 'mmi-shared' ) . '</label>'
+				. '<span><input type="text" name="code" id="' . esc_attr( $id ) . '-code" placeholder="' . esc_attr__( 'Made for you if left empty', 'mmi-shared' ) . '"></span>'
+				. '<span></span><span class="mmi-conv-coupon-checks">'
+				. '<label><input type="checkbox" name="only_customer" value="1"' . ( is_email( $email ) ? ' checked' : ' disabled' ) . '> ' . esc_html( is_email( $email ) ? sprintf( __( 'Only for %s', 'mmi-shared' ), $email ) : __( 'Only for this customer (no email on the order)', 'mmi-shared' ) ) . '</label>'
+				. '<label><input type="checkbox" name="one_use" value="1" checked> ' . esc_html__( 'Can be used once', 'mmi-shared' ) . '</label></span>'
+				. '<span></span><span><button type="button" class="button button-primary mmi-conv-coupon-create">' . esc_html__( 'Create coupon and attach it', 'mmi-shared' ) . '</button></span>'
+				. '</div></div>';
+		}
+
+		/** The staff panel's script and its settings (any admin screen that shows panels). */
+		public static function enqueue_staff_assets(): void {
+			if ( ! wp_script_is( 'mmi-order-conversation', 'registered' ) ) {
+				return;
+			}
+			wp_enqueue_script( 'mmi-order-conversation' );
+			wp_localize_script( 'mmi-order-conversation', 'mmiOrderConversation', array(
+				'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+				'maxAttachments' => class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::MAX : 0,
+				'actions'        => array(
+					'reply'  => self::AJAX_STAFF,
+					'draft'  => self::AJAX_DRAFT,
+					'find'   => class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::AJAX_FIND : '',
+					'coupon' => class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::AJAX_COUPON : '',
+				),
+				'i18n'           => array(
+					'sending'        => __( 'Sending…', 'mmi-shared' ),
+					'notSent'        => __( 'Not sent. Check your connection and try again.', 'mmi-shared' ),
+					'failed'         => __( 'That did not work. Reload the page and try again.', 'mmi-shared' ),
+					'drafting'       => __( 'Drafting an answer from the order\'s sources…', 'mmi-shared' ),
+					'draftSlow'      => __( 'Still drafting after 4 minutes. Try again later, or write the answer yourself.', 'mmi-shared' ),
+					'noDraft'        => __( 'No draft. Check your connection and try again.', 'mmi-shared' ),
+					'replaceDraft'   => __( 'Replace what is in the message box with a drafted answer?', 'mmi-shared' ),
+					'searchProducts' => __( 'Search products by name, SKU or ID…', 'mmi-shared' ),
+					'searchCoupons'  => __( 'Search coupons by code…', 'mmi-shared' ),
+					'searching'      => __( 'Searching…', 'mmi-shared' ),
+					'noMatch'        => __( 'Nothing matches.', 'mmi-shared' ),
+					'typeToSearch'   => __( 'Type to search.', 'mmi-shared' ),
+					'attached'       => __( 'Attached. It goes with your next message.', 'mmi-shared' ),
+					'tooMany'        => __( 'That is the most one message can carry.', 'mmi-shared' ),
+					'remove'         => __( 'Remove', 'mmi-shared' ),
+					'creatingCoupon' => __( 'Creating the coupon…', 'mmi-shared' ),
+					'couponCreated'  => __( 'Coupon %s created and attached.', 'mmi-shared' ),
+				),
+			) );
 		}
 
 		public static function ajax_staff_reply(): void {
@@ -1041,8 +1139,16 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 			$order = wc_get_order( $order_id );
 			$body  = is_string( $_POST['body'] ?? null ) ? wp_unslash( $_POST['body'] ) : '';
-			if ( ! $order || ! self::add( $order, self::SENDER_STAFF, $body ) ) {
-				wp_send_json_error( __( 'Nothing was sent: the message is empty.', 'mmi-shared' ) );
+			$refs  = is_string( $_POST['attachments'] ?? null ) ? json_decode( wp_unslash( $_POST['attachments'] ), true ) : array();
+			$atts  = array();
+			if ( $order && is_array( $refs ) && $refs && class_exists( 'MMI_Order_Conversation_Attachments' ) ) {
+				$atts = MMI_Order_Conversation_Attachments::build( $refs, $order );
+				if ( is_wp_error( $atts ) ) {
+					wp_send_json_error( $atts->get_error_message() );
+				}
+			}
+			if ( ! $order || ! self::add( $order, self::SENDER_STAFF, $body, array( 'attachments' => $atts ) ) ) {
+				wp_send_json_error( __( 'Nothing was sent: write a message or attach something first.', 'mmi-shared' ) );
 			}
 			$message = self::channel( $order ) === self::CHANNEL_EMAIL
 				? __( 'Sent. The customer is emailed within 5 minutes.', 'mmi-shared' )

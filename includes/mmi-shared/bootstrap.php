@@ -72,7 +72,7 @@
  * thread per order in its own table — customer token page, My Account
  * section, staff box on the order screen. Inert until a plugin calls init().
  * 1.46.27: MMI_Order_Conversation_Gmail (reply by email), delivery channels,
- * My Account Messages tab. 1.46.28: drafted answers (provider via filter); 1.46.29: background drafts (pending + poll); 1.46.30: one look for staff and customer, email samples.
+ * My Account Messages tab. 1.46.28: drafted answers (provider via filter); 1.46.29: background drafts (pending + poll); 1.46.30: one look for staff and customer, email samples; 1.46.31: attachments (products, coupons), shared staff panel + script; 1.46.32: tools pane state fix.
  *
  * Added MMI_Marketplace_Order_Sources as a 14th bundled class (2026-09-17,
  * same day): it also lived in mmi-hub and was missed during the elimination
@@ -196,7 +196,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.30';
+$mmi_shared_lib_this_copy_version = '1.46.32';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -231,6 +231,7 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_Software_Fulfillment' => 'class-software-fulfillment.php',
 	'MMI_Order_Conversation' => 'class-order-conversation.php',
 	'MMI_Order_Conversation_Gmail' => 'class-order-conversation-gmail.php',
+	'MMI_Order_Conversation_Attachments' => 'class-order-conversation-attachments.php',
 	'MMI_Supplier_Promotion' => 'class-supplier-promotion.php',
 	'MMI_Supplier_Admin' => 'class-supplier-admin.php',
 	'MMI_Supplier_Rule_Pack' => 'class-supplier-rule-pack.php',
@@ -959,6 +960,7 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 			'mmi-condition-builder' => array( 'file' => 'js/shared/mmi-condition-builder.js', 'deps' => array( 'jquery', 'mmi-escape-html' ) ),
 			'mmi-lazy-scripts'      => array( 'file' => 'js/shared/mmi-lazy-scripts.js', 'deps' => array() ),
 			'mmi-row-feedback'      => array( 'file' => 'js/shared/mmi-row-feedback.js', 'deps' => array() ),
+			'mmi-order-conversation' => array( 'file' => 'js/shared/mmi-order-conversation.js', 'deps' => array() ),
 		);
 		foreach ( $scripts as $handle => $spec ) {
 			if ( is_file( $dir . '/' . $spec['file'] ) ) {
