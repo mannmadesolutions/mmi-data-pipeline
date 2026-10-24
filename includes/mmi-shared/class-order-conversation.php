@@ -3,10 +3,10 @@
  * MMI_Order_Conversation
  *
  * One message thread per WooCommerce order between the store and its
- * customer, Reverb-style: on-site and asynchronous, with an email to the
- * other side for each new message (batched over NOTIFY_DELAY). Shared so
- * any MMI plugin can turn it on (init() is idempotent) and every order kind
- * — XChange, subscriptions, Reverb — uses one thread.
+ * customer, Reverb-style: on-site and asynchronous, with each new message
+ * delivered to the other side (batched over NOTIFY_DELAY). Shared so any
+ * MMI plugin can turn it on (init() is idempotent) and every order kind —
+ * XChange, subscriptions, Reverb — uses one thread.
  *
  * Storage: its own table ({prefix}mmi_order_messages), created on first use.
  * Not comments: WooCommerce hides order-note comments from comment queries,
@@ -17,10 +17,21 @@
  *
  * Where each side reads and writes:
  *  - Customer: a signed per-order link (customer_url(), admin-post.php —
- *    anonymous front-end HTML may be edge-cached, /wp-admin isn't), and a
- *    Messages section on My Account → View order (woocommerce_view_order).
+ *    anonymous front-end HTML may be edge-cached, /wp-admin isn't), the
+ *    Messages section on My Account → View order, the My Account Messages
+ *    tab (every thread, unread first), and — when a reply mailbox is set up
+ *    (MMI_Order_Conversation_Gmail) — a reply to the notification email.
  *  - Staff: a Conversation box on the order screen (AJAX reply), and an
  *    unread badge after the order number in the Orders list.
+ *
+ * Channels: by default a staff message reaches the customer by email. A
+ * plugin can route an order elsewhere — mmi-reverb-integration sends a
+ * Reverb order's messages to the buyer's Reverb inbox — through the
+ * 'mmi_order_conversation_channel' filter plus a
+ * 'mmi_order_conversation_deliver_{channel}' filter that sends one message,
+ * and can pull the other side's messages in on the
+ * 'mmi_order_conversation_sync' action with import_external() (deduplicated
+ * by external_id).
  *
  * Plain text only: bodies are sanitize_textarea_field()'d, capped at
  * MAX_LENGTH, escaped on output; links in customer messages stay plain text.
@@ -37,19 +48,25 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 	class MMI_Order_Conversation {
 
-		const DB_VERSION = '1';
+		const DB_VERSION = '2';
 		const DB_OPTION  = 'mmi_order_messages_db_version';
 
 		const SENDER_CUSTOMER = 'customer';
 		const SENDER_STAFF    = 'staff';
 		const SENDER_SYSTEM   = 'system';
 
+		const CHANNEL_EMAIL = 'email';
+
 		/** Per-order secret for the customer's link. */
-		const META_TOKEN  = '_mmi_conv_token';
+		const META_TOKEN           = '_mmi_conv_token';
 		/** Customer messages the staff hasn't opened the order to see. */
-		const META_UNREAD = '_mmi_conv_unread_staff';
+		const META_UNREAD          = '_mmi_conv_unread_staff';
+		/** Staff messages the customer hasn't opened the thread to see. */
+		const META_UNREAD_CUSTOMER = '_mmi_conv_unread_customer';
 		/** Unix time the customer last opened the thread. */
-		const META_SEEN   = '_mmi_conv_customer_seen';
+		const META_SEEN            = '_mmi_conv_customer_seen';
+		/** Unix time a reply-by-email address last went out for this order. */
+		const META_REPLY_ISSUED    = '_mmi_conv_reply_issued';
 
 		const MAX_LENGTH   = 2000;
 		const RATE_LIMIT   = 10;
@@ -68,8 +85,19 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		/** HTML id of the thread on every screen; links end in #ANCHOR. */
 		const ANCHOR = 'mmi-order-conversation';
 
-		private static bool $initialized = false;
-		private static bool $table_ready = false;
+		/** My Account endpoint: /my-account/messages/. */
+		const ENDPOINT         = 'messages';
+		const REWRITE_OPTION   = 'mmi_order_conversation_rewrite';
+		const REWRITE_VERSION  = '1';
+
+		/**
+		 * First line of a customer email that can be answered by replying;
+		 * strip_quoted() cuts a reply here (it sits above everything quoted).
+		 */
+		const REPLY_MARKER = '## Reply above this line ##';
+
+		private static bool $initialized    = false;
+		private static bool $table_ready    = false;
 		private static bool $styles_printed = false;
 
 		public static function init(): void {
@@ -84,6 +112,12 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			add_action( 'admin_post_' . self::ACTION_ACCOUNT, array( __CLASS__, 'handle_account_post' ) );
 			add_action( 'wp_ajax_' . self::AJAX_STAFF, array( __CLASS__, 'ajax_staff_reply' ) );
 
+			add_action( 'init', array( __CLASS__, 'register_endpoint' ) );
+			add_filter( 'woocommerce_get_query_vars', array( __CLASS__, 'add_query_var' ) );
+			add_filter( 'woocommerce_account_menu_items', array( __CLASS__, 'account_menu_item' ), 20 );
+			add_action( 'woocommerce_account_' . self::ENDPOINT . '_endpoint', array( __CLASS__, 'render_account_inbox' ) );
+			add_filter( 'woocommerce_endpoint_' . self::ENDPOINT . '_title', array( __CLASS__, 'endpoint_title' ) );
+
 			add_action( 'add_meta_boxes', array( __CLASS__, 'add_meta_box' ) );
 			add_action( 'manage_woocommerce_page_wc-orders_custom_column', array( __CLASS__, 'render_list_badge' ), 20, 2 );
 			add_action( 'manage_shop_order_posts_custom_column', array( __CLASS__, 'render_list_badge' ), 20, 2 );
@@ -93,6 +127,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 			add_filter( 'wp_privacy_personal_data_exporters', array( __CLASS__, 'register_exporter' ) );
 			add_filter( 'wp_privacy_personal_data_erasers', array( __CLASS__, 'register_eraser' ) );
+
+			if ( class_exists( 'MMI_Order_Conversation_Gmail' ) ) {
+				MMI_Order_Conversation_Gmail::init();
+			}
 		}
 
 		/* ── Storage ────── */
@@ -113,8 +151,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 						body text NOT NULL,
 						created_at datetime NOT NULL,
 						notified tinyint(1) NOT NULL DEFAULT 0,
+						external_id varchar(100) NOT NULL DEFAULT '',
 						PRIMARY KEY  (id),
-						KEY order_id (order_id)
+						KEY order_id (order_id),
+						KEY external_id (external_id)
 					) " . $wpdb->get_charset_collate() . ';' );
 					update_option( self::DB_OPTION, self::DB_VERSION );
 				}
@@ -123,11 +163,15 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		}
 
 		/**
-		 * Adds a message. Customer and staff messages email the other side
+		 * Adds a message. Customer and staff messages reach the other side
 		 * (batched) unless $args['notify'] is false; system messages never do.
 		 *
-		 * @param array $args { author?: string, user_id?: int, time?: int (unix), notify?: bool }
-		 * @return int Message id, 0 when nothing was stored (empty body, bad sender).
+		 * @param array $args {
+		 *     author?: string, user_id?: int, time?: int (unix), notify?: bool,
+		 *     external_id?: string — where the message came from (e.g.
+		 *     'gmail:<id>', 'reverb:<id>'); a second add with the same id is a no-op.
+		 * }
+		 * @return int Message id, 0 when nothing was stored (empty body, bad sender, duplicate).
 		 */
 		public static function add( \WC_Order $order, string $sender, string $body, array $args = array() ): int {
 			global $wpdb;
@@ -137,6 +181,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			$body = trim( sanitize_textarea_field( $body ) );
 			$body = function_exists( 'mb_substr' ) ? mb_substr( $body, 0, self::MAX_LENGTH ) : substr( $body, 0, self::MAX_LENGTH );
 			if ( $body === '' ) {
+				return 0;
+			}
+			$external_id = substr( (string) ( $args['external_id'] ?? '' ), 0, 100 );
+			if ( $external_id !== '' && self::has_external( $external_id ) ) {
 				return 0;
 			}
 
@@ -151,40 +199,98 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			$notify = $sender !== self::SENDER_SYSTEM && ( $args['notify'] ?? true );
 
 			$wpdb->insert( self::table(), array(
-				'order_id'   => $order->get_id(),
-				'sender'     => $sender,
-				'user_id'    => $user_id,
-				'author'     => sanitize_text_field( $author ),
-				'body'       => $body,
-				'created_at' => gmdate( 'Y-m-d H:i:s', (int) ( $args['time'] ?? time() ) ),
-				'notified'   => $notify ? 0 : 1,
+				'order_id'    => $order->get_id(),
+				'sender'      => $sender,
+				'user_id'     => $user_id,
+				'author'      => sanitize_text_field( $author ),
+				'body'        => $body,
+				'created_at'  => gmdate( 'Y-m-d H:i:s', (int) ( $args['time'] ?? time() ) ),
+				'notified'    => $notify ? 0 : 1,
+				'external_id' => $external_id,
 			) );
 			$id = (int) $wpdb->insert_id;
 			if ( ! $id ) {
 				return 0;
 			}
 
-			if ( $sender === self::SENDER_CUSTOMER ) {
+			if ( $sender === self::SENDER_CUSTOMER && ( $args['unread'] ?? true ) ) {
 				$order->update_meta_data( self::META_UNREAD, self::unread_count( $order ) + 1 );
+				$order->save_meta_data();
+			} elseif ( $sender === self::SENDER_STAFF && $external_id === '' ) {
+				$order->update_meta_data( self::META_UNREAD_CUSTOMER, self::customer_unread_count( $order ) + 1 );
 				$order->save_meta_data();
 			}
 			if ( $notify ) {
-				self::schedule_notify( $order->get_id(), $sender === self::SENDER_CUSTOMER ? self::SENDER_STAFF : self::SENDER_CUSTOMER );
+				self::schedule_notify( $order, $sender === self::SENDER_CUSTOMER ? self::SENDER_STAFF : self::SENDER_CUSTOMER );
 			}
 
 			do_action( 'mmi_order_conversation_message_added', $id, $order, $sender );
 			return $id;
 		}
 
-		/** @return array<int,object{id:string,order_id:string,sender:string,user_id:string,author:string,body:string,created_at:string,notified:string}> Oldest first. */
+		/**
+		 * A message that already reached the other side somewhere else (a
+		 * Reverb message, an email reply): stored without notifying anyone.
+		 * A staff message sent from here and seen again on its channel gets
+		 * the channel's id instead of a second copy (same body, still
+		 * without an id, within a day).
+		 *
+		 * @param array $args { author?: string, time?: int, unread?: bool (customer messages; default true) }
+		 */
+		public static function import_external( \WC_Order $order, string $sender, string $body, string $external_id, array $args = array() ): int {
+			global $wpdb;
+			if ( $external_id === '' || self::has_external( $external_id ) ) {
+				return 0;
+			}
+			if ( $sender === self::SENDER_STAFF ) {
+				$table = self::table();
+				$time  = (int) ( $args['time'] ?? time() );
+				$match = (int) $wpdb->get_var( $wpdb->prepare(
+					"SELECT id FROM {$table} WHERE order_id = %d AND sender = %s AND external_id = '' AND body = %s AND created_at BETWEEN %s AND %s ORDER BY id ASC LIMIT 1",
+					$order->get_id(),
+					self::SENDER_STAFF,
+					trim( sanitize_textarea_field( $body ) ),
+					gmdate( 'Y-m-d H:i:s', $time - DAY_IN_SECONDS ),
+					gmdate( 'Y-m-d H:i:s', $time + DAY_IN_SECONDS )
+				) );
+				if ( $match ) {
+					$wpdb->update( $table, array( 'external_id' => substr( $external_id, 0, 100 ) ), array( 'id' => $match ) );
+					return $match;
+				}
+			}
+			return self::add( $order, $sender, $body, array_merge( $args, array(
+				'external_id' => $external_id,
+				'notify'      => false,
+				'user_id'     => 0,
+			) ) );
+		}
+
+		public static function has_external( string $external_id ): bool {
+			global $wpdb;
+			$table = self::table();
+			return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE external_id = %s LIMIT 1", $external_id ) );
+		}
+
+		/** @return array<int,object{id:string,order_id:string,sender:string,user_id:string,author:string,body:string,created_at:string,notified:string,external_id:string}> Oldest first. */
 		public static function get_messages( int $order_id ): array {
 			global $wpdb;
 			$table = self::table();
-			return (array) $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE order_id = %d ORDER BY id ASC", $order_id ) );
+			return (array) $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE order_id = %d ORDER BY created_at ASC, id ASC", $order_id ) );
 		}
 
 		public static function unread_count( \WC_Order $order ): int {
 			return max( 0, (int) $order->get_meta( self::META_UNREAD ) );
+		}
+
+		public static function customer_unread_count( \WC_Order $order ): int {
+			return max( 0, (int) $order->get_meta( self::META_UNREAD_CUSTOMER ) );
+		}
+
+		/** The customer opened the thread: mark staff messages read, note when. */
+		private static function customer_viewed( \WC_Order $order ): void {
+			$order->update_meta_data( self::META_SEEN, time() );
+			$order->update_meta_data( self::META_UNREAD_CUSTOMER, 0 );
+			$order->save_meta_data();
 		}
 
 		public static function delete_for_order( $order_id ): void {
@@ -211,6 +317,57 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			return $order->get_edit_order_url() . '#' . self::ANCHOR;
 		}
 
+		/** How staff messages reach this order's customer: 'email' or a plugin's channel. */
+		public static function channel( \WC_Order $order ): string {
+			$channel = (string) apply_filters( 'mmi_order_conversation_channel', self::CHANNEL_EMAIL, $order );
+			return $channel !== '' ? sanitize_key( $channel ) : self::CHANNEL_EMAIL;
+		}
+
+		/**
+		 * Reply-To for an email to this order's customer, so a plain reply
+		 * lands in the thread — empty when no reply mailbox is set up.
+		 *
+		 * @return string[] Mail headers ([] or one "Reply-To: …").
+		 */
+		public static function reply_headers( \WC_Order $order ): array {
+			$address = (string) apply_filters( 'mmi_order_conversation_reply_address', '', $order );
+			if ( $address === '' || ! is_email( $address ) ) {
+				return array();
+			}
+			$order->update_meta_data( self::META_REPLY_ISSUED, time() );
+			$order->save_meta_data();
+			return array( 'Reply-To: ' . $address );
+		}
+
+		/**
+		 * The new text of an email reply: cut at REPLY_MARKER, at the
+		 * "On … wrote:" / "Original Message" line that starts the quoted
+		 * email, or at a "-- " signature; quoted ">" lines dropped.
+		 */
+		public static function strip_quoted( string $text ): string {
+			$text = str_replace( array( "\r\n", "\r" ), "\n", $text );
+			$pos  = stripos( $text, self::REPLY_MARKER );
+			if ( $pos !== false ) {
+				$text = substr( $text, 0, $pos );
+			}
+			$lines = explode( "\n", $text );
+			$out   = array();
+			foreach ( $lines as $i => $line ) {
+				$t    = trim( $line );
+				$next = trim( $lines[ $i + 1 ] ?? '' );
+				$wrote = preg_match( '/^On\s.+wrote:$/i', $t )
+					|| ( preg_match( '/^On\s/i', $t ) && preg_match( '/wrote:$/i', $next ) );
+				if ( $wrote || preg_match( '/^-{2,}\s*Original Message\s*-{2,}$/i', $t ) || preg_match( '/^_{10,}$/', $t ) || $t === '--' ) {
+					break;
+				}
+				if ( strpos( $t, '>' ) === 0 ) {
+					continue;
+				}
+				$out[] = rtrim( $line );
+			}
+			return trim( preg_replace( "/\n{3,}/", "\n\n", implode( "\n", $out ) ) );
+		}
+
 		private static function rate_limited( \WC_Order $order ): bool {
 			global $wpdb;
 			$table = self::table();
@@ -223,22 +380,23 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			return $count >= self::RATE_LIMIT;
 		}
 
-		/* ── Notifications ────── */
+		/* ── Notifications and delivery ────── */
 
-		private static function schedule_notify( int $order_id, string $side ): void {
+		private static function schedule_notify( \WC_Order $order, string $side ): void {
+			$delay = (int) apply_filters( 'mmi_order_conversation_notify_delay', self::NOTIFY_DELAY, $order, $side );
 			if ( ! function_exists( 'as_schedule_single_action' ) ) {
-				self::run_notify( $order_id, $side );
+				self::run_notify( $order->get_id(), $side );
 				return;
 			}
-			$args = array( $order_id, $side );
+			$args = array( $order->get_id(), $side );
 			if ( ! as_has_scheduled_action( self::HOOK_NOTIFY, $args, self::AS_GROUP ) ) {
-				as_schedule_single_action( time() + self::NOTIFY_DELAY, self::HOOK_NOTIFY, $args, self::AS_GROUP );
+				as_schedule_single_action( time() + max( 0, $delay ), self::HOOK_NOTIFY, $args, self::AS_GROUP );
 			}
 		}
 
 		/**
-		 * Action Scheduler: one email to $side with every message from the
-		 * other side not yet sent to them.
+		 * Action Scheduler: everything from the other side not yet passed on
+		 * to $side — one email, or each message over the order's channel.
 		 */
 		public static function run_notify( $order_id, $side ): void {
 			global $wpdb;
@@ -255,12 +413,35 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			$table = self::table();
 			$wpdb->query( "UPDATE {$table} SET notified = 1 WHERE id IN (" . implode( ',', $ids ) . ')' ); // Ints only.
 
-			$sent = $side === self::SENDER_CUSTOMER
-				? self::email_customer( $order, $pending )
-				: self::email_staff( $order, $pending );
+			if ( $side === self::SENDER_STAFF ) {
+				$sent = self::email_staff( $order, $pending );
+			} elseif ( ( $channel = self::channel( $order ) ) !== self::CHANNEL_EMAIL ) {
+				$sent = self::deliver_over_channel( $order, $channel, $pending );
+			} else {
+				$sent = self::email_customer( $order, $pending );
+			}
 			if ( ! $sent && class_exists( 'MMI_Logger' ) ) {
 				MMI_Logger::warn( "Order conversation: {$side} notification for order {$order->get_id()} was not sent", array(), 'order-conversation', __CLASS__ );
 			}
+		}
+
+		/** Each staff message on its own over the channel; a failure shows in the thread. */
+		private static function deliver_over_channel( \WC_Order $order, string $channel, array $messages ): bool {
+			global $wpdb;
+			$all_sent = true;
+			foreach ( $messages as $m ) {
+				$result = apply_filters( 'mmi_order_conversation_deliver_' . $channel, new \WP_Error( 'no_channel', 'No plugin delivers this channel.' ), $order, $m );
+				if ( is_wp_error( $result ) || ! $result ) {
+					$all_sent = false;
+					$reason   = is_wp_error( $result ) ? $result->get_error_message() : '';
+					self::add( $order, self::SENDER_SYSTEM, sprintf( __( 'The message above was not delivered (%1$s). %2$s', 'mmi-shared' ), $channel, $reason ) );
+					continue;
+				}
+				if ( is_string( $result ) && $result !== '' ) {
+					$wpdb->update( self::table(), array( 'external_id' => substr( $result, 0, 100 ) ), array( 'id' => (int) $m->id ) );
+				}
+			}
+			return $all_sent;
 		}
 
 		private static function email_customer( \WC_Order $order, array $messages ): bool {
@@ -269,13 +450,18 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				$order->add_order_note( __( 'A message to the customer was not emailed: the order has no real customer email address. They can still read it in My Account.', 'mmi-shared' ) );
 				return false;
 			}
-			$site   = get_bloginfo( 'name' );
-			$number = $order->get_order_number();
-			$first  = trim( $order->get_billing_first_name() ) ?: __( 'there', 'mmi-shared' );
+			$site    = get_bloginfo( 'name' );
+			$number  = $order->get_order_number();
+			$first   = trim( $order->get_billing_first_name() ) ?: __( 'there', 'mmi-shared' );
+			$headers = array_merge( array( 'Content-Type: text/html; charset=UTF-8' ), self::reply_headers( $order ) );
+			$by_mail = count( $headers ) > 1;
 
-			$body = '<p>' . esc_html( sprintf( __( 'Hi %1$s, you have a new message from %2$s about order #%3$s:', 'mmi-shared' ), $first, $site, $number ) ) . '</p>'
+			$body = ( $by_mail ? '<p style="margin:0 0 14px;font-size:11px;color:#999;">' . esc_html( self::REPLY_MARKER ) . '</p>' : '' )
+				. '<p>' . esc_html( sprintf( __( 'Hi %1$s, you have a new message from %2$s about order #%3$s:', 'mmi-shared' ), $first, $site, $number ) ) . '</p>'
 				. self::email_quotes( $messages )
-				. '<p>' . esc_html__( 'Use the button to reply. Your messages stay with the order, so you can also find them in My Account under Orders.', 'mmi-shared' ) . '</p>';
+				. '<p>' . esc_html( $by_mail
+					? __( 'Reply to this email, or use the button. Your messages stay with the order, so you can also find them in My Account under Messages.', 'mmi-shared' )
+					: __( 'Use the button to reply. Your messages stay with the order, so you can also find them in My Account under Messages.', 'mmi-shared' ) ) . '</p>';
 			$subject = sprintf( __( 'New message about your order #%1$s — %2$s', 'mmi-shared' ), $number, $site );
 
 			$html = class_exists( 'MMI_Email_Templates' )
@@ -287,7 +473,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				) )
 				: $body . '<p><a href="' . esc_url( self::customer_url( $order ) ) . '">' . esc_html__( 'Reply', 'mmi-shared' ) . '</a></p>';
 
-			return (bool) wp_mail( $to, $subject, $html, array( 'Content-Type: text/html; charset=UTF-8' ) );
+			return (bool) wp_mail( $to, $subject, $html, $headers );
 		}
 
 		private static function email_staff( \WC_Order $order, array $messages ): bool {
@@ -329,6 +515,18 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			return wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $gmt . ' UTC' ) );
 		}
 
+		/** Where a message came in, shown beside its time. */
+		private static function source_label( string $external_id ): string {
+			$source = strtok( $external_id, ':' );
+			if ( $source === 'gmail' ) {
+				return __( 'by email', 'mmi-shared' );
+			}
+			if ( $source === 'reverb' ) {
+				return __( 'on Reverb', 'mmi-shared' );
+			}
+			return '';
+		}
+
 		/**
 		 * @param string $viewer SENDER_CUSTOMER or SENDER_STAFF — decides whose
 		 *                       messages are "mine" and how names show.
@@ -349,9 +547,14 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				} else {
 					$name = $m->sender === self::SENDER_STAFF ? sprintf( __( '%s (staff)', 'mmi-shared' ), $m->author ) : $m->author;
 				}
+				$meta   = self::format_time( $m->created_at );
+				$source = $viewer === self::SENDER_STAFF ? self::source_label( (string) ( $m->external_id ?? '' ) ) : '';
+				if ( $source !== '' ) {
+					$meta .= ' · ' . $source;
+				}
 				$body = $m->sender === self::SENDER_STAFF ? make_clickable( esc_html( $m->body ) ) : esc_html( $m->body );
 				$html .= '<div class="mmi-conv-msg mmi-conv-msg--' . esc_attr( $m->sender ) . ( $mine ? ' is-mine' : '' ) . '">'
-					. '<div class="mmi-conv-meta">' . ( $name !== '' ? '<strong>' . esc_html( $name ) . '</strong> · ' : '' ) . esc_html( self::format_time( $m->created_at ) ) . '</div>'
+					. '<div class="mmi-conv-meta">' . ( $name !== '' ? '<strong>' . esc_html( $name ) . '</strong> · ' : '' ) . esc_html( $meta ) . '</div>'
 					. '<div class="mmi-conv-body">' . $body . '</div></div>';
 			}
 			return $html . '</div>';
@@ -375,6 +578,8 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '.mmi-conv-form textarea{box-sizing:border-box;width:100%;min-height:90px;padding:10px;font:inherit}'
 				. '.mmi-conv-form .mmi-conv-actions{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}'
 				. '.mmi-conv-hint{font-size:13px;color:#646970}'
+				. '.mmi-conv-inbox .mmi-conv-unread{display:inline-block;margin-left:6px;padding:0 7px;border-radius:9px;background:#d63638;color:#fff;font-size:11px;line-height:18px;font-weight:600}'
+				. '.mmi-conv-inbox .mmi-conv-preview{color:#646970}'
 				. '</style>';
 		}
 
@@ -415,8 +620,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 			// phpcs:enable
 
-			$order->update_meta_data( self::META_SEEN, time() );
-			$order->save_meta_data();
+			self::customer_viewed( $order );
 
 			$number  = $order->get_order_number();
 			$created = $order->get_date_created();
@@ -476,8 +680,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( ! $order || ! current_user_can( 'view_order', $order->get_id() ) ) {
 				return;
 			}
-			$order->update_meta_data( self::META_SEEN, time() );
-			$order->save_meta_data();
+			self::customer_viewed( $order );
 
 			// phpcs:disable WordPress.Security.NonceVerification -- display flags only.
 			$notice = '';
@@ -516,6 +719,99 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			exit;
 		}
 
+		/* ── Customer: My Account → Messages (every thread) ────── */
+
+		public static function register_endpoint(): void {
+			add_rewrite_endpoint( self::ENDPOINT, EP_ROOT | EP_PAGES );
+			if ( get_option( self::REWRITE_OPTION ) !== self::REWRITE_VERSION ) {
+				flush_rewrite_rules( false );
+				update_option( self::REWRITE_OPTION, self::REWRITE_VERSION );
+			}
+		}
+
+		public static function add_query_var( array $vars ): array {
+			$vars[ self::ENDPOINT ] = self::ENDPOINT;
+			return $vars;
+		}
+
+		public static function endpoint_title(): string {
+			return __( 'Messages', 'mmi-shared' );
+		}
+
+		/** After Orders; the label carries the unread count. */
+		public static function account_menu_item( array $items ): array {
+			$unread = self::account_unread_total( get_current_user_id() );
+			$label  = $unread > 0 ? sprintf( __( 'Messages (%d)', 'mmi-shared' ), $unread ) : __( 'Messages', 'mmi-shared' );
+			$out    = array();
+			foreach ( $items as $key => $value ) {
+				$out[ $key ] = $value;
+				if ( $key === 'orders' ) {
+					$out[ self::ENDPOINT ] = $label;
+				}
+			}
+			if ( ! isset( $out[ self::ENDPOINT ] ) ) {
+				$out[ self::ENDPOINT ] = $label;
+			}
+			return $out;
+		}
+
+		/** Unread staff messages across a customer's orders (one indexed meta query). */
+		private static function account_unread_total( int $user_id ): int {
+			if ( ! $user_id || ! function_exists( 'wc_get_orders' ) ) {
+				return 0;
+			}
+			$total = 0;
+			foreach ( (array) wc_get_orders( array(
+				'customer_id' => $user_id,
+				'limit'       => 50,
+				'meta_query'  => array( array( 'key' => self::META_UNREAD_CUSTOMER, 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ) ),
+			) ) as $order ) {
+				$total += self::customer_unread_count( $order );
+			}
+			return $total;
+		}
+
+		/** woocommerce_account_messages_endpoint — the customer's threads, newest first. */
+		public static function render_account_inbox(): void {
+			global $wpdb;
+			$user_id = get_current_user_id();
+			$ids     = $user_id ? array_map( 'intval', (array) wc_get_orders( array( 'customer_id' => $user_id, 'limit' => 200, 'return' => 'ids' ) ) ) : array();
+			$rows    = array();
+			if ( $ids ) {
+				$table = self::table();
+				$in    = implode( ',', $ids ); // Ints only.
+				$rows  = (array) $wpdb->get_results(
+					"SELECT m.* FROM {$table} m JOIN (SELECT order_id, MAX(id) AS last_id FROM {$table} WHERE order_id IN ({$in}) AND sender <> 'system' GROUP BY order_id) l ON m.id = l.last_id ORDER BY m.id DESC"
+				);
+			}
+
+			echo self::styles(); // phpcs:ignore WordPress.Security.EscapeOutput -- static CSS.
+			if ( ! $rows ) {
+				echo '<p>' . esc_html__( 'No messages yet. You can message us about any order from its page under Orders.', 'mmi-shared' ) . '</p>';
+				return;
+			}
+			echo '<table class="woocommerce-orders-table shop_table shop_table_responsive my_account_orders mmi-conv-inbox"><thead><tr>'
+				. '<th>' . esc_html__( 'Order', 'mmi-shared' ) . '</th><th>' . esc_html__( 'Last message', 'mmi-shared' ) . '</th><th>' . esc_html__( 'Date', 'mmi-shared' ) . '</th><th><span class="screen-reader-text">' . esc_html__( 'Open', 'mmi-shared' ) . '</span></th>'
+				. '</tr></thead><tbody>';
+			foreach ( $rows as $m ) {
+				$order = wc_get_order( (int) $m->order_id );
+				if ( ! $order ) {
+					continue;
+				}
+				$unread  = self::customer_unread_count( $order );
+				$preview = ( $m->sender === self::SENDER_CUSTOMER ? __( 'You: ', 'mmi-shared' ) : '' ) . wp_html_excerpt( $m->body, 110, '…' );
+				$url     = $order->get_view_order_url() . '#' . self::ANCHOR;
+				echo '<tr>'
+					. '<td data-title="' . esc_attr__( 'Order', 'mmi-shared' ) . '"><a href="' . esc_url( $url ) . '">#' . esc_html( $order->get_order_number() ) . '</a>'
+					. ( $unread > 0 ? '<span class="mmi-conv-unread">' . esc_html( sprintf( _n( '%d new', '%d new', $unread, 'mmi-shared' ), $unread ) ) . '</span>' : '' ) . '</td>'
+					. '<td data-title="' . esc_attr__( 'Last message', 'mmi-shared' ) . '" class="mmi-conv-preview">' . esc_html( $preview ) . '</td>'
+					. '<td data-title="' . esc_attr__( 'Date', 'mmi-shared' ) . '">' . esc_html( self::format_time( $m->created_at ) ) . '</td>'
+					. '<td><a class="woocommerce-button button view" href="' . esc_url( $url ) . '">' . esc_html__( 'Open', 'mmi-shared' ) . '</a></td>'
+					. '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
 		/* ── Staff: order screen box, list badge ────── */
 
 		public static function add_meta_box(): void {
@@ -535,17 +831,26 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				echo '<p>' . esc_html__( 'Save the order first to message the customer.', 'mmi-shared' ) . '</p>';
 				return;
 			}
+			do_action( 'mmi_order_conversation_sync', $order, self::SENDER_STAFF );
 			// Opening the order is reading its messages.
 			if ( self::unread_count( $order ) > 0 ) {
 				$order->update_meta_data( self::META_UNREAD, 0 );
 				$order->save_meta_data();
 			}
 
-			$email = sanitize_email( $order->get_billing_email() );
-			$hint  = ! is_email( $email ) || ( class_exists( 'MMI_Guest_Customer_Converter' ) && MMI_Guest_Customer_Converter::looks_like_relay_email( $email ) )
-				? __( 'No real customer email on this order: they will not be emailed, only see messages in My Account.', 'mmi-shared' )
-				: sprintf( __( 'Each message is emailed to %s (several sent within 5 minutes go as one email).', 'mmi-shared' ), $email );
-			$seen  = (int) $order->get_meta( self::META_SEEN );
+			$channel = self::channel( $order );
+			if ( $channel !== self::CHANNEL_EMAIL ) {
+				$hint = (string) apply_filters( 'mmi_order_conversation_channel_hint', sprintf( __( 'Messages go to the customer over %s.', 'mmi-shared' ), $channel ), $order, $channel );
+			} else {
+				$email = sanitize_email( $order->get_billing_email() );
+				$hint  = ! is_email( $email ) || ( class_exists( 'MMI_Guest_Customer_Converter' ) && MMI_Guest_Customer_Converter::looks_like_relay_email( $email ) )
+					? __( 'No real customer email on this order: they will not be emailed, only see messages in My Account.', 'mmi-shared' )
+					: sprintf( __( 'Each message is emailed to %s (several sent within 5 minutes go as one email).', 'mmi-shared' ), $email );
+				if ( has_filter( 'mmi_order_conversation_reply_address' ) ) {
+					$hint .= ' ' . __( 'They can answer by replying to that email.', 'mmi-shared' );
+				}
+			}
+			$seen = (int) $order->get_meta( self::META_SEEN );
 			if ( $seen ) {
 				$hint .= ' ' . sprintf( __( 'Customer last opened the thread %s.', 'mmi-shared' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $seen ) );
 			}
@@ -603,9 +908,12 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( ! $order || ! self::add( $order, self::SENDER_STAFF, $body ) ) {
 				wp_send_json_error( __( 'Nothing was sent: the message is empty.', 'mmi-shared' ) );
 			}
+			$message = self::channel( $order ) === self::CHANNEL_EMAIL
+				? __( 'Sent. The customer is emailed within 5 minutes.', 'mmi-shared' )
+				: __( 'Sent. It reaches the customer within a minute.', 'mmi-shared' );
 			wp_send_json_success( array(
 				'thread'  => self::render_thread( $order, self::SENDER_STAFF ),
-				'message' => __( 'Sent. The customer is emailed within 5 minutes.', 'mmi-shared' ),
+				'message' => $message,
 			) );
 		}
 

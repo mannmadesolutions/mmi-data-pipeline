@@ -84,6 +84,14 @@ class MMI_API_Throttler {
 		),
 		// ShipStation API v1 (mmi-po labels/rates): documented 40 req/min per key
 		// (docs/api/requirements) — halved to 20/min per AGENTS.md rate-limiting rule 4.
+		// Gmail API (MMI_Order_Conversation_Gmail): 250 quota units/s per user;
+		// a poll is a handful of calls every 5 minutes.
+		'gmail'     => array(
+			'min_gap_ms'     => 250,
+			'backoff_ms'     => 5000,
+			'max_backoff_ms' => 60000,
+			'transient_ttl'  => 120,
+		),
 		'shipstation' => array(
 			'min_gap_ms'     => 3000,
 			'backoff_ms'     => 10000,
