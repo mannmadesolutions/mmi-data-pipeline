@@ -362,7 +362,7 @@ class MMI_Pipeline_Plugivery_Updater {
             }
             \MMI_API_Throttler::throttle(self::THROTTLE_KEY);
 
-            $response = wp_remote_get($url, ['timeout' => 30, 'headers' => ['Accept' => 'application/json']]);
+            $response = self::get_over_ipv4($url);
             if (is_wp_error($response)) {
                 $lastError = $response->get_error_message();
                 \MMI_API_Throttler::penalize(self::THROTTLE_KEY);
@@ -393,6 +393,24 @@ class MMI_Pipeline_Plugivery_Updater {
         }
 
         throw new MMI_Plugivery_API_Exception("Plugivery act={$act} failed after " . (self::MAX_RETRIES + 1) . " attempts: {$lastError}", 0);
+    }
+
+    /**
+     * GET over IPv4 only. The Plugivery allowlist holds this server's IPv4
+     * address; once api.plugivery.com published IPv6 addresses (October 2026)
+     * cURL preferred IPv6 and every call got 451 Unauthorized IP Address.
+     *
+     * @return array|WP_Error
+     */
+    protected static function get_over_ipv4(string $url)
+    {
+        $ipv4 = static function ($handle): void {
+            curl_setopt($handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        };
+        add_action('http_api_curl', $ipv4);
+        $response = wp_remote_get($url, ['timeout' => 30, 'headers' => ['Accept' => 'application/json']]);
+        remove_action('http_api_curl', $ipv4);
+        return $response;
     }
 
     protected function api_error(int $code, string $text, string $act): MMI_Plugivery_API_Exception
