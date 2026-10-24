@@ -44,6 +44,13 @@
  * returns ['pending' => id]; the box then asks again with that id until the
  * draft (or an error) comes back.
  *
+ * One look on both sides (owner, 2026-10-24): staff see the thread exactly as
+ * the customer does — store replies on the left as the store's name, the
+ * customer's messages on the right — with staff-only details (who sent it,
+ * "by email", "on Reverb", system lines) in small grey text the customer
+ * never gets. Customers see the store's name on every reply, in My Account
+ * and in email; system lines are staff-only.
+ *
  * Plain text only: bodies are sanitize_textarea_field()'d, capped at
  * MAX_LENGTH, escaped on output; links in customer messages stay plain text.
  * A customer may post RATE_LIMIT messages per order per hour.
@@ -142,6 +149,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			add_action( self::HOOK_NOTIFY, array( __CLASS__, 'run_notify' ), 10, 2 );
 			add_action( 'woocommerce_delete_order', array( __CLASS__, 'delete_for_order' ) );
 
+			add_filter( 'mmi_email_customizer_samples', array( __CLASS__, 'register_email_samples' ) );
 			add_filter( 'wp_privacy_personal_data_exporters', array( __CLASS__, 'register_exporter' ) );
 			add_filter( 'wp_privacy_personal_data_erasers', array( __CLASS__, 'register_eraser' ) );
 
@@ -469,28 +477,43 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 			$site    = get_bloginfo( 'name' );
 			$number  = $order->get_order_number();
-			$first   = trim( $order->get_billing_first_name() ) ?: __( 'there', 'mmi-shared' );
 			$headers = array_merge( array( 'Content-Type: text/html; charset=UTF-8' ), self::reply_headers( $order ) );
-			$by_mail = count( $headers ) > 1;
-
-			$body = ( $by_mail ? '<p style="margin:0 0 14px;font-size:11px;color:#999;">' . esc_html( self::REPLY_MARKER ) . '</p>' : '' )
-				. '<p>' . esc_html( sprintf( __( 'Hi %1$s, you have a new message from %2$s about order #%3$s:', 'mmi-shared' ), $first, $site, $number ) ) . '</p>'
-				. self::email_quotes( $messages )
-				. '<p>' . esc_html( $by_mail
-					? __( 'Reply to this email, or use the button. Your messages stay with the order, so you can also find them in My Account under Messages.', 'mmi-shared' )
-					: __( 'Use the button to reply. Your messages stay with the order, so you can also find them in My Account under Messages.', 'mmi-shared' ) ) . '</p>';
+			$html    = self::render_customer_email( array(
+				'first_name' => trim( $order->get_billing_first_name() ),
+				'number'     => $number,
+				'url'        => self::customer_url( $order ),
+				'by_mail'    => count( $headers ) > 1,
+			), $messages );
 			$subject = sprintf( __( 'New message about your order #%1$s — %2$s', 'mmi-shared' ), $number, $site );
 
-			$html = class_exists( 'MMI_Email_Templates' )
+			return (bool) wp_mail( $to, $subject, $html, $headers );
+		}
+
+		/**
+		 * The customer's notification email. Store replies are signed with
+		 * the store's name, as in My Account.
+		 *
+		 * @param array{first_name:string, number:string, url:string, by_mail:bool} $d
+		 * @param object[] $messages Staff messages (author, created_at, body).
+		 */
+		public static function render_customer_email( array $d, array $messages ): string {
+			$site  = get_bloginfo( 'name' );
+			$first = $d['first_name'] !== '' ? $d['first_name'] : __( 'there', 'mmi-shared' );
+			$body  = ( $d['by_mail'] ? '<p style="margin:0 0 14px;font-size:11px;color:#999;">' . esc_html( self::REPLY_MARKER ) . '</p>' : '' )
+				. '<p>' . esc_html( sprintf( __( 'Hi %1$s, you have a new message from %2$s about order #%3$s:', 'mmi-shared' ), $first, $site, $d['number'] ) ) . '</p>'
+				. self::email_quotes( $messages, $site )
+				. '<p>' . esc_html( $d['by_mail']
+					? __( 'Reply to this email, or use the button. Your messages stay with the order, so you can also find them in My Account under Messages.', 'mmi-shared' )
+					: __( 'Use the button to reply. Your messages stay with the order, so you can also find them in My Account under Messages.', 'mmi-shared' ) ) . '</p>';
+
+			return class_exists( 'MMI_Email_Templates' )
 				? MMI_Email_Templates::render_customer_notice( array(
-					'box_heading' => sprintf( __( 'Order #%s', 'mmi-shared' ), $number ),
+					'box_heading' => sprintf( __( 'Order #%s', 'mmi-shared' ), $d['number'] ),
 					'body_html'   => $body,
-					'cta_url'     => self::customer_url( $order ),
+					'cta_url'     => $d['url'],
 					'cta_label'   => esc_html__( 'Reply', 'mmi-shared' ),
 				) )
-				: $body . '<p><a href="' . esc_url( self::customer_url( $order ) ) . '">' . esc_html__( 'Reply', 'mmi-shared' ) . '</a></p>';
-
-			return (bool) wp_mail( $to, $subject, $html, $headers );
+				: $body . '<p><a href="' . esc_url( $d['url'] ) . '">' . esc_html__( 'Reply', 'mmi-shared' ) . '</a></p>';
 		}
 
 		private static function email_staff( \WC_Order $order, array $messages ): bool {
@@ -498,32 +521,72 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( ! is_email( $to ) ) {
 				return false;
 			}
-			$number = $order->get_order_number();
-			$name   = (string) $messages[0]->author;
-			$head   = sprintf( __( 'New message from %1$s on order #%2$s', 'mmi-shared' ), $name, $number );
-			$body   = self::email_quotes( $messages )
-				. '<p>' . esc_html( sprintf( __( 'Customer email: %s', 'mmi-shared' ), $order->get_billing_email() ) ) . '</p>';
-
-			$html = class_exists( 'MMI_Email_Templates' )
-				? MMI_Email_Templates::render_notice( array(
-					'headline'  => $head,
-					'body_html' => $body,
-					'cta_url'   => self::staff_url( $order ),
-					'cta_label' => __( 'Reply on the order &rarr;', 'mmi-shared' ),
-				) )
-				: $body . '<p><a href="' . esc_url( self::staff_url( $order ) ) . '">' . esc_html__( 'Reply on the order', 'mmi-shared' ) . '</a></p>';
+			$head = sprintf( __( 'New message from %1$s on order #%2$s', 'mmi-shared' ), (string) $messages[0]->author, $order->get_order_number() );
+			$html = self::render_staff_email( array(
+				'author' => (string) $messages[0]->author,
+				'number' => $order->get_order_number(),
+				'email'  => $order->get_billing_email(),
+				'url'    => self::staff_url( $order ),
+			), $messages );
 
 			return (bool) wp_mail( $to, '[' . get_bloginfo( 'name' ) . '] ' . $head, $html, array( 'Content-Type: text/html; charset=UTF-8' ) );
 		}
 
-		private static function email_quotes( array $messages ): string {
+		/**
+		 * The staff notification email.
+		 *
+		 * @param array{author:string, number:string, email:string, url:string} $d
+		 * @param object[] $messages Customer messages (author, created_at, body).
+		 */
+		public static function render_staff_email( array $d, array $messages ): string {
+			$head = sprintf( __( 'New message from %1$s on order #%2$s', 'mmi-shared' ), $d['author'], $d['number'] );
+			$body = self::email_quotes( $messages )
+				. '<p>' . esc_html( sprintf( __( 'Customer email: %s', 'mmi-shared' ), $d['email'] ) ) . '</p>';
+			return class_exists( 'MMI_Email_Templates' )
+				? MMI_Email_Templates::render_notice( array(
+					'headline'  => $head,
+					'body_html' => $body,
+					'cta_url'   => $d['url'],
+					'cta_label' => __( 'Reply on the order &rarr;', 'mmi-shared' ),
+				) )
+				: $body . '<p><a href="' . esc_url( $d['url'] ) . '">' . esc_html__( 'Reply on the order', 'mmi-shared' ) . '</a></p>';
+		}
+
+		/** @param string $as Name to show on every quote ('' = each message's author). */
+		private static function email_quotes( array $messages, string $as = '' ): string {
 			$html = '';
 			foreach ( $messages as $m ) {
 				$html .= '<div style="margin:0 0 14px;padding:10px 14px;border-left:3px solid #d0d0d0;background:#f8f8f8;">'
-					. '<div style="font-size:12px;color:#767676;margin-bottom:4px;">' . esc_html( $m->author . ' · ' . self::format_time( $m->created_at ) ) . '</div>'
+					. '<div style="font-size:12px;color:#767676;margin-bottom:4px;">' . esc_html( ( $as !== '' ? $as : $m->author ) . ' · ' . self::format_time( $m->created_at ) ) . '</div>'
 					. '<div>' . nl2br( esc_html( $m->body ) ) . '</div></div>';
 			}
 			return $html;
+		}
+
+		/** mmi_email_customizer_samples: both conversation emails, with made-up content. */
+		public static function register_email_samples( array $samples ): array {
+			$msg = static function ( string $author, string $body ): object {
+				return (object) array( 'author' => $author, 'created_at' => gmdate( 'Y-m-d H:i:s' ), 'body' => $body );
+			};
+			$samples[] = array(
+				'id'     => 'order_conversation_customer',
+				'group'  => 'Order messages',
+				'label'  => 'New message (to the customer)',
+				'render' => static fn() => self::render_customer_email(
+					array( 'first_name' => 'Jamie', 'number' => '123456', 'url' => home_url( '/' ), 'by_mail' => true ),
+					array( $msg( 'Staff', "Hi,\n\nYes, it runs as an Audio Unit inside Logic Pro on your Mac. You'll need macOS 13 or later.\n\nSources:\nSample Studio Suite: " . home_url( '/' ) ) )
+				),
+			);
+			$samples[] = array(
+				'id'     => 'order_conversation_staff',
+				'group'  => 'Order messages',
+				'label'  => 'New message (to staff)',
+				'render' => static fn() => self::render_staff_email(
+					array( 'author' => 'Jamie Sample', 'number' => '123456', 'email' => 'jamie@example.com', 'url' => admin_url( 'admin.php?page=wc-orders' ) ),
+					array( $msg( 'Jamie Sample', 'Will this work in Logic Pro on my Mac?' ) )
+				),
+			);
+			return $samples;
 		}
 
 		/* ── Rendering ────── */
@@ -550,29 +613,43 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		 */
 		public static function render_thread( \WC_Order $order, string $viewer ): string {
 			$messages = self::get_messages( $order->get_id() );
+			if ( $viewer !== self::SENDER_STAFF ) {
+				$messages = array_filter( $messages, static fn( $m ) => $m->sender !== self::SENDER_SYSTEM );
+			}
 			if ( ! $messages ) {
 				return '<div class="mmi-conv-thread"><p class="mmi-conv-empty">' . esc_html__( 'No messages yet.', 'mmi-shared' ) . '</p></div>';
 			}
-			$site = get_bloginfo( 'name' );
-			$html = '<div class="mmi-conv-thread">';
+			$site  = get_bloginfo( 'name' );
+			$staff = $viewer === self::SENDER_STAFF;
+			$html  = '<div class="mmi-conv-thread">';
 			foreach ( $messages as $m ) {
-				$mine = $m->sender === $viewer;
+				// System lines are notes for staff; the customer never sees them.
 				if ( $m->sender === self::SENDER_SYSTEM ) {
-					$name = '';
-				} elseif ( $viewer === self::SENDER_CUSTOMER ) {
-					$name = $mine ? __( 'You', 'mmi-shared' ) : $site;
-				} else {
-					$name = $m->sender === self::SENDER_STAFF ? sprintf( __( '%s (staff)', 'mmi-shared' ), $m->author ) : $m->author;
+					if ( $staff ) {
+						$html .= '<div class="mmi-conv-msg mmi-conv-msg--system"><div class="mmi-conv-meta">' . esc_html( self::format_time( $m->created_at ) ) . '</div>'
+							. '<div class="mmi-conv-body">' . esc_html( $m->body ) . '</div><div class="mmi-conv-staffnote">' . esc_html__( 'Only staff see this', 'mmi-shared' ) . '</div></div>';
+					}
+					continue;
 				}
-				$meta   = self::format_time( $m->created_at );
-				$source = $viewer === self::SENDER_STAFF ? self::source_label( (string) ( $m->external_id ?? '' ) ) : '';
-				if ( $source !== '' ) {
-					$meta .= ' · ' . $source;
+				// The customer's view on both sides: their messages on the right.
+				$customer = $m->sender === self::SENDER_CUSTOMER;
+				$name     = $customer ? ( $staff ? $m->author : __( 'You', 'mmi-shared' ) ) : $site;
+				$note     = array();
+				if ( $staff && ! $customer && $m->author !== '' ) {
+					$note[] = sprintf( __( 'sent by %s', 'mmi-shared' ), $m->author );
 				}
-				$body = $m->sender === self::SENDER_STAFF ? make_clickable( esc_html( $m->body ) ) : esc_html( $m->body );
-				$html .= '<div class="mmi-conv-msg mmi-conv-msg--' . esc_attr( $m->sender ) . ( $mine ? ' is-mine' : '' ) . '">'
-					. '<div class="mmi-conv-meta">' . ( $name !== '' ? '<strong>' . esc_html( $name ) . '</strong> · ' : '' ) . esc_html( $meta ) . '</div>'
-					. '<div class="mmi-conv-body">' . $body . '</div></div>';
+				if ( $staff ) {
+					$source = self::source_label( (string) ( $m->external_id ?? '' ) );
+					if ( $source !== '' ) {
+						$note[] = $source;
+					}
+				}
+				$body = $customer ? esc_html( $m->body ) : make_clickable( esc_html( $m->body ) );
+				$html .= '<div class="mmi-conv-msg mmi-conv-msg--' . esc_attr( $m->sender ) . ( $customer ? ' is-mine' : '' ) . '">'
+					. '<div class="mmi-conv-meta"><strong>' . esc_html( $name ) . '</strong> · ' . esc_html( self::format_time( $m->created_at ) ) . '</div>'
+					. '<div class="mmi-conv-body">' . $body . '</div>'
+					. ( $note ? '<div class="mmi-conv-staffnote">' . esc_html( implode( ' · ', $note ) ) . '</div>' : '' )
+					. '</div>';
 			}
 			return $html . '</div>';
 		}
@@ -591,6 +668,8 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '.mmi-conv-meta{font-size:12px;color:#646970;margin-bottom:4px}'
 				. '.mmi-conv-body{white-space:pre-wrap;line-height:1.5}'
 				. '.mmi-conv-empty{color:#646970;margin:0}'
+				. '.mmi-conv-body a{color:inherit;text-decoration:underline}'
+				. '.mmi-conv-staffnote{margin-top:6px;font-size:11px;color:#8c8f94;font-style:italic}'
 				. '.mmi-conv-form label{display:block;font-weight:600;margin-bottom:6px}'
 				. '.mmi-conv-form textarea{box-sizing:border-box;width:100%;min-height:90px;padding:10px;font:inherit}'
 				. '.mmi-conv-form .mmi-conv-actions{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}'
@@ -873,6 +952,11 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 
 			echo self::styles(); // phpcs:ignore WordPress.Security.EscapeOutput -- static CSS.
+			// The storefront's own type, so the box reads like the customer's page (a site supplies it).
+			$site_css = (string) apply_filters( 'mmi_order_conversation_staff_css', '', $order );
+			if ( $site_css !== '' ) {
+				echo '<style>' . wp_strip_all_tags( $site_css ) . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput -- CSS, tags stripped.
+			}
 			echo '<div class="mmi-conv-staff" data-order="' . esc_attr( (string) $order->get_id() ) . '" data-nonce="' . esc_attr( wp_create_nonce( self::AJAX_STAFF . '_' . $order->get_id() ) ) . '">'
 				. '<div class="mmi-conv-thread-wrap">' . self::render_thread( $order, self::SENDER_STAFF ) . '</div>' // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
 				. '<div class="mmi-conv-form">'
