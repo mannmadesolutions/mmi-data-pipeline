@@ -68,6 +68,10 @@
  * license delivery core — provider registry, per-line-item placed/fulfilled
  * records, customer grouping, one combined customer email. See its docblock.
  *
+ * Added MMI_Order_Conversation (2026-10-24): one store-customer message
+ * thread per order in its own table — customer token page, My Account
+ * section, staff box on the order screen. Inert until a plugin calls init().
+ *
  * Added MMI_Marketplace_Order_Sources as a 14th bundled class (2026-09-17,
  * same day): it also lived in mmi-hub and was missed during the elimination
  * migration, silently disabling mmi-xchange-integration's duplicate-order
@@ -190,7 +194,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.25';
+$mmi_shared_lib_this_copy_version = '1.46.26';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -223,6 +227,7 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_Guest_Customer_Converter' => 'class-guest-customer-converter.php',
 	'MMI_Plugin_Update_Client' => 'class-plugin-update-client.php',
 	'MMI_Software_Fulfillment' => 'class-software-fulfillment.php',
+	'MMI_Order_Conversation' => 'class-order-conversation.php',
 	'MMI_Supplier_Promotion' => 'class-supplier-promotion.php',
 	'MMI_Supplier_Admin' => 'class-supplier-admin.php',
 	'MMI_Supplier_Rule_Pack' => 'class-supplier-rule-pack.php',
