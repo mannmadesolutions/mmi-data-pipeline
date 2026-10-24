@@ -72,7 +72,7 @@
  * thread per order in its own table — customer token page, My Account
  * section, staff box on the order screen. Inert until a plugin calls init().
  * 1.46.27: MMI_Order_Conversation_Gmail (reply by email), delivery channels,
- * My Account Messages tab.
+ * My Account Messages tab. 1.46.28: drafted answers (provider via filter); 1.46.29: background drafts (pending + poll).
  *
  * Added MMI_Marketplace_Order_Sources as a 14th bundled class (2026-09-17,
  * same day): it also lived in mmi-hub and was missed during the elimination
@@ -196,7 +196,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.27';
+$mmi_shared_lib_this_copy_version = '1.46.29';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir

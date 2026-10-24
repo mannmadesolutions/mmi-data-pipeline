@@ -33,6 +33,17 @@
  * 'mmi_order_conversation_sync' action with import_external() (deduplicated
  * by external_id).
  *
+ * Drafted answers: when a plugin filters 'mmi_order_conversation_ai_draft',
+ * the staff box gets a "Draft answer" button. The draft is built from the
+ * conversation and numbered sources (ai_context(); more via
+ * 'mmi_order_conversation_ai_sources'), the provider returns the answer and
+ * the numbers it used, and only those sources' own links are appended, so
+ * a provider can't put an address in front of a customer that wasn't given
+ * to it. The draft lands in the reply box; staff send it. Nothing here
+ * calls any AI service itself. A provider that works in the background
+ * returns ['pending' => id]; the box then asks again with that id until the
+ * draft (or an error) comes back.
+ *
  * Plain text only: bodies are sanitize_textarea_field()'d, capped at
  * MAX_LENGTH, escaped on output; links in customer messages stay plain text.
  * A customer may post RATE_LIMIT messages per order per hour.
@@ -81,6 +92,11 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		const ACTION_ACCOUNT = 'mmi_order_conversation_account';
 		/** admin-ajax.php: staff reply from the order screen. */
 		const AJAX_STAFF     = 'mmi_order_conversation_staff_reply';
+		/** admin-ajax.php: drafted answer for the staff reply box. */
+		const AJAX_DRAFT     = 'mmi_order_conversation_ai_draft';
+
+		const DRAFT_MESSAGES   = 12;
+		const SOURCE_TEXT_MAX  = 4000;
 
 		/** HTML id of the thread on every screen; links end in #ANCHOR. */
 		const ANCHOR = 'mmi-order-conversation';
@@ -111,6 +127,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			add_action( 'admin_post_' . self::ACTION_PAGE, array( __CLASS__, 'handle_page' ) );
 			add_action( 'admin_post_' . self::ACTION_ACCOUNT, array( __CLASS__, 'handle_account_post' ) );
 			add_action( 'wp_ajax_' . self::AJAX_STAFF, array( __CLASS__, 'ajax_staff_reply' ) );
+			add_action( 'wp_ajax_' . self::AJAX_DRAFT, array( __CLASS__, 'ajax_ai_draft' ) );
 
 			add_action( 'init', array( __CLASS__, 'register_endpoint' ) );
 			add_filter( 'woocommerce_get_query_vars', array( __CLASS__, 'add_query_var' ) );
@@ -862,6 +879,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '<label for="mmi-conv-staff-body">' . esc_html__( 'Message to the customer', 'mmi-shared' ) . '</label>'
 				. '<textarea id="mmi-conv-staff-body" maxlength="' . (int) self::MAX_LENGTH . '"></textarea>'
 				. '<div class="mmi-conv-actions"><button type="button" class="button button-primary mmi-conv-send">' . esc_html__( 'Send to customer', 'mmi-shared' ) . '</button>'
+				. ( has_filter( 'mmi_order_conversation_ai_draft' ) ? '<button type="button" class="button mmi-conv-draft">' . esc_html( (string) apply_filters( 'mmi_order_conversation_ai_label', __( 'Draft answer', 'mmi-shared' ) ) ) . '</button>' : '' )
 				. '<span class="mmi-conv-status" role="status"></span></div>'
 				. '<p class="mmi-conv-hint">' . esc_html( $hint ) . '</p>'
 				. '</div></div>';
@@ -893,6 +911,40 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 						} )
 						.finally( function () { btn.disabled = false; } );
 				} );
+				var draft = box.querySelector( '.mmi-conv-draft' );
+				if ( draft ) {
+					draft.addEventListener( 'click', function () {
+						if ( field.value.trim() && ! window.confirm( <?php echo wp_json_encode( __( 'Replace what is in the message box with a drafted answer?', 'mmi-shared' ) ); ?> ) ) { return; }
+						var tries = 0;
+						var ask = function ( request ) {
+							var data = new FormData();
+							data.append( 'action', <?php echo wp_json_encode( self::AJAX_DRAFT ); ?> );
+							data.append( 'order_id', box.dataset.order );
+							data.append( 'nonce', box.dataset.nonce );
+							if ( request ) { data.append( 'request', request ); }
+							return fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: data } )
+								.then( function ( r ) { return r.json(); } )
+								.then( function ( res ) {
+									if ( ! res || ! res.success ) { throw new Error( res && res.data ? res.data : '' ); }
+									if ( res.data.pending ) {
+										status.textContent = res.data.message;
+										if ( ++tries > 60 ) { throw new Error( <?php echo wp_json_encode( __( 'Still drafting after 4 minutes. Try again later, or write the answer yourself.', 'mmi-shared' ) ); ?> ); }
+										return new Promise( function ( done ) { setTimeout( done, 4000 ); } ).then( function () { return ask( res.data.pending ); } );
+									}
+									field.value = res.data.text;
+									field.focus();
+									status.textContent = res.data.message;
+								} );
+						};
+						draft.disabled = btn.disabled = true;
+						status.textContent = <?php echo wp_json_encode( __( 'Drafting an answer from the order\'s sources…', 'mmi-shared' ) ); ?>;
+						ask( '' )
+							.catch( function ( e ) {
+								status.textContent = e.message || <?php echo wp_json_encode( __( 'No draft. Check your connection and try again.', 'mmi-shared' ) ); ?>;
+							} )
+							.finally( function () { draft.disabled = btn.disabled = false; } );
+					} );
+				}
 			} )();
 			</script>
 			<?php
@@ -914,6 +966,106 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			wp_send_json_success( array(
 				'thread'  => self::render_thread( $order, self::SENDER_STAFF ),
 				'message' => $message,
+			) );
+		}
+
+		/**
+		 * What a drafted answer may use: the conversation (without names or
+		 * addresses) and numbered sources, each with its own link.
+		 *
+		 * @return array{items:string[], messages:array<int,array{from:string,text:string}>, sources:array<int,array{title:string,url:string,text:string}>}
+		 */
+		public static function ai_context( \WC_Order $order ): array {
+			$messages = array();
+			foreach ( array_slice( array_values( array_filter( self::get_messages( $order->get_id() ), static fn( $m ) => $m->sender !== self::SENDER_SYSTEM ) ), -self::DRAFT_MESSAGES ) as $m ) {
+				$messages[] = array( 'from' => $m->sender === self::SENDER_STAFF ? 'Store' : 'Customer', 'text' => (string) $m->body );
+			}
+			$items   = array();
+			$sources = array();
+			foreach ( $order->get_items() as $item ) {
+				$items[] = $item->get_name();
+				$product = $item instanceof \WC_Order_Item_Product ? $item->get_product() : null;
+				if ( ! $product ) {
+					continue;
+				}
+				$parent = $product->get_parent_id() ? wc_get_product( $product->get_parent_id() ) : null;
+				$text   = trim( wp_strip_all_tags( $product->get_short_description() . "\n" . ( $product->get_description() ?: ( $parent ? $parent->get_description() : '' ) ) ) );
+				$sources[] = array(
+					'title' => $product->get_name(),
+					'url'   => (string) get_permalink( $product->get_parent_id() ?: $product->get_id() ),
+					'text'  => self::clip( preg_replace( '/\s+/', ' ', $text ) ),
+				);
+			}
+			$sources = (array) apply_filters( 'mmi_order_conversation_ai_sources', $sources, $order );
+			$clean   = array();
+			foreach ( $sources as $s ) {
+				$url = esc_url_raw( (string) ( $s['url'] ?? '' ) );
+				if ( $url === '' ) {
+					continue;
+				}
+				$clean[] = array( 'title' => sanitize_text_field( (string) ( $s['title'] ?? $url ) ), 'url' => $url, 'text' => self::clip( (string) ( $s['text'] ?? '' ) ) );
+			}
+			return array( 'items' => $items, 'messages' => $messages, 'sources' => array_slice( $clean, 0, 12 ) );
+		}
+
+		private static function clip( string $text ): string {
+			return function_exists( 'mb_substr' ) ? mb_substr( $text, 0, self::SOURCE_TEXT_MAX ) : substr( $text, 0, self::SOURCE_TEXT_MAX );
+		}
+
+		/**
+		 * Staff "Draft answer": the provider's answer plus the links of the
+		 * sources it says it used. Never sent from here.
+		 */
+		public static function ajax_ai_draft(): void {
+			$order_id = absint( $_POST['order_id'] ?? 0 );
+			if ( ! $order_id || ! check_ajax_referer( self::AJAX_STAFF . '_' . $order_id, 'nonce', false ) || ! current_user_can( 'edit_shop_orders' ) ) {
+				wp_send_json_error( __( 'Not allowed. Reload the order and try again.', 'mmi-shared' ), 403 );
+			}
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				wp_send_json_error( __( 'Order not found.', 'mmi-shared' ) );
+			}
+			$request = is_string( $_POST['request'] ?? null ) ? sanitize_key( wp_unslash( $_POST['request'] ) ) : '';
+			if ( $request === '' ) {
+				$context = self::ai_context( $order );
+				if ( ! array_filter( $context['messages'], static fn( $m ) => $m['from'] === 'Customer' ) ) {
+					wp_send_json_error( __( 'There is no customer message to answer yet.', 'mmi-shared' ) );
+				}
+			} else {
+				$context = array( 'request' => $request ); // Asking after a background draft: the provider kept its own context.
+			}
+			$result = apply_filters( 'mmi_order_conversation_ai_draft', new \WP_Error( 'no_provider', __( 'No answer drafter is set up.', 'mmi-shared' ) ), $order, $context );
+			if ( is_wp_error( $result ) ) {
+				wp_send_json_error( $result->get_error_message() );
+			}
+			if ( ! empty( $result['pending'] ) ) {
+				wp_send_json_success( array(
+					'pending' => sanitize_key( (string) $result['pending'] ),
+					'message' => (string) ( $result['message'] ?? __( 'Drafting…', 'mmi-shared' ) ),
+				) );
+			}
+			if ( isset( $result['context'] ) && is_array( $result['context'] ) ) {
+				$context = $result['context']; // The sources the background draft was given, for its links.
+			}
+			$answer = trim( sanitize_textarea_field( (string) ( $result['answer'] ?? '' ) ) );
+			if ( $answer === '' ) {
+				wp_send_json_error( __( 'The drafter returned nothing. Try again or write the answer yourself.', 'mmi-shared' ) );
+			}
+			$links = array();
+			foreach ( array_unique( array_map( 'intval', (array) ( $result['source_ids'] ?? array() ) ) ) as $n ) {
+				if ( isset( $context['sources'][ $n - 1 ] ) ) {
+					$links[] = $context['sources'][ $n - 1 ]['title'] . ': ' . $context['sources'][ $n - 1 ]['url'];
+				}
+			}
+			$text = $answer . ( $links ? "\n\n" . __( 'Sources:', 'mmi-shared' ) . "\n" . implode( "\n", $links ) : '' );
+			if ( class_exists( 'MMI_Logger' ) ) {
+				MMI_Logger::info( "Order conversation: answer drafted for order {$order_id}", array( 'sources' => count( $links ), 'confident' => ! empty( $result['confident'] ) ), 'order-conversation', __CLASS__ );
+			}
+			wp_send_json_success( array(
+				'text'    => $text,
+				'message' => empty( $result['confident'] )
+					? __( 'Draft ready, but the sources did not clearly answer the question: check every fact before sending.', 'mmi-shared' )
+					: __( 'Draft ready. Read it, check the links, then send.', 'mmi-shared' ),
 			) );
 		}
 
