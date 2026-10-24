@@ -119,6 +119,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		/** HTML id of the thread on every screen; links end in #ANCHOR. */
 		const ANCHOR = 'mmi-order-conversation';
 
+		/** Reverb's small storefront mark beside the store's name. */
+		const SHOP_ICON = '<svg class="mmi-conv-shop" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="currentColor" d="M2 2h12l1 4a2 2 0 0 1-1 1.73V14H2V7.73A2 2 0 0 1 1 6zm1 6v5h3V10h4v3h3V8a2 2 0 0 1-1.67-.9A2 2 0 0 1 10 8a2 2 0 0 1-2-1 2 2 0 0 1-2 1 2 2 0 0 1-1.33-.9A2 2 0 0 1 3 8z"/></svg>';
+
 		/** My Account endpoint: /my-account/messages/. */
 		const ENDPOINT         = 'messages';
 		const REWRITE_OPTION   = 'mmi_order_conversation_rewrite';
@@ -710,14 +713,33 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				}
 				$body  = $customer ? esc_html( $m->body ) : make_clickable( esc_html( $m->body ) );
 				$cards = class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::html( self::attachments_of( $m ), 'thread' ) : '';
-				$html .= '<div class="mmi-conv-msg mmi-conv-msg--' . esc_attr( $m->sender ) . ( $customer ? ' is-mine' : '' ) . '">'
-					. '<div class="mmi-conv-meta"><strong>' . esc_html( $name ) . '</strong> · ' . esc_html( self::format_time( $m->created_at ) ) . '</div>'
+				// Reverb's layout: avatar outside the bubble, name and time under the text.
+				$html .= '<div class="mmi-conv-row mmi-conv-row--' . esc_attr( $m->sender ) . ( $customer ? ' is-mine' : '' ) . '">'
+					. self::avatar_html( $customer ? self::SENDER_CUSTOMER : self::SENDER_STAFF )
+					. '<div class="mmi-conv-msg mmi-conv-msg--' . esc_attr( $m->sender ) . ( $customer ? ' is-mine' : '' ) . '">'
 					. ( trim( (string) $m->body ) !== '' ? '<div class="mmi-conv-body">' . $body . '</div>' : '' )
 					. $cards
+					. '<div class="mmi-conv-meta"><span class="mmi-conv-author">' . ( $customer ? '' : self::SHOP_ICON ) . esc_html( $name ) . '</span>'
+					. '<span class="mmi-conv-time">' . esc_html( self::format_time( $m->created_at ) ) . '</span></div>'
 					. ( $note ? '<div class="mmi-conv-staffnote">' . esc_html( implode( ' · ', $note ) ) . '</div>' : '' )
-					. '</div>';
+					. '</div></div>';
 			}
 			return $html . '</div>';
+		}
+
+		/**
+		 * A message's or composer's avatar: the store's site icon (its initial
+		 * when there is none) or a plain person, never a Gravatar (that would
+		 * send the customer's email hash to a third party).
+		 */
+		private static function avatar_html( string $who ): string {
+			if ( $who === self::SENDER_CUSTOMER ) {
+				return '<span class="mmi-conv-avatar mmi-conv-avatar--person" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" focusable="false"><path fill="currentColor" d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9m0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5"/></svg></span>';
+			}
+			$icon = get_site_icon_url( 96 );
+			return $icon !== ''
+				? '<img class="mmi-conv-avatar" src="' . esc_url( $icon ) . '" alt="" width="44" height="44">'
+				: '<span class="mmi-conv-avatar mmi-conv-avatar--store" aria-hidden="true">' . esc_html( mb_strtoupper( mb_substr( get_bloginfo( 'name' ), 0, 1 ) ) ) . '</span>';
 		}
 
 		/** Once per page. */
@@ -727,26 +749,59 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 			self::$styles_printed = true;
 			return '<style>'
-				. '.mmi-conv-thread{display:flex;flex-direction:column;gap:10px;margin:0 0 16px}'
-				. '.mmi-conv-msg{max-width:85%;padding:10px 12px;border-radius:10px;background:#f1f1f1;color:#1d2327;overflow-wrap:anywhere}'
-				. '.mmi-conv-msg.is-mine{align-self:flex-end;background:#e7effa}'
-				. '.mmi-conv-msg--system{align-self:center;max-width:100%;padding:2px 8px;background:none;color:#646970;font-size:13px;text-align:center}'
-				. '.mmi-conv-meta{font-size:12px;color:#646970;margin-bottom:4px}'
-				. '.mmi-conv-body{white-space:pre-wrap;line-height:1.5}'
-				. '.mmi-conv-empty{color:#646970;margin:0}'
-				. '.mmi-conv-body a{color:inherit;text-decoration:underline}'
+				// Reverb's conversation page: avatar beside a large rounded bubble,
+				// grey for the other side, lavender for yours; name and time below.
+				. '.mmi-conv-staff,.mmi-conv{--mmi-conv-mine:#eef1fd;--mmi-conv-theirs:#f0f0f0;--mmi-conv-link:#2a5bd7;--mmi-conv-ink:#1d2327;--mmi-conv-muted:#6b6b6b;--mmi-conv-pill:#1a1a1a}'
+				. '.mmi-conv-thread{display:flex;flex-direction:column;gap:20px;margin:0 0 20px}'
+				. '.mmi-conv-row{display:flex;align-items:flex-end;gap:12px;max-width:100%}'
+				. '.mmi-conv-row.is-mine{flex-direction:row-reverse}'
+				. '.mmi-conv-avatar{flex:0 0 44px;width:44px;height:44px;border-radius:50%;object-fit:cover;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}'
+				. 'span.mmi-conv-avatar{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}'
+				. '.mmi-conv-avatar--person{background:#d5d5d5;color:#fff;box-shadow:none}'
+				. '.mmi-conv-avatar--store{background:var(--mmi-conv-pill);color:#fff;font-weight:700;font-size:18px}'
+				. '.mmi-conv-msg{box-sizing:border-box;max-width:min(680px,80%);padding:18px 22px;border-radius:12px;background:var(--mmi-conv-theirs,#f0f0f0);color:var(--mmi-conv-ink,#1d2327);overflow-wrap:anywhere;font-size:15px}'
+				. '.mmi-conv-msg.is-mine{background:var(--mmi-conv-mine,#eef1fd)}'
+				. '.mmi-conv-msg--system{align-self:center;max-width:100%;padding:2px 8px;background:none;color:var(--mmi-conv-muted,#6b6b6b);font-size:13px;text-align:center}'
+				. '.mmi-conv-msg--system .mmi-conv-meta{margin:0 0 2px;justify-content:center}'
+				. '.mmi-conv-body{white-space:pre-wrap;line-height:1.55}'
+				. '.mmi-conv-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:12px;font-size:13px;color:var(--mmi-conv-muted,#6b6b6b)}'
+				. '.mmi-conv-author{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--mmi-conv-link,#2a5bd7)}'
+				. '.mmi-conv-shop{flex:none}'
+				. '.mmi-conv-empty{color:var(--mmi-conv-muted,#6b6b6b);margin:0}'
+				. '.mmi-conv-body a{color:var(--mmi-conv-link,#2a5bd7);text-decoration:underline}'
 				. '.mmi-conv-staffnote{margin-top:6px;font-size:11px;color:#8c8f94;font-style:italic}'
-				. '.mmi-conv-form label{display:block;font-weight:600;margin-bottom:6px}'
-				. '.mmi-conv-form textarea{box-sizing:border-box;width:100%;min-height:90px;padding:10px;font:inherit}'
-				. '.mmi-conv-form .mmi-conv-actions{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}'
-				. '.mmi-conv-hint{font-size:13px;color:#646970}'
+				// Composer: a panel on the writer's side holding a white box (text
+				// on top, attach links in a bar under it) and black pill buttons.
+				. '.mmi-conv-compose{display:flex;align-items:flex-start;gap:12px}'
+				. '.mmi-conv-compose.is-mine{flex-direction:row-reverse}'
+				. '.mmi-conv-form{box-sizing:border-box;flex:1 1 auto;min-width:0;max-width:min(760px,100%);padding:20px 22px;border-radius:12px;background:var(--mmi-conv-theirs,#f0f0f0)}'
+				. '.mmi-conv-compose.is-mine .mmi-conv-form{background:var(--mmi-conv-mine,#eef1fd)}'
+				. '.mmi-conv-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);border:0;white-space:nowrap}'
+				. '.mmi-conv-write{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}'
+				. '.mmi-conv-box{flex:1 1 320px;min-width:0;border:1px solid #cfcfcf;border-radius:6px;background:#fff;overflow:hidden}'
+				. '.mmi-conv-box:focus-within{border-color:var(--mmi-conv-link,#2a5bd7);box-shadow:0 0 0 1px var(--mmi-conv-link,#2a5bd7)}'
+				. '.mmi-conv-form textarea{display:block;box-sizing:border-box;width:100%;min-height:110px;margin:0;padding:12px 14px;border:0;border-radius:0;background:#fff;box-shadow:none;outline:0;resize:vertical;font:inherit;font-size:15px;line-height:1.5;color:var(--mmi-conv-ink,#1d2327)}'
+				. '.mmi-conv-form textarea:focus{border:0;box-shadow:none;outline:0}'
+				. '.mmi-conv-box .mmi-conv-chips{margin:0;padding:10px 14px 0}'
+				. '.mmi-conv-tools{display:flex;align-items:center;gap:6px 20px;flex-wrap:wrap;padding:9px 14px;border-top:1px solid #e2e2e2}'
+				. 'button.mmi-conv-tool{display:inline-flex;align-items:center;gap:6px;margin:0;padding:0;border:0;background:none;box-shadow:none;color:var(--mmi-conv-link,#2a5bd7);font:inherit;font-size:14px;font-weight:600;cursor:pointer;min-height:0;line-height:1.6}'
+				. 'button.mmi-conv-tool:hover,button.mmi-conv-tool[aria-expanded="true"]{color:#173c9c;text-decoration:underline;background:none}'
+				. 'button.mmi-conv-tool:focus-visible{outline:2px solid var(--mmi-conv-link,#2a5bd7);outline-offset:2px;border-radius:2px}'
+				. '.mmi-conv-tools .dashicons{font-size:17px;width:17px;height:17px}'
+				. '.mmi-conv-form button.mmi-conv-pill{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;min-height:42px;margin:0;padding:10px 24px;border:1px solid var(--mmi-conv-pill,#1a1a1a);border-radius:999px;background:var(--mmi-conv-pill,#1a1a1a);color:#fff;font:inherit;font-size:15px;font-weight:700;line-height:1.2;text-shadow:none;box-shadow:none;cursor:pointer;white-space:nowrap}'
+				. '.mmi-conv-form button.mmi-conv-pill:hover{background:#3a3a3a;border-color:#3a3a3a;color:#fff}'
+				. '.mmi-conv-form button.mmi-conv-pill:focus-visible{outline:2px solid var(--mmi-conv-link,#2a5bd7);outline-offset:2px}'
+				. '.mmi-conv-form button.mmi-conv-pill[disabled]{opacity:.55;cursor:default}'
+				. '.mmi-conv-form .mmi-conv-actions{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}'
+				. '.mmi-conv-status{font-size:14px}'
+				. '.mmi-conv-hint{font-size:13px;color:var(--mmi-conv-muted,#6b6b6b)}'
+				. '.mmi-conv-form .mmi-conv-hint{margin:12px 0 0}'
+				. '@media (max-width:600px){.mmi-conv-avatar{flex-basis:34px;width:34px;height:34px}.mmi-conv-msg{max-width:calc(100% - 46px);padding:14px 16px}.mmi-conv-form{padding:14px}.mmi-conv-compose>.mmi-conv-avatar{display:none}}'
 				. '.mmi-conv-inbox .mmi-conv-unread{display:inline-block;margin-left:6px;padding:0 7px;border-radius:9px;background:#d63638;color:#fff;font-size:11px;line-height:18px;font-weight:600}'
 				. '.mmi-conv-inbox .mmi-conv-preview{color:#646970}'
 				. ( class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::styles() : '' )
-				. '.mmi-conv-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}'
-				. '.mmi-conv-tools .dashicons{font-size:16px;width:16px;height:16px;vertical-align:text-bottom}'
-				. '.mmi-conv-tool[aria-expanded="true"]{background:#f0f6fc;border-color:#2271b1}'
-				. '.mmi-conv-pane{margin-top:8px;padding:10px;border:1px solid #dcdcde;border-radius:8px;background:#fcfcfc}'
+				. '.mmi-conv-tools .mmi-conv-hint{margin:0}'
+				. '.mmi-conv-pane{margin-top:12px;padding:10px;border:1px solid #dcdcde;border-radius:8px;background:#fcfcfc}'
 				. '.mmi-conv-pane[hidden],.mmi-conv-chips[hidden]{display:none}'
 				. '.mmi-conv-search{width:100%;max-width:420px}'
 				. '.mmi-conv-results{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;max-width:560px}'
@@ -769,10 +824,17 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '</style>';
 		}
 
-		private static function form_fields_html( string $submit_label ): string {
-			return '<label for="mmi-conv-body">' . esc_html__( 'Your message', 'mmi-shared' ) . '</label>'
-				. '<textarea id="mmi-conv-body" name="body" maxlength="' . (int) self::MAX_LENGTH . '" required></textarea>'
-				. '<div class="mmi-conv-actions"><button type="submit" class="button">' . esc_html( $submit_label ) . '</button></div>';
+		/**
+		 * The customer's composer: their avatar, then a form posting to
+		 * admin-post.php with $hidden (already-escaped hidden inputs).
+		 */
+		private static function customer_composer_html( string $hidden ): string {
+			return '<div class="mmi-conv-compose is-mine">' . self::avatar_html( self::SENDER_CUSTOMER )
+				. '<form class="mmi-conv-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . $hidden
+				. '<label class="mmi-conv-label" for="mmi-conv-body">' . esc_html__( 'Your message', 'mmi-shared' ) . '</label>'
+				. '<div class="mmi-conv-write"><div class="mmi-conv-box"><textarea id="mmi-conv-body" name="body" maxlength="' . (int) self::MAX_LENGTH . '" placeholder="' . esc_attr__( 'Write your message…', 'mmi-shared' ) . '" required></textarea></div></div>'
+				. '<div class="mmi-conv-actions"><button type="submit" class="mmi-conv-pill">' . esc_html__( 'Send Message', 'mmi-shared' ) . '</button></div>'
+				. '</form></div>';
 		}
 
 		/* ── Customer: token page (admin-post.php) ────── */
@@ -818,19 +880,17 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			) ) . '</p>'
 				. ( $notice !== '' ? '<p class="mmi-conv-notice">' . esc_html( $notice ) . '</p>' : '' )
 				. '<div id="' . esc_attr( self::ANCHOR ) . '">' . self::render_thread( $order, self::SENDER_CUSTOMER ) . '</div>'
-				. '<form class="mmi-conv-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">'
-				. '<input type="hidden" name="action" value="' . esc_attr( self::ACTION_PAGE ) . '">'
-				. '<input type="hidden" name="order" value="' . esc_attr( (string) $order->get_id() ) . '">'
-				. '<input type="hidden" name="token" value="' . esc_attr( $stored ) . '">'
-				. self::form_fields_html( __( 'Send message', 'mmi-shared' ) )
-				. '</form>';
+				. self::customer_composer_html(
+					'<input type="hidden" name="action" value="' . esc_attr( self::ACTION_PAGE ) . '">'
+					. '<input type="hidden" name="order" value="' . esc_attr( (string) $order->get_id() ) . '">'
+					. '<input type="hidden" name="token" value="' . esc_attr( $stored ) . '">'
+				);
 
 			self::render_page( sprintf( __( 'Messages about order #%s', 'mmi-shared' ), $number ), $content );
 		}
 
 		/** Standalone page in the store's email colors, then exit. */
 		private static function render_page( string $title, string $content, int $status = 200 ): void {
-			$accent = get_option( 'woocommerce_email_base_color', '#720eec' );
 			$dark   = get_option( 'woocommerce_email_text_color', '#3c3c3c' );
 			$bg     = get_option( 'woocommerce_email_background_color', '#f7f7f7' );
 			$logo   = get_option( 'woocommerce_email_header_image', '' );
@@ -848,8 +908,6 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '.logo{text-align:center;margin-bottom:16px}.logo img{max-height:60px;max-width:220px}'
 				. 'h1{font-size:22px;line-height:1.3;margin:0 0 4px}'
 				. '.mmi-conv-notice{padding:10px 12px;border-radius:6px;background:#edfaef;border:1px solid #b8e6bf}'
-				. '.mmi-conv-form .button{padding:11px 20px;font:inherit;font-weight:600;color:#fff;background:' . esc_attr( $accent ) . ';border:1px solid ' . esc_attr( $accent ) . ';border-radius:6px;cursor:pointer}'
-				. '.mmi-conv-form textarea{border:1px solid #ccc;border-radius:6px}'
 				. '</style>' . self::styles() . '</head><body><main class="card">'
 				. ( $logo !== '' ? '<div class="logo"><img src="' . esc_url( $logo ) . '" alt="' . esc_attr( $site ) . '"></div>' : '' )
 				. '<h1>' . esc_html( $title ) . '</h1>'
@@ -880,12 +938,12 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '<section class="mmi-conv" id="' . esc_attr( self::ANCHOR ) . '"><h2>' . esc_html__( 'Messages', 'mmi-shared' ) . '</h2>'
 				. $notice
 				. self::render_thread( $order, self::SENDER_CUSTOMER ) // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
-				. '<form class="mmi-conv-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">'
-				. '<input type="hidden" name="action" value="' . esc_attr( self::ACTION_ACCOUNT ) . '">'
-				. '<input type="hidden" name="order" value="' . esc_attr( (string) $order->get_id() ) . '">'
-				. wp_nonce_field( self::ACTION_ACCOUNT . '_' . $order->get_id(), '_mmi_conv_nonce', true, false )
-				. self::form_fields_html( __( 'Send message', 'mmi-shared' ) ) // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
-				. '</form></section>';
+				. self::customer_composer_html( // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
+					'<input type="hidden" name="action" value="' . esc_attr( self::ACTION_ACCOUNT ) . '">'
+					. '<input type="hidden" name="order" value="' . esc_attr( (string) $order->get_id() ) . '">'
+					. wp_nonce_field( self::ACTION_ACCOUNT . '_' . $order->get_id(), '_mmi_conv_nonce', true, false )
+				)
+				. '</section>';
 		}
 
 		public static function handle_account_post(): void {
@@ -1007,7 +1065,13 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 			$current = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 			if ( $current && in_array( $current->id, $screens, true ) ) {
-				self::enqueue_staff_assets(); // Order screens only, not every editor.
+				// Order screens only, not every editor. The HPOS screen adds its boxes on
+				// load-…, before admin_enqueue_scripts registers the shared scripts (5).
+				if ( did_action( 'admin_enqueue_scripts' ) ) {
+					self::enqueue_staff_assets();
+				} else {
+					add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_staff_assets' ), 20 );
+				}
 			}
 			foreach ( array_unique( $screens ) as $screen ) {
 				add_meta_box( self::ANCHOR, __( 'Conversation with customer', 'mmi-shared' ), array( __CLASS__, 'render_meta_box' ), $screen, 'normal', 'high' );
@@ -1075,19 +1139,26 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			$html    = '<div class="mmi-conv-staff" data-order="' . esc_attr( (string) $id ) . '" data-nonce="' . esc_attr( wp_create_nonce( self::AJAX_STAFF . '_' . $id ) ) . '"'
 				. ( $tools ? ' data-tools-nonce="' . esc_attr( wp_create_nonce( MMI_Order_Conversation_Attachments::NONCE ) ) . '"' : '' ) . ' data-channel="' . esc_attr( $channel ) . '">'
 				. '<div class="mmi-conv-thread-wrap">' . self::render_thread( $order, self::SENDER_STAFF ) . '</div>'
-				. '<div class="mmi-conv-form">'
-				. '<label for="' . esc_attr( $field ) . '">' . esc_html__( 'Message to the customer', 'mmi-shared' ) . '</label>'
+				. '<div class="mmi-conv-compose">' . self::avatar_html( self::SENDER_STAFF ) . '<div class="mmi-conv-form">'
+				. '<label class="mmi-conv-label" for="' . esc_attr( $field ) . '">' . esc_html__( 'Message to the customer', 'mmi-shared' ) . '</label>'
+				// Reverb's composer: the attach links sit in a bar inside the text box.
+				. '<div class="mmi-conv-write"><div class="mmi-conv-box">'
 				. '<div class="mmi-conv-chips" hidden></div>'
-				. '<textarea id="' . esc_attr( $field ) . '" class="mmi-conv-input" maxlength="' . (int) self::MAX_LENGTH . '"></textarea>';
+				. '<textarea id="' . esc_attr( $field ) . '" class="mmi-conv-input" maxlength="' . (int) self::MAX_LENGTH . '" placeholder="' . esc_attr__( 'Write your message…', 'mmi-shared' ) . '"></textarea>';
 			if ( $tools ) {
 				$html .= '<div class="mmi-conv-tools">'
-					. '<button type="button" class="button mmi-conv-tool" data-tool="product" aria-expanded="false"><span class="dashicons dashicons-products" aria-hidden="true"></span> '
+					. '<button type="button" class="mmi-conv-tool" data-tool="product" aria-expanded="false"><span class="dashicons dashicons-products" aria-hidden="true"></span>'
 					. esc_html( $channel === self::CHANNEL_EMAIL ? __( 'Link a product', 'mmi-shared' ) : __( 'Link a Reverb listing', 'mmi-shared' ) ) . '</button>'
 					. ( $coupons
-						? '<button type="button" class="button mmi-conv-tool" data-tool="coupon" aria-expanded="false"><span class="dashicons dashicons-tickets-alt" aria-hidden="true"></span> ' . esc_html__( 'Coupon', 'mmi-shared' ) . '</button>'
+						? '<button type="button" class="mmi-conv-tool" data-tool="coupon" aria-expanded="false"><span class="dashicons dashicons-tickets-alt" aria-hidden="true"></span>' . esc_html__( 'Coupon', 'mmi-shared' ) . '</button>'
 						: '<span class="mmi-conv-hint">' . esc_html__( 'Coupons can\'t be sent to Reverb buyers: use a Reverb offer.', 'mmi-shared' ) . '</span>' )
-					. '</div>'
-					. '<div class="mmi-conv-pane" hidden>'
+					. '</div>';
+			}
+			$html .= '</div>'
+				. ( has_filter( 'mmi_order_conversation_ai_draft' ) ? '<button type="button" class="mmi-conv-pill mmi-conv-draft">' . esc_html( (string) apply_filters( 'mmi_order_conversation_ai_label', __( 'Draft answer', 'mmi-shared' ) ) ) . '</button>' : '' )
+				. '</div>';
+			if ( $tools ) {
+				$html .= '<div class="mmi-conv-pane" hidden>'
 					. ( $coupons ? '<div class="mmi-conv-coupon-tabs"><button type="button" class="mmi-conv-coupon-tab active" data-tab="existing" hidden>' . esc_html__( 'Use an existing coupon', 'mmi-shared' ) . '</button>'
 						. '<button type="button" class="mmi-conv-coupon-tab" data-tab="new" hidden>' . esc_html__( 'New coupon', 'mmi-shared' ) . '</button></div>' : '' )
 					. '<input type="search" class="mmi-conv-search" aria-label="' . esc_attr__( 'Search', 'mmi-shared' ) . '">'
@@ -1095,11 +1166,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 					. ( $coupons ? self::coupon_form_html( $order ) : '<div class="mmi-conv-coupon-new" hidden></div>' )
 					. '</div>';
 			}
-			$html .= '<div class="mmi-conv-actions"><button type="button" class="button button-primary mmi-conv-send">' . esc_html__( 'Send to customer', 'mmi-shared' ) . '</button>'
-				. ( has_filter( 'mmi_order_conversation_ai_draft' ) ? '<button type="button" class="button mmi-conv-draft">' . esc_html( (string) apply_filters( 'mmi_order_conversation_ai_label', __( 'Draft answer', 'mmi-shared' ) ) ) . '</button>' : '' )
+			$html .= '<div class="mmi-conv-actions"><button type="button" class="mmi-conv-pill mmi-conv-send">' . esc_html__( 'Send Message', 'mmi-shared' ) . '</button>'
 				. '<span class="mmi-conv-status" role="status"></span></div>'
 				. '<p class="mmi-conv-hint">' . esc_html( $hint ) . '</p>'
-				. '</div></div>';
+				. '</div></div></div>';
 			return $html;
 		}
 
