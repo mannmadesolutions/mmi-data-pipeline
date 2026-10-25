@@ -42,6 +42,8 @@
 	/** Pending attachments per panel element. */
 	const pending = new WeakMap();
 	const timers = new WeakMap();
+	/** Staff text an improvement replaced, per panel, for Undo. */
+	const undos = new WeakMap();
 
 	function post( action, panel, data, nonceKey ) {
 		const body = new FormData();
@@ -213,6 +215,8 @@
 			.then( ( data ) => {
 				panel.querySelector( SELECTORS.thread ).innerHTML = data.thread;
 				field.value = '';
+				undos.delete( panel );
+				syncAiLabel( panel );
 				pending.set( panel, [] );
 				renderChips( panel );
 				closePane( panel );
@@ -223,13 +227,45 @@
 			.finally( () => busy( panel, false ) );
 	}
 
-	function draft( panel ) {
-		const field = panel.querySelector( SELECTORS.field );
-		if ( field.value.trim() && ! window.confirm( T.replaceDraft ) ) {
+	/** The AI button reads "Improve…" once there is text to improve (when the provider offers it). */
+	function syncAiLabel( panel ) {
+		const button = panel.querySelector( SELECTORS.draft );
+		if ( ! button || ! button.dataset.labelImprove ) {
 			return;
 		}
+		const improve = !! panel.querySelector( SELECTORS.field ).value.trim();
+		button.textContent = improve ? button.dataset.labelImprove : button.dataset.labelDraft;
+		button.dataset.mode = improve ? 'improve' : 'draft';
+	}
+
+	/** After an improvement: an Undo beside the message, until staff edit the text. */
+	function offerUndo( panel, original ) {
+		undos.set( panel, original );
+		panel.querySelector( SELECTORS.status ).append( ' ', el( 'button', { type: 'button', class: 'mmi-conv-undo', text: T.undo } ) );
+	}
+
+	function undo( panel ) {
+		if ( ! undos.has( panel ) ) {
+			return;
+		}
+		const field = panel.querySelector( SELECTORS.field );
+		field.value = undos.get( panel );
+		undos.delete( panel );
+		field.focus();
+		syncAiLabel( panel );
+		setStatus( panel, T.restored );
+	}
+
+	function draft( panel ) {
+		const field = panel.querySelector( SELECTORS.field );
+		const original = field.value;
+		const improve = panel.querySelector( SELECTORS.draft ).dataset.mode === 'improve' && !! original.trim();
+		if ( ! improve && original.trim() && ! window.confirm( T.replaceDraft ) ) {
+			return;
+		}
+		undos.delete( panel );
 		let tries = 0;
-		const ask = ( request ) => post( CONFIG.actions.draft, panel, request ? { request } : {} ).then( ( data ) => {
+		const ask = ( request ) => post( CONFIG.actions.draft, panel, request ? { request } : ( improve ? { text: original } : {} ) ).then( ( data ) => {
 			if ( data.pending ) {
 				setStatus( panel, data.message );
 				if ( ++tries > DRAFT_TRIES ) {
@@ -239,14 +275,21 @@
 			}
 			field.value = data.text;
 			field.focus();
+			syncAiLabel( panel );
 			setStatus( panel, data.message );
+			if ( data.improved ) {
+				offerUndo( panel, original );
+			}
 		} );
 		busy( panel, true );
-		setStatus( panel, T.drafting );
+		setStatus( panel, improve ? T.improving : T.drafting );
 		ask( '' ).catch( ( e ) => setStatus( panel, e.message || T.noDraft ) ).finally( () => busy( panel, false ) );
 	}
 
 	/* ── Wiring ────── */
+
+	// A box the browser refilled on reload gets the right label.
+	document.querySelectorAll( SELECTORS.panel ).forEach( syncAiLabel );
 
 	document.addEventListener( 'click', ( ev ) => {
 		const panel = ev.target.closest( SELECTORS.panel );
@@ -258,6 +301,8 @@
 			send( panel );
 		} else if ( target.closest( SELECTORS.draft ) ) {
 			draft( panel );
+		} else if ( target.closest( '.mmi-conv-undo' ) ) {
+			undo( panel );
 		} else if ( target.closest( SELECTORS.tool ) ) {
 			openPane( panel, target.closest( SELECTORS.tool ).dataset.tool );
 		} else if ( target.closest( '.mmi-conv-result' ) ) {
@@ -281,6 +326,16 @@
 	} );
 
 	document.addEventListener( 'input', ( ev ) => {
+		if ( ev.target.matches( SELECTORS.field ) ) {
+			const panel = ev.target.closest( SELECTORS.panel );
+			if ( panel ) {
+				syncAiLabel( panel );
+				if ( undos.delete( panel ) ) {
+					panel.querySelector( '.mmi-conv-undo' )?.remove();
+				}
+			}
+			return;
+		}
 		if ( ! ev.target.matches( SELECTORS.search ) ) {
 			return;
 		}

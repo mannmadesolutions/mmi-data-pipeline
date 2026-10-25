@@ -794,6 +794,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '.mmi-conv-form button.mmi-conv-pill[disabled]{opacity:.55;cursor:default}'
 				. '.mmi-conv-form .mmi-conv-actions{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}'
 				. '.mmi-conv-status{font-size:14px}'
+				. '.mmi-conv-undo{margin:0 0 0 4px;padding:0;border:0;background:none;color:var(--mmi-conv-link,#2a5bd7);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}'
 				. '.mmi-conv-hint{font-size:13px;color:var(--mmi-conv-muted,#6b6b6b)}'
 				. '.mmi-conv-form .mmi-conv-hint{margin:12px 0 0}'
 				. '@media (max-width:600px){.mmi-conv-avatar{flex-basis:34px;width:34px;height:34px}.mmi-conv-msg{max-width:calc(100% - 46px);padding:14px 16px}.mmi-conv-form{padding:14px}.mmi-conv-compose>.mmi-conv-avatar{display:none}}'
@@ -1155,7 +1156,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 					. '</div>';
 			}
 			$html .= '</div>'
-				. ( has_filter( 'mmi_order_conversation_ai_draft' ) ? '<button type="button" class="mmi-conv-pill mmi-conv-draft">' . esc_html( (string) apply_filters( 'mmi_order_conversation_ai_label', __( 'Draft answer', 'mmi-shared' ) ) ) . '</button>' : '' )
+				. ( has_filter( 'mmi_order_conversation_ai_draft' ) ? self::ai_button_html() : '' )
 				. '</div>';
 			if ( $tools ) {
 				$html .= '<div class="mmi-conv-pane" hidden>'
@@ -1171,6 +1172,22 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. '<p class="mmi-conv-hint">' . esc_html( $hint ) . '</p>'
 				. '</div></div></div>';
 			return $html;
+		}
+
+		/**
+		 * The AI button: "Draft answer" on an empty box; once staff have typed,
+		 * "Improve" (the script swaps the label) when the provider offers it.
+		 */
+		private static function ai_button_html(): string {
+			$draft   = (string) apply_filters( 'mmi_order_conversation_ai_label', __( 'Draft answer', 'mmi-shared' ) );
+			$improve = self::ai_improve_label();
+			return '<button type="button" class="mmi-conv-pill mmi-conv-draft" data-label-draft="' . esc_attr( $draft ) . '"'
+				. ( $improve !== '' ? ' data-label-improve="' . esc_attr( $improve ) . '"' : '' ) . '>' . esc_html( $draft ) . '</button>';
+		}
+
+		/** Filter mmi_order_conversation_ai_improve_label: empty when the provider can't improve staff text. */
+		private static function ai_improve_label(): string {
+			return trim( (string) apply_filters( 'mmi_order_conversation_ai_improve_label', '' ) );
 		}
 
 		/** The composer's "New coupon" form: stated terms, one click to make it. */
@@ -1215,6 +1232,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 					'draftSlow'      => __( 'Still drafting after 4 minutes. Try again later, or write the answer yourself.', 'mmi-shared' ),
 					'noDraft'        => __( 'No draft. Check your connection and try again.', 'mmi-shared' ),
 					'replaceDraft'   => __( 'Replace what is in the message box with a drafted answer?', 'mmi-shared' ),
+					'improving'      => __( 'Rewording your text with the order\'s sources…', 'mmi-shared' ),
+					'undo'           => __( 'Undo', 'mmi-shared' ),
+					'restored'       => __( 'Your text is back.', 'mmi-shared' ),
 					'searchProducts' => __( 'Search products by name, SKU or ID…', 'mmi-shared' ),
 					'searchCoupons'  => __( 'Search coupons by code…', 'mmi-shared' ),
 					'searching'      => __( 'Searching…', 'mmi-shared' ),
@@ -1313,9 +1333,18 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				wp_send_json_error( __( 'Order not found.', 'mmi-shared' ) );
 			}
 			$request = is_string( $_POST['request'] ?? null ) ? sanitize_key( wp_unslash( $_POST['request'] ) ) : '';
+			// Text in the box means "improve this": the provider rewords and fills
+			// it out instead of drafting from nothing (when it says it can).
+			$staff_text = is_string( $_POST['text'] ?? null ) && self::ai_improve_label() !== ''
+				? trim( sanitize_textarea_field( wp_unslash( $_POST['text'] ) ) ) : '';
 			if ( $request === '' ) {
 				$context = self::ai_context( $order );
-				if ( ! array_filter( $context['messages'], static fn( $m ) => $m['from'] === 'Customer' ) ) {
+				if ( $staff_text !== '' ) {
+					// A "Sources:" block from an earlier draft stays as links, not text to reword.
+					$parts                  = explode( "\n\n" . __( 'Sources:', 'mmi-shared' ) . "\n", $staff_text, 2 );
+					$context['staff_text']  = self::clip( trim( $parts[0] ) );
+					$context['staff_links'] = isset( $parts[1] ) ? array_values( array_filter( array_map( 'trim', explode( "\n", $parts[1] ) ) ) ) : array();
+				} elseif ( ! array_filter( $context['messages'], static fn( $m ) => $m['from'] === 'Customer' ) ) {
 					wp_send_json_error( __( 'There is no customer message to answer yet.', 'mmi-shared' ) );
 				}
 			} else {
@@ -1338,22 +1367,30 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( $answer === '' ) {
 				wp_send_json_error( __( 'The drafter returned nothing. Try again or write the answer yourself.', 'mmi-shared' ) );
 			}
-			$links = array();
+			$improved = isset( $context['staff_text'] );
+			$links    = array_map( 'sanitize_text_field', (array) ( $context['staff_links'] ?? array() ) );
 			foreach ( array_unique( array_map( 'intval', (array) ( $result['source_ids'] ?? array() ) ) ) as $n ) {
 				if ( isset( $context['sources'][ $n - 1 ] ) ) {
 					$links[] = $context['sources'][ $n - 1 ]['title'] . ': ' . $context['sources'][ $n - 1 ]['url'];
 				}
 			}
-			$text = $answer . ( $links ? "\n\n" . __( 'Sources:', 'mmi-shared' ) . "\n" . implode( "\n", $links ) : '' );
+			$links = array_values( array_unique( $links ) );
+			$text  = $answer . ( $links ? "\n\n" . __( 'Sources:', 'mmi-shared' ) . "\n" . implode( "\n", $links ) : '' );
 			if ( class_exists( 'MMI_Logger' ) ) {
-				MMI_Logger::info( "Order conversation: answer drafted for order {$order_id}", array( 'sources' => count( $links ), 'confident' => ! empty( $result['confident'] ) ), 'order-conversation', __CLASS__ );
+				MMI_Logger::info( "Order conversation: answer " . ( $improved ? 'improved' : 'drafted' ) . " for order {$order_id}", array( 'sources' => count( $links ), 'confident' => ! empty( $result['confident'] ) ), 'order-conversation', __CLASS__ );
 			}
-			wp_send_json_success( array(
-				'text'    => $text,
-				'message' => empty( $result['confident'] )
+			if ( $improved ) {
+				$message = empty( $result['confident'] )
+					? __( 'Reworded. The sources did not back every added fact: check them before sending. Undo brings back your text.', 'mmi-shared' )
+					: ( $links
+						? __( 'Reworded. Read it, check the links, then send. Undo brings back your text.', 'mmi-shared' )
+						: __( 'Reworded. Read it, then send. Undo brings back your text.', 'mmi-shared' ) );
+			} else {
+				$message = empty( $result['confident'] )
 					? __( 'Draft ready, but the sources did not clearly answer the question: check every fact before sending.', 'mmi-shared' )
-					: __( 'Draft ready. Read it, check the links, then send.', 'mmi-shared' ),
-			) );
+					: __( 'Draft ready. Read it, check the links, then send.', 'mmi-shared' );
+			}
+			wp_send_json_success( array( 'text' => $text, 'message' => $message, 'improved' => $improved ) );
 		}
 
 		/** After the order number in the Orders list (HPOS and legacy). */
