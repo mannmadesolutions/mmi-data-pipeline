@@ -100,6 +100,8 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		const MAX_LENGTH   = 2000;
 		const RATE_LIMIT   = 10;
 		const NOTIFY_DELAY = 300;
+		/** Staff hear about a customer message within a minute; a second message that quickly joins the same email. */
+		const NOTIFY_DELAY_STAFF = 60;
 
 		const HOOK_NOTIFY = 'mmi_order_conversation_notify';
 		const AS_GROUP    = 'mmi-order-conversation';
@@ -118,6 +120,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 		/** HTML id of the thread on every screen; links end in #ANCHOR. */
 		const ANCHOR = 'mmi-order-conversation';
+
+		/** Orders offered in Messages → New message (newest first). */
+		const NEW_MESSAGE_ORDERS = 50;
 
 		/** Reverb's small storefront mark beside the store's name. */
 		const SHOP_ICON = '<svg class="mmi-conv-shop" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="currentColor" d="M2 2h12l1 4a2 2 0 0 1-1 1.73V14H2V7.73A2 2 0 0 1 1 6zm1 6v5h3V10h4v3h3V8a2 2 0 0 1-1.67-.9A2 2 0 0 1 10 8a2 2 0 0 1-2-1 2 2 0 0 1-2 1 2 2 0 0 1-1.33-.9A2 2 0 0 1 3 8z"/></svg>';
@@ -153,6 +158,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			add_action( 'init', array( __CLASS__, 'register_endpoint' ) );
 			add_filter( 'woocommerce_get_query_vars', array( __CLASS__, 'add_query_var' ) );
 			add_filter( 'woocommerce_account_menu_items', array( __CLASS__, 'account_menu_item' ), 20 );
+			add_filter( 'woocommerce_my_account_my_orders_actions', array( __CLASS__, 'orders_row_action' ), 20, 2 );
 			add_action( 'woocommerce_account_' . self::ENDPOINT . '_endpoint', array( __CLASS__, 'render_account_inbox' ) );
 			add_filter( 'woocommerce_endpoint_' . self::ENDPOINT . '_title', array( __CLASS__, 'endpoint_title' ) );
 
@@ -473,7 +479,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		/* ── Notifications and delivery ────── */
 
 		private static function schedule_notify( \WC_Order $order, string $side ): void {
-			$delay = (int) apply_filters( 'mmi_order_conversation_notify_delay', self::NOTIFY_DELAY, $order, $side );
+			$delay = (int) apply_filters( 'mmi_order_conversation_notify_delay', $side === self::SENDER_STAFF ? self::NOTIFY_DELAY_STAFF : self::NOTIFY_DELAY, $order, $side );
 			if ( ! function_exists( 'as_schedule_single_action' ) ) {
 				self::run_notify( $order->get_id(), $side );
 				return;
@@ -788,9 +794,18 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. 'button.mmi-conv-tool:hover,button.mmi-conv-tool[aria-expanded="true"]{color:#173c9c;text-decoration:underline;background:none}'
 				. 'button.mmi-conv-tool:focus-visible{outline:2px solid var(--mmi-conv-link,#2a5bd7);outline-offset:2px;border-radius:2px}'
 				. '.mmi-conv-tools .dashicons{font-size:17px;width:17px;height:17px}'
-				. '.mmi-conv-form button.mmi-conv-pill{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;min-height:42px;margin:0;padding:10px 24px;border:1px solid var(--mmi-conv-pill,#1a1a1a);border-radius:999px;background:var(--mmi-conv-pill,#1a1a1a);color:#fff;font:inherit;font-size:15px;font-weight:700;line-height:1.2;text-shadow:none;box-shadow:none;cursor:pointer;white-space:nowrap}'
-				. '.mmi-conv-form button.mmi-conv-pill:hover{background:#3a3a3a;border-color:#3a3a3a;color:#fff}'
-				. '.mmi-conv-form button.mmi-conv-pill:focus-visible{outline:2px solid var(--mmi-conv-link,#2a5bd7);outline-offset:2px}'
+				. '.mmi-conv-new{margin:0 0 28px}'
+				. '.mmi-conv-new>summary{list-style:none}'
+				. '.mmi-conv-new>summary::-webkit-details-marker{display:none}'
+				. '.mmi-conv-new[open]>summary{margin-bottom:16px}'
+				. '.mmi-conv-about{display:flex;align-items:center;gap:12px;margin:0 0 12px}'
+				. '.mmi-conv-about label{flex:none;font-weight:700}'
+				. '.mmi-conv-about select{flex:1 1 auto;min-width:0;box-sizing:border-box;height:44px;padding:0 12px;border:1px solid #cfcfcf;border-radius:6px;background-color:#fff;color:var(--mmi-conv-ink,#1d2327);font:inherit;font-size:15px}'
+				. '.mmi-conv-form .mmi-conv-about-hint{margin:-4px 0 12px}'
+				. '.mmi-conv-about-hint a{color:var(--mmi-conv-link,#2a5bd7);font-weight:600}'
+				. '.mmi-conv-new>summary.mmi-conv-pill,.mmi-conv-form button.mmi-conv-pill{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;min-height:42px;margin:0;padding:10px 24px;border:1px solid var(--mmi-conv-pill,#1a1a1a);border-radius:999px;background:var(--mmi-conv-pill,#1a1a1a);color:#fff;font:inherit;font-size:15px;font-weight:700;line-height:1.2;text-shadow:none;box-shadow:none;cursor:pointer;white-space:nowrap}'
+				. '.mmi-conv-new>summary.mmi-conv-pill:hover,.mmi-conv-form button.mmi-conv-pill:hover{background:#3a3a3a;border-color:#3a3a3a;color:#fff}'
+				. '.mmi-conv-new>summary.mmi-conv-pill:focus-visible,.mmi-conv-form button.mmi-conv-pill:focus-visible{outline:2px solid var(--mmi-conv-link,#2a5bd7);outline-offset:2px}'
 				. '.mmi-conv-form button.mmi-conv-pill[disabled]{opacity:.55;cursor:default}'
 				. '.mmi-conv-form .mmi-conv-actions{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}'
 				. '.mmi-conv-status{font-size:14px}'
@@ -827,15 +842,19 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 		/**
 		 * The customer's composer: their avatar, then a form posting to
-		 * admin-post.php with $hidden (already-escaped hidden inputs).
+		 * admin-post.php with $hidden (already-escaped hidden inputs) and
+		 * $before (escaped fields above the box, e.g. the order picker).
 		 */
-		private static function customer_composer_html( string $hidden ): string {
+		private static function customer_composer_html( string $hidden, string $before = '', bool $focus = false ): string {
+			// Autofocus scrolls before images and fonts above the box have loaded (Safari
+			// leaves it at the screen's edge): centre it once the page has loaded.
+			$centre = $focus ? '<script>addEventListener("load",function(){var b=document.getElementById("mmi-conv-body");if(b){b.scrollIntoView({block:"center"});b.focus({preventScroll:true});}});</script>' : '';
 			return '<div class="mmi-conv-compose is-mine">' . self::avatar_html( self::SENDER_CUSTOMER )
-				. '<form class="mmi-conv-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . $hidden
+				. '<form class="mmi-conv-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . $hidden . $before
 				. '<label class="mmi-conv-label" for="mmi-conv-body">' . esc_html__( 'Your message', 'mmi-shared' ) . '</label>'
-				. '<div class="mmi-conv-write"><div class="mmi-conv-box"><textarea id="mmi-conv-body" name="body" maxlength="' . (int) self::MAX_LENGTH . '" placeholder="' . esc_attr__( 'Write your message…', 'mmi-shared' ) . '" required></textarea></div></div>'
+				. '<div class="mmi-conv-write"><div class="mmi-conv-box"><textarea id="mmi-conv-body" name="body" maxlength="' . (int) self::MAX_LENGTH . '" placeholder="' . esc_attr__( 'Write your message…', 'mmi-shared' ) . '" required' . ( $focus ? ' autofocus' : '' ) . '></textarea></div></div>'
 				. '<div class="mmi-conv-actions"><button type="submit" class="mmi-conv-pill">' . esc_html__( 'Send Message', 'mmi-shared' ) . '</button></div>'
-				. '</form></div>';
+				. '</form></div>' . $centre;
 		}
 
 		/* ── Customer: token page (admin-post.php) ────── */
@@ -942,7 +961,9 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				. self::customer_composer_html( // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
 					'<input type="hidden" name="action" value="' . esc_attr( self::ACTION_ACCOUNT ) . '">'
 					. '<input type="hidden" name="order" value="' . esc_attr( (string) $order->get_id() ) . '">'
-					. wp_nonce_field( self::ACTION_ACCOUNT . '_' . $order->get_id(), '_mmi_conv_nonce', true, false )
+					. wp_nonce_field( self::ACTION_ACCOUNT . '_' . $order->get_id(), '_mmi_conv_nonce', true, false ),
+					'',
+					( $_GET['mmi_conv'] ?? '' ) === 'write' // phpcs:ignore WordPress.Security.NonceVerification -- display flag only.
 				)
 				. '</section>';
 		}
@@ -950,8 +971,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		public static function handle_account_post(): void {
 			$order_id = absint( $_POST['order'] ?? 0 );
 			$order    = $order_id ? wc_get_order( $order_id ) : false;
-			if ( ! $order || ! is_user_logged_in() || ! current_user_can( 'view_order', $order_id )
-				|| ! wp_verify_nonce( sanitize_text_field( wp_unslash( (string) ( $_POST['_mmi_conv_nonce'] ?? '' ) ) ), self::ACTION_ACCOUNT . '_' . $order_id ) ) {
+			$nonce    = sanitize_text_field( wp_unslash( (string) ( $_POST['_mmi_conv_nonce'] ?? '' ) ) );
+			// The order's own form, or Messages → New message (its order picked in the form; view_order is the check).
+			$nonce_ok = wp_verify_nonce( $nonce, self::ACTION_ACCOUNT . '_' . $order_id ) || wp_verify_nonce( $nonce, self::ACTION_ACCOUNT . '_new' );
+			if ( ! $order || ! is_user_logged_in() || ! current_user_can( 'view_order', $order_id ) || ! $nonce_ok || ! self::enabled( $order ) ) {
 				wp_die( esc_html__( 'This message could not be sent. Please reload the page and try again.', 'mmi-shared' ), '', array( 'response' => 403 ) );
 			}
 			$body = is_string( $_POST['body'] ?? null ) ? wp_unslash( $_POST['body'] ) : '';
@@ -1030,9 +1053,15 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				);
 			}
 
+			$orders = array_values( array_filter(
+				$ids ? (array) wc_get_orders( array( 'customer_id' => $user_id, 'limit' => self::NEW_MESSAGE_ORDERS, 'orderby' => 'date', 'order' => 'DESC' ) ) : array(),
+				static fn( $o ) => $o instanceof \WC_Order && self::enabled( $o )
+			) );
+
 			echo self::styles(); // phpcs:ignore WordPress.Security.EscapeOutput -- static CSS.
+			echo '<div class="mmi-conv mmi-conv-account">' . self::new_message_html( $orders, ! $rows ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
 			if ( ! $rows ) {
-				echo '<p>' . esc_html__( 'No messages yet. You can message us about any order from its page under Orders.', 'mmi-shared' ) . '</p>';
+				echo '<p class="mmi-conv-empty">' . esc_html( $orders ? __( 'No messages yet.', 'mmi-shared' ) : __( 'No messages yet. Once you have an order, you can message us about it here.', 'mmi-shared' ) ) . '</p></div>';
 				return;
 			}
 			echo '<table class="woocommerce-orders-table shop_table shop_table_responsive my_account_orders mmi-conv-inbox"><thead><tr>'
@@ -1054,7 +1083,62 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 					. '<td><a class="woocommerce-button button view" href="' . esc_url( $url ) . '">' . esc_html__( 'Open', 'mmi-shared' ) . '</a></td>'
 					. '</tr>';
 			}
-			echo '</tbody></table>';
+			echo '</tbody></table></div>';
+		}
+
+		/**
+		 * Messages → New message: pick the order it is about, then write.
+		 * Open on its own when there are no conversations yet.
+		 *
+		 * @param \WC_Order[] $orders The customer's orders that take messages, newest first.
+		 */
+		private static function new_message_html( array $orders, bool $open ): string {
+			if ( ! $orders ) {
+				return '';
+			}
+			$options = '<option value="">' . esc_html__( 'Choose an order…', 'mmi-shared' ) . '</option>';
+			foreach ( $orders as $o ) {
+				$items   = array_values( $o->get_items() );
+				$created = $o->get_date_created();
+				$label   = '#' . $o->get_order_number() . ( $created ? ' · ' . wc_format_datetime( $created ) : '' );
+				if ( $items ) {
+					$label .= ' · ' . $items[0]->get_name() . ( count( $items ) > 1 ? ' ' . sprintf( __( '(+%d more)', 'mmi-shared' ), count( $items ) - 1 ) : '' );
+				}
+				$options .= '<option value="' . esc_attr( (string) $o->get_id() ) . '">' . esc_html( $label ) . '</option>';
+			}
+			$contact = self::contact_url();
+			$about   = '<p class="mmi-conv-about"><label for="mmi-conv-order">' . esc_html__( 'About', 'mmi-shared' ) . '</label>'
+				. '<select id="mmi-conv-order" name="order" required>' . $options . '</select></p>'
+				. ( $contact !== '' ? '<p class="mmi-conv-hint mmi-conv-about-hint">' . esc_html__( 'Not about an order?', 'mmi-shared' ) . ' <a href="' . esc_url( $contact ) . '">' . esc_html__( 'Contact us', 'mmi-shared' ) . '</a></p>' : '' );
+			$hidden  = '<input type="hidden" name="action" value="' . esc_attr( self::ACTION_ACCOUNT ) . '">'
+				. wp_nonce_field( self::ACTION_ACCOUNT . '_new', '_mmi_conv_nonce', true, false );
+			return '<details class="mmi-conv-new"' . ( $open ? ' open' : '' ) . '><summary class="mmi-conv-pill">' . esc_html__( 'New message', 'mmi-shared' ) . '</summary>'
+				. self::customer_composer_html( $hidden, $about ) . '</details>';
+		}
+
+		/** Filter mmi_order_conversation_contact_url: where questions not about an order go (default: the "contact" page). */
+		private static function contact_url(): string {
+			$page = get_page_by_path( 'contact' );
+			$url  = $page instanceof \WP_Post && $page->post_status === 'publish' ? (string) get_permalink( $page ) : '';
+			return (string) apply_filters( 'mmi_order_conversation_contact_url', $url );
+		}
+
+		/** My Account → Orders: a "Message us" button on each order that takes messages. */
+		public static function orders_row_action( $actions, $order ) {
+			if ( ! is_array( $actions ) || ! $order instanceof \WC_Order || ! self::enabled( $order ) ) {
+				return $actions;
+			}
+			$unread                  = self::customer_unread_count( $order );
+			$actions['mmi-messages'] = array(
+				// On the order's own page (its Actions row) just go down to the box. From the
+				// Orders list no #fragment: browsers skip autofocus on a page opened at one.
+				'url'  => is_wc_endpoint_url( 'view-order' ) ? '#' . self::ANCHOR : add_query_arg( 'mmi_conv', 'write', $order->get_view_order_url() ),
+				'name' => $unread > 0
+					/* translators: %d: replies the customer has not read */
+					? sprintf( _n( 'Messages (%d new)', 'Messages (%d new)', $unread, 'mmi-shared' ), $unread )
+					: __( 'Message us', 'mmi-shared' ),
+			);
+			return $actions;
 		}
 
 		/* ── Staff: order screen box, list badge ────── */
