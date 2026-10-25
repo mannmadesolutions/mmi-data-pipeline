@@ -77,7 +77,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 	class MMI_Order_Conversation {
 
-		const DB_VERSION = '3';
+		const DB_VERSION = '4'; // 4: seen_at (when the customer first saw a store message).
 		const DB_OPTION  = 'mmi_order_messages_db_version';
 
 		const SENDER_CUSTOMER = 'customer';
@@ -202,11 +202,13 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 						notified tinyint(1) NOT NULL DEFAULT 0,
 						external_id varchar(100) NOT NULL DEFAULT '',
 						attachments longtext NULL,
+						seen_at datetime NULL,
 						PRIMARY KEY  (id),
 						KEY order_id (order_id),
 						KEY external_id (external_id)
 					) " . $wpdb->get_charset_collate() . ';' );
 					update_option( self::DB_OPTION, self::DB_VERSION );
+					self::backfill_seen( $table );
 				}
 			}
 			return $table;
@@ -279,6 +281,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			}
 			if ( $notify ) {
 				self::schedule_notify( $order, $sender === self::SENDER_CUSTOMER ? self::SENDER_STAFF : self::SENDER_CUSTOMER );
+			}
+			if ( $sender === self::SENDER_CUSTOMER ) {
+				// Writing back (on the site or by email) means they saw what came before.
+				self::mark_seen( $order->get_id(), (int) ( $args['time'] ?? time() ) );
 			}
 
 			do_action( 'mmi_order_conversation_message_added', $id, $order, $sender );
@@ -374,9 +380,43 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 		/** The customer opened the thread: mark staff messages read, note when. */
 		private static function customer_viewed( \WC_Order $order ): void {
+			self::mark_seen( $order->get_id(), time() );
 			$order->update_meta_data( self::META_SEEN, time() );
 			$order->update_meta_data( self::META_UNREAD_CUSTOMER, 0 );
 			$order->save_meta_data();
+		}
+
+		/** Read receipts: store messages up to $time that the customer hadn't seen are seen at $time. */
+		private static function mark_seen( int $order_id, int $time ): void {
+			global $wpdb;
+			$at = gmdate( 'Y-m-d H:i:s', $time );
+			$wpdb->query( $wpdb->prepare(
+				'UPDATE ' . self::table() . " SET seen_at = %s WHERE order_id = %d AND sender = %s AND seen_at IS NULL AND created_at <= %s",
+				$at,
+				$order_id,
+				self::SENDER_STAFF,
+				$at
+			) );
+		}
+
+		/**
+		 * DB 4: seen times for messages from before read receipts, from what
+		 * was recorded: each later customer message, then the order's last
+		 * visit (META_SEEN). The last visit can only say "seen by then".
+		 */
+		private static function backfill_seen( string $table ): void {
+			global $wpdb;
+			$orders = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT order_id FROM {$table} WHERE sender = %s AND seen_at IS NULL LIMIT 2000", self::SENDER_STAFF ) );
+			foreach ( array_map( 'intval', (array) $orders ) as $order_id ) {
+				foreach ( (array) $wpdb->get_col( $wpdb->prepare( "SELECT created_at FROM {$table} WHERE order_id = %d AND sender = %s ORDER BY created_at ASC", $order_id, self::SENDER_CUSTOMER ) ) as $at ) {
+					self::mark_seen( $order_id, (int) strtotime( $at . ' UTC' ) );
+				}
+				$order = function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : null;
+				$seen  = $order ? (int) $order->get_meta( self::META_SEEN ) : 0;
+				if ( $seen ) {
+					self::mark_seen( $order_id, $seen );
+				}
+			}
 		}
 
 		public static function delete_for_order( $order_id ): void {
@@ -718,6 +758,13 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 					if ( $source !== '' ) {
 						$note[] = $source;
 					}
+					if ( ! $customer ) {
+						// Read receipt (staff only): when the customer first opened the conversation after it, or wrote back.
+						$note[] = ! empty( $m->seen_at )
+							/* translators: %s: date and time */
+							? sprintf( __( 'Seen %s', 'mmi-shared' ), self::format_time( (string) $m->seen_at ) )
+							: __( 'Not seen yet', 'mmi-shared' );
+					}
 				}
 				$body  = $customer ? esc_html( $m->body ) : make_clickable( esc_html( $m->body ) );
 				$cards = class_exists( 'MMI_Order_Conversation_Attachments' ) ? MMI_Order_Conversation_Attachments::html( self::attachments_of( $m ), 'thread' ) : '';
@@ -946,7 +993,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 			if ( ! $order || ! current_user_can( 'view_order', $order->get_id() ) || ! self::enabled( $order ) ) {
 				return;
 			}
-			self::customer_viewed( $order );
+			// Only the customer's own visit is a read receipt (staff can open any order's page).
+			if ( (int) $order->get_customer_id() === get_current_user_id() ) {
+				self::customer_viewed( $order );
+			}
 
 			// phpcs:disable WordPress.Security.NonceVerification -- display flags only.
 			$notice = '';
