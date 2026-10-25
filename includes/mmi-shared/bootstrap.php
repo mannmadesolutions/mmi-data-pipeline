@@ -72,7 +72,7 @@
  * thread per order in its own table — customer token page, My Account
  * section, staff box on the order screen. Inert until a plugin calls init().
  * 1.46.27: MMI_Order_Conversation_Gmail (reply by email), delivery channels,
- * My Account Messages tab. 1.46.28: drafted answers (provider via filter); 1.46.29: background drafts (pending + poll); 1.46.30: one look for staff and customer, email samples; 1.46.31: attachments (products, coupons), shared staff panel + script; 1.46.32: tools pane state fix; 1.46.33: per-order on/off (Reverb orders stay in Reverb); 1.46.34: Reverb's conversation look (avatars, meta under the text, composer box with attach bar, pill buttons); 1.46.35: AI button improves staff text (mmi_order_conversation_ai_improve_label), with Undo; 1.46.36: My Account Orders "Message us" + Messages "New message" order picker.
+ * My Account Messages tab. 1.46.28: drafted answers (provider via filter); 1.46.29: background drafts (pending + poll); 1.46.30: one look for staff and customer, email samples; 1.46.31: attachments (products, coupons), shared staff panel + script; 1.46.32: tools pane state fix; 1.46.33: per-order on/off (Reverb orders stay in Reverb); 1.46.34: Reverb's conversation look (avatars, meta under the text, composer box with attach bar, pill buttons); 1.46.35: AI button improves staff text (mmi_order_conversation_ai_improve_label), with Undo; 1.46.36: My Account Orders "Message us" + Messages "New message" order picker; 1.46.37: both sides emailed ~1 minute after a message.
  *
  * Added MMI_Marketplace_Order_Sources as a 14th bundled class (2026-09-17,
  * same day): it also lived in mmi-hub and was missed during the elimination
@@ -196,7 +196,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.36';
+$mmi_shared_lib_this_copy_version = '1.46.37';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir

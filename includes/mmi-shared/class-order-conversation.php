@@ -99,9 +99,10 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 
 		const MAX_LENGTH   = 2000;
 		const RATE_LIMIT   = 10;
-		const NOTIFY_DELAY = 300;
-		/** Staff hear about a customer message within a minute; a second message that quickly joins the same email. */
-		const NOTIFY_DELAY_STAFF = 60;
+		/** Both sides are emailed about a minute after a message (owner, 2026-10-25: five felt like none); a quick second message joins the same email. */
+		const NOTIFY_DELAY = 60;
+		/** Action Scheduler priority (0 = first) for those emails. */
+		const NOTIFY_PRIORITY = 0;
 
 		const HOOK_NOTIFY = 'mmi_order_conversation_notify';
 		const AS_GROUP    = 'mmi-order-conversation';
@@ -479,14 +480,15 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 		/* ── Notifications and delivery ────── */
 
 		private static function schedule_notify( \WC_Order $order, string $side ): void {
-			$delay = (int) apply_filters( 'mmi_order_conversation_notify_delay', $side === self::SENDER_STAFF ? self::NOTIFY_DELAY_STAFF : self::NOTIFY_DELAY, $order, $side );
+			$delay = (int) apply_filters( 'mmi_order_conversation_notify_delay', self::NOTIFY_DELAY, $order, $side );
 			if ( ! function_exists( 'as_schedule_single_action' ) ) {
 				self::run_notify( $order->get_id(), $side );
 				return;
 			}
 			$args = array( $order->get_id(), $side );
 			if ( ! as_has_scheduled_action( self::HOOK_NOTIFY, $args, self::AS_GROUP ) ) {
-				as_schedule_single_action( time() + max( 0, $delay ), self::HOOK_NOTIFY, $args, self::AS_GROUP );
+				// Priority 0: ahead of bulk jobs (Reverb syncs) the queue may be behind on.
+				as_schedule_single_action( time() + max( 0, $delay ), self::HOOK_NOTIFY, $args, self::AS_GROUP, false, self::NOTIFY_PRIORITY );
 			}
 		}
 
@@ -1207,7 +1209,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				$email = sanitize_email( $order->get_billing_email() );
 				$hint  = ! is_email( $email ) || ( class_exists( 'MMI_Guest_Customer_Converter' ) && MMI_Guest_Customer_Converter::looks_like_relay_email( $email ) )
 					? __( 'No real customer email on this order: they will not be emailed, only see messages in My Account.', 'mmi-shared' )
-					: sprintf( __( 'Each message is emailed to %s (several sent within 5 minutes go as one email).', 'mmi-shared' ), $email );
+					: sprintf( __( 'Each message is emailed to %s (within a minute or two; several sent in quick succession go as one email).', 'mmi-shared' ), $email );
 				if ( has_filter( 'mmi_order_conversation_reply_address' ) ) {
 					$hint .= ' ' . __( 'They can answer by replying to that email.', 'mmi-shared' );
 				}
@@ -1352,7 +1354,7 @@ if ( ! class_exists( 'MMI_Order_Conversation', false ) ) {
 				wp_send_json_error( __( 'Nothing was sent: write a message or attach something first.', 'mmi-shared' ) );
 			}
 			$message = self::channel( $order ) === self::CHANNEL_EMAIL
-				? __( 'Sent. The customer is emailed within 5 minutes.', 'mmi-shared' )
+				? __( 'Sent. The customer is emailed within a minute or two.', 'mmi-shared' )
 				: __( 'Sent. It reaches the customer within a minute.', 'mmi-shared' );
 			wp_send_json_success( array(
 				'thread'  => self::render_thread( $order, self::SENDER_STAFF ),
