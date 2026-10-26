@@ -3815,10 +3815,13 @@ body.mmi-page .mmi-filters-section .mmi-ms-trigger {
 
 /* A group outside a filters panel spaces its pills the same way; until 1.46.25 they were 4px apart only because
    mmi-admin's licensing CSS put a stray `.mmi-pill { margin: 2px }` (also inline-block, 2px 6px) on every mmi- page.
-   :not([hidden]) because an author display would beat the browser's own [hidden] rule. */
+   :not([hidden]) because an author display would beat the browser's own [hidden] rule.
+   align-items: center because a group can hold a taller control beside its pills (One page Titles' "More
+   statuses…" select, 35px); stretched to it, every pill grew and its label rode high (owner, 2026-10-26: "look off"). */
 :where(.mmi-filter-pills:not(.mmi-filter-bar *)):not([hidden]) {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 4px;
 }
 
