@@ -397,6 +397,8 @@ $export_history = MMI_DB::get_export_history( 100 );
 
     <?php endif; ?>
 
+    <?php include __DIR__ . '/partials/section-site-export.php'; ?>
+
     <?php include __DIR__ . '/partials/modal-new-export-profile.php'; ?>
     <?php include __DIR__ . '/partials/modal-edit-export-profile.php'; ?>
 

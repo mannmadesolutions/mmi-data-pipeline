@@ -743,3 +743,34 @@
     color: var(--mmi-error, #d63638);
 }
 
+
+/* ── Site export section ─────────────────────────────────────────────── */
+.mmi-site-export-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.mmi-site-export-days {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-site-export-days input {
+    width: 64px;
+}
+.mmi-site-export-note {
+    display: block;
+    margin-top: 4px;
+    color: var(--mmi-text-muted);
+    font-size: 12px;
+}
+.mmi-site-export-actions {
+    white-space: nowrap;
+}
+.mmi-site-export-notice.is-error {
+    color: var(--mmi-error-text);
+}
+.mmi-site-export-id code {
+    font-size: 11px;
+}

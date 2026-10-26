@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     2.58.21
+ * Version:     2.58.22
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.58.21' );
+define( 'MMI_PIPELINE_VERSION', '2.58.22' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -301,6 +301,10 @@ add_action( 'plugins_loaded', function () {
     require_once MMI_PIPELINE_PATH . 'includes/exporters/class-export-file-manager.php';
     require_once MMI_PIPELINE_PATH . 'includes/exporters/class-dynamic-data-exporter.php';
     MMI_Export_File_Manager::init();
+
+    // Site Export: a whole WordPress install as one ZIP with a signed download link.
+    require_once MMI_PIPELINE_PATH . 'includes/exporters/class-site-export.php';
+    MMI_Site_Export::init();
 
     // One-time migration: runs DB migration if needed (mmi_pipeline_* namespace)
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-migration.php';

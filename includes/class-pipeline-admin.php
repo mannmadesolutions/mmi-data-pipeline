@@ -324,6 +324,15 @@ class MMI_Pipeline_Admin {
             wp_localize_script( 'mmi-pipeline-export-settings-js', 'mmiExportSettings',
                 self::build_export_settings_data()
             );
+
+            self::enqueue_script( 'mmi-pipeline-site-export-js',
+                'assets/js/site-export.js', [] );
+            wp_localize_script( 'mmi-pipeline-site-export-js', 'mmiSiteExport', [
+                'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
+                'nonce'       => wp_create_nonce( 'mmi_pipeline_site_export' ),
+                'pollMs'      => 5000,
+                'armMs'       => 4000,
+            ] );
         }
     }
 
