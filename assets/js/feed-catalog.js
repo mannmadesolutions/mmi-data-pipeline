@@ -1,7 +1,9 @@
 /**
  * Supplier feed catalog (MMI_Pipeline_Feed_Catalog) — one script for every
- * supplier's Catalog tab. Columns and filters come from the section's
- * data-config; the server filters, sorts and pages. The freshness strip is
+ * supplier's Catalog and Promotions tabs (cfg.view), and for several
+ * catalogs shown as one (a group's rows carry `key`, unique across them).
+ * Columns and filters come from the section's data-config; the server
+ * filters, sorts and pages. The freshness strip is
  * refreshed every 5 s while a fetch runs and every 60 s otherwise, paused
  * while the browser tab is hidden.
  */
@@ -11,10 +13,31 @@
     const SEARCH_DEBOUNCE_MS = 400;
     const POLL_FETCHING_MS = 5000;
     const POLL_IDLE_MS = 60000;
+    // Filters with fixed values (pills in the template); the rest are facets.
+    const FIXED_FILTERS = {
+        catalog: { promo: ['active', 'upcoming', 'none'], on_site: ['publish', 'other', 'none'] },
+        promotions: { promo: ['active', 'upcoming'], check: ['loss', 'above_map', 'ok', 'none'] },
+    };
+    // Badge text; the Check filter pills spell each one out.
+    const CHECKS = {
+        loss: ['error', 'Below cost', 'Our price is below the promo cost: a loss.'],
+        above_map: ['warning', 'Above MAP', 'Our price is above the promo MAP: the promotion is being missed.'],
+        ok: ['success', 'OK', ''],
+        none: ['', 'Not listed', 'Not on our site, or no price.'],
+    };
 
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // The currency goes in a tooltip, not the cell, so narrow columns fit.
     const money = (value, currency) => (value === null || value === undefined || value === '') ? '—' : `<span title="${esc(currency || '')}">${Number(value).toFixed(2)}</span>`;
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    // A feed's Y-m-d as "Oct 27", with the year only when it isn't this year's.
+    const shortDate = (ymd) => {
+        const [y, m, d] = String(ymd || '').split('-').map(Number);
+        if (!y || !m || !d) {
+            return '';
+        }
+        return `${MONTHS[m - 1]} ${d}${y !== new Date().getFullYear() ? `, ${y}` : ''}`;
+    };
     const ago = (s) => {
         if (s === null || s === undefined) {
             return '';
@@ -31,11 +54,15 @@
         return `${Math.round(s / 86400)} days`;
     };
 
+    const rowKey = (r) => String(r.key ?? r.sku);
+
     function FeedCatalog($root) {
         this.$root = $root;
         this.cfg = $root.data('config');
-        this.storageKey = `mmiFeedCatalog_${this.cfg.source}`;
-        this.state = { q: '', f: {}, promo: [], on_site: [], sort: 'product', dir: 'asc', page: 1, per_page: 50 };
+        this.cfg.view = this.cfg.view || 'catalog';
+        this.fixed = FIXED_FILTERS[this.cfg.view];
+        this.storageKey = `mmiFeedCatalog_${this.cfg.source}${this.cfg.view === 'catalog' ? '' : `_${this.cfg.view}`}`;
+        this.state = { q: '', f: {}, promo: [], on_site: [], check: [], sort: 'product', dir: 'asc', page: 1, per_page: 50 };
         this.facetsLoaded = false;
         this.openSku = null;
         this.request = null;
@@ -51,7 +78,7 @@
         },
 
         ajax: function (action, data) {
-            return $.post(this.cfg.ajaxUrl, Object.assign({ action: `mmi_feed_catalog_${action}`, nonce: this.cfg.nonce, source: this.cfg.source }, data || {}));
+            return $.post(this.cfg.ajaxUrl, Object.assign({ action: `mmi_feed_catalog_${action}`, nonce: this.cfg.nonce, source: this.cfg.source, view: this.cfg.view }, data || {}));
         },
 
         init: function () {
@@ -64,8 +91,9 @@
             // Filters are lists now; a saved single value from before becomes one.
             const asList = (v) => (Array.isArray(v) ? v : (v ? [String(v)] : []));
             Object.keys(this.state.f || {}).forEach((k) => { this.state.f[k] = asList(this.state.f[k]); });
-            this.state.promo = asList(this.state.promo).filter((v) => ['active', 'upcoming', 'none'].includes(v));
-            this.state.on_site = asList(this.state.on_site).filter((v) => ['publish', 'other', 'none'].includes(v));
+            ['promo', 'on_site', 'check'].forEach((key) => {
+                this.state[key] = asList(this.state[key]).filter((v) => (this.fixed[key] || []).includes(v));
+            });
 
             // One pager above the table and one below, kept on the same page.
             this.pagers = this.$('.mmi-fc-pager').toArray().map((el) => window.MMIPagination.init({
@@ -97,7 +125,7 @@
             });
             this.initMultiselects();
             this.$('.mmi-fc-clear').on('click', () => {
-                Object.assign(this.state, { q: '', f: {}, promo: [], on_site: [], page: 1 });
+                Object.assign(this.state, { q: '', f: {}, promo: [], on_site: [], check: [], page: 1 });
                 this.$('.mmi-fc-q').val('');
                 this.syncControls();
                 this.load();
@@ -124,11 +152,11 @@
 
         // ── Multi-select filters (shared .mmi-multiselect markup) ──────────
         filterValues: function (key) {
-            return (key === 'promo' || key === 'on_site' ? this.state[key] : this.state.f[key]) || [];
+            return (key in this.fixed ? this.state[key] : this.state.f[key]) || [];
         },
 
         setFilterValues: function (key, values) {
-            if (key === 'promo' || key === 'on_site') {
+            if (key in this.fixed) {
                 this.state[key] = values;
             } else {
                 this.state.f[key] = values;
@@ -221,8 +249,8 @@
 
         remember: function () {
             try {
-                const { q, f, promo, on_site, sort, dir, per_page } = this.state;
-                localStorage.setItem(this.storageKey, JSON.stringify({ q, f, promo, on_site, sort, dir, per_page }));
+                const { q, f, promo, on_site, check, sort, dir, per_page } = this.state;
+                localStorage.setItem(this.storageKey, JSON.stringify({ q, f, promo, on_site, check, sort, dir, per_page }));
             } catch (e) { /* storage unavailable */ }
         },
 
@@ -245,7 +273,10 @@
                 this.renderRows(d.rows);
                 this.$('thead th').removeClass('is-active-asc is-active-desc sorted-asc sorted-desc');
                 this.$(`thead th[data-sort-key="${this.state.sort}"]`).addClass(this.state.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
-                this.$('.mmi-fc-count').text(`${d.total.toLocaleString()} of ${d.all.toLocaleString()} products`);
+                this.$('.mmi-fc-count').text(`${d.total.toLocaleString()} of ${d.all.toLocaleString()} ${this.cfg.view === 'promotions' ? 'promotions' : 'products'}`);
+                this.$('[data-fc-check-count]').each((i, el) => {
+                    el.textContent = (d.checks || {})[el.dataset.fcCheckCount] || 0;
+                });
                 this.syncingPager = true;
                 this.pagers.forEach((pager) => {
                     pager.setTotalPages(d.pages);
@@ -328,6 +359,35 @@
                     return r.site_id
                         ? `<span class="mmi-badge ${r.site_status === 'publish' ? 'success' : 'warning'}">${r.site_status === 'publish' ? 'Published' : esc(r.site_status)}</span>`
                         : '<span class="mmi-fc-muted">Not listed</span>';
+                // Promotions view.
+                case 'window': {
+                    // Running is the usual case; only an upcoming one is marked.
+                    const p = r.promo || {};
+                    const span = `${esc(shortDate(p.start) || 'now')} – ${esc(shortDate(p.end) || 'open')}`;
+                    const title = `${p.name ? `${p.name}: ` : ''}${p.start || 'now'} to ${p.end || 'open'}`;
+                    return `${p.state === 'upcoming' ? '<span class="mmi-badge info">Upcoming</span> ' : ''}<span title="${esc(title)}">${span}</span>`;
+                }
+                case 'promo_pair': {
+                    // promo_map / promo_cost: the regular price, then the promotional one.
+                    const field = col.key.replace('promo_', '');
+                    const p = r.promo || {};
+                    const regular = p[`regular_${field}`] ?? r[field];
+                    return `${money(regular, r.currency)} → <strong>${money(p[field], r.currency)}</strong>`;
+                }
+                case 'ours': {
+                    if (!r.site_id) {
+                        return '<span class="mmi-fc-muted">Not listed</span>';
+                    }
+                    const price = r.edit_url ? `<a href="${esc(r.edit_url)}" target="_blank" rel="noopener">${money(r.our_price)}</a>` : money(r.our_price);
+                    const status = r.site_status !== 'publish' ? ` <span class="mmi-badge warning">${esc(r.site_status)}</span>` : '';
+                    return `${price}${status}${r.in_stock ? '' : ' <span class="mmi-fc-sub">Out of stock</span>'}`;
+                }
+                case 'check': {
+                    const [tone, label, title] = CHECKS[r.check] || ['', '', ''];
+                    return r.check === 'none'
+                        ? `<span class="mmi-fc-muted" title="${esc(title)}">${label}</span>`
+                        : `<span class="mmi-badge ${tone}" title="${esc(title)}">${label}</span>`;
+                }
                 default:
                     // Full text on hover where a narrow column cuts it off.
                     return v === null || v === undefined || v === '' ? '—' : `<span title="${esc(v)}">${esc(v)}</span>`;
@@ -341,9 +401,10 @@
             }
             const cols = this.cfg.columns;
             this.$('.mmi-fc-tbody').html(rows.map((r) => {
-                const open = this.openSku === String(r.sku);
+                const key = rowKey(r);
+                const open = this.openSku === key;
                 const tds = cols.map((c) => `<td class="mmi-fc-td-${c.type}">${this.cell(c, r)}</td>`).join('');
-                return `<tr class="mmi-fc-row${open ? ' is-open' : ''}" data-sku="${esc(r.sku)}">${tds}</tr>${open ? this.detailRowHtml(r.sku) : ''}`;
+                return `<tr class="mmi-fc-row${open ? ' is-open' : ''}" data-sku="${esc(key)}">${tds}</tr>${open ? this.detailRowHtml(key) : ''}`;
             }).join(''));
             if (this.openSku && this.$('.mmi-fc-detail-row').length) {
                 this.loadDetail(this.openSku);
@@ -444,7 +505,7 @@
             } else if (s.blocked) {
                 state = `<span class="mmi-fc-error">${esc(s.blocked)}</span>`;
             } else {
-                state = s.next_at ? `Next automatic fetch ${esc(s.next_at)}.` : '';
+                state = s.next_at ? `Next automatic fetch ${esc(s.next_at)}.` : esc(s.note || '');
             }
             (s.extra || []).forEach((e) => {
                 state += ` <span class="mmi-fc-extra${e.busy ? ' is-busy' : ''}">${e.busy ? '<span class="mmi-fc-spinner" aria-hidden="true"></span>' : ''}${esc(e.text)}</span>`;

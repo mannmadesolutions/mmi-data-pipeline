@@ -4,7 +4,8 @@
  * feed-catalog.js fills it from the data-config JSON.
  *
  * @var MMI_Pipeline_Feed_Catalog $catalog
- * @var array                     $config
+ * @var array                     $config      view: catalog|promotions
+ * @var string                    $title
  * @var string                    $description
  * @package MannMade\DataPipeline
  */
@@ -16,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 <div class="mmi-process-section mmi-fc" data-config="<?php echo esc_attr( wp_json_encode( $config ) ); ?>">
     <div class="mmi-section-header">
         <div>
-            <h3 class="mmi-process-section-header"><span class="dashicons dashicons-products"></span> <?php echo esc_html( sprintf( __( '%s Catalog', 'mmi-data-pipeline' ), $catalog->label() ) ); ?></h3>
+            <h3 class="mmi-process-section-header"><span class="dashicons dashicons-<?php echo $config['view'] === 'promotions' ? 'tag' : 'products'; ?>"></span> <?php echo esc_html( $title ); ?></h3>
             <p class="mmi-process-section-description"><?php echo esc_html( $description ); ?></p>
         </div>
     </div>
@@ -25,7 +26,9 @@ if ( ! defined( 'ABSPATH' ) ) {
             <div class="mmi-fc-files"><span class="mmi-loading"></span></div>
             <div class="mmi-fc-fresh-actions">
                 <span class="mmi-fc-fetch-state"></span>
-                <button type="button" class="button button-primary mmi-fc-fetch" disabled><span class="dashicons dashicons-update"></span> <?php esc_html_e( 'Fetch now', 'mmi-data-pipeline' ); ?></button>
+                <?php if ( $config['fetch'] ) : ?>
+                    <button type="button" class="button button-primary mmi-fc-fetch" disabled><span class="dashicons dashicons-update"></span> <?php esc_html_e( 'Fetch now', 'mmi-data-pipeline' ); ?></button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -35,7 +38,10 @@ if ( ! defined( 'ABSPATH' ) ) {
         // the index, so feed-catalog.js fills each .mmi-fc-facet: pills for a
         // short list, a .mmi-multiselect for a long one. Every filter takes
         // several values.
-        $fixed = [
+        $fixed = $config['view'] === 'promotions' ? [
+            'promo' => [ __( 'Promotion', 'mmi-data-pipeline' ), [ 'active' => __( 'Running now', 'mmi-data-pipeline' ), 'upcoming' => __( 'Coming up', 'mmi-data-pipeline' ) ] ],
+            'check' => [ __( 'Check', 'mmi-data-pipeline' ), [ 'loss' => __( 'Below promo cost', 'mmi-data-pipeline' ), 'above_map' => __( 'Above promo MAP', 'mmi-data-pipeline' ), 'ok' => __( 'OK', 'mmi-data-pipeline' ), 'none' => __( 'Not listed or no price', 'mmi-data-pipeline' ) ] ],
+        ] : [
             'promo'   => [ __( 'Promotion', 'mmi-data-pipeline' ), [ 'active' => __( 'Running now', 'mmi-data-pipeline' ), 'upcoming' => __( 'Coming up', 'mmi-data-pipeline' ), 'none' => __( 'None', 'mmi-data-pipeline' ) ] ],
             'on_site' => [ __( 'Our site', 'mmi-data-pipeline' ), [ 'publish' => __( 'Published', 'mmi-data-pipeline' ), 'other' => __( 'Not published', 'mmi-data-pipeline' ), 'none' => __( 'Not listed', 'mmi-data-pipeline' ) ] ],
         ];
@@ -59,14 +65,14 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </div>
                 </div>
                 <div class="mmi-filter-section">
-                    <span class="mmi-filter-section-heading"><?php esc_html_e( 'Availability', 'mmi-data-pipeline' ); ?></span>
+                    <span class="mmi-filter-section-heading"><?php echo esc_html( $config['view'] === 'promotions' ? __( 'Promotion', 'mmi-data-pipeline' ) : __( 'Availability', 'mmi-data-pipeline' ) ); ?></span>
                     <div class="mmi-filter-section-body">
                         <?php foreach ( $fixed as $key => [ $label, $options ] ) : ?>
                             <div class="mmi-filter-group">
                                 <span class="mmi-filter-label"><?php echo esc_html( $label ); ?></span>
                                 <div class="mmi-filter-pills" data-filter="<?php echo esc_attr( $key ); ?>">
                                     <?php foreach ( $options as $value => $text ) : ?>
-                                        <button type="button" class="mmi-pill" data-value="<?php echo esc_attr( $value ); ?>" aria-pressed="false"><?php echo esc_html( $text ); ?></button>
+                                        <button type="button" class="mmi-pill" data-value="<?php echo esc_attr( $value ); ?>" aria-pressed="false"><?php echo esc_html( $text ); ?><?php if ( $key === 'check' ) : ?> <span class="mmi-pill-count" data-fc-check-count="<?php echo esc_attr( $value ); ?>"></span><?php endif; ?></button>
                                     <?php endforeach; ?>
                                 </div>
                             </div>
@@ -79,7 +85,7 @@ if ( ! defined( 'ABSPATH' ) ) {
         <div class="mmi-fc-pager mmi-fc-pager--top"></div>
         <div class="mmi-fc-table-wrap">
             <?php // "-pct" in the id: saved widths from the old pixel layout are dropped. ?>
-            <table class="mmi-fc-table" id="mmi-fc-<?php echo esc_attr( $catalog->id() ); ?>-table-pct" data-mmi-resizable>
+            <table class="mmi-fc-table" id="mmi-fc-<?php echo esc_attr( $catalog->id() . ( $config['view'] === 'promotions' ? '-promotions' : '' ) ); ?>-table-pct" data-mmi-resizable>
                 <thead>
                     <tr>
                         <?php foreach ( $config['columns'] as $col ) : ?>
@@ -88,7 +94,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </tr>
                 </thead>
                 <tbody class="mmi-fc-tbody">
-                    <tr><td colspan="<?php echo (int) count( $config['columns'] ); ?>" class="mmi-fc-empty"><span class="mmi-loading"></span> <?php esc_html_e( 'Loading the catalog…', 'mmi-data-pipeline' ); ?></td></tr>
+                    <tr><td colspan="<?php echo (int) count( $config['columns'] ); ?>" class="mmi-fc-empty"><span class="mmi-loading"></span> <?php echo esc_html( $config['view'] === 'promotions' ? __( 'Loading promotions…', 'mmi-data-pipeline' ) : __( 'Loading the catalog…', 'mmi-data-pipeline' ) ); ?></td></tr>
                 </tbody>
             </table>
         </div>

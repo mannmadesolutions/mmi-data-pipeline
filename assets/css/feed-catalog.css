@@ -182,6 +182,16 @@
 .mmi-fc-col-date    { width: 7%; }
 .mmi-fc-col-promo   { width: 8%; }
 .mmi-fc-col-site    { width: 8%; }
+/* Promotions view. */
+.mmi-fc-col-window     { width: 11%; }
+.mmi-fc-col-promo_pair { width: 11%; }
+.mmi-fc-col-ours       { width: 8%; }
+.mmi-fc-col-check      { width: 9%; }
+.mmi-fc-td-promo_pair,
+.mmi-fc-td-ours {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
 .mmi-fc-td-money {
     text-align: right;
     font-variant-numeric: tabular-nums;

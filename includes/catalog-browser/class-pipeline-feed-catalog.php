@@ -19,6 +19,11 @@
  *   - one set of AJAX actions (mmi_feed_catalog_*), dispatched by `source`.
  * The page itself: feed-catalog-tab.php + assets/js/feed-catalog.js.
  *
+ * Two views of the same rows (VIEWS): the whole catalog, and the products
+ * with a running or upcoming promotion next to our own price, checked for
+ * selling below the promo cost or above the promo MAP. Several catalogs can
+ * be browsed as one through MMI_Pipeline_Feed_Catalog_Group.
+ *
  * @package MannMade\DataPipeline
  */
 
@@ -32,6 +37,9 @@ abstract class MMI_Pipeline_Feed_Catalog {
     const SHARDS   = 32;
     /** The table grows to fit the page size (no inner scroll), so 500 is one long page. */
     const PER_PAGE = [ 25, 50, 100, 250, 500 ];
+    const VIEWS    = [ 'catalog', 'promotions' ];
+    /** Promotions view: our price against the promotion, worst first when sorted. */
+    const CHECKS   = [ 'loss' => 0, 'above_map' => 1, 'ok' => 2, 'none' => 3 ];
 
     /** @var array<string,MMI_Pipeline_Feed_Catalog> */
     private static $registry = [];
@@ -121,8 +129,54 @@ abstract class MMI_Pipeline_Feed_Catalog {
         return true;
     }
 
+    /** The row key holding the brand (SkuPort's feed calls it `developer`). */
+    protected function brand_key(): string {
+        return 'brand';
+    }
+
+    /** Whether the page offers "Fetch now" (a group leaves it to each catalog). */
+    protected function fetchable(): bool {
+        return true;
+    }
+
+    /**
+     * Promotions view columns: the catalog's SKU, product and brand columns,
+     * then the promotion against our price.
+     */
+    protected function promotion_columns(): array {
+        $keep = [];
+        foreach ( $this->columns() as $col ) {
+            if ( in_array( $col[2], [ 'sku', 'product' ], true ) || $col[0] === $this->brand_key() || $col[0] === 'source' ) {
+                $keep[] = $col;
+            }
+        }
+        return array_merge( $keep, [
+            [ 'promo_end', __( 'Window', 'mmi-data-pipeline' ), 'window', __( 'When the promotion runs. Sorted by its end date.', 'mmi-data-pipeline' ) ],
+            [ 'promo_map', __( 'MAP', 'mmi-data-pipeline' ), 'promo_pair', __( 'Regular MAP → promo MAP. Selling above the promo MAP misses the promotion.', 'mmi-data-pipeline' ) ],
+            [ 'promo_cost', __( 'Cost', 'mmi-data-pipeline' ), 'promo_pair', __( 'Our regular cost → our promo cost.', 'mmi-data-pipeline' ) ],
+            [ 'our_price', __( 'Our price', 'mmi-data-pipeline' ), 'ours', __( 'Our listing\'s current price.', 'mmi-data-pipeline' ) ],
+            [ 'check', __( 'Check', 'mmi-data-pipeline' ), 'check', __( 'Our price against the promotion.', 'mmi-data-pipeline' ) ],
+        ] );
+    }
+
+    /** The section title. */
+    protected function title( string $view = 'catalog' ): string {
+        return $view === 'promotions'
+            /* translators: %s: supplier name */
+            ? sprintf( __( '%s Promotions', 'mmi-data-pipeline' ), $this->label() )
+            /* translators: %s: supplier name */
+            : sprintf( __( '%s Catalog', 'mmi-data-pipeline' ), $this->label() );
+    }
+
     /** One sentence under the section title. */
-    protected function description(): string {
+    protected function description( string $view = 'catalog' ): string {
+        if ( $view === 'promotions' ) {
+            return sprintf(
+                /* translators: %s: supplier name */
+                __( 'Every product with a %s promotion running now or coming up, next to our own price. Below promo cost means we\'d sell at a loss; above promo MAP means the promotion is being missed. Read-only: pricing imports set our prices.', 'mmi-data-pipeline' ),
+                $this->label()
+            );
+        }
         return sprintf(
             /* translators: %s: supplier name */
             __( 'Every product in %s\'s feed as of the last fetch. Browsing reads the saved feed files, so it uses no API requests; "Fetch now" queues the same rate-limited fetch the schedule runs.', 'mmi-data-pipeline' ),
@@ -190,10 +244,12 @@ abstract class MMI_Pipeline_Feed_Catalog {
         }
         try {
             wp_send_json_success( $catalog->query( [
+                'view'     => in_array( $in['view'] ?? '', self::VIEWS, true ) ? $in['view'] : 'catalog',
                 'q'        => sanitize_text_field( $in['q'] ?? '' ),
                 'filters'  => $filters,
                 'promo'    => array_intersect( $list( $in['promo'] ?? [] ), [ 'active', 'upcoming', 'none' ] ),
                 'on_site'  => array_intersect( $list( $in['on_site'] ?? [] ), [ 'publish', 'other', 'none' ] ),
+                'check'    => array_intersect( $list( $in['check'] ?? [] ), array_keys( self::CHECKS ) ),
                 'sort'     => sanitize_key( $in['sort'] ?? 'product' ),
                 'dir'      => ( $in['dir'] ?? '' ) === 'desc' ? 'desc' : 'asc',
                 'page'     => max( 1, absint( $in['page'] ?? 1 ) ),
@@ -521,11 +577,12 @@ abstract class MMI_Pipeline_Feed_Catalog {
     /* ── Query ───────────────────────────────────────────────────────────── */
 
     /**
-     * SKU → our WooCommerce listing { id, status, thumb (attachment id) },
-     * one query, cached 5 minutes.
+     * SKU → our WooCommerce listing { id (the product, a variation's
+     * parent), post (the product or variation itself), status, thumb
+     * (attachment id) }, one query, cached 5 minutes.
      */
-    private function site_products(): array {
-        $key = 'mmi_feed_catalog_site_' . $this->id();
+    protected function site_products(): array {
+        $key = 'mmi_feed_catalog_site2_' . $this->id();
         $map = get_transient( $key );
         if ( is_array( $map ) ) {
             return $map;
@@ -546,26 +603,23 @@ abstract class MMI_Pipeline_Feed_Catalog {
         $map = [];
         foreach ( $rows as $row ) {
             if ( ! isset( $map[ $row['sku'] ] ) || ( $row['status'] === 'publish' && $map[ $row['sku'] ]['status'] !== 'publish' ) ) {
-                $map[ $row['sku'] ] = [ 'id' => (int) ( $row['parent'] ?: $row['id'] ), 'status' => (string) $row['status'], 'thumb' => (int) $row['thumb'] ];
+                $map[ $row['sku'] ] = [ 'id' => (int) ( $row['parent'] ?: $row['id'] ), 'post' => (int) $row['id'], 'status' => (string) $row['status'], 'thumb' => (int) $row['thumb'] ];
             }
         }
         set_transient( $key, $map, 5 * MINUTE_IN_SECONDS );
         return $map;
     }
 
-    public function query( array $args ): array {
-        $index = $this->index();
+    /**
+     * Every row of a view, before search and filters: today's promotion
+     * state and our listing added. The promotions view keeps only rows
+     * with a running or upcoming promotion and adds our price and Check.
+     */
+    public function rows( string $view = 'catalog' ): array {
         $site  = $this->site_products();
-        $q     = strtolower( trim( $args['q'] ) );
-        $keys  = $this->search_keys();
-
-        $rows = [];
-        foreach ( $index['rows'] ?? [] as $row ) {
-            foreach ( $args['filters'] as $key => $values ) {
-                if ( $values && ! in_array( (string) ( $row[ $key ] ?? '' ), $values, true ) ) {
-                    continue 2;
-                }
-            }
+        $thumb = $this->site_thumbs();
+        $rows  = [];
+        foreach ( $this->index()['rows'] ?? [] as $row ) {
             // The index is built once per fetch; a promotion may have
             // started or ended since.
             if ( ! empty( $row['promo'] ) ) {
@@ -574,34 +628,114 @@ abstract class MMI_Pipeline_Feed_Catalog {
                     $row['promo'] = null;
                 }
             }
-            if ( $args['promo'] && ! in_array( $row['promo']['state'] ?? 'none', $args['promo'], true ) ) {
+            if ( $view === 'promotions' && empty( $row['promo'] ) ) {
                 continue;
             }
-            $listing = $site[ (string) $row['sku'] ] ?? null;
-            $listed  = $listing ? ( $listing['status'] === 'publish' ? 'publish' : 'other' ) : 'none';
-            if ( $args['on_site'] && ! in_array( $listed, $args['on_site'], true ) ) {
-                continue;
-            }
-            if ( $q !== '' ) {
-                $hay = '';
-                foreach ( $keys as $key ) {
-                    $hay .= ' ' . ( $row[ $key ] ?? '' );
-                }
-                if ( strpos( strtolower( $hay ), $q ) === false ) {
-                    continue;
-                }
-            }
+            $listing            = $site[ (string) $row['sku'] ] ?? null;
             $row['promo_price'] = $row['promo']['price'] ?? null;
             $row['on_site']     = $listing ? ( $listing['status'] === 'publish' ? 2 : 1 ) : 0;
             $row['site_id']     = $listing['id'] ?? 0;
+            $row['site_post']   = $listing['post'] ?? ( $listing['id'] ?? 0 );
             $row['site_status'] = $listing['status'] ?? '';
-            $row['site_thumb']  = $listing['thumb'] ?? 0;
+            $row['site_thumb']  = $thumb ? ( $listing['thumb'] ?? 0 ) : 0;
             $rows[] = $row;
         }
+        return $view === 'promotions' ? self::with_our_prices( $rows ) : $rows;
+    }
 
-        $sortable = array_merge( [ 'sku', 'product', 'promo_price', 'on_site' ], array_column( $this->columns(), 0 ) );
+    /**
+     * Our price and stock for promotion rows (two meta keys, one query) and
+     * the Check: below the promo cost is a loss; above the promo MAP while
+     * it runs misses the promotion.
+     */
+    private static function with_our_prices( array $rows ): array {
+        global $wpdb;
+        $ids  = array_values( array_unique( array_filter( array_map( 'intval', array_column( $rows, 'site_post' ) ) ) ) );
+        $meta = [];
+        foreach ( array_chunk( $ids, 500 ) as $chunk ) {
+            $in = implode( ',', $chunk );
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- integers only
+            foreach ( $wpdb->get_results( "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ({$in}) AND meta_key IN ('_price','_stock_status')", ARRAY_A ) as $m ) {
+                $meta[ (int) $m['post_id'] ][ $m['meta_key'] ] ??= (string) $m['meta_value'];
+            }
+        }
+        foreach ( $rows as &$row ) {
+            $own   = $meta[ (int) $row['site_post'] ] ?? [];
+            $price = isset( $own['_price'] ) && $own['_price'] !== '' && (float) $own['_price'] > 0 ? round( (float) $own['_price'], 2 ) : null;
+            $cost  = $row['promo']['cost'] ?? null;
+            $map   = $row['promo']['map'] ?? null;
+            if ( ! $row['site_id'] || $price === null ) {
+                $check = 'none';
+            } elseif ( $cost !== null && $price < $cost ) {
+                $check = 'loss';
+            } elseif ( $row['promo']['state'] === 'active' && $map !== null && $price > $map + 0.009 ) {
+                $check = 'above_map';
+            } else {
+                $check = 'ok';
+            }
+            $row['our_price']  = $price;
+            $row['in_stock']   = ( $own['_stock_status'] ?? '' ) === 'instock';
+            $row['promo_end']  = (string) ( $row['promo']['end'] ?? '' );
+            $row['promo_map']  = $map;
+            $row['promo_cost'] = $cost;
+            $row['check']      = $check;
+            $row['check_rank'] = self::CHECKS[ $check ];
+        }
+        unset( $row );
+        return $rows;
+    }
+
+    /** Row keys the search box reads. */
+    protected function haystack_keys(): array {
+        return $this->search_keys();
+    }
+
+    /** Whether a row passes the search box and every filter. */
+    protected function matches( array $row, array $args ): bool {
+        foreach ( $args['filters'] as $key => $values ) {
+            if ( $values && ! in_array( (string) ( $row[ $key ] ?? '' ), $values, true ) ) {
+                return false;
+            }
+        }
+        if ( $args['promo'] && ! in_array( $row['promo']['state'] ?? 'none', $args['promo'], true ) ) {
+            return false;
+        }
+        $listed = $row['on_site'] === 2 ? 'publish' : ( $row['on_site'] === 1 ? 'other' : 'none' );
+        if ( $args['on_site'] && ! in_array( $listed, $args['on_site'], true ) ) {
+            return false;
+        }
+        if ( ! empty( $args['check'] ) && ! in_array( $row['check'] ?? '', $args['check'], true ) ) {
+            return false;
+        }
+        $q = strtolower( trim( $args['q'] ) );
+        if ( $q !== '' ) {
+            $hay = '';
+            foreach ( $args['hay'] ?? $this->haystack_keys() as $key ) {
+                $hay .= ' ' . ( $row[ $key ] ?? '' );
+            }
+            if ( strpos( strtolower( $hay ), $q ) === false ) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Filter values for the facet dropdowns. */
+    protected function facet_values(): array {
+        return $this->index()['facets'] ?? [];
+    }
+
+    public function query( array $args ): array {
+        $args += [ 'view' => 'catalog', 'check' => [] ];
+        $args['hay'] = $this->haystack_keys();
+        $view  = $args['view'];
+        $all   = $this->rows( $view );
+        $rows  = array_values( array_filter( $all, fn( $row ) => $this->matches( $row, $args ) ) );
+
+        $columns  = $view === 'promotions' ? $this->promotion_columns() : $this->columns();
+        $sortable = array_merge( [ 'sku', 'product', 'promo_price', 'on_site' ], array_column( $columns, 0 ) );
         $sort     = in_array( $args['sort'], $sortable, true ) ? $args['sort'] : 'product';
-        $sort     = $sort === 'promo' ? 'promo_price' : ( $sort === 'site' ? 'on_site' : $sort );
+        $sort     = [ 'promo' => 'promo_price', 'site' => 'on_site', 'check' => 'check_rank' ][ $sort ] ?? $sort;
         $dir      = $args['dir'] === 'desc' ? -1 : 1;
         usort( $rows, static function ( $a, $b ) use ( $sort, $dir ) {
             $av = $a[ $sort ] ?? null;
@@ -624,28 +758,35 @@ abstract class MMI_Pipeline_Feed_Catalog {
 
         // Thumbnails only for the rows on screen, their attachments primed
         // in one query rather than one lookup per row.
-        if ( $this->site_thumbs() ) {
-            $thumb_ids = array_filter( array_map( static fn( $r ) => empty( $r['image'] ) ? (int) $r['site_thumb'] : 0, $slice ) );
-            if ( $thumb_ids ) {
-                _prime_post_caches( array_values( array_unique( $thumb_ids ) ), false, true );
-            }
+        $thumb_ids = array_filter( array_map( static fn( $r ) => empty( $r['image'] ) ? (int) $r['site_thumb'] : 0, $slice ) );
+        if ( $thumb_ids ) {
+            _prime_post_caches( array_values( array_unique( $thumb_ids ) ), false, true );
         }
         foreach ( $slice as &$row ) {
-            if ( empty( $row['image'] ) && $row['site_thumb'] && $this->site_thumbs() ) {
+            if ( empty( $row['image'] ) && $row['site_thumb'] ) {
                 $row['image'] = (string) wp_get_attachment_image_url( $row['site_thumb'], 'thumbnail' );
             }
-            unset( $row['site_thumb'] );
+            if ( $row['site_id'] ) {
+                $row['edit_url'] = (string) get_edit_post_link( $row['site_id'], 'raw' );
+            }
+            unset( $row['site_thumb'], $row['site_post'] );
         }
         unset( $row );
+
+        $checks = [];
+        if ( $view === 'promotions' ) {
+            $checks = array_count_values( array_column( $all, 'check' ) );
+        }
 
         return [
             'rows'     => $slice,
             'total'    => $total,
-            'all'      => count( $index['rows'] ?? [] ),
+            'all'      => count( $all ),
+            'checks'   => $checks,
             'page'     => $page,
             'pages'    => $pages,
             'per_page' => $per_page,
-            'facets'   => $index['facets'] ?? [],
+            'facets'   => $this->facet_values(),
             'status'   => $this->status(),
         ];
     }
@@ -730,20 +871,27 @@ abstract class MMI_Pipeline_Feed_Catalog {
 
     /* ── Page ────────────────────────────────────────────────────────────── */
 
-    /** Prints the tab: the section shell the script fills (feed-catalog-tab.php). */
-    public function render(): void {
+    /**
+     * Prints the tab: the section shell the script fills (feed-catalog-tab.php).
+     * $view: 'catalog' (every product) or 'promotions'.
+     */
+    public function render( string $view = 'catalog' ): void {
+        $view   = in_array( $view, self::VIEWS, true ) ? $view : 'catalog';
         $config = [
             'source'   => $this->id(),
             'label'    => $this->label(),
+            'view'     => $view,
             'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( self::NONCE ),
-            'columns'  => array_map( static fn( $c ) => [ 'key' => $c[0], 'label' => $c[1], 'type' => $c[2], 'title' => $c[3] ?? '' ], $this->columns() ),
+            'columns'  => array_map( static fn( $c ) => [ 'key' => $c[0], 'label' => $c[1], 'type' => $c[2], 'title' => $c[3] ?? '' ], $view === 'promotions' ? $this->promotion_columns() : $this->columns() ),
             'facets'   => $this->facets(),
             'cooldown' => $this->cooldown_seconds(),
+            'fetch'    => $this->fetchable(),
             'perPage'  => self::PER_PAGE,
         ];
         $catalog     = $this;
-        $description = $this->description();
+        $title       = $this->title( $view );
+        $description = $this->description( $view );
         require __DIR__ . '/feed-catalog-tab.php';
     }
 }
