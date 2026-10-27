@@ -5743,6 +5743,56 @@ button.mmi-cbd-chip.is-active {
     }
 }
 
+/* ── Group box (.mmi-group; shared lib 1.46.42, 2026-10-27) ─────────────────
+   A labelled box around controls that work together (owner 2026-10-27: "borders
+   around groupings of pills/filters, elements grouping labels"), first on One
+   page's Product pages:
+     <fieldset class="mmi-group [mmi-group--active]"><legend>Narrow the list</legend>
+       <div class="mmi-group-body"> pills, buttons, .mmi-group-field … </div>
+     </fieldset>
+   .mmi-group--active: the group acts on a selection ("2 selected"), so its
+   legend says how many and its buttons need no counts of their own.
+   .mmi-group-field: a control with its label above it ("Read result"). */
+.mmi-group {
+  margin: 0;
+  padding: 4px 12px 10px;
+  min-width: 0;
+  border: 1px solid var(--mmi-group-border, #dcdcde);
+  border-radius: 8px;
+}
+.mmi-group > legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mmi-gray-700, #50575e);
+}
+.mmi-group-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 18px;
+}
+.mmi-group--active {
+  border-color: var(--mmi-primary, #45852C);
+  background: var(--mmi-primary-lightest, #f0f6ed);
+}
+.mmi-group--active > legend {
+  font-weight: 700;
+  color: var(--mmi-primary-dark, #3a6f24);
+}
+.mmi-group-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--mmi-gray-700, #50575e);
+}
+.mmi-group-field:is([hidden]) {
+  display: none;
+}
+
 /* ── Status bar (.mmi-statusbar; shared lib 1.44.0, 2026-10-03) ─────────────
    A live progress line for background work: spinner, message, count, actions
    (Stop / Abort / a link), and a progress track along the bottom edge.
