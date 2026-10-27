@@ -5837,17 +5837,19 @@ button.mmi-cbd-chip.is-active {
 .mmi-statusbar.is-waiting .mmi-statusbar-fill {
   opacity: 0.45;
 }
+/* Done is quieter than work in progress (shared lib 1.46.40): no shadow and no
+   track, since a full track only repeats the left edge's green. */
 .mmi-statusbar.is-complete {
   border-left-color: var(--mmi-success, #45852C);
+  box-shadow: none;
 }
 .mmi-statusbar.is-complete .mmi-statusbar-spinner {
   animation: none;
   border-color: var(--mmi-success, #45852C);
   background: var(--mmi-success, #45852C);
 }
-.mmi-statusbar.is-complete .mmi-statusbar-fill {
-  width: 100% !important;
-  background: var(--mmi-success, #45852C);
+.mmi-statusbar.is-complete .mmi-statusbar-track {
+  display: none;
 }
 .mmi-statusbar.is-error {
   border-left-color: var(--mmi-error, #d63638);
