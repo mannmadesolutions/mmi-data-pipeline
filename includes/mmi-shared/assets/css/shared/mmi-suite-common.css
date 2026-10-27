@@ -2820,10 +2820,15 @@ div.wrap div.mmi-header p,
 .mmi-page th.sortable {
     cursor: pointer;
     user-select: none;
-    position: relative;
     white-space: nowrap;
     padding-right: 24px; /* room for the sort arrow */
     transition: background 0.15s ease;
+}
+
+/* Positioned for the sort arrow below; at :where() weight, so a table's own sticky heading rule wins (shared lib
+   1.46.41: One page's Product pages heading kept only its tick-box cell sticky, the sortable one scrolled away). */
+.mmi-page :where(th.sortable) {
+    position: relative;
 }
 
 .mmi-page th.sortable:hover {
