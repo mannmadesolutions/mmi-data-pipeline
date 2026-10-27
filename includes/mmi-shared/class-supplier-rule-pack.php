@@ -50,13 +50,14 @@ if ( ! class_exists( 'MMI_Supplier_Rule_Pack', false ) && interface_exists( 'MMI
 			return array();
 		}
 
+		/** The old per-supplier plugin slug: stored rule dismissals key on it. */
 		public function get_id(): string {
 			return 'mmi-' . $this->supplier_id() . '-integration';
 		}
 
 		public function get_label(): string {
-			/* translators: 1: supplier name, 2: plugin slug */
-			return sprintf( __( '%1$s Fulfillment (%2$s)', 'mmi-shared' ), $this->supplier_label(), $this->get_id() );
+			/* translators: %s: supplier name */
+			return sprintf( __( '%s Fulfillment (MMI Distributors)', 'mmi-shared' ), $this->supplier_label() );
 		}
 
 		public function get_rules(): array {

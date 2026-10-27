@@ -2,11 +2,11 @@
 /**
  * MMI_Supplier_Admin
  *
- * The admin page every software-distributor integration shares (XChange,
- * SkuPort, Plugivery): one MannMade submenu page with tabs, the suite page
+ * The admin page every mmi-distributors module shares (XChange, SkuPort,
+ * Plugivery): one MannMade submenu page with tabs, the suite page
  * shell, section headers, the Catalog tab (mmi-data-pipeline's shared feed
  * catalog) and a Logs tab over the supplier's MMI_Logger category. Each
- * plugin's admin class extends this and supplies only what differs: its
+ * module's admin class extends this and supplies only what differs: its
  * tabs, header controls, assets and AJAX actions.
  *
  * Static, with late static binding: subclasses set the constants below and
@@ -66,6 +66,16 @@ if ( ! class_exists( 'MMI_Supplier_Admin', false ) ) {
 		/** Dashicon name for the page title. */
 		protected static function icon(): string {
 			return 'cart';
+		}
+
+		/** Slug of the plugin that ships this page: its audit-log source. */
+		public static function plugin_slug(): string {
+			return 'mmi-distributors';
+		}
+
+		/** Key this page's "Works with" strip looks up in cross-plugin-features.php. */
+		protected static function works_with_key(): string {
+			return static::plugin_slug() . ':' . static::supplier_id();
 		}
 
 		/** MMI_Logger category the Logs tab reads. */
@@ -167,7 +177,7 @@ if ( ! class_exists( 'MMI_Supplier_Admin', false ) ) {
 					<?php
 					// What sibling MMI plugins add here, locked chips for any not installed.
 					if ( class_exists( 'MMI_Feature_Gate' ) && method_exists( 'MMI_Feature_Gate', 'render_works_with' ) ) {
-						MMI_Feature_Gate::render_works_with( 'mmi-' . $id . '-integration' );
+						MMI_Feature_Gate::render_works_with( static::works_with_key() );
 					}
 					?>
 					<?php if ( $alerts !== null ) : ?>
@@ -320,7 +330,7 @@ if ( ! class_exists( 'MMI_Supplier_Admin', false ) ) {
 			check_ajax_referer( static::NONCE_ACTION, 'nonce' );
 			if ( ! static::user_can() ) {
 				if ( class_exists( 'MMI_Audit_Log' ) ) {
-					MMI_Audit_Log::record( 'mmi-' . static::supplier_id() . '-integration', 'ajax.denied', array(
+					MMI_Audit_Log::record( static::plugin_slug(), 'ajax.denied', array(
 						'outcome' => 'denied',
 						'details' => array( 'ajax_action' => sanitize_key( wp_unslash( $_REQUEST['action'] ?? '' ) ) ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 					) );

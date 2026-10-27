@@ -9,7 +9,9 @@
  *
  * Keys:
  *   provider   Slug of the plugin that must be active for the feature to work.
- *   consumers  Slugs of the plugins whose screens show it.
+ *   consumers  Slugs of the plugins whose screens show it, or
+ *              '<slug>:<module>' for one module's screens (mmi-distributors
+ *              has one page per distributor: 'mmi-distributors:xchange').
  *   title      Short name, shown on the tooltip's first line.
  *   pitch      One sentence, what the customer gets. Plain words, no hype.
  *   kind       'ui' (something on screen is greyed) or 'background' (no screen
@@ -31,7 +33,7 @@ return array(
 	/* ── Provider: mmi-reverb-integration ────── */
 	'reverb.order_source'   => array(
 		'provider'  => 'mmi-reverb-integration',
-		'consumers' => array( 'mmi-xchange-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange' ),
 		'title'     => 'Reverb orders',
 		'pitch'     => 'Marks every order that came from Reverb and links straight to it on Reverb.',
 		'kind'      => 'ui',
@@ -39,7 +41,7 @@ return array(
 	),
 	'reverb.closeout'       => array(
 		'provider'  => 'mmi-reverb-integration',
-		'consumers' => array( 'mmi-xchange-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange' ),
 		'title'     => 'Reverb close-out',
 		'pitch'     => 'After the license email goes out, messages the buyer on Reverb and marks the order shipped.',
 		'kind'      => 'ui',
@@ -47,7 +49,7 @@ return array(
 	),
 	'reverb.email_request'  => array(
 		'provider'  => 'mmi-reverb-integration',
-		'consumers' => array( 'mmi-xchange-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange' ),
 		'title'     => 'Ask Reverb buyers for their email',
 		'pitch'     => 'Asks a Reverb buyer for their real email address through Reverb messages, so the license reaches them.',
 		'kind'      => 'ui',
@@ -55,7 +57,7 @@ return array(
 	),
 	'reverb.order_fees'     => array(
 		'provider'  => 'mmi-reverb-integration',
-		'consumers' => array( 'mmi-xchange-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange' ),
 		'title'     => 'Reverb fees in margins',
 		'pitch'     => 'Takes Reverb\'s selling and payment fees out of each order, so the margin shown is the real payout.',
 		'kind'      => 'ui',
@@ -63,7 +65,7 @@ return array(
 	),
 	'reverb.buyer_grouping' => array(
 		'provider'  => 'mmi-reverb-integration',
-		'consumers' => array( 'mmi-xchange-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange' ),
 		'title'     => 'One buyer, one delivery',
 		'pitch'     => 'Groups a Reverb buyer\'s separate orders so they are fulfilled together with one email.',
 		'kind'      => 'background',
@@ -71,7 +73,7 @@ return array(
 	),
 	'reverb.cogs_backfill'  => array(
 		'provider'  => 'mmi-reverb-integration',
-		'consumers' => array( 'mmi-xchange-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange' ),
 		'title'     => 'Costs on Reverb orders',
 		'pitch'     => 'Writes XChange purchase costs onto past Reverb orders, for real profit per sale.',
 		'kind'      => 'ui',
@@ -94,9 +96,9 @@ return array(
 		'status'    => 'live',
 	),
 
-	/* ── Provider: mmi-xchange-integration ────── */
+	/* ── Provider: mmi-distributors (XChange module) ────── */
 	'xchange.listing_margin'   => array(
-		'provider'  => 'mmi-xchange-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-reverb-integration' ),
 		'title'     => 'Cost and margin per listing',
 		'pitch'     => 'Shows each Reverb listing\'s XChange cost, profit and margin on the Products tab.',
@@ -104,7 +106,7 @@ return array(
 		'status'    => 'live',
 	),
 	'xchange.software_delivery' => array(
-		'provider'  => 'mmi-xchange-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-reverb-integration' ),
 		'title'     => 'One-click software delivery',
 		'pitch'     => 'Buys the license from XChange, emails it to the buyer and closes the Reverb order in one click.',
@@ -112,7 +114,7 @@ return array(
 		'status'    => 'live',
 	),
 	'xchange.auto_cogs'        => array(
-		'provider'  => 'mmi-xchange-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-reverb-integration' ),
 		'title'     => 'Automatic order costs',
 		'pitch'     => 'Records the XChange cost on every Reverb order as it is imported.',
@@ -120,7 +122,7 @@ return array(
 		'status'    => 'live',
 	),
 	'xchange.web_assets'       => array(
-		'provider'  => 'mmi-xchange-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-data-pipeline' ),
 		'title'     => 'XChange web assets',
 		'pitch'     => 'Adds XChange\'s product images, long descriptions and system requirements to your imports.',
@@ -128,7 +130,7 @@ return array(
 		'status'    => 'live',
 	),
 	'xchange.field_presets'    => array(
-		'provider'  => 'mmi-xchange-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-data-pipeline' ),
 		'title'     => 'XChange import presets',
 		'pitch'     => 'Three ready-made Field Mapping presets for XChange products, prices and stock.',
@@ -136,10 +138,10 @@ return array(
 		'status'    => 'live',
 	),
 	'xchange.credentials'      => array(
-		'provider'  => 'mmi-xchange-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-data-pipeline' ),
 		'title'     => 'One set of XChange credentials',
-		'pitch'     => 'Feed fetches use the credentials saved in MMI Xchange, so they are entered once.',
+		'pitch'     => 'Feed fetches use the credentials saved in MMI Distributors, so they are entered once.',
 		'kind'      => 'background',
 		'status'    => 'live',
 	),
@@ -155,7 +157,7 @@ return array(
 	),
 	'pipeline.catalog'       => array(
 		'provider'  => 'mmi-data-pipeline',
-		'consumers' => array( 'mmi-xchange-integration', 'mmi-skuport-integration', 'mmi-plugivery-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange', 'mmi-distributors:skuport', 'mmi-distributors:plugivery' ),
 		'title'     => 'Supplier catalog browser',
 		'pitch'     => 'Fetches the supplier\'s full catalog on a schedule and lets you browse, filter and compare it here.',
 		'kind'      => 'ui',
@@ -163,7 +165,7 @@ return array(
 	),
 	'pipeline.feed_counts'   => array(
 		'provider'  => 'mmi-data-pipeline',
-		'consumers' => array( 'mmi-xchange-integration', 'mmi-plugivery-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange', 'mmi-distributors:plugivery' ),
 		'title'     => 'Catalog counts and read quota',
 		'pitch'     => 'Shows how many products and images each vendor has in the feed, and how much of the API quota is left.',
 		'kind'      => 'ui',
@@ -189,7 +191,7 @@ return array(
 	/* ── Provider: mmi-data-health ────── */
 	'health.score' => array(
 		'provider'  => 'mmi-data-health',
-		'consumers' => array( 'mmi-reverb-integration', 'mmi-xchange-integration', 'mmi-skuport-integration', 'mmi-plugivery-integration', 'mmi-seo' ),
+		'consumers' => array( 'mmi-reverb-integration', 'mmi-distributors:xchange', 'mmi-distributors:skuport', 'mmi-distributors:plugivery', 'mmi-seo' ),
 		'title'     => 'Data Health score',
 		'pitch'     => 'Scores every product\'s data and lists exactly what to fix, using checks from each of your MMI plugins.',
 		'kind'      => 'ui',
@@ -255,7 +257,7 @@ return array(
 	),
 	'pipeline.supplier_promotions' => array(
 		'provider'  => 'mmi-data-pipeline',
-		'consumers' => array( 'mmi-xchange-integration', 'mmi-skuport-integration', 'mmi-plugivery-integration' ),
+		'consumers' => array( 'mmi-distributors:xchange', 'mmi-distributors:skuport', 'mmi-distributors:plugivery' ),
 		'title'     => 'Promotions vs. your price',
 		'pitch'     => 'Compares each supplier promotion with your current price in the catalog browser.',
 		'kind'      => 'ui',
@@ -263,14 +265,14 @@ return array(
 	),
 	'pipeline.plugivery_stock' => array(
 		'provider'  => 'mmi-data-pipeline',
-		'consumers' => array( 'mmi-plugivery-integration' ),
+		'consumers' => array( 'mmi-distributors:plugivery' ),
 		'title'     => 'Plugivery stock sync',
 		'pitch'     => 'Keeps product stock in step with the Plugivery feed.',
 		'kind'      => 'background',
 		'status'    => 'planned',
 	),
 	'pipeline.supplier_presets' => array(
-		'provider'  => 'mmi-skuport-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-data-pipeline' ),
 		'title'     => 'SkuPort and Plugivery import presets',
 		'pitch'     => 'Ready-made Field Mapping presets for SkuPort and Plugivery feeds.',
@@ -278,7 +280,7 @@ return array(
 		'status'    => 'planned',
 	),
 	'plugivery.fulfillment'    => array(
-		'provider'  => 'mmi-plugivery-integration',
+		'provider'  => 'mmi-distributors',
 		'consumers' => array( 'mmi-reverb-integration' ),
 		'title'     => 'Plugivery software delivery',
 		'pitch'     => 'Buys licenses from Plugivery and delivers them, like XChange and SkuPort.',

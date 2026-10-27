@@ -196,7 +196,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.42';
+$mmi_shared_lib_this_copy_version = '1.46.43';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -1352,7 +1352,10 @@ if ( ! function_exists( 'mmi_shared_menu_dashboard_plugin_info_for_slug' ) ) {
 			'mmi-data-pipeline'    => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-data-pipeline/mmi-data-pipeline.php' ),
 			'mmi-contracts'        => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-contracts/mmi-contracts.php' ),
 			'mmi-accounting'       => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-accounting/mmi-accounting.php' ),
-			'mmi-xchange'          => array( 'group' => 'Integrations', 'file' => 'mmi-xchange-integration/mmi-xchange-integration.php' ),
+			'mmi-distributors'     => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),
+			'mmi-xchange'          => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),
+			'mmi-skuport'          => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),
+			'mmi-plugivery'        => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),
 			'mmi-google-services'  => array( 'group' => 'Integrations', 'file' => 'mmi-google-services/mmi-google-services.php' ),
 			'mmi-cloudflare'       => array( 'group' => 'Infrastructure', 'file' => 'mmi-cloudflare-integration/mmi-cloudflare-integration.php' ),
 			'mmi-rtsm'             => array( 'group' => 'Infrastructure', 'file' => 'mmi-rtsm/mmi-rtsm.php' ),
