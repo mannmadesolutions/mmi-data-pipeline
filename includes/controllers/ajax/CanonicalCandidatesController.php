@@ -26,6 +26,12 @@ const CANONICAL_CANDIDATES_NONCE = 'mmi_pipeline_canonical_candidates';
  * Per-supplier feed field map. Skuport has no distinct "vendor" signal (its
  * source data only has a developer/brand-like field), so vendor stays null
  * for it — the UI shows "—" for those rows. xchange has both.
+ *
+ * `maker_field` names the maker for grouping when the listing isn't on our
+ * site: XChange's `brand` is its product line ("PLUGIN", "Stand Alone"), so
+ * its maker is the vendor company. Plugivery joined on 2026-10-28: the same
+ * product from two distributors, listed once for each, is the most common
+ * duplicate (Moog's Moogerfooger effects at XChange and Plugivery).
  */
 function mmi_canonical_candidates_feed_configs(): array {
     return [
@@ -34,6 +40,7 @@ function mmi_canonical_candidates_feed_configs(): array {
             'sku_field'    => 'sku',
             'name_field'   => 'product',
             'brand_field'  => 'brand',
+            'maker_field'  => 'vendor',
             'vendor_field' => 'vendor',
             'dealer_field' => 'dealer_price',
             'map_field'    => 'map_price',
@@ -44,12 +51,59 @@ function mmi_canonical_candidates_feed_configs(): array {
             'sku_field'    => 'id',
             'name_field'   => 'name',
             'brand_field'  => 'developer',
+            'maker_field'  => 'developer',
+            'vendor_field' => null,
+            'dealer_field' => 'cost',
+            'map_field'    => 'map',
+            'msrp_field'   => 'msrp',
+        ],
+        'plugivery' => [
+            'file'         => 'plugivery-products.json',
+            'sku_field'    => 'id',
+            'name_field'   => 'name',
+            'brand_field'  => 'brand_name',
+            'maker_field'  => 'brand_name',
             'vendor_field' => null,
             'dealer_field' => 'cost',
             'map_field'    => 'map',
             'msrp_field'   => 'msrp',
         ],
     ];
+}
+
+/**
+ * A maker + product-name pair as one key across distributors: our brand when the listing is on our site,
+ * else the feed's maker, both without case, punctuation or a company's legal form ("SONNOX LTD." = "Sonnox").
+ */
+function mmi_canonical_candidates_maker_key( string $maker, string $name ): string {
+    $norm = static function ( string $s ): string {
+        $s = strtolower( remove_accents( html_entity_decode( $s, ENT_QUOTES ) ) );
+        $s = preg_replace( '/[^a-z0-9]+/', ' ', $s );
+        $s = preg_replace( '/\b(ltd|limited|inc|incorporated|llc|gmbh|corp|corporation|co|sl|ab|as|srl|bv)\b/', ' ', (string) $s );
+        return trim( (string) preg_replace( '/\s+/', ' ', (string) $s ) );
+    };
+    return $norm( $maker ) . '|' . $norm( $name );
+}
+
+/**
+ * Our listing for each supplier SKU (`_mmi_supplier_sku_{supplier}`, one query per supplier), and the brand
+ * each listing carries (one query).
+ *
+ * @return array{ids: array<string,array<string,int>>, brands: array<int,string>}
+ */
+function mmi_canonical_candidates_listing_map(): array {
+    global $wpdb;
+    $ids = [];
+    foreach ( array_keys( mmi_canonical_candidates_feed_configs() ) as $supplier ) {
+        foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT pm.meta_value sku, pm.post_id id FROM {$wpdb->postmeta} pm JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type IN ('product','product_variation') AND p.post_status <> 'trash' WHERE pm.meta_key = %s AND pm.meta_value <> '' ORDER BY pm.post_id", '_mmi_supplier_sku_' . $supplier ), ARRAY_A ) as $r ) {
+            $ids[ $supplier ][ (string) $r['sku'] ] = $ids[ $supplier ][ (string) $r['sku'] ] ?? (int) $r['id'];
+        }
+    }
+    $brands = [];
+    foreach ( $wpdb->get_results( "SELECT tr.object_id id, t.name FROM {$wpdb->term_relationships} tr JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_brand' JOIN {$wpdb->terms} t ON t.term_id = tt.term_id", ARRAY_A ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL
+        $brands[ (int) $r['id'] ] = (string) $r['name'];
+    }
+    return [ 'ids' => $ids, 'brands' => $brands ];
 }
 
 /** Normalize a brand+product-name pair into a stable, comparable group key. */
@@ -386,7 +440,8 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
     $dismissed = array_flip( (array) MMI_DB::get_setting( 'mmi_canonical_candidates_dismissed', [] ) );
 
     // group_key => [ 'brand' => ..., 'name' => ..., 'members' => [ ...rows... ] ]
-    $groups = [];
+    $groups   = [];
+    $listings = mmi_canonical_candidates_listing_map();
 
     foreach ( mmi_canonical_candidates_feed_configs() as $supplier => $cfg ) {
         $json_file = $json_dir . $cfg['file'];
@@ -402,20 +457,24 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
         foreach ( $items as $item ) {
             $brand = (string) ( $item[ $cfg['brand_field'] ] ?? '' );
             $name  = (string) ( $item[ $cfg['name_field']  ] ?? '' );
-            if ( $brand === '' || $name === '' ) {
+            $sku   = (string) ( $item[ $cfg['sku_field'] ] ?? '' );
+            // Grouped by maker: our brand when the listing is on our site, else the feed's maker.
+            $listed = $listings['ids'][ $supplier ][ $sku ] ?? 0;
+            $maker  = $listed && isset( $listings['brands'][ $listed ] ) ? $listings['brands'][ $listed ] : (string) ( $item[ $cfg['maker_field'] ] ?? '' );
+            if ( $maker === '' || $name === '' ) {
                 continue;
             }
 
-            $key = mmi_canonical_candidates_group_key( $brand, $name );
-            if ( isset( $dismissed[ $key ] ) ) {
+            $key = mmi_canonical_candidates_maker_key( $maker, $name );
+            // A group dismissed under the old key (the feed's raw brand + name) stays dismissed.
+            if ( isset( $dismissed[ $key ] ) || ( $brand !== '' && isset( $dismissed[ mmi_canonical_candidates_group_key( $brand, $name ) ] ) ) ) {
                 continue;
             }
 
-            $sku    = (string) ( $item[ $cfg['sku_field'] ] ?? '' );
             $vendor = $cfg['vendor_field'] ? (string) ( $item[ $cfg['vendor_field'] ] ?? '' ) : '';
 
             if ( ! isset( $groups[ $key ] ) ) {
-                $groups[ $key ] = [ 'brand' => $brand, 'name' => $name, 'members' => [] ];
+                $groups[ $key ] = [ 'brand' => html_entity_decode( $maker, ENT_QUOTES ), 'name' => $name, 'members' => [] ];
             }
             $groups[ $key ]['members'][] = [
                 'supplier'     => $supplier,
@@ -425,6 +484,7 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
                 'map_price'    => (float) ( $item[ $cfg['map_field']    ] ?? 0 ),
                 'msrp_price'   => (float) ( $item[ $cfg['msrp_field']   ] ?? 0 ),
                 'in_feed'      => true,
+                '_listed'      => $listed,
                 '_raw'         => $item,
             ];
         }
@@ -439,8 +499,11 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
         $resolved_ids = [];
         foreach ( $group['members'] as &$member ) {
             $supplier   = $member['supplier'];
-            $wc_key     = MMI_DB::get_primary_key( $supplier, 'wc', '_sku' );
-            $product_id = MMI_Pipeline_Field_Resolver::find_product_id_by_primary_key( $wc_key, $member['sku'] );
+            $product_id = $member['_listed'];
+            if ( ! $product_id ) {
+                $wc_key     = MMI_DB::get_primary_key( $supplier, 'wc', '_sku' );
+                $product_id = MMI_Pipeline_Field_Resolver::find_product_id_by_primary_key( $wc_key, $member['sku'] );
+            }
 
             $member['wc_product_id'] = $product_id;
             $member['is_canonical']  = false;
@@ -454,9 +517,14 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
                 $member['stock_status'] = (string) get_post_meta( $product_id, '_stock_status', true );
                 $member['held_by']      = mmi_canonical_candidates_held_by_rule( (int) $product_id, $member['_raw'], $supplier );
             }
-            unset( $member['_raw'] );
+            unset( $member['_raw'], $member['_listed'] );
         }
         unset( $member );
+
+        // The same product at two distributors is only a duplicate when we list it twice.
+        if ( count( array_unique( array_column( $group['members'], 'supplier' ) ) ) > 1 && count( array_unique( array_filter( $resolved_ids ) ) ) < 2 ) {
+            continue;
+        }
 
         // Already fully resolved when one resolved member is canonical and its
         // associated_product_ids already covers every other resolved member.

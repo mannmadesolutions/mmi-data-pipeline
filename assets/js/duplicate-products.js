@@ -493,6 +493,8 @@
 
     /** Selected brands (lowercased) — driven by the brand filter row; empty means no restriction. */
     let brandFilter = {};
+    // A link's ?dupes_brand, held until a load includes that brand: the two scans land separately.
+    let urlBrand = '';
 
     let hasLoadedOnce = false;
 
@@ -675,6 +677,8 @@
             $( SELECTORS.STAT_FILTER_BTN ).removeClass( 'is-active' )
                 .filter( `[data-status-filter="${ status }"]` ).addClass( 'is-active' );
         }
+        // ?dupes_brand=Moog: one maker's groups (the Distributors Vendors list links here).
+        urlBrand = ( params.get( 'dupes_brand' ) || '' ).trim().toLowerCase();
         if ( params.get( 'detection' ) === 'collisions' ) {
             setDetectionMode( 'collisions' );
         } else {
@@ -1053,6 +1057,11 @@
             return;
         }
 
+        if ( urlBrand && brands.has( urlBrand ) ) {
+            brandFilter = { [ urlBrand ]: true };
+            urlBrand    = '';
+        }
+
         const sorted = Array.from( brands.entries() ).sort( ( a, b ) => a[ 1 ].localeCompare( b[ 1 ] ) );
         // Pure DOM-size safety valve, not a meaningful UX cap — bounded by how
         // many distinct brands are actually present in the loaded groups.
@@ -1066,13 +1075,13 @@
 
         if ( overLimit ) {
             html += '<select class="' + SELECTORS.BRAND_FILTER_SELECT.slice( 1 ) + '" multiple size="8">'
-                + visible.map( ( [ slug, name ] ) => '<option value="' + escHtml( slug ) + '">' + escHtml( name ) + '</option>' ).join( '' )
+                + visible.map( ( [ slug, name ] ) => '<option value="' + escHtml( slug ) + '"' + ( brandFilter[ slug ] ? ' selected' : '' ) + '>' + escHtml( name ) + '</option>' ).join( '' )
                 + '</select>'
                 + '<span class="description mmi-taxonomy-filter-hint">Showing ' + visible.length + ' of ' + sorted.length + ' brands.</span>';
         } else {
             html += visible.map( ( [ slug, name ] ) =>
                 '<label class="mmi-taxonomy-filter-option">'
-                + '<input type="checkbox" class="' + SELECTORS.BRAND_FILTER_CHECKBOX.slice( 1 ) + '" value="' + escHtml( slug ) + '"> '
+                + '<input type="checkbox" class="' + SELECTORS.BRAND_FILTER_CHECKBOX.slice( 1 ) + '" value="' + escHtml( slug ) + '"' + ( brandFilter[ slug ] ? ' checked' : '' ) + '> '
                 + escHtml( name )
                 + '</label>'
             ).join( '' );
@@ -1083,10 +1092,10 @@
         $inline.html( html );
         $row.removeClass( 'mmi-hidden' );
 
-        // Freshly built and unchecked — a previous selection no longer maps
-        // to a rendered control, so clear it rather than silently filtering
-        // out rows with nothing left on screen to un-check.
-        brandFilter = {};
+        // A selection whose brand is still listed stays (checked above); one
+        // with no control left on screen to un-check is dropped rather than
+        // silently filtering out rows.
+        brandFilter = Object.fromEntries( Object.keys( brandFilter ).filter( ( slug ) => brands.has( slug ) ).map( ( slug ) => [ slug, true ] ) );
     }
 
     function bindBrandFilter() {
