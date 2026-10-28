@@ -29,6 +29,8 @@
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // The currency goes in a tooltip, not the cell, so narrow columns fit.
     const money = (value, currency) => (value === null || value === undefined || value === '') ? '—' : `<span title="${esc(currency || '')}">${Number(value).toFixed(2)}</span>`;
+    // A feed field that is nothing but a web address is shown as a link.
+    const URL_VALUE = /^https?:\/\/[^\s"<>]+$/i;
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     // A feed's Y-m-d as "Oct 27", with the year only when it isn't this year's.
     const shortDate = (ymd) => {
@@ -91,6 +93,7 @@
             // Filters are lists now; a saved single value from before becomes one.
             const asList = (v) => (Array.isArray(v) ? v : (v ? [String(v)] : []));
             Object.keys(this.state.f || {}).forEach((k) => { this.state.f[k] = asList(this.state.f[k]); });
+            this.applyUrlFilters();
             ['promo', 'on_site', 'check'].forEach((key) => {
                 this.state[key] = asList(this.state[key]).filter((v) => (this.fixed[key] || []).includes(v));
             });
@@ -148,6 +151,32 @@
 
             this.syncControls();
             this.load();
+        },
+
+        /**
+         * A link can open the table filtered: ?fc[brand][]=Sonnox&fc[check][]=above_map.
+         * It replaces the remembered search and filters.
+         */
+        applyUrlFilters: function () {
+            const picked = {};
+            new URLSearchParams(window.location.search).forEach((value, name) => {
+                // fc[brand][] or, after WordPress rewrites the address, fc[brand][0].
+                const m = name.match(/^fc\[([a-z_]+)\]\[\d*\]$/);
+                if (m && value !== '') {
+                    (picked[m[1]] = picked[m[1]] || []).push(value);
+                }
+            });
+            if (!Object.keys(picked).length) {
+                return;
+            }
+            Object.assign(this.state, { q: '', f: {}, promo: [], on_site: [], check: [] });
+            Object.entries(picked).forEach(([key, values]) => {
+                if (key in this.fixed) {
+                    this.state[key] = values;
+                } else if (key in this.cfg.facets) {
+                    this.state.f[key] = values;
+                }
+            });
         },
 
         // ── Multi-select filters (shared .mmi-multiselect markup) ──────────
@@ -430,6 +459,8 @@
             this.ajax('detail', { sku }).done((res) => {
                 const $box = this.$(`.mmi-fc-detail-row[data-sku="${CSS.escape(sku)}"] .mmi-fc-detail`);
                 $box.html(res.success ? this.detailHtml(res.data) : `<p class="mmi-fc-empty">${esc(res.data?.message || 'Could not load this product.')}</p>`);
+                // Links in the feed's own text leave the catalog open.
+                $box.find('a[href^="http"]').attr({ target: '_blank', rel: 'noopener noreferrer' });
             });
         },
 
@@ -448,7 +479,7 @@
             const text = d.text.map((t) => `<div class="mmi-fc-block"><h4>${esc(t.label)}</h4>${t.html}</div>`).join('');
             const lists = d.lists.map((l) => `<div class="mmi-fc-block"><h4>${esc(l.label)}</h4><ul>${l.items.map((i) => `<li>${i}</li>`).join('')}</ul></div>`).join('');
             const promos = this.promosHtml(d.promos);
-            const fields = Object.entries(d.fields).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+            const fields = Object.entries(d.fields).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${URL_VALUE.test(v) ? `<a href="${esc(v)}">${esc(v)}</a>` : esc(v)}</td></tr>`).join('');
             const main = text || lists ? `${text}` : '<p class="mmi-fc-muted">No description in this feed.</p>';
             return `<div class="mmi-fc-detail-head"><strong>${esc(d.product)}</strong><span class="mmi-fc-sub">${esc(d.sku)}</span><div class="mmi-fc-detail-actions">${site}</div></div>
                 ${gallery}${imagesNote}

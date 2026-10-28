@@ -134,6 +134,11 @@ abstract class MMI_Pipeline_Feed_Catalog {
         return 'brand';
     }
 
+    /** The filter that picks a brand, for a link that opens this catalog filtered (?fc[brand][]=…). */
+    public function brand_facet(): string {
+        return $this->brand_key();
+    }
+
     /** Whether the page offers "Fetch now" (a group leaves it to each catalog). */
     protected function fetchable(): bool {
         return true;
@@ -811,7 +816,8 @@ abstract class MMI_Pipeline_Feed_Catalog {
         $text = [];
         foreach ( (array) ( $d['text'] ?? [] ) as $label => $html ) {
             if ( is_string( $html ) && trim( wp_strip_all_tags( $html ) ) !== '' ) {
-                $text[] = [ 'label' => (string) $label, 'html' => wp_kses_post( wpautop( $html ) ) ];
+                // Bare URLs in feed text become links (the script opens them in a new tab).
+                $text[] = [ 'label' => (string) $label, 'html' => wp_kses_post( make_clickable( wpautop( $html ) ) ) ];
             }
         }
         $lists = [];
@@ -866,7 +872,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
             }
         };
         $walk( $value );
-        return array_slice( array_values( array_unique( array_map( 'wp_kses_post', $items ) ) ), 0, 50 );
+        return array_slice( array_values( array_unique( array_map( static fn( $item ) => wp_kses_post( make_clickable( $item ) ), $items ) ) ), 0, 50 );
     }
 
     /* ── Page ────────────────────────────────────────────────────────────── */
