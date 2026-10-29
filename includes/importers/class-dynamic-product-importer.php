@@ -1593,6 +1593,11 @@ class MMI_Dynamic_Product_Importer {
         if ( ! $product_id || $primary_value === '' ) {
             return;
         }
+        // Which listing of this source the product is, whatever the Primary Keys panel matches on:
+        // stock overrides, Embargo, the distributor catalogs and product data all read this key.
+        if ( $this->supplier_name !== '' ) {
+            update_post_meta( $product_id, '_mmi_supplier_sku_' . sanitize_key( $this->supplier_name ), $primary_value );
+        }
         $wc_key = $this->primary_key_wc;
         if ( str_starts_with( $wc_key, '_' ) ) {
             update_post_meta( $product_id, $wc_key, $primary_value );

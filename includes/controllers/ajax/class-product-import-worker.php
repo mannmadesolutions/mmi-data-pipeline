@@ -390,6 +390,11 @@ class Product_Import_Worker {
         // Primary Keys panel, not a separate field mapping.
         if ( ! empty( $options['primary_key_wc'] ) && ! empty( $options['primary_value'] ) ) {
             $product->update_meta_data( $options['primary_key_wc'], (string) $options['primary_value'] );
+            // And which listing of this source it is, whatever key the panel matches on (Plugivery and
+            // SkuPort match on _sku; catalogs, stock overrides and Embargo read _mmi_supplier_sku_*).
+            if ( ! empty( $options['supplier'] ) ) {
+                $product->update_meta_data( '_mmi_supplier_sku_' . sanitize_key( $options['supplier'] ), (string) $options['primary_value'] );
+            }
         }
 
         $product->update_meta_data( '_supplier_name', $supplier );
@@ -801,6 +806,9 @@ class Product_Import_Worker {
         if ( ! empty( $options['primary_key_wc'] ) && ! empty( $options['primary_value'] ) ) {
             $current = (string) $product->get_meta( $options['primary_key_wc'] );
             if ( ! MMI_Pipeline_Field_Resolver::values_are_equal( $current, (string) $options['primary_value'] ) ) {
+                return true;
+            }
+            if ( ! empty( $options['supplier'] ) && (string) $product->get_meta( '_mmi_supplier_sku_' . sanitize_key( $options['supplier'] ) ) !== (string) $options['primary_value'] ) {
                 return true;
             }
         }
