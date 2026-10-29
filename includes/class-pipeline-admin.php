@@ -888,6 +888,13 @@ class MMI_Pipeline_Admin {
                 &#x1F6AB; Force Out of Stock
             </option>
         </select>
+        <?php $embargo = class_exists( '\\MannMade\\DataPipeline\\Embargo' ) ? \MannMade\DataPipeline\Embargo::label( $post->ID ) : ''; ?>
+        <?php if ( $embargo !== '' ) : ?>
+            <p class="mmi-metabox-override-active">
+                <span class="mmi-badge mmi-badge--warning"><?php echo esc_html( $embargo ); ?></span><br>
+                The supplier's words: "<?php echo esc_html( (string) get_post_meta( $post->ID, '_mmi_embargo_note', true ) ); ?>". Released automatically at that time; changing this setting ends the hold now.
+            </p>
+        <?php endif; ?>
         <?php if ( $current !== '' ) : ?>
             <p class="mmi-metabox-override-active">
                 <strong>Override active</strong> — import data will not change this product's stock.
