@@ -51,7 +51,9 @@ function phrase($r: JQuery): { text: string; or: boolean } {
   const $pick = $r.find(`${S.COND_VALUE_SELECT}:not(.mmi-hidden) option:selected`);
   const val = $pick.length && $r.find(S.COND_OPERATOR_SEL!).val() === "matches_pattern"
     ? $pick.text() : String($r.find(S.COND_VALUE_SEL!).val() ?? "");
-  return { text: `${field} ${op} ${val ? `"${val}"` : ""}`.trim(), or: $r.find(S.COND_JOIN!).attr("aria-pressed") === "true" };
+  // An older bundled builder has no child-terms toggle (no selector).
+  const kids = S.COND_CHILDREN_INPUT && $r.find(S.COND_CHILDREN_INPUT).is(":checked") ? " or a child term" : "";
+  return { text: `${field} ${op} ${val ? `"${val}"` : ""}${kids}`.trim(), or: $r.find(S.COND_JOIN!).attr("aria-pressed") === "true" };
 }
 
 /** Snapshot of the condition builder, read after each of its change events. */

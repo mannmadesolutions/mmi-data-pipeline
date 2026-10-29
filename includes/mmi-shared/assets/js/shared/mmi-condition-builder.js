@@ -11,6 +11,8 @@
  * server renders each saved value as the selected option.
  *   - the Source → Field → Operator → Value cascade, the "is any of" value
  *     checklist, the equals/not-equals value picker and Match case;
+ *   - a hierarchical taxonomy's terms shown as a tree in both pickers, and
+ *     "Include N child terms" once a picked term has terms below it;
  *   - Add Condition / remove, and the empty hint;
  *   - "Load saved conditions": every condition set saved anywhere in the
  *     suite (the 'mmi_condition_library' PHP filter), copied in with
@@ -59,6 +61,9 @@
         COND_VALUE_SELECT:            '.mmi-cond-value-select',
         COND_CASE:                    '.mmi-cond-case',
         COND_CASE_INPUT:              '.mmi-cond-case-input',
+        COND_CHILDREN:                '.mmi-cond-children',
+        COND_CHILDREN_INPUT:          '.mmi-cond-children-input',
+        COND_CHILDREN_LABEL:          '.mmi-cond-children-label',
         COND_VALUE_CHECKLIST:         '.mmi-cond-value-checklist',
         COND_VALUE_CHECKLIST_TRIGGER: '.mmi-cvc-trigger',
         COND_VALUE_CHECKLIST_LABEL:   '.mmi-cvc-label',
@@ -77,6 +82,14 @@
     const LIST_OPERATORS       = [ 'in_list', 'not_in_list' ];
     const PICK_OPERATORS       = [ 'equals', 'not_equals' ];
     const LIST_VALUE_DELIMITER = '|';
+
+    // Operators that pick terms, so "Include child terms" applies.
+    const CHILDREN_OPERATORS = PICK_OPERATORS.concat(LIST_OPERATORS);
+    // One level of indent in the value picker (a <select> can't pad options;
+    // plain spaces collapse, no-break spaces don't — wp_dropdown_categories' way).
+    const TREE_INDENT = '\u00a0\u00a0\u00a0';
+    // Row data: the loaded value items, for the child-terms toggle.
+    const ITEMS_DATA = 'cbValueItems';
 
     // Mirror MMI_Condition_Builder::NO_VALUE_OPERATORS / PATTERNS.
     const NO_VALUE_OPERATORS = [ 'is_empty', 'is_not_empty', 'term_default_only' ];
@@ -110,6 +123,7 @@
         CASCADE_LOADING: 'mmi-cascade-loading',
         CASE_NA:         'mmi-cond-case--na',
         ROW_OR:          'mmi-condition-row--or',
+        ON:              'is-on',
         MATCH_ANY:       'mmi-cb--any',
         READY_ATTR:      'data-cb-ready',
     };
@@ -157,6 +171,14 @@
             : String(str == null ? '' : str).replace(/[&<>"']/g, function(c) {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
             });
+    }
+
+    // WordPress stores a term name's "&" as "&amp;". Decoded for display
+    // only; the value stays as stored, which is what the evaluator matches.
+    const entityDecoder = document.createElement('textarea');
+    function decodeEntities(str) {
+        entityDecoder.innerHTML = String(str == null ? '' : str);
+        return entityDecoder.value;
     }
 
     /* ── Endpoints ───────────────────────────────────────────────────────── */
@@ -378,6 +400,9 @@
         const noValue     = NO_VALUE_OPERATORS.indexOf(op) !== -1;
 
         $condRow.find(SELECTORS.COND_VALUE_SELECT).addClass(CSS.HIDDEN);
+        // The picker/checklist below reload the items and sync it again.
+        $condRow.removeData(ITEMS_DATA);
+        syncChildrenToggle($condRow);
 
         if (noValue) {
             $valueInput.hide().val('');
@@ -448,48 +473,81 @@
         $condRow.find(SELECTORS.COND_VALUE_CHECKLIST_LABEL).text(n > 0 ? (n + ' selected') : 'Select values…');
     }
 
-    function renderChecklistOptions($condRow, values) {
+    function renderChecklistOptions($condRow, items) {
         const $options = $condRow.find(SELECTORS.COND_VALUE_CHECKLIST_OPTIONS);
         const selected = splitListValue($condRow.find(SELECTORS.COND_VALUE_SEL).val())
             .map(function(v) { return v.toLowerCase(); });
 
-        if (!values.length) {
+        if (!items.length) {
             $options.html('<span class="mmi-cvc-empty">No values found</span>');
             return;
         }
 
         let html = '';
-        values.forEach(function(v) {
-            const checked = selected.indexOf(String(v).toLowerCase()) !== -1 ? ' checked' : '';
-            html += '<label class="mmi-cvc-option"><input type="checkbox" value="' + escHtml(v) + '"' + checked + '> <span>' + escHtml(v) + '</span></label>';
+        items.forEach(function(item) {
+            const checked = selected.indexOf(item.value.toLowerCase()) !== -1 ? ' checked' : '';
+            // The indent is data (the term's depth), so it rides on a custom property.
+            const depth   = item.depth ? ' style="--mmi-cvc-depth:' + item.depth + '"' : '';
+            html += '<label class="mmi-cvc-option" data-depth="' + item.depth + '"' + depth + '><input type="checkbox" value="' + escHtml(item.value) + '"' + checked + '> <span>' + escHtml(item.label) + '</span></label>';
         });
         $options.html(html);
     }
 
     /**
-     * The real values a WP/WC field can hold — a taxonomy's term names, or a
-     * post field's / meta key's distinct values when that set is bounded.
-     * Cached per endpoint+source+field; calls done(values, unsupported).
+     * Terms in tree order — each parent followed by its children, A–Z at
+     * every level (the endpoint sends them A–Z) — as value items. A term whose
+     * parent isn't in the list (or loops back to it) shows at the top level.
+     */
+    function termTreeItems(terms) {
+        const ids = {};
+        terms.forEach(function(t) { ids[t.id] = true; });
+        const byParent = {};
+        terms.forEach(function(t) {
+            const parent = t.parent && ids[t.parent] && t.parent !== t.id ? t.parent : 0;
+            (byParent[parent] = byParent[parent] || []).push(t);
+        });
+        const items = [];
+        const seen  = {};
+        const add   = function(t, depth) {
+            seen[t.id] = true;
+            const item = { value: t.name, label: decodeEntities(t.name), depth: depth, index: items.length, end: 0 };
+            items.push(item);
+            (byParent[t.id] || []).forEach(function(child) {
+                if (!seen[child.id]) add(child, depth + 1);
+            });
+            item.end = items.length;
+        };
+        (byParent[0] || []).forEach(function(t) { add(t, 0); });
+        terms.forEach(function(t) { if (!seen[t.id]) add(t, 0); });
+        return items;
+    }
+
+    /**
+     * The real values a WP/WC field can hold — a taxonomy's terms, or a post
+     * field's / meta key's distinct values when that set is bounded. Cached
+     * per endpoint+source+field; calls done(items, unsupported), items being
+     * {value, label, depth, index, end} — the ones from index+1 up to end sit below
+     * it (only a taxonomy has any).
      */
     function fetchFieldValues($condRow, source, field, done) {
         const ep       = endpoints($condRow);
         const cacheKey = ep.terms + '|' + ep.values + '::' + source + '::' + field;
         if (Object.prototype.hasOwnProperty.call(conditionFieldValuesCache, cacheKey)) {
             const cached = conditionFieldValuesCache[cacheKey];
-            done(cached.values, cached.unsupported);
+            done(cached.items, cached.unsupported);
             return;
         }
-        const store = function(values, unsupported) {
-            conditionFieldValuesCache[cacheKey] = { values: values, unsupported: unsupported };
-            done(values, unsupported);
+        const store = function(items, unsupported) {
+            conditionFieldValuesCache[cacheKey] = { items: items, unsupported: unsupported };
+            done(items, unsupported);
         };
         if (source === TAXONOMY_SOURCE) {
             if (!ep.terms) { done([], true); return; }
             queuedPost(ep.ajaxUrl, { action: ep.terms, taxonomy: field, nonce: ep.nonce })
                 .done(function(response) {
-                    const terms  = (response && response.success && response.data.terms) ? response.data.terms : [];
-                    const values = terms.map(function(t) { return t.name; });
-                    store(values, values.length === 0);
+                    const terms = (response && response.success && response.data.terms) ? response.data.terms : [];
+                    const items = termTreeItems(terms);
+                    store(items, items.length === 0);
                 })
                 .fail(function() { done([], true); });
         } else {
@@ -498,7 +556,8 @@
                 .done(function(response) {
                     const data   = (response && response.success && response.data) ? response.data : {};
                     const values = data.values || [];
-                    store(values, !!data.unsupported || !!data.truncated || values.length === 0);
+                    const items  = values.map(function(v, i) { return { value: String(v), label: String(v), depth: 0, index: i, end: i + 1 }; });
+                    store(items, !!data.unsupported || !!data.truncated || items.length === 0);
                 })
                 .fail(function() { done([], true); });
         }
@@ -507,32 +566,36 @@
     function loadValuePicker($condRow, source, field) {
         const $valueInput = $condRow.find(SELECTORS.COND_VALUE_SEL);
         const $select     = $condRow.find(SELECTORS.COND_VALUE_SELECT);
-        fetchFieldValues($condRow, source, field, function(values, unsupported) {
+        fetchFieldValues($condRow, source, field, function(items, unsupported) {
             const op = $condRow.find(SELECTORS.COND_OPERATOR_SEL).val() || '';
             if (PICK_OPERATORS.indexOf(op) === -1) return; // operator changed while loading
-            if (unsupported || !values.length) {
+            if (unsupported || !items.length) {
                 $select.addClass(CSS.HIDDEN);
                 $valueInput.show().attr('placeholder', 'Value…');
                 return;
             }
             const current = String($valueInput.val() || '');
-            const match   = values.find(function(v) { return String(v).toLowerCase() === current.toLowerCase(); });
+            const match   = items.find(function(item) { return item.value.toLowerCase() === current.toLowerCase(); });
             let opts = '<option value="">Select…</option>';
             if (current && match === undefined) {
                 opts += `<option value="${escHtml(current)}">${escHtml(current)}</option>`;
             }
-            values.forEach(function(v) { opts += `<option value="${escHtml(v)}">${escHtml(v)}</option>`; });
-            $select.html(opts).val(match !== undefined ? match : current).prop('disabled', $valueInput.prop('disabled'));
+            items.forEach(function(item) {
+                opts += `<option value="${escHtml(item.value)}">${TREE_INDENT.repeat(item.depth)}${escHtml(item.label)}</option>`;
+            });
+            $select.html(opts).val(match !== undefined ? match.value : current).prop('disabled', $valueInput.prop('disabled'));
             $valueInput.hide();
             $select.removeClass(CSS.HIDDEN);
+            $condRow.data(ITEMS_DATA, items);
+            syncChildrenToggle($condRow);
         });
     }
 
     function loadFieldValuesForChecklist($condRow, source, field) {
         const $valueInput = $condRow.find(SELECTORS.COND_VALUE_SEL);
         const $checklist  = $condRow.find(SELECTORS.COND_VALUE_CHECKLIST);
-        fetchFieldValues($condRow, source, field, function(values, unsupported) {
-            if (unsupported || !values || !values.length) {
+        fetchFieldValues($condRow, source, field, function(items, unsupported) {
+            if (unsupported || !items || !items.length) {
                 closeChecklist($condRow);
                 $checklist.addClass(CSS.HIDDEN);
                 $valueInput.show().attr('placeholder', 'value1' + LIST_VALUE_DELIMITER + 'value2' + LIST_VALUE_DELIMITER + '…');
@@ -540,11 +603,61 @@
             }
             const op = $condRow.find(SELECTORS.COND_OPERATOR_SEL).val() || '';
             if (LIST_OPERATORS.indexOf(op) === -1) return; // operator changed while loading
-            renderChecklistOptions($condRow, values);
+            renderChecklistOptions($condRow, items);
             syncChecklistLabel($condRow);
             $valueInput.hide();
             $checklist.removeClass(CSS.HIDDEN);
+            $condRow.data(ITEMS_DATA, items);
+            syncChildrenToggle($condRow);
         });
+    }
+
+    /** Check or uncheck "Include child terms", keeping its look in step. */
+    function setChildren($condRow, on) {
+        $condRow.find(SELECTORS.COND_CHILDREN_INPUT).prop('checked', !!on);
+        $condRow.find(SELECTORS.COND_CHILDREN).toggleClass(CSS.ON, !!on);
+    }
+
+    /**
+     * "Include N child terms": offered on a taxonomy row once a picked term
+     * has terms below it, and switched off (and hidden) once none does, so a
+     * saved condition never carries a flag it can't use. Before the terms
+     * load, a saved "on" stays visible so it can still be turned off.
+     */
+    function syncChildrenToggle($condRow) {
+        const $toggle = $condRow.find(SELECTORS.COND_CHILDREN);
+        if (!$toggle.length) return;
+        const $input = $toggle.find(SELECTORS.COND_CHILDREN_INPUT);
+        const source = $condRow.find(SELECTORS.COND_SOURCE_SEL).val() || '';
+        const op     = $condRow.find(SELECTORS.COND_OPERATOR_SEL).val() || '';
+        const hide   = function() {
+            setChildren($condRow, false);
+            $toggle.addClass(CSS.HIDDEN);
+        };
+        if (source !== TAXONOMY_SOURCE || CHILDREN_OPERATORS.indexOf(op) === -1) {
+            hide();
+            return;
+        }
+        const items = $condRow.data(ITEMS_DATA);
+        if (!items) {
+            $toggle.toggleClass(CSS.HIDDEN, !$input.prop('checked'));
+            return;
+        }
+        const value  = String($condRow.find(SELECTORS.COND_VALUE_SEL).val() || '');
+        const picked = (LIST_OPERATORS.indexOf(op) !== -1 ? splitListValue(value) : [ value.trim() ])
+            .map(function(v) { return v.toLowerCase(); });
+        const below = {};
+        items.forEach(function(item) {
+            if (picked.indexOf(item.value.toLowerCase()) === -1) return;
+            for (let i = item.index + 1; i < item.end; i++) below[i] = true;
+        });
+        const n = Object.keys(below).length;
+        if (!n) {
+            hide();
+            return;
+        }
+        $toggle.find(SELECTORS.COND_CHILDREN_LABEL).text('Include ' + n + ' child term' + (n === 1 ? '' : 's'));
+        $toggle.removeClass(CSS.HIDDEN);
     }
 
     /* ── Reading conditions back out ────────────────────────────────────── */
@@ -556,7 +669,7 @@
 
     /**
      * Every complete condition inside $scope, in row order:
-     * {source, field, operator, value, case_sensitive?}. Incomplete rows are
+     * {source, field, operator, value, case_sensitive?, include_children?, or?}. Incomplete rows are
      * skipped — callers that must not silently drop one check
      * isConditionComplete() first.
      */
@@ -573,6 +686,9 @@
             };
             if ($row.find(SELECTORS.COND_CASE_INPUT).is(':checked')) {
                 cond.case_sensitive = 1;
+            }
+            if ($row.find(SELECTORS.COND_CHILDREN_INPUT).is(':checked')) {
+                cond.include_children = 1;
             }
             // The first row has nothing above it to join, and under "any"
             // every row is already or'd.
@@ -661,6 +777,7 @@
                 return;
             }
             $row.find(SELECTORS.COND_CASE_INPUT).prop('checked', !!cond.case_sensitive);
+            setChildren($row, cond.include_children);
             setJoin($row, groupAny ? loaded > 0 : !!cond.or);
             initConditionCascade($row, cond.source, cond.field, cond.operator || 'equals', cond.value || '');
             loaded++;
@@ -689,7 +806,8 @@
     function describeCondition(c, i) {
         const noValue = NO_VALUE_OPERATORS.indexOf(c.operator) !== -1;
         const value   = c.operator === PATTERN_OPERATOR ? (PATTERNS[c.value] || c.value) : '"' + c.value + '"';
-        return (i > 0 && c.or ? 'or ' : '') + c.field + ' ' + (OPERATOR_WORDS[c.operator] || c.operator) + (noValue ? '' : ' ' + value);
+        return (i > 0 && c.or ? 'or ' : '') + c.field + ' ' + (OPERATOR_WORDS[c.operator] || c.operator) + (noValue ? '' : ' ' + value)
+            + (c.include_children ? ' or a child term' : '');
     }
 
     function renderLibrary($root) {
@@ -844,6 +962,8 @@
                 const source = $(this).val() || '';
                 updateOriginBadge($row, source);
                 $row.find(SELECTORS.COND_FIELD_SEL).val('');
+                $row.removeData(ITEMS_DATA);
+                syncChildrenToggle($row);
                 if (source) {
                     loadCascadeFields($row, source);
                 } else {
@@ -890,6 +1010,7 @@
                     $row.find(SELECTORS.COND_VALUE_SELECT).addClass(CSS.HIDDEN);
                     closeChecklist($row);
                     $row.find(SELECTORS.COND_VALUE_CHECKLIST).addClass(CSS.HIDDEN);
+                    syncChildrenToggle($row);
                 }
                 notifyChange($row);
             })
@@ -920,7 +1041,11 @@
             })
 
             .on('change', SELECTORS.COND_VALUE_SELECT, function() {
-                $(this).closest(SELECTORS.CONDITION_ROW).find(SELECTORS.COND_VALUE_SEL).val($(this).val()).trigger('input');
+                const $row = $(this).closest(SELECTORS.CONDITION_ROW);
+                $row.find(SELECTORS.COND_VALUE_SEL).val($(this).val());
+                // Before 'input' fires the change event, so listeners read the toggle's new state.
+                syncChildrenToggle($row);
+                $row.find(SELECTORS.COND_VALUE_SEL).trigger('input');
             })
 
             .on('input', SELECTORS.COND_VALUE_SEL, function() {
@@ -929,6 +1054,12 @@
 
             .on('change', SELECTORS.COND_CASE_INPUT, function() {
                 notifyChange($(this).closest(SELECTORS.CONDITION_ROW));
+            })
+
+            .on('change', SELECTORS.COND_CHILDREN_INPUT, function() {
+                const $row = $(this).closest(SELECTORS.CONDITION_ROW);
+                setChildren($row, this.checked);
+                notifyChange($row);
             })
 
             // Value checklist — one open at a time on the page.
@@ -950,17 +1081,27 @@
                 $condRow.find(SELECTORS.COND_VALUE_CHECKLIST_OPTIONS + ' input[type="checkbox"]:checked').each(function() {
                     checked.push($(this).val());
                 });
-                $condRow.find(SELECTORS.COND_VALUE_SEL).val(joinListValue(checked)).trigger('input');
+                $condRow.find(SELECTORS.COND_VALUE_SEL).val(joinListValue(checked));
+                syncChildrenToggle($condRow);
+                $condRow.find(SELECTORS.COND_VALUE_SEL).trigger('input');
                 syncChecklistLabel($condRow);
             })
 
             .on('input', SELECTORS.COND_VALUE_CHECKLIST_SEARCH, function() {
-                const term = $(this).val().toLowerCase();
-                $(this).closest(SELECTORS.COND_VALUE_CHECKLIST_PANEL)
-                    .find(SELECTORS.COND_VALUE_CHECKLIST_OPTION)
-                    .each(function() {
-                        $(this).toggle($(this).text().toLowerCase().indexOf(term) !== -1);
-                    });
+                const term  = $(this).val().toLowerCase();
+                const $opts = $(this).closest(SELECTORS.COND_VALUE_CHECKLIST_PANEL).find(SELECTORS.COND_VALUE_CHECKLIST_OPTION);
+                // A match keeps its parent terms in view, so it's clear which
+                // "Accessories" it is. Walking up from the bottom, the first
+                // shallower option above a shown one is its parent.
+                let need = -1;
+                for (let i = $opts.length - 1; i >= 0; i--) {
+                    const $opt  = $opts.eq(i);
+                    const depth = parseInt($opt.attr('data-depth'), 10) || 0;
+                    const hit   = $opt.text().toLowerCase().indexOf(term) !== -1;
+                    const show  = hit || depth < need;
+                    if (show) need = depth;
+                    $opt.toggle(show);
+                }
             })
 
             // Saved-conditions library.

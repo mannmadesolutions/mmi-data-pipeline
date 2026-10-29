@@ -294,6 +294,7 @@
             postData[`conditions[${j}][operator]`] = cond.operator;
             postData[`conditions[${j}][value]`]    = cond.value;
             if (cond.case_sensitive) postData[`conditions[${j}][case_sensitive]`] = 1;
+            if (cond.include_children) postData[`conditions[${j}][include_children]`] = 1;
             if (cond.or) postData[`conditions[${j}][or]`] = 1;
         });
 
@@ -448,6 +449,7 @@
             postData[`conditions[${j}][operator]`] = cond.operator;
             postData[`conditions[${j}][value]`]    = cond.value;
             if (cond.case_sensitive) postData[`conditions[${j}][case_sensitive]`] = 1;
+            if (cond.include_children) postData[`conditions[${j}][include_children]`] = 1;
             if (cond.or) postData[`conditions[${j}][or]`] = 1;
         });
 
@@ -519,6 +521,7 @@
                 d[`conditions[${j}][operator]`] = cond.operator;
                 d[`conditions[${j}][value]`]    = cond.value;
                 if (cond.case_sensitive) d[`conditions[${j}][case_sensitive]`] = 1;
+                if (cond.include_children) d[`conditions[${j}][include_children]`] = 1;
                 if (cond.or) d[`conditions[${j}][or]`] = 1;
             });
             Object.keys(actionParams).forEach(function(k) {
@@ -620,6 +623,7 @@
             postData['conditions[' + j + '][operator]'] = cond.operator;
             postData['conditions[' + j + '][value]']    = cond.value;
             if (cond.case_sensitive) postData['conditions[' + j + '][case_sensitive]'] = 1;
+            if (cond.include_children) postData['conditions[' + j + '][include_children]'] = 1;
             if (cond.or) postData['conditions[' + j + '][or]'] = 1;
         });
 
@@ -845,6 +849,7 @@
                     customRulesPost[`rules[${i}][conditions][${j}][operator]`] = cond.operator;
                     customRulesPost[`rules[${i}][conditions][${j}][value]`]    = cond.value;
                     if (cond.case_sensitive) customRulesPost[`rules[${i}][conditions][${j}][case_sensitive]`] = 1;
+                    if (cond.include_children) customRulesPost[`rules[${i}][conditions][${j}][include_children]`] = 1;
                     if (cond.or) customRulesPost[`rules[${i}][conditions][${j}][or]`] = 1;
                 });
             });

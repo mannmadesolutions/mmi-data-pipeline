@@ -5133,11 +5133,12 @@ tr.mmi-row-leaving {
     overflow-y: auto;
 }
 
+/* --mmi-cvc-depth: a taxonomy term's depth in its tree (set per option). */
 .mmi-cvc-option {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 4px;
+    padding: 4px 4px 4px calc(4px + var(--mmi-cvc-depth, 0) * 16px);
     font-size: 13px;
     color: #1d2327;
     cursor: pointer;
@@ -5321,6 +5322,43 @@ tr.mmi-row-leaving {
 
 .mmi-cond-case.mmi-cond-case--na {
     visibility: hidden;
+}
+
+/* "Include N child terms" — after the Value, once a picked taxonomy term has
+   terms below it. The Match case look, with its checkbox showing, since
+   the words alone don't read as a toggle. */
+.mmi-cond-children {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background: #fff;
+    color: #50575e;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.mmi-cond-children input[type="checkbox"] {
+    margin: 0;
+}
+
+.mmi-cond-children:hover {
+    border-color: #8c8f94;
+}
+
+/* A class, not :has(input:checked): WebKit doesn't restyle :has() when a
+   checkbox changes. The JS keeps .is-on in step with the box. */
+.mmi-cond-children.is-on {
+    border-color: #45852C;
+    background: #f0f6ed;
+    color: #45852C;
 }
 
 /* ── Overlapping condition/filter breakdown ("cbd") ──────────────────────────

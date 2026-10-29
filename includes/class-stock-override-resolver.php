@@ -228,6 +228,10 @@ class Stock_Override_Resolver {
         if ( ! empty( $cond['or'] ) && $cond['or'] !== '0' ) {
             $clean['or'] = true;
         }
+        // A taxonomy term also matching its child terms.
+        if ( $clean['source'] === self::TAXONOMY_SOURCE && ! empty( $cond['include_children'] ) && $cond['include_children'] !== '0' ) {
+            $clean['include_children'] = true;
+        }
         return $clean;
     }
 
@@ -468,7 +472,7 @@ class Stock_Override_Resolver {
             $value    = (string) ( $cond['value'] ?? '' );
 
             if ( $source === self::TAXONOMY_SOURCE ) {
-                $ids = self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
+                $ids = self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ), ! empty( $cond['include_children'] ) );
             } elseif ( $source === self::POSTMETA_SOURCE ) {
                 $ids = self::get_product_ids_by_postmeta_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
             } else {
@@ -718,7 +722,7 @@ class Stock_Override_Resolver {
         $value    = (string) ( $cond['value'] ?? '' );
         $case     = ! empty( $cond['case_sensitive'] );
         if ( $source === self::TAXONOMY_SOURCE ) {
-            return self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, $case );
+            return self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, $case, ! empty( $cond['include_children'] ) );
         }
         if ( $source === self::POSTMETA_SOURCE ) {
             return self::get_product_ids_by_postmeta_condition( $field, $operator, $value, $case );
@@ -827,18 +831,20 @@ class Stock_Override_Resolver {
      * LIKE/prefix/suffix implementation — mirrors how the supplier-feed path
      * already scans every item and filters in PHP for the identical reason.
      *
-     * @param  string $taxonomy  Taxonomy slug.
-     * @param  string $operator  One of VALID_OPERATORS.
-     * @param  string $value     Value to compare against (unused for is_empty/is_not_empty).
+     * @param  string $taxonomy         Taxonomy slug.
+     * @param  string $operator         One of VALID_OPERATORS.
+     * @param  string $value            Value to compare against (unused for is_empty/is_not_empty).
+     * @param  bool   $include_children A matched term also brings in its child terms' products
+     *                                  (hierarchical taxonomies only).
      * @return int[]
      */
-    private static function get_product_ids_by_taxonomy_condition( string $taxonomy, string $operator, string $value, bool $case_sensitive = false ): array {
+    private static function get_product_ids_by_taxonomy_condition( string $taxonomy, string $operator, string $value, bool $case_sensitive = false, bool $include_children = false ): array {
         if ( ! taxonomy_exists( $taxonomy ) ) {
             return [];
         }
 
         if ( isset( self::NEGATED_OPERATORS[ $operator ] ) ) {
-            $excluded = array_flip( self::get_product_ids_by_taxonomy_condition( $taxonomy, self::NEGATED_OPERATORS[ $operator ], $value, $case_sensitive ) );
+            $excluded = array_flip( self::get_product_ids_by_taxonomy_condition( $taxonomy, self::NEGATED_OPERATORS[ $operator ], $value, $case_sensitive, $include_children ) );
             return array_values( array_filter( self::get_product_ids_by_supplier( 'all' ), static fn( $id ) => ! isset( $excluded[ $id ] ) ) );
         }
 
@@ -904,9 +910,9 @@ class Stock_Override_Resolver {
                 'taxonomy'         => $taxonomy,
                 'field'            => 'term_id',
                 'terms'            => $matched_term_ids,
-                // A product's own terms only, like evaluate_taxonomy_condition().
-                // WP's default would also pull in every child term's products.
-                'include_children' => false,
+                // A product's own terms only, unless the condition asks for
+                // child terms too — evaluate_taxonomy_condition() agrees.
+                'include_children' => $include_children && is_taxonomy_hierarchical( $taxonomy ),
             ] ],
         ] );
 
@@ -1136,10 +1142,24 @@ class Stock_Override_Resolver {
             return self::eval_operator( null, $operator, $value );
         }
 
+        // With include_children, a product filed under a child term also
+        // matches through each of that term's ancestors.
+        $with_ancestors = ! empty( $cond['include_children'] ) && is_taxonomy_hierarchical( $taxonomy );
         foreach ( $terms as $term ) {
-            if ( self::eval_operator( $term->name, $operator, $value, ! empty( $cond['case_sensitive'] ) )
-                || self::eval_operator( $term->slug, $operator, $value, ! empty( $cond['case_sensitive'] ) ) ) {
-                return true;
+            $candidates = [ $term ];
+            if ( $with_ancestors ) {
+                foreach ( get_ancestors( (int) $term->term_id, $taxonomy, 'taxonomy' ) as $ancestor_id ) {
+                    $ancestor = get_term( (int) $ancestor_id, $taxonomy );
+                    if ( $ancestor instanceof \WP_Term ) {
+                        $candidates[] = $ancestor;
+                    }
+                }
+            }
+            foreach ( $candidates as $candidate ) {
+                if ( self::eval_operator( $candidate->name, $operator, $value, ! empty( $cond['case_sensitive'] ) )
+                    || self::eval_operator( $candidate->slug, $operator, $value, ! empty( $cond['case_sensitive'] ) ) ) {
+                    return true;
+                }
             }
         }
         return false;

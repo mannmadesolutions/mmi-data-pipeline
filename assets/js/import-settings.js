@@ -649,7 +649,7 @@ jQuery(document).ready(function($) {
 
     function fmConditionsSignature(data) {
         return JSON.stringify([data.match_logic || 'all', data.conditions.map(function(c) {
-            return [c.source, c.field, c.operator, c.value, !!c.case_sensitive, !!c.or];
+            return [c.source, c.field, c.operator, c.value, !!c.case_sensitive, !!c.or, !!c.include_children];
         })]);
     }
 
@@ -665,6 +665,7 @@ jQuery(document).ready(function($) {
                 value:    String($row.attr('data-saved-value') || ''),
                 case_sensitive: $row.find('.mmi-cond-case-input').prop('defaultChecked'),
                 or:       conditions.length > 0 && $row.attr('data-saved-or') === '1',
+                include_children: $row.find('.mmi-cond-children-input').prop('defaultChecked'),
             });
         });
         const $ml = $root.find('.mmi-cb-match-logic option[selected]');

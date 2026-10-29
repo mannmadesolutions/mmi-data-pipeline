@@ -25,17 +25,15 @@ final class Rule_Builder_View {
     const FIELD_VALUE_FIELD = 'value';
 
     /**
-     * Condition Source list: supplier feeds first, then the WP/WC sources.
-     * Prefers mmi_reverb_get_enabled_sources() when available (same
-     * derivation Catalog Maintenance has always used).
+     * Condition Source list: every configured supplier data source (API and
+     * upload alike), then the WP/WC sources. Not Reverb's
+     * mmi_reverb_get_enabled_sources(): that lists only the sources Reverb
+     * sells from, which left uploads and newer feeds (Plugivery) out.
      *
      * @param  array $configured_suppliers supplier_id => ['supplier_name' => ...].
      * @return list<array{id:string,name:string}>
      */
     public static function sources( array $configured_suppliers ): array {
-        if ( function_exists( 'mmi_reverb_get_enabled_sources' ) ) {
-            return mmi_reverb_get_enabled_sources();
-        }
         $sources = [];
         foreach ( $configured_suppliers as $sid => $sinfo ) {
             $sources[] = [ 'id' => $sid, 'name' => $sinfo['supplier_name'] ];

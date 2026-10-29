@@ -18,7 +18,8 @@
  *     nonce come from window.mmiConditionBuilder (wp_localize_script on the
  *     'mmi-condition-builder' handle) or a per-builder 'endpoints' override.
  *   - Evaluation. Each consumer evaluates the saved {source, field,
- *     operator, value, case_sensitive} list itself.
+ *     operator, value, case_sensitive, include_children} list itself
+ *     (include_children: a taxonomy term also matches its child terms).
  *
  * Saved-conditions library: every builder can pull in any condition set
  * saved anywhere in the suite. Consumers contribute their saved sets via the
@@ -252,6 +253,7 @@ final class MMI_Condition_Builder {
 		$operator = (string) ( $cond['operator'] ?? 'equals' );
 		$value    = (string) ( $cond['value'] ?? '' );
 		$case     = ! empty( $cond['case_sensitive'] );
+		$children = ! empty( $cond['include_children'] );
 		$blank    = empty( $cond );
 		$or       = ! empty( $cond['or'] );
 		// Not .mmi-hidden (display:none !important): the JS toggles this
@@ -303,6 +305,11 @@ final class MMI_Condition_Builder {
 					<div class="mmi-cvc-options"></div>
 				</div>
 			</div>
+			<?php // Shown by the JS once a picked taxonomy term has child terms (and while a saved one is on). ?>
+			<label class="mmi-cond-children<?php echo $children ? ' is-on' : ' mmi-hidden'; ?>" title="Also match products filed only under a term below the one picked">
+				<input type="checkbox" class="mmi-cond-children-input" <?php checked( $children ); ?>>
+				<span class="mmi-cond-children-label">Include child terms</span>
+			</label>
 			<button type="button" class="mmi-remove-condition-btn" title="Remove condition">
 				<span class="dashicons dashicons-remove"></span>
 			</button>
@@ -317,7 +324,7 @@ final class MMI_Condition_Builder {
 	 * filter. Each contributor appends entries shaped:
 	 *   [ 'id' => unique string, 'group' => 'Catalog Maintenance',
 	 *     'label' => 'Rule name', 'match_logic' => 'all'|'any',
-	 *     'conditions' => list of {source, field, operator, value, case_sensitive?, or?},
+	 *     'conditions' => list of {source, field, operator, value, case_sensitive?, include_children?, or?},
 	 *     'delete_action' => optional AJAX action that deletes this set; the
 	 *       picker then offers Delete and posts {id, nonce} to it, using the
 	 *       builder's cascade nonce ]
@@ -344,6 +351,9 @@ final class MMI_Condition_Builder {
 				);
 				if ( ! empty( $cond['case_sensitive'] ) ) {
 					$clean['case_sensitive'] = 1;
+				}
+				if ( ! empty( $cond['include_children'] ) ) {
+					$clean['include_children'] = 1;
 				}
 				if ( ! empty( $cond['or'] ) ) {
 					$clean['or'] = 1;
