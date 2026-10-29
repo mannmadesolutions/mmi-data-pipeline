@@ -484,6 +484,14 @@ abstract class MMI_Pipeline_Feed_Catalog {
                 'rows'      => $rows,
             ];
             self::write_atomic( $dir . 'index.json', wp_json_encode( $index ) );
+            /**
+             * The catalog index was rebuilt from a fresh feed (after a fetch, or when
+             * the files changed). Listeners that derive data from promotions
+             * (Campaigns) re-sync on it.
+             *
+             * @param string $id Feed catalog id (xchange, skuport, plugivery).
+             */
+            do_action( 'mmi_pipeline_feed_catalog_fetched', $this->id() );
             return $index;
         } finally {
             flock( $lock, LOCK_UN );
