@@ -63,3 +63,5 @@
 .mmi-crp-price,
 .mmi-crp-source-field,
 .mmi-crp-meta-key { min-width: 100px; flex: 0 1 180px; }
+.mmi-crp-wc-field,
+.mmi-crp-wc-value { min-width: 140px; flex: 0 1 200px; }

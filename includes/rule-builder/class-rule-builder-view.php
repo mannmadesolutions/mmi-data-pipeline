@@ -136,6 +136,35 @@ final class Rule_Builder_View {
             <span class="dashicons dashicons-editor-help mmi-info-icon" tabindex="0"
                   title="Only sets the date window a sale price is active. Pair this with a separate Set Sale Price rule (or an existing sale price already on the product) — this action alone doesn't set a price."></span>
         </div>
+        <?php
+        $wc_field  = (string) ( $params['wc_field'] ?? '' );
+        $wc_value  = (string) ( $params['wc_value'] ?? '' );
+        $wc_fields = Custom_Rule_Actions::wc_fields();
+        $wc_input  = isset( $wc_fields[ $wc_field ] ) && ! in_array( $wc_fields[ $wc_field ]['type'], [ 'choice', 'yesno' ], true );
+        ?>
+        <div class="mmi-crp-group" data-action-types="set_wc_field">
+            <select class="mmi-crp-wc-field" aria-label="WooCommerce field">
+                <option value="">Field&hellip;</option>
+                <?php foreach ( $wc_fields as $key => $def ) : ?>
+                    <option value="<?php echo esc_attr( $key ); ?>" data-wc-type="<?php echo esc_attr( $def['type'] ); ?>" <?php selected( $wc_field, $key ); ?>><?php echo esc_html( $def['label'] ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php // One picker per field with set choices; the shown one (or the box) is the value. ?>
+            <?php foreach ( $wc_fields as $key => $def ) : ?>
+                <?php if ( in_array( $def['type'], [ 'choice', 'yesno' ], true ) ) : ?>
+                    <select class="mmi-crp-wc-value mmi-crp-wc-choice" data-wc-field="<?php echo esc_attr( $key ); ?>" aria-label="<?php echo esc_attr( $def['label'] ); ?>"<?php echo $wc_field === $key ? '' : ' hidden'; ?>>
+                        <?php // No default: a bulk run must never write a value nobody picked. ?>
+                        <option value="" <?php selected( $wc_field === $key ? $wc_value : '', '' ); ?>>Choose&hellip;</option>
+                        <?php foreach ( Custom_Rule_Actions::wc_field_choices( $key ) as $value => $label ) : ?>
+                            <option value="<?php echo esc_attr( (string) $value ); ?>" <?php selected( $wc_field === $key ? $wc_value : null, (string) $value ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+            <?php endforeach; ?>
+            <input type="text" class="mmi-crp-wc-value mmi-crp-wc-input" aria-label="Value" value="<?php echo esc_attr( $wc_input ? $wc_value : '' ); ?>"<?php echo $wc_input ? '' : ' hidden'; ?>>
+            <span class="dashicons dashicons-editor-help mmi-info-icon" tabindex="0"
+                  title="Writes one WooCommerce product field through WooCommerce itself, as the product screen does. Leave a size or weight blank to clear it; a blank low stock threshold means the store default."></span>
+        </div>
         <div class="mmi-crp-group" data-action-types="copy_source_field_to_meta">
             <label>Source Field</label>
             <input type="text" class="mmi-crp-source-field" value="<?php echo esc_attr( $params['source_field'] ?? '' ); ?>" placeholder="e.g. is_hardware">

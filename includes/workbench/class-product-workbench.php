@@ -438,6 +438,10 @@ final class Product_Workbench {
         if ( $action === 'copy_source_field_to_meta' ) {
             return sprintf( 'Copy feed "%s" to meta "%s"', $params['source_field'], $params['meta_key'] );
         }
+        if ( $action === 'set_wc_field' ) {
+            $def = Custom_Rule_Actions::wc_fields()[ $params['wc_field'] ] ?? [ 'label' => $params['wc_field'] ];
+            return sprintf( '%s → %s', $def['label'], Custom_Rule_Actions::wc_field_display( $params['wc_field'], $params['wc_value'] ) );
+        }
         return $label;
     }
 
@@ -495,6 +499,10 @@ final class Product_Workbench {
                     'exists' => metadata_exists( 'post', $id, $key ),
                     'value'  => (string) get_post_meta( $id, $key, true ),
                 ];
+
+            case 'set_wc_field':
+                $product = wc_get_product( $id );
+                return [ 'wc_field' => $params['wc_field'], 'value' => $product ? Custom_Rule_Actions::wc_field_value( $product, $params['wc_field'] ) : '' ];
         }
         return [];
     }
@@ -552,6 +560,13 @@ final class Product_Workbench {
                     return $before; // Nothing to copy; apply() leaves it alone too.
                 }
                 return [ 'exists' => true, 'value' => (string) $raw ];
+
+            case 'set_wc_field':
+                $product = wc_get_product( $id );
+                if ( ! $product || ! Custom_Rule_Actions::wc_field_applies( $product, $params['wc_field'] ) ) {
+                    return $before; // apply() leaves it alone too.
+                }
+                return [ 'wc_field' => $params['wc_field'], 'value' => (string) $params['wc_value'] ];
         }
         return $before;
     }
@@ -574,6 +589,9 @@ final class Product_Workbench {
         }
         if ( array_key_exists( 'from', $state ) ) {
             return ( $state['from'] ?: '…' ) . ' → ' . ( $state['to'] ?: '…' );
+        }
+        if ( isset( $state['wc_field'] ) ) {
+            return Custom_Rule_Actions::wc_field_display( $state['wc_field'], (string) $state['value'] );
         }
         if ( array_key_exists( 'exists', $state ) ) {
             return $state['exists'] ? ( $state['value'] !== '' ? $state['value'] : '(empty)' ) : '(not set)';
@@ -665,6 +683,8 @@ final class Product_Workbench {
             $fields = [ (string) ( $params['taxonomy'] ?? '' ) ];
         } elseif ( $action === 'copy_source_field_to_meta' ) {
             $fields = [ (string) ( $params['meta_key'] ?? '' ) ];
+        } elseif ( $action === 'set_wc_field' ) {
+            $fields = [ Custom_Rule_Actions::wc_field_writes( (string) ( $params['wc_field'] ?? '' ) ) ];
         } else {
             $fields = self::ACTION_LOCK_FIELDS[ $action ] ?? [];
         }
@@ -967,6 +987,18 @@ final class Product_Workbench {
                     update_post_meta( $id, $params['meta_key'], $state['value'] );
                 } else {
                     delete_post_meta( $id, $params['meta_key'] );
+                }
+                break;
+
+            case 'set_wc_field':
+                $product = wc_get_product( $id );
+                if ( $product ) {
+                    try {
+                        Custom_Rule_Actions::set_wc_field_value( $product, $params['wc_field'], (string) $state['value'] );
+                        $product->save();
+                    } catch ( \WC_Data_Exception $e ) {
+                        // The old value is no longer valid (e.g. a GTIN now taken): leave it.
+                    }
                 }
                 break;
         }

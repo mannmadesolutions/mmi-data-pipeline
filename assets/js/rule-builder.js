@@ -30,7 +30,14 @@
         DATE_TO_INPUT:      '.mmi-crp-date-to',
         SOURCE_FIELD_INPUT: '.mmi-crp-source-field',
         META_KEY_INPUT:     '.mmi-crp-meta-key',
+        WC_FIELD_SELECT:    '.mmi-crp-wc-field',
+        WC_VALUE:           '.mmi-crp-wc-value',
+        WC_CHOICE:          '.mmi-crp-wc-choice',
+        WC_INPUT:           '.mmi-crp-wc-input',
     });
+
+    // Placeholder for "Set WooCommerce Field"'s value box, by field type.
+    const WC_INPUT_PLACEHOLDERS = { decimal: 'e.g. 2.5, blank clears', integer: 'Whole number', text: 'Text' };
 
     const CSS = {
         CASCADE_LOADING: 'mmi-cascade-loading',
@@ -64,6 +71,27 @@
             const show  = types.indexOf(action) !== -1;
             $(this).toggle(show).find('input, select').prop('disabled', !show);
         });
+        syncWcFieldValue($scope);
+    }
+
+    /**
+     * "Set WooCommerce Field": show the value picker for the chosen field
+     * (or the text box for sizes, numbers and text) and disable the rest,
+     * so only the shown one is collected.
+     */
+    function syncWcFieldValue($scope) {
+        const $field = $scope.find(SELECTORS.WC_FIELD_SELECT);
+        if (!$field.length) return;
+        const field  = $field.val() || '';
+        const type   = $field.find('option:selected').attr('data-wc-type') || '';
+        const active = !$field.prop('disabled');
+        $scope.find(SELECTORS.WC_CHOICE).each(function() {
+            const show = $(this).attr('data-wc-field') === field;
+            $(this).prop('hidden', !show).prop('disabled', !show || !active);
+        });
+        const isInput = !!field && type !== 'choice' && type !== 'yesno';
+        $scope.find(SELECTORS.WC_INPUT).prop('hidden', !isInput).prop('disabled', !isInput || !active)
+            .attr('placeholder', WC_INPUT_PLACEHOLDERS[type] || '');
     }
 
     function loadTaxonomyTerms($paramGroup, taxonomy, savedTermId) {
@@ -114,6 +142,8 @@
             date_to:      $scope.find(SELECTORS.DATE_TO_INPUT).val()     || '',
             source_field: $scope.find(SELECTORS.SOURCE_FIELD_INPUT).val() || '',
             meta_key:     $scope.find(SELECTORS.META_KEY_INPUT).val()     || '',
+            wc_field:     $scope.find(SELECTORS.WC_FIELD_SELECT).val()    || '',
+            wc_value:     $scope.find(SELECTORS.WC_VALUE + ':not(:disabled)').val() || '',
         };
     }
 
@@ -128,6 +158,13 @@
             const $group   = $(this).closest(SELECTORS.PARAM_GROUP);
             const taxonomy = $(this).val() || '';
             loadTaxonomyTerms($group, taxonomy, '');
+        });
+        $(document).on('change', SELECTORS.WC_FIELD_SELECT, function() {
+            const $group = $(this).closest(SELECTORS.PARAM_GROUP);
+            // A new field starts from a blank value, not the last field's.
+            $group.find(SELECTORS.WC_INPUT).val('');
+            $group.find(SELECTORS.WC_CHOICE).val('');
+            syncWcFieldValue($group);
         });
     }
 

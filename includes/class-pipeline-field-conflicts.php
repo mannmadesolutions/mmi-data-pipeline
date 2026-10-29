@@ -67,6 +67,7 @@ class MMI_Pipeline_Field_Conflicts {
         'clear_sale_price'           => [ '_sale_price' ],
         'set_sale_dates'             => [ '_sale_price_dates_from', '_sale_price_dates_to' ],
         'copy_source_field_to_meta'  => [ '{meta_key}' ],
+        'set_wc_field'               => [ '{wc_field}' ],
     ];
 
     /**
@@ -199,6 +200,9 @@ class MMI_Pipeline_Field_Conflicts {
             foreach ( self::RULE_ACTION_WRITES[ $action ] as $key ) {
                 if ( $key[0] === '{' ) {
                     $key = (string) ( $params[ trim( $key, '{}' ) ] ?? '' );
+                }
+                if ( $action === 'set_wc_field' ) {
+                    $key = \MannMade\DataPipeline\Custom_Rule_Actions::wc_field_writes( $key );
                 }
                 if ( $key === '' ) {
                     continue;

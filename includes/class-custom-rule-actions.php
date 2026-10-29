@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Custom_Rule_Actions {
 
     /**
-     * group label => [ action key => [ 'label' => ..., 'needs_params' => bool, 'params' => 'taxonomy_term'|'price'|'date_range' ] ]
+     * group label => [ action key => [ 'label' => ..., 'needs_params' => bool, 'params' => 'taxonomy_term'|'price'|'date_range'|'copy_field_meta'|'wc_field' ] ]
      *
      * The two 'Stock' entries are listed here too (so they render in the same
      * <select>), but are never dispatched by self::apply() — they're handled
@@ -55,6 +55,12 @@ class Custom_Rule_Actions {
         ],
         'Taxonomy' => [
             'set_taxonomy_term' => [ 'label' => 'Set Taxonomy Term', 'needs_params' => true, 'params' => 'taxonomy_term' ],
+        ],
+        'WooCommerce' => [
+            // One action for every field in WC_FIELDS (shipping class, tax,
+            // visibility, dimensions, …), written through the product's own
+            // setters.
+            'set_wc_field' => [ 'label' => 'Set WooCommerce Field', 'needs_params' => true, 'params' => 'wc_field' ],
         ],
         'Pricing' => [
             'set_regular_price' => [ 'label' => 'Set Regular Price', 'needs_params' => true, 'params' => 'price' ],
@@ -93,6 +99,145 @@ class Custom_Rule_Actions {
         '_wc_average_rating', '_wc_rating_count', '_wc_review_count',
         '_product_version', '_downloadable_files', '_download_limit', '_download_expiry',
     ];
+
+    /**
+     * Product fields "Set WooCommerce Field" can write. field => label,
+     * input type ('choice' | 'yesno' | 'decimal' | 'integer' | 'text'), the
+     * WC_Product prop behind get_/set_{prop}(), and the import field it
+     * writes (for Field Locks and field-conflict warnings). A blank decimal
+     * clears the value; a blank low stock amount means the store default.
+     * 'managed' fields only apply to products that manage stock: WooCommerce
+     * ignores them on any other, so the rule would "change" it every run.
+     * Price, stock status, backorders and manage stock have their own
+     * actions; SKU is left out (WooCommerce refuses duplicates mid-run).
+     */
+    const WC_FIELDS = [
+        'shipping_class'     => [ 'label' => 'Shipping class', 'type' => 'choice', 'prop' => 'shipping_class_id', 'writes' => 'product_shipping_class' ],
+        'tax_status'         => [ 'label' => 'Tax status', 'type' => 'choice', 'prop' => 'tax_status', 'writes' => '_tax_status' ],
+        'tax_class'          => [ 'label' => 'Tax class', 'type' => 'choice', 'prop' => 'tax_class', 'writes' => '_tax_class' ],
+        'catalog_visibility' => [ 'label' => 'Catalog visibility', 'type' => 'choice', 'prop' => 'catalog_visibility', 'writes' => 'product_visibility' ],
+        'featured'           => [ 'label' => 'Featured', 'type' => 'yesno', 'prop' => 'featured', 'writes' => 'product_visibility' ],
+        'virtual'            => [ 'label' => 'Virtual', 'type' => 'yesno', 'prop' => 'virtual', 'writes' => '_virtual' ],
+        'downloadable'       => [ 'label' => 'Downloadable', 'type' => 'yesno', 'prop' => 'downloadable', 'writes' => '_downloadable' ],
+        'sold_individually'  => [ 'label' => 'Sold individually', 'type' => 'yesno', 'prop' => 'sold_individually', 'writes' => '_sold_individually' ],
+        'reviews_allowed'    => [ 'label' => 'Reviews allowed', 'type' => 'yesno', 'prop' => 'reviews_allowed', 'writes' => 'comment_status' ],
+        'weight'             => [ 'label' => 'Weight', 'type' => 'decimal', 'prop' => 'weight', 'writes' => '_weight', 'unit' => 'weight' ],
+        'length'             => [ 'label' => 'Length', 'type' => 'decimal', 'prop' => 'length', 'writes' => '_length', 'unit' => 'dimension' ],
+        'width'              => [ 'label' => 'Width', 'type' => 'decimal', 'prop' => 'width', 'writes' => '_width', 'unit' => 'dimension' ],
+        'height'             => [ 'label' => 'Height', 'type' => 'decimal', 'prop' => 'height', 'writes' => '_height', 'unit' => 'dimension' ],
+        'stock_quantity'     => [ 'label' => 'Stock quantity (managed stock only)', 'type' => 'integer', 'prop' => 'stock_quantity', 'writes' => '_stock', 'managed' => true ],
+        'low_stock_amount'   => [ 'label' => 'Low stock threshold (managed stock only)', 'type' => 'integer', 'prop' => 'low_stock_amount', 'writes' => '_low_stock_amount', 'blank' => true, 'managed' => true ],
+        'purchase_note'      => [ 'label' => 'Purchase note', 'type' => 'text', 'prop' => 'purchase_note', 'writes' => '_purchase_note', 'blank' => true ],
+        'menu_order'         => [ 'label' => 'Menu order', 'type' => 'integer', 'prop' => 'menu_order', 'writes' => 'menu_order' ],
+        'global_unique_id'   => [ 'label' => 'GTIN, UPC, EAN or ISBN', 'type' => 'text', 'prop' => 'global_unique_id', 'writes' => '_global_unique_id', 'blank' => true ],
+    ];
+
+    /** The action's name for WooCommerce's Standard tax class (stored as ''). */
+    const STANDARD_TAX_CLASS = 'standard';
+
+    /** WC_FIELDS this WooCommerce version has setters for, with units in the labels. */
+    public static function wc_fields(): array {
+        $out = [];
+        foreach ( self::WC_FIELDS as $field => $def ) {
+            if ( ! method_exists( 'WC_Product', 'set_' . $def['prop'] ) ) {
+                continue;
+            }
+            if ( ! empty( $def['unit'] ) ) {
+                $def['label'] .= ' (' . get_option( 'woocommerce_' . $def['unit'] . '_unit' ) . ')';
+            }
+            $out[ $field ] = $def;
+        }
+        return $out;
+    }
+
+    /** value => label for a 'choice' or 'yesno' field. */
+    public static function wc_field_choices( string $field ): array {
+        $def = self::wc_fields()[ $field ] ?? null;
+        if ( ! $def ) {
+            return [];
+        }
+        if ( $def['type'] === 'yesno' ) {
+            return [ 'yes' => 'Yes', 'no' => 'No' ];
+        }
+        switch ( $field ) {
+            case 'shipping_class':
+                $choices = [ '0' => 'No shipping class' ];
+                $terms   = get_terms( [ 'taxonomy' => 'product_shipping_class', 'hide_empty' => false, 'orderby' => 'name' ] );
+                foreach ( is_wp_error( $terms ) ? [] : $terms as $term ) {
+                    $choices[ (string) $term->term_id ] = html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' );
+                }
+                return $choices;
+            case 'tax_status':
+                return [ 'taxable' => 'Taxable', 'shipping' => 'Shipping only', 'none' => 'None' ];
+            case 'tax_class':
+                // WooCommerce's Standard class is '', the picker's "Choose…";
+                // the action calls it 'standard' (see wc_field_value()).
+                $choices = function_exists( 'wc_get_product_tax_class_options' ) ? wc_get_product_tax_class_options() : [ '' => 'Standard' ];
+                $choices = [ self::STANDARD_TAX_CLASS => $choices[''] ?? 'Standard' ] + array_diff_key( $choices, [ '' => true ] );
+                return $choices;
+            case 'catalog_visibility':
+                return function_exists( 'wc_get_product_visibility_options' ) ? wc_get_product_visibility_options() : [];
+        }
+        return [];
+    }
+
+    /** Whether the action can write $field on this product (see 'managed'). */
+    public static function wc_field_applies( \WC_Product $product, string $field ): bool {
+        return empty( self::WC_FIELDS[ $field ]['managed'] ) || $product->get_manage_stock( 'edit' );
+    }
+
+    /** A product's current value for a WC_FIELDS field, as the string the action stores. */
+    public static function wc_field_value( \WC_Product $product, string $field ): string {
+        $def = self::WC_FIELDS[ $field ] ?? null;
+        if ( ! $def ) {
+            return '';
+        }
+        $value = $product->{ 'get_' . $def['prop'] }( 'edit' );
+        if ( $def['type'] === 'yesno' ) {
+            return $value ? 'yes' : 'no';
+        }
+        if ( $field === 'tax_class' && (string) $value === '' ) {
+            return self::STANDARD_TAX_CLASS;
+        }
+        return $value === null ? '' : (string) $value;
+    }
+
+    /** Set a WC_FIELDS field from its stored string (the caller saves). */
+    public static function set_wc_field_value( \WC_Product $product, string $field, string $value ): void {
+        $def = self::WC_FIELDS[ $field ] ?? null;
+        if ( ! $def ) {
+            return;
+        }
+        switch ( $def['type'] ) {
+            case 'yesno':
+                $value = $value === 'yes';
+                break;
+            case 'integer':
+                $value = $value === '' ? '' : (int) $value;
+                break;
+        }
+        if ( $field === 'shipping_class' ) {
+            $value = (int) $value;
+        }
+        if ( $field === 'tax_class' && $value === self::STANDARD_TAX_CLASS ) {
+            $value = '';
+        }
+        $product->{ 'set_' . $def['prop'] }( $value );
+    }
+
+    /** "Shipping class: Heavy" — a stored value as the page shows it. */
+    public static function wc_field_display( string $field, string $value ): string {
+        $choices = self::wc_field_choices( $field );
+        if ( isset( $choices[ $value ] ) ) {
+            return $choices[ $value ];
+        }
+        return $value !== '' ? $value : '—';
+    }
+
+    /** The import / lock field a WC_FIELDS field writes ('' for an unknown one). */
+    public static function wc_field_writes( string $field ): string {
+        return self::WC_FIELDS[ $field ]['writes'] ?? '';
+    }
 
     /* ── Registry lookups ────────────────────────────────────────────────── */
 
@@ -164,6 +309,46 @@ class Custom_Rule_Actions {
                     'date_from' => self::sanitize_date( (string) ( $raw['date_from'] ?? '' ) ),
                     'date_to'   => self::sanitize_date( (string) ( $raw['date_to'] ?? '' ) ),
                 ];
+
+            case 'wc_field':
+                $field = sanitize_key( (string) ( $raw['wc_field'] ?? '' ) );
+                $def   = self::wc_fields()[ $field ] ?? null;
+                if ( ! $def ) {
+                    return [];
+                }
+                $value = trim( (string) ( $raw['wc_value'] ?? '' ) );
+                switch ( $def['type'] ) {
+                    case 'choice':
+                    case 'yesno':
+                        if ( ! array_key_exists( $value, self::wc_field_choices( $field ) ) ) {
+                            return [];
+                        }
+                        break;
+                    case 'decimal':
+                        if ( $value === '' ) {
+                            break; // Clears it.
+                        }
+                        // A typo must not turn into "clear": wc_format_decimal('abc') is ''.
+                        $value = wc_format_decimal( sanitize_text_field( $value ) );
+                        if ( $value === '' || ! is_numeric( $value ) || (float) $value < 0 ) {
+                            return [];
+                        }
+                        break;
+                    case 'integer':
+                        if ( $value === '' && ! empty( $def['blank'] ) ) {
+                            break;
+                        }
+                        if ( ! preg_match( '/^-?\d+$/', $value ) ) {
+                            return [];
+                        }
+                        break;
+                    default:
+                        $value = $field === 'purchase_note' ? wp_kses_post( $value ) : sanitize_text_field( $value );
+                        if ( $value === '' && empty( $def['blank'] ) ) {
+                            return [];
+                        }
+                }
+                return [ 'wc_field' => $field, 'wc_value' => $value ];
 
             case 'copy_field_meta':
                 $source_field = sanitize_text_field( (string) ( $raw['source_field'] ?? '' ) );
@@ -305,6 +490,9 @@ class Custom_Rule_Actions {
             case 'copy_source_field_to_meta':
                 return self::apply_copy_source_field_to_meta( $product_id, $params, $raw_item );
 
+            case 'set_wc_field':
+                return self::apply_wc_field( $product_id, $params );
+
             default:
                 return false;
         }
@@ -388,6 +576,24 @@ class Custom_Rule_Actions {
         }
 
         update_post_meta( $product_id, $meta_key, $new_value );
+        return true;
+    }
+
+    private static function apply_wc_field( int $product_id, array $params ): bool {
+        $field   = (string) ( $params['wc_field'] ?? '' );
+        $value   = (string) ( $params['wc_value'] ?? '' );
+        $product = wc_get_product( $product_id );
+        if ( ! $product || ! isset( self::wc_fields()[ $field ] ) || ! self::wc_field_applies( $product, $field )
+            || self::wc_field_value( $product, $field ) === $value ) {
+            return false;
+        }
+        try {
+            self::set_wc_field_value( $product, $field, $value );
+            $product->save();
+        } catch ( \WC_Data_Exception $e ) {
+            // e.g. a GTIN another product already uses: leave this one as it is.
+            return false;
+        }
         return true;
     }
 
