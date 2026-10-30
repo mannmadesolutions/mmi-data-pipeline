@@ -71,6 +71,14 @@ return array(
 		'kind'      => 'background',
 		'status'    => 'live',
 	),
+	'reverb.competitors'    => array(
+		'provider'  => 'mmi-reverb-integration',
+		'consumers' => array( 'mmi-google-services' ),
+		'title'     => 'Reverb competitors',
+		'pitch'     => 'Lists the Reverb shops selling what you sell, how often they undercut your price and how many sales they make a day.',
+		'kind'      => 'ui',
+		'status'    => 'live',
+	),
 	'reverb.cogs_backfill'  => array(
 		'provider'  => 'mmi-reverb-integration',
 		'consumers' => array( 'mmi-distributors:xchange' ),
