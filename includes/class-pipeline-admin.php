@@ -1025,6 +1025,8 @@ class MMI_Pipeline_Admin {
             'lockLabels'       => \MannMade\DataPipeline\Workbench\Product_Workbench::lock_labels(),
             'actionLockFields' => \MannMade\DataPipeline\Workbench\Product_Workbench::ACTION_LOCK_FIELDS,
             'stockActions'     => \MannMade\DataPipeline\Stock_Override_Resolver::VALID_OVERRIDES,
+            'reservedMetaKeys' => \MannMade\DataPipeline\Custom_Rule_Actions::RESERVED_META_KEYS,
+            'maxMetaColumns'   => \MannMade\DataPipeline\Workbench\Product_Workbench::MAX_META_COLUMNS,
         ];
     }
 

@@ -11,7 +11,7 @@ import { ApiError, api, type RuleDraft } from "./api";
 import * as bridge from "./bridge";
 import { IDS } from "./bridge";
 import {
-  EMPTY_QUICK, EMPTY_SELECTION, allPayload, buildFilter, describeFilter, filterKey, isSelected, lockOptions, needsLook, quickFromFilter,
+  EMPTY_QUICK, EMPTY_SELECTION, allPayload, buildFilter, describeFilter, filterKey, hasParameters, isSelected, lockOptions, needsLook, quickFromFilter,
   selectAllMatching, selectedCount, selectionPayload, targetText, toggleRows, type QuickFilters, type SelectionState,
 } from "./logic";
 import { CatalogUpkeep } from "./CatalogUpkeep";
@@ -20,7 +20,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
-import { ResultsTable } from "./ResultsTable";
+import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
 import type { ActionChoice, ConditionsState, Efficacy, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
 import { SEARCH_DEBOUNCE_MS, useSearch } from "./useSearch";
@@ -28,6 +28,20 @@ import { BusyButton, Dashicon, Island, MultiSelect, Pager, Section } from "./ui"
 
 type Message = { text: string; kind: "" | "error" | "ok" };
 type Lifetime = "once" | "keep";
+
+/** The Columns menu's choice, kept per browser (a convenience: a blocked store just means the default). */
+const COLUMNS_KEY = "mmiWorkbenchColumns";
+function storedColumns(): string[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(COLUMNS_KEY) ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((c): c is string => typeof c === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function storeColumns(cols: string[]): void {
+  try { window.localStorage.setItem(COLUMNS_KEY, JSON.stringify(cols)); } catch { /* not kept; still shown */ }
+}
 
 export function App({ cfg }: { cfg: WorkbenchConfig }) {
   /* ── Inputs ───────────────────────────────────────────────────────────── */
@@ -47,6 +61,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const [applying, setApplying] = useState<"selected" | "all" | null>(null);
   const [message, setMessage] = useState<Message>({ text: "", kind: "" });
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [columns, setColumnsState] = useState<string[]>(storedColumns);
+  const metaCols = useMemo(() => columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), [columns]);
 
   /* ── Standing rules: Keep applying, the rule being edited, the list ───── */
 
@@ -60,7 +76,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const keep = lifetime === "keep";
 
   const search = useSearch(
-    { filter, firstIncomplete: cond.firstIncomplete, firstWithoutValue: cond.firstWithoutValue },
+    { filter, firstIncomplete: cond.firstIncomplete, firstWithoutValue: cond.firstWithoutValue, metaCols },
     cfg.defaultPerPage,
     {
       onNewSearch: () => { setSelection(EMPTY_SELECTION); setPreview(null); },
@@ -94,13 +110,12 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
   // Each edit searches after the debounce; explicit actions (Enter, Clear all,
   // a chip, a facet) set the delay to 0 and bump the tick.
-  const nextDelay = useRef(SEARCH_DEBOUNCE_MS);
+  // The first search (every product, before any filter) runs as the page opens.
+  const nextDelay = useRef(0);
   const [tick, setTick] = useState(0);
   const searchNow = () => { nextDelay.current = 0; setTick((t) => t + 1); };
-  const firstRun = useRef(true);
   const key = filterKey(filter);
   useEffect(() => {
-    if (firstRun.current) { firstRun.current = false; return; }
     search.schedule(nextDelay.current);
     nextDelay.current = SEARCH_DEBOUNCE_MS;
     // `key` stands for the whole filter; schedule() is stable and reads the latest inputs itself.
@@ -149,6 +164,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const busy = runner.running !== null || view.pending;
   const n = selectedCount(selection, total);
   const tooMany = total > cfg.maxSelection;
+  // Browsing everything (no search yet) shows products but never offers to change them all.
+  const browsing = !view.filter || !hasParameters(view.filter);
 
   const runPreview = () => {
     if (!view.filter) return;
@@ -190,6 +207,14 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     if (runner.running) return;
     setMessage({ text: "", kind: "" });
     void runner.run(jobStub(job.id), "apply", true);
+  };
+
+  /** Show or hide optional columns; a new meta column needs its values, so the page is fetched again. */
+  const setColumns = (next: string[]) => {
+    const metaChanged = next.filter((c) => c.startsWith("meta:")).join("|") !== columns.filter((c) => c.startsWith("meta:")).join("|");
+    setColumnsState(next);
+    storeColumns(next);
+    if (metaChanged) window.setTimeout(() => search.refetch(), 0); // after the new metaCols reach the search
   };
 
   /* ── Standing rules ───────────────────────────────────────────────────── */
@@ -371,11 +396,11 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
             disabled={!view.filter || busy || ruleBusy !== null} onClick={() => void saveRule()} />
         </> : <>
           <BusyButton id="mmi-wb-preview" busy={previewBusy} icon="visibility" label={LABELS.PREVIEW} busyLabel={LABELS.PREVIEWING}
-            disabled={!(n || haveResults) || busy || stockOnce} onClick={runPreview} />
+            disabled={!(n || (haveResults && !browsing)) || busy || stockOnce} onClick={runPreview} />
           <BusyButton id="mmi-wb-apply-all" busy={applying === "all"} icon="database" busyLabel={LABELS.APPLYING}
             label={haveResults ? fill(LABELS.APPLY_ALL, { count: num(total) }) : LABELS.APPLY_ALL_NONE}
-            title={tooMany ? fill(MESSAGES.TOO_MANY, { count: num(total), max: num(cfg.maxSelection) }) : MESSAGES.APPLY_ALL_TITLE}
-            disabled={!haveResults || busy || tooMany || applying !== null || stockOnce} onClick={() => apply(true)} />
+            title={browsing ? MESSAGES.APPLY_ALL_BROWSING : tooMany ? fill(MESSAGES.TOO_MANY, { count: num(total), max: num(cfg.maxSelection) }) : MESSAGES.APPLY_ALL_TITLE}
+            disabled={!haveResults || browsing || busy || tooMany || applying !== null || stockOnce} onClick={() => apply(true)} />
           <BusyButton id="mmi-wb-apply" className="button button-primary" busy={applying === "selected"} icon="yes"
             label={LABELS.APPLY} busyLabel={LABELS.APPLYING} disabled={!n || busy || applying !== null || stockOnce} onClick={() => apply(false)} />
         </>}>
@@ -424,7 +449,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
             </div>
           )}
           <p className="mmi-wb-target" id="mmi-wb-target">
-            {keep ? (view.filter ? fill(MESSAGES.KEEP_TARGET, { count: num(total), s: plural(total) }) : MESSAGES.KEEP_EMPTY) : targetText(selection, total, haveResults)}
+            {keep ? (view.filter ? fill(MESSAGES.KEEP_TARGET, { count: num(total), s: plural(total) }) : MESSAGES.KEEP_EMPTY) : targetText(selection, total, haveResults, browsing)}
           </p>
           {runner.progress && (
             <div className="mmi-wb-progress" id="mmi-wb-progress">
@@ -465,6 +490,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
               </button>
             )}
             {n > 0 && <button type="button" className="button-link" id="mmi-wb-clear-selection" onClick={() => setSelection(EMPTY_SELECTION)}>Clear selection</button>}
+            <ColumnsMenu columns={columns} max={cfg.maxMetaColumns} onChange={setColumns} />
             <label className="mmi-pagination-size-label mmi-wb-per-page">Per page:{" "}
               <select className="mmi-pagination-size" id="mmi-wb-per-page" value={view.perPage}
                 onChange={(e) => search.refetch({ perPage: Number(e.target.value) || cfg.defaultPerPage, page: 1 })}>
@@ -473,6 +499,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
             </label>
           </div>
           <ResultsTable result={view.result} sort={view.sort} dir={view.dir} loading={view.loading} selection={selection}
+            columns={columns} reservedMeta={cfg.reservedMetaKeys} lockLabels={cfg.lockLabels}
             onSort={search.sortBy} onToggle={(ids, on) => setSelection((s) => toggleRows(s, ids, on))} onHealthChip={onHealthChip}
             onRowSaved={(row) => { search.replaceRow(row); loadJobs(); }} />
           {view.result && <Pager pages={view.result.pages} current={view.page} onPage={(p) => search.refetch({ page: p })} />}
@@ -531,5 +558,37 @@ function SaveSearch({ matchLogic }: { matchLogic: string }) {
       <button type="button" className="button button-small" disabled={saving} onClick={save}>Save</button>
       <button type="button" className="button-link" onClick={() => setOpen(false)}>Cancel</button>
     </span>
+  );
+}
+
+/**
+ * The Columns menu: optional columns to show, plus any meta key as a column
+ * ("Add a meta key…"). Unticking a meta key removes it.
+ */
+function ColumnsMenu({ columns, max, onChange }: { columns: string[]; max: number; onChange: (next: string[]) => void }) {
+  const [key, setKey] = useState("");
+  const [note, setNote] = useState("");
+  const metas = columns.filter((c) => c.startsWith("meta:"));
+  const options: Record<string, string> = { ...OPTIONAL_COLUMNS };
+  metas.forEach((c) => { options[c] = `Meta: ${c.slice(5)}`; });
+  const add = () => {
+    const k = key.trim();
+    if (!k) return;
+    if (metas.length >= max) { setNote(fill(MESSAGES.META_COLUMN_MAX, { max })); return; }
+    if (!columns.includes(`meta:${k}`)) onChange([...columns, `meta:${k}`]);
+    setKey("");
+    setNote("");
+  };
+  return (
+    <MultiSelect id="mmi-wb-columns-ms" label={MESSAGES.COLUMNS} options={options} checked={columns}
+      onChange={(next) => onChange(Object.keys(options).filter((c) => next.includes(c)))}
+      before={
+        <span className="mmi-wb-meta-col-add">
+          <input type="text" id="mmi-wb-meta-col" placeholder={MESSAGES.ADD_META_COLUMN} aria-label={MESSAGES.ADD_META_COLUMN} value={key}
+            onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+          <button type="button" className="button button-small" onClick={add}>Add</button>
+          {note && <span className="mmi-wb-none">{note}</span>}
+        </span>
+      } />
   );
 }

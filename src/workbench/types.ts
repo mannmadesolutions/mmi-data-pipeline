@@ -43,6 +43,14 @@ export interface ProductRow {
   sku: string;
   stock: StockStatus;
   price: string;
+  regular: string;
+  sale: string;
+  /** Null when the product doesn't manage stock (it has no quantity). */
+  stock_qty: string | null;
+  type: string;
+  modified: string;
+  /** The chosen meta columns: key → value, null when the product has no such key. */
+  meta: Record<string, string | null>;
   categories: Term[];
   brands: Term[];
   supplier: string;
@@ -120,6 +128,9 @@ export interface WorkbenchConfig {
   actionLockFields: Record<string, string[]>;
   /** Changes that only hold as a standing rule (Force In/Out of Stock). */
   stockActions: string[];
+  /** WooCommerce's own meta keys (lowercase): shown as columns, never edited as meta. */
+  reservedMetaKeys: string[];
+  maxMetaColumns: number;
 }
 
 /** The shared action picker's current choice, read from its markup. */

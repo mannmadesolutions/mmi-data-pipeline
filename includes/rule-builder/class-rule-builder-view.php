@@ -168,10 +168,28 @@ final class Rule_Builder_View {
         <div class="mmi-crp-group" data-action-types="copy_source_field_to_meta">
             <label>Source Field</label>
             <input type="text" class="mmi-crp-source-field" value="<?php echo esc_attr( $params['source_field'] ?? '' ); ?>" placeholder="e.g. is_hardware">
-            <label>Meta Key</label>
-            <input type="text" class="mmi-crp-meta-key" value="<?php echo esc_attr( $params['meta_key'] ?? '' ); ?>" placeholder="e.g. is_hardware_flag">
             <span class="dashicons dashicons-editor-help mmi-info-icon" tabindex="0"
                   title="Copies a matched product's raw value for Source Field — the exact field name as it appears in the supplier's feed, e.g. is_hardware — into a WordPress custom field named Meta Key on that product. Useful for surfacing feed data that has no Field Mapping entry of its own."></span>
+        </div>
+        <?php // One Meta Key box shared by the three meta changes, so only one is ever collected. ?>
+        <div class="mmi-crp-group" data-action-types="copy_source_field_to_meta,set_meta,delete_meta">
+            <label>Meta Key</label>
+            <input type="text" class="mmi-crp-meta-key" value="<?php echo esc_attr( $params['meta_key'] ?? '' ); ?>" placeholder="e.g. _mmi_platforms">
+        </div>
+        <div class="mmi-crp-group" data-action-types="set_meta">
+            <label>Value</label>
+            <input type="text" class="mmi-crp-meta-value" value="<?php echo esc_attr( $params['meta_value'] ?? '' ); ?>" placeholder="Value (blank sets it empty)">
+            <span class="dashicons dashicons-editor-help mmi-info-icon" tabindex="0"
+                  title="Writes this value into the custom field named Meta Key, as text. WooCommerce's own fields (price, stock, SKU, sizes…) aren't offered here: use Set WooCommerce Field, the pricing changes or the stock changes for those."></span>
+        </div>
+        <div class="mmi-crp-group" data-action-types="replace_in_title">
+            <label>Find</label>
+            <input type="text" class="mmi-crp-find" value="<?php echo esc_attr( $params['find'] ?? '' ); ?>" placeholder="Text in the title">
+            <label>Replace with</label>
+            <input type="text" class="mmi-crp-replace" value="<?php echo esc_attr( $params['replace'] ?? '' ); ?>" placeholder="Blank removes it">
+            <label class="mmi-crp-case" title="Off: &quot;dlx&quot; also finds &quot;DLX&quot;">
+                <input type="checkbox" class="mmi-crp-case-input" value="1" <?php checked( ! empty( $params['case_sensitive'] ) ); ?>> Match case
+            </label>
         </div>
         <?php
     }

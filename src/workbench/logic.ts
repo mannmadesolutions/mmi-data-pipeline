@@ -120,13 +120,14 @@ export function selectionPayload(s: SelectionState, filter: Filter): Selection {
 export const allPayload = (filter: Filter): Selection => ({ mode: "filter", filter, exclude: [] });
 
 /** The sentence under the change controls saying what Preview/Apply will touch. */
-export function targetText(s: SelectionState, total: number, haveResults: boolean): string {
+export function targetText(s: SelectionState, total: number, haveResults: boolean, browsing = false): string {
   const n = selectedCount(s, total);
   if (n && s.mode === "filter") {
     const excl = s.exclude.size ? fill(MESSAGES.TARGET_EXCLUDED, { count: num(s.exclude.size) }) : "";
     return fill(MESSAGES.TARGET_FILTER, { count: num(total), s: plural(total), excl });
   }
   if (n) return fill(MESSAGES.TARGET_IDS, { count: num(n), s: plural(n) });
+  if (haveResults && browsing) return MESSAGES.TARGET_BROWSING;
   if (haveResults) return fill(MESSAGES.TARGET_NONE, { count: num(total), s: plural(total) });
   return MESSAGES.NOTHING_SELECTED;
 }

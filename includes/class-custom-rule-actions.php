@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Custom_Rule_Actions {
 
     /**
-     * group label => [ action key => [ 'label' => ..., 'needs_params' => bool, 'params' => 'taxonomy_term'|'price'|'date_range'|'copy_field_meta'|'wc_field' ] ]
+     * group label => [ action key => [ 'label' => ..., 'needs_params' => bool, 'params' => 'taxonomy_term'|'price'|'date_range'|'copy_field_meta'|'wc_field'|'meta_value'|'meta_key'|'find_replace' ] ]
      *
      * The two 'Stock' entries are listed here too (so they render in the same
      * <select>), but are never dispatched by self::apply() — they're handled
@@ -52,6 +52,12 @@ class Custom_Rule_Actions {
             'set_status_publish' => [ 'label' => 'Set to Published' ],
             'set_status_draft'   => [ 'label' => 'Set to Draft' ],
             'set_status_pending' => [ 'label' => 'Set to Pending Review' ],
+            'set_status_private' => [ 'label' => 'Set to Private' ],
+        ],
+        'Title' => [
+            // Text found anywhere in the title replaced (or removed, with an
+            // empty replacement); case-sensitive only when asked.
+            'replace_in_title' => [ 'label' => 'Replace Text in Title', 'needs_params' => true, 'params' => 'find_replace' ],
         ],
         'Taxonomy' => [
             'set_taxonomy_term' => [ 'label' => 'Set Taxonomy Term', 'needs_params' => true, 'params' => 'taxonomy_term' ],
@@ -76,6 +82,10 @@ class Custom_Rule_Actions {
             // feed record, so apply() takes an optional $raw_item param this
             // one action actually uses (every other action ignores it).
             'copy_source_field_to_meta' => [ 'label' => 'Copy Source Field to Meta', 'needs_params' => true, 'params' => 'copy_field_meta' ],
+            // Any custom field but WooCommerce's own (RESERVED_META_KEYS):
+            // those go through Set WooCommerce Field, pricing or stock.
+            'set_meta'                  => [ 'label' => 'Set Meta Value', 'needs_params' => true, 'params' => 'meta_value' ],
+            'delete_meta'               => [ 'label' => 'Delete Meta Key', 'needs_params' => true, 'params' => 'meta_key' ],
         ],
     ];
 
@@ -358,6 +368,30 @@ class Custom_Rule_Actions {
                 }
                 return [ 'source_field' => $source_field, 'meta_key' => $meta_key ];
 
+            case 'meta_value':
+            case 'meta_key':
+                $meta_key = Stock_Override_Resolver::sanitize_field_name( $raw['meta_key'] ?? '' );
+                if ( $meta_key === '' || self::is_reserved_meta_key( $meta_key ) ) {
+                    return [];
+                }
+                return self::param_type( $action ) === 'meta_key'
+                    ? [ 'meta_key' => $meta_key ]
+                    : [ 'meta_key' => $meta_key, 'meta_value' => sanitize_textarea_field( (string) ( $raw['meta_value'] ?? '' ) ) ];
+
+            case 'find_replace':
+                // Kept as typed, spaces included (" - " is a find worth making):
+                // wp_strip_all_tags() would trim them, so tags and line breaks go by hand.
+                $plain = static fn( $v ): string => mb_substr( str_replace( [ "\r", "\n", "\t" ], ' ', strip_tags( (string) $v ) ), 0, 200 );
+                $find  = $plain( $raw['find'] ?? '' );
+                if ( trim( $find ) === '' ) {
+                    return [];
+                }
+                return [
+                    'find'           => $find,
+                    'replace'        => $plain( $raw['replace'] ?? '' ),
+                    'case_sensitive' => ! empty( $raw['case_sensitive'] ) && $raw['case_sensitive'] !== '0' ? '1' : '',
+                ];
+
             default:
                 return [];
         }
@@ -446,10 +480,12 @@ class Custom_Rule_Actions {
             case 'set_status_publish':
             case 'set_status_draft':
             case 'set_status_pending':
+            case 'set_status_private':
                 $status_map = [
                     'set_status_publish' => 'publish',
                     'set_status_draft'   => 'draft',
                     'set_status_pending' => 'pending',
+                    'set_status_private' => 'private',
                 ];
                 $target = $status_map[ $action ];
                 $post   = get_post( $product_id );
@@ -501,9 +537,58 @@ class Custom_Rule_Actions {
             case 'set_wc_field':
                 return self::apply_wc_field( $product_id, $params );
 
+            case 'set_meta':
+            case 'delete_meta':
+            case 'replace_in_title':
+                $after = self::changed_value( $product_id, $action, $params );
+                if ( $after === null ) {
+                    return false;
+                }
+                if ( $action === 'replace_in_title' ) {
+                    wp_update_post( [ 'ID' => $product_id, 'post_title' => $after ] );
+                } elseif ( $action === 'set_meta' ) {
+                    update_post_meta( $product_id, $params['meta_key'], $after );
+                } else {
+                    delete_post_meta( $product_id, $params['meta_key'] );
+                }
+                return true;
+
             default:
                 return false;
         }
+    }
+
+    /**
+     * What a meta or title action would leave, or null when it changes
+     * nothing (also what the Workbench preview shows). delete_meta returns ''.
+     */
+    public static function changed_value( int $product_id, string $action, array $params ): ?string {
+        $key = (string) ( $params['meta_key'] ?? '' );
+        switch ( $action ) {
+            case 'set_meta':
+                if ( $key === '' || self::is_reserved_meta_key( $key ) ) {
+                    return null;
+                }
+                $value   = (string) ( $params['meta_value'] ?? '' );
+                $current = get_post_meta( $product_id, $key, true );
+                return metadata_exists( 'post', $product_id, $key ) && is_scalar( $current ) && (string) $current === $value ? null : $value;
+
+            case 'delete_meta':
+                return ( $key !== '' && ! self::is_reserved_meta_key( $key ) && metadata_exists( 'post', $product_id, $key ) ) ? '' : null;
+
+            case 'replace_in_title':
+                $title = (string) get_post_field( 'post_title', $product_id, 'raw' );
+                $find  = (string) ( $params['find'] ?? '' );
+                if ( $find === '' ) {
+                    return null;
+                }
+                $new = ! empty( $params['case_sensitive'] )
+                    ? str_replace( $find, (string) $params['replace'], $title )
+                    : str_ireplace( $find, (string) $params['replace'], $title );
+                $new = trim( preg_replace( '/\s{2,}/u', ' ', $new ) );
+                return ( $new === $title || $new === '' ) ? null : $new;
+        }
+        return null;
     }
 
     private static function apply_taxonomy_term( int $product_id, array $params ): bool {

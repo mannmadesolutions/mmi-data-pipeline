@@ -206,6 +206,12 @@ button.mmi-health-chip:focus-visible {
 .mmi-wb-col-stock    { width: 7%; }
 .mmi-wb-col-supplier { width: 7%; }
 .mmi-wb-col-health   { width: 15%; }
+.mmi-wb-col-regular,
+.mmi-wb-col-sale,
+.mmi-wb-col-stock_qty { width: 7%; }
+.mmi-wb-col-type     { width: 6%; }
+.mmi-wb-col-modified { width: 9%; }
+.mmi-wb-col-meta     { width: 10%; }
 
 /* Featured image, or an empty square where there is none. */
 td.mmi-wb-col-thumb img,
@@ -427,6 +433,56 @@ td.mmi-wb-col-thumb img,
 .mmi-wb-change > .notice,
 .mmi-wb-change > .mmi-wb-rule-check {
     flex: 1 0 100%;
+}
+
+/* ── In-cell editor (title, prices, stock quantity, meta) ─────────────── */
+
+.mmi-wb-table td .mmi-wb-cell-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+
+.mmi-wb-cell-input {
+    flex: 1 1 100%;
+    min-width: 0;
+    height: 28px;
+}
+
+.mmi-wb-cell-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mmi-wb-cell-lock {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-cell-error {
+    flex: 1 1 100%;
+    color: var(--mmi-wb-danger);
+    font-size: 12px;
+}
+
+/* The Columns menu's "Add a meta key" row above its options. */
+.mmi-wb-meta-col-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--mmi-wb-border);
+}
+
+.mmi-wb-meta-col-add input {
+    flex: 1 1 140px;
+    min-width: 0;
 }
 
 /* ── Once / Keep applying ──────────────────────────────────────────────── */

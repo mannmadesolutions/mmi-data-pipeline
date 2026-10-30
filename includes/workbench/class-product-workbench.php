@@ -37,7 +37,16 @@ final class Product_Workbench {
     const FACET_LIMIT      = 40;
 
     /** Every sortable results column (whitelist for the request's `sort`). */
-    const SORTS = [ 'title', 'sku', 'categories', 'brand', 'status', 'stock', 'supplier', 'health', 'id', 'modified' ];
+    const SORTS = [ 'title', 'sku', 'categories', 'brand', 'status', 'stock', 'supplier', 'health', 'id', 'modified', 'regular', 'sale', 'stock_qty', 'type' ];
+
+    /** Sorts compared as numbers (an empty value still goes last). */
+    const NUMERIC_SORTS = [ 'regular', 'sale', 'stock_qty' ];
+
+    /** Meta-key columns the table may show at once ("meta:{key}" sorts and edits). */
+    const MAX_META_COLUMNS = 6;
+
+    /** Fields a results row edits in place besides its categories and brand. */
+    const EDITABLE_FIELDS = [ 'title', 'regular', 'sale', 'stock_qty' ];
 
     const QUICK_SEARCH_IN = [ 'title_sku', 'title', 'sku' ];
 
@@ -164,8 +173,9 @@ final class Product_Workbench {
      * whole result set. The sorted ID list is cached per user and filter so
      * paging doesn't re-run the match; Search (fresh = true) always does.
      */
-    public static function search( array $filter, int $page, int $per_page, string $sort, string $dir, bool $fresh ): array {
-        $sort     = in_array( $sort, self::SORTS, true ) ? $sort : 'title';
+    public static function search( array $filter, int $page, int $per_page, string $sort, string $dir, bool $fresh, array $meta_cols = [] ): array {
+        $meta_cols = self::sanitize_meta_columns( $meta_cols );
+        $sort      = ( in_array( $sort, self::SORTS, true ) || in_array( self::meta_sort_key( $sort ), $meta_cols, true ) ) ? $sort : 'title';
         $dir      = $dir === 'desc' ? 'DESC' : 'ASC';
         $per_page = in_array( $per_page, self::PER_PAGE_OPTIONS, true ) ? $per_page : 50;
 
@@ -191,7 +201,7 @@ final class Product_Workbench {
             'page'     => $page,
             'pages'    => $pages,
             'per_page' => $per_page,
-            'rows'     => self::rows( array_slice( $ids, ( $page - 1 ) * $per_page, $per_page ) ),
+            'rows'     => self::rows( array_slice( $ids, ( $page - 1 ) * $per_page, $per_page ), $meta_cols ),
             'facets'   => $facets,
             'checks'   => array_map(
                 static fn( $c ) => [ 'chip' => $c['chip'], 'label' => $c['label'] ],
@@ -232,6 +242,11 @@ final class Product_Workbench {
             case 'sku':        return "(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_sku' LIMIT 1)";
             case 'stock':      return "(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_stock_status' LIMIT 1)";
             case 'categories': return $first_term( 'product_cat' );
+            case 'type':       return $first_term( 'product_type' );
+            case 'regular':    return "CAST(NULLIF((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_regular_price' LIMIT 1), '') AS DECIMAL(20,4))";
+            case 'sale':       return "CAST(NULLIF((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_sale_price' LIMIT 1), '') AS DECIMAL(20,4))";
+            case 'stock_qty':  return "CASE WHEN EXISTS (SELECT 1 FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_manage_stock' AND meta_value = 'yes')
+                THEN CAST(NULLIF((SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_stock' LIMIT 1), '') AS DECIMAL(20,4)) END";
             case 'brand':      return taxonomy_exists( 'product_brand' ) ? $first_term( 'product_brand' ) : "''";
             case 'supplier':
                 $case = [];
@@ -240,7 +255,12 @@ final class Product_Workbench {
                     $case[] = "WHEN EXISTS (SELECT 1 FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '{$key}' AND meta_value != '') THEN '" . esc_sql( $sid ) . "'";
                 }
                 return $case ? 'CASE ' . implode( ' ', $case ) . " ELSE '' END" : "''";
-            default:           return 'p.post_title';
+            default:
+                $key = self::meta_sort_key( $sort );
+                if ( $key !== '' ) {
+                    return $wpdb->prepare( "(SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = %s LIMIT 1)", $key );
+                }
+                return 'p.post_title';
         }
     }
 
@@ -263,12 +283,14 @@ final class Product_Workbench {
             return [];
         }
         global $wpdb;
-        $expr = self::sort_expression( $sort );
-        $in   = implode( ',', array_map( 'intval', $ids ) );
-        // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- ints + whitelisted expressions.
+        $expr  = self::sort_expression( $sort );
+        $in    = implode( ',', array_map( 'intval', $ids ) );
+        // A number column's empty value is NULL; comparing it with '' would put every 0 last too.
+        $empty = in_array( $sort, self::NUMERIC_SORTS, true ) ? 'p.sort_value IS NULL' : "(p.sort_value IS NULL OR p.sort_value = '')";
+        // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- ints + whitelisted or prepared expressions.
         $sorted = $wpdb->get_col(
             "SELECT p.ID FROM (SELECT p.ID, {$expr} AS sort_value FROM {$wpdb->posts} p WHERE p.ID IN ({$in})) p
-             ORDER BY (p.sort_value IS NULL OR p.sort_value = '') ASC, p.sort_value {$dir}, p.ID {$dir}"
+             ORDER BY {$empty} ASC, p.sort_value {$dir}, p.ID {$dir}"
         );
         // phpcs:enable
         return array_map( 'intval', $sorted );
@@ -322,7 +344,7 @@ final class Product_Workbench {
      *
      * @return list<array>
      */
-    public static function rows( array $ids ): array {
+    public static function rows( array $ids, array $meta_cols = [] ): array {
         if ( empty( $ids ) ) {
             return [];
         }
@@ -352,6 +374,12 @@ final class Product_Workbench {
                 'sku'        => (string) get_post_meta( $id, '_sku', true ),
                 'stock'      => (string) get_post_meta( $id, '_stock_status', true ),
                 'price'      => (string) get_post_meta( $id, '_price', true ),
+                'regular'    => (string) get_post_meta( $id, '_regular_price', true ),
+                'sale'       => (string) get_post_meta( $id, '_sale_price', true ),
+                'stock_qty'  => get_post_meta( $id, '_manage_stock', true ) === 'yes' ? (string) get_post_meta( $id, '_stock', true ) : null,
+                'type'       => self::product_type( $id ),
+                'modified'   => $post->post_modified,
+                'meta'       => (object) array_combine( $meta_cols, array_map( static fn( $k ) => metadata_exists( 'post', $id, $k ) ? self::meta_text( $id, $k ) : null, $meta_cols ) ),
                 'categories' => self::term_list( $id, 'product_cat' ),
                 'brands'     => $brand_tax ? self::term_list( $id, $brand_tax ) : [],
                 'supplier'   => Stock_Override_Resolver::product_supplier( $id ),
@@ -364,6 +392,29 @@ final class Product_Workbench {
             ];
         }
         return $rows;
+    }
+
+    /** A product's type (simple, variable, bundle…) from its product_type term. */
+    private static function product_type( int $id ): string {
+        $terms = get_the_terms( $id, 'product_type' );
+        return is_array( $terms ) && $terms ? (string) $terms[0]->slug : 'simple';
+    }
+
+    /** A meta value as table text: arrays/objects as compact JSON. */
+    private static function meta_text( int $id, string $key ): string {
+        $v = get_post_meta( $id, $key, true );
+        return is_scalar( $v ) ? (string) $v : (string) wp_json_encode( $v );
+    }
+
+    /** "meta:{key}" → key ('' for anything else). */
+    private static function meta_sort_key( string $sort ): string {
+        return strpos( $sort, 'meta:' ) === 0 ? substr( $sort, 5 ) : '';
+    }
+
+    /** @return string[] Distinct, cleaned meta keys, at most MAX_META_COLUMNS. */
+    public static function sanitize_meta_columns( array $keys ): array {
+        $keys = array_filter( array_map( [ Stock_Override_Resolver::class, 'sanitize_field_name' ], $keys ) );
+        return array_slice( array_values( array_unique( $keys ) ), 0, self::MAX_META_COLUMNS );
     }
 
     /** @return list<array{id:int,name:string}> */
@@ -438,6 +489,15 @@ final class Product_Workbench {
         if ( $action === 'copy_source_field_to_meta' ) {
             return sprintf( 'Copy feed "%s" to meta "%s"', $params['source_field'], $params['meta_key'] );
         }
+        if ( $action === 'set_meta' ) {
+            return sprintf( 'Meta "%s" → "%s"', $params['meta_key'], $params['meta_value'] );
+        }
+        if ( $action === 'delete_meta' ) {
+            return sprintf( 'Delete meta "%s"', $params['meta_key'] );
+        }
+        if ( $action === 'replace_in_title' ) {
+            return sprintf( 'Title: "%s" → "%s"%s', $params['find'], $params['replace'], ! empty( $params['case_sensitive'] ) ? ' (match case)' : '' );
+        }
         if ( $action === 'set_wc_field' ) {
             $def = Custom_Rule_Actions::wc_fields()[ $params['wc_field'] ] ?? [ 'label' => $params['wc_field'] ];
             return sprintf( '%s → %s', $def['label'], Custom_Rule_Actions::wc_field_display( $params['wc_field'], $params['wc_value'] ) );
@@ -463,7 +523,21 @@ final class Product_Workbench {
             case 'set_status_publish':
             case 'set_status_draft':
             case 'set_status_pending':
+            case 'set_status_private':
                 return [ 'status' => (string) get_post_status( $id ) ];
+
+            case 'replace_in_title':
+            case 'set_title':
+                return [ 'title' => (string) get_post_field( 'post_title', $id, 'raw' ) ];
+
+            case 'set_meta':
+            case 'delete_meta':
+                // The raw value: an array or object must come back as itself on Undo, not "Array".
+                $value = get_post_meta( $id, $params['meta_key'], true );
+                return [
+                    'exists' => metadata_exists( 'post', $id, $params['meta_key'] ),
+                    'value'  => is_scalar( $value ) || $value === null ? (string) $value : $value,
+                ];
 
             case 'set_regular_price':
             case 'set_sale_price':
@@ -497,7 +571,7 @@ final class Product_Workbench {
                 $key = $params['meta_key'];
                 return [
                     'exists' => metadata_exists( 'post', $id, $key ),
-                    'value'  => (string) get_post_meta( $id, $key, true ),
+                    'value'  => is_scalar( $raw = get_post_meta( $id, $key, true ) ) || $raw === null ? (string) $raw : $raw,
                 ];
 
             case 'set_wc_field':
@@ -529,7 +603,17 @@ final class Product_Workbench {
             case 'set_status_publish':
             case 'set_status_draft':
             case 'set_status_pending':
+            case 'set_status_private':
                 return [ 'status' => substr( $action, strlen( 'set_status_' ) ) ];
+
+            case 'replace_in_title':
+                $title = Custom_Rule_Actions::changed_value( $id, $action, $params );
+                return $title === null ? $before : [ 'title' => $title ];
+
+            case 'set_meta':
+                return Custom_Rule_Actions::changed_value( $id, $action, $params ) === null ? $before : [ 'exists' => true, 'value' => (string) $params['meta_value'] ];
+            case 'delete_meta':
+                return [ 'exists' => false, 'value' => '' ];
 
             case 'set_regular_price':
                 return [ 'regular' => (string) $params['value'], 'sale' => $before['sale'] ];
@@ -593,8 +677,12 @@ final class Product_Workbench {
         if ( isset( $state['wc_field'] ) ) {
             return Custom_Rule_Actions::wc_field_display( $state['wc_field'], (string) $state['value'] );
         }
+        if ( isset( $state['title'] ) ) {
+            return $state['title'];
+        }
         if ( array_key_exists( 'exists', $state ) ) {
-            return $state['exists'] ? ( $state['value'] !== '' ? $state['value'] : '(empty)' ) : '(not set)';
+            $value = is_scalar( $state['value'] ) ? (string) $state['value'] : (string) wp_json_encode( $state['value'] );
+            return $state['exists'] ? ( $value !== '' ? $value : '(empty)' ) : '(not set)';
         }
         $value = (string) reset( $state );
         return $value !== '' ? $value : '—';
@@ -664,6 +752,7 @@ final class Product_Workbench {
         'clear_sale_price'           => [ '_sale_price' ],
         'set_sale_dates'             => [ '_sale_price_dates_from', '_sale_price_dates_to' ],
         'set_stock_status_backorder' => [ '_stock_status' ],
+        'replace_in_title'           => [ 'post_title' ],
         'enable_manage_stock'        => [ '_manage_stock' ],
         'disable_manage_stock'       => [ '_manage_stock' ],
     ];
@@ -681,7 +770,7 @@ final class Product_Workbench {
         }
         if ( $action === 'set_taxonomy_term' ) {
             $fields = [ (string) ( $params['taxonomy'] ?? '' ) ];
-        } elseif ( $action === 'copy_source_field_to_meta' ) {
+        } elseif ( in_array( $action, [ 'copy_source_field_to_meta', 'set_meta', 'delete_meta' ], true ) ) {
             $fields = [ (string) ( $params['meta_key'] ?? '' ) ];
         } elseif ( $action === 'set_wc_field' ) {
             $fields = [ Custom_Rule_Actions::wc_field_writes( (string) ( $params['wc_field'] ?? '' ) ) ];
@@ -936,7 +1025,13 @@ final class Product_Workbench {
             case 'set_status_publish':
             case 'set_status_draft':
             case 'set_status_pending':
+            case 'set_status_private':
                 wp_update_post( [ 'ID' => $id, 'post_status' => $state['status'] ] );
+                break;
+
+            case 'replace_in_title':
+            case 'set_title':
+                wp_update_post( [ 'ID' => $id, 'post_title' => $state['title'] ] );
                 break;
 
             case 'set_regular_price':
@@ -983,6 +1078,8 @@ final class Product_Workbench {
                 break;
 
             case 'copy_source_field_to_meta':
+            case 'set_meta':
+            case 'delete_meta':
                 if ( $state['exists'] ) {
                     update_post_meta( $id, $params['meta_key'], $state['value'] );
                 } else {
@@ -1031,7 +1128,7 @@ final class Product_Workbench {
      * @param  int[] $term_ids
      * @return array|\WP_Error The product's refreshed results row.
      */
-    public static function set_product_terms( int $id, string $taxonomy, array $term_ids ) {
+    public static function set_product_terms( int $id, string $taxonomy, array $term_ids, array $meta_cols = [] ) {
         if ( ! in_array( $taxonomy, self::EDITABLE_TAXONOMIES, true ) || ! taxonomy_exists( $taxonomy ) ) {
             return new \WP_Error( 'taxonomy', 'That field can’t be edited here.' );
         }
@@ -1062,45 +1159,142 @@ final class Product_Workbench {
                 \MMI_Pipeline_Field_Locks::lock( $id, $taxonomy );
                 $params['locked_here'] = true;
             }
-            wc_delete_product_transients( $id );
-
-            Workbench_Change_Log::ensure_table();
-            $tax   = get_taxonomy( $taxonomy );
-            $title = html_entity_decode( get_the_title( $id ), ENT_QUOTES, 'UTF-8' );
-            $job   = [
-                'id'           => wp_generate_uuid4(),
-                'created_at'   => current_time( 'mysql' ),
-                'user'         => wp_get_current_user()->display_name,
-                'action'       => 'set_taxonomy_term',
-                'params'       => $params,
-                'summary'      => sprintf( '%s → %s', $tax ? $tax->labels->name : $taxonomy, self::describe( $after, 'set_taxonomy_term' ) ),
-                'filter_label' => mb_substr( sprintf( 'Edited in the table: #%d %s', $id, $title ), 0, 200 ),
-                'total'        => 1,
-                'cursor'       => 1,
-                'changed'      => 1,
-                'unchanged'    => 0,
-                'failed'       => 0,
-                'status'       => 'done',
-                'undo_cursor'  => 0,
-                'undone'       => 0,
-                'conflicts'    => 0,
-            ];
-            Workbench_Change_Log::save_job_ids( $job['id'], [ $id ] );
-            Workbench_Change_Log::record( $job['id'], [ [ 'product_id' => $id, 'before' => $before, 'after' => $after ] ] );
-            Workbench_Change_Log::save_job( $job );
-            self::invalidate_search_cache();
-            MMI_Logger::info( "Workbench row edit {$job['id']}: product {$id} {$job['summary']}", [ 'before' => $before['terms'] ], 'sync', 'Product_Workbench' );
-            if ( function_exists( 'mmi_data_pipeline_audit' ) ) {
-                mmi_data_pipeline_audit( 'workbench.edit', [
-                    'object_type' => 'product',
-                    'object_id'   => (string) $id,
-                    'outcome'     => 'success',
-                    'details'     => [ 'taxonomy' => $taxonomy, 'job' => $job['id'] ],
-                ] );
-            }
+            $tax = get_taxonomy( $taxonomy );
+            self::record_row_edit( $id, 'set_taxonomy_term', $params, $before, $after,
+                sprintf( '%s → %s', $tax ? $tax->labels->name : $taxonomy, self::describe( $after, 'set_taxonomy_term' ) ),
+                [ 'taxonomy' => $taxonomy ] );
         }
 
-        return self::rows( [ $id ] )[0] ?? new \WP_Error( 'product', 'Unknown product.' );
+        return self::rows( [ $id ], self::sanitize_meta_columns( $meta_cols ) )[0] ?? new \WP_Error( 'product', 'Unknown product.' );
+    }
+
+    /**
+     * Record one product's in-table edit as a finished one-product job, so
+     * Recent changes lists it and Undo restores it like any other.
+     */
+    private static function record_row_edit( int $id, string $action, array $params, array $before, array $after, string $summary, array $audit ): void {
+        wc_delete_product_transients( $id );
+        Workbench_Change_Log::ensure_table();
+        $title = html_entity_decode( get_the_title( $id ), ENT_QUOTES, 'UTF-8' );
+        $job   = [
+            'id'           => wp_generate_uuid4(),
+            'created_at'   => current_time( 'mysql' ),
+            'user'         => wp_get_current_user()->display_name,
+            'action'       => $action,
+            'params'       => $params,
+            'summary'      => $summary,
+            'filter_label' => mb_substr( sprintf( 'Edited in the table: #%d %s', $id, $title ), 0, 200 ),
+            'total'        => 1,
+            'cursor'       => 1,
+            'changed'      => 1,
+            'unchanged'    => 0,
+            'failed'       => 0,
+            'status'       => 'done',
+            'undo_cursor'  => 0,
+            'undone'       => 0,
+            'conflicts'    => 0,
+        ];
+        Workbench_Change_Log::save_job_ids( $job['id'], [ $id ] );
+        Workbench_Change_Log::record( $job['id'], [ [ 'product_id' => $id, 'before' => $before, 'after' => $after ] ] );
+        Workbench_Change_Log::save_job( $job );
+        self::invalidate_search_cache();
+        MMI_Logger::info( "Workbench row edit {$job['id']}: product {$id} {$summary}", [ 'before' => $before ], 'sync', 'Product_Workbench' );
+        if ( function_exists( 'mmi_data_pipeline_audit' ) ) {
+            mmi_data_pipeline_audit( 'workbench.edit', [
+                'object_type' => 'product',
+                'object_id'   => (string) $id,
+                'outcome'     => 'success',
+                'details'     => $audit + [ 'job' => $job['id'] ],
+            ] );
+        }
+    }
+
+    /**
+     * Edit one field of one product from the results table: title, regular
+     * or sale price, stock quantity, or a meta column ("meta:{key}"). Goes
+     * through the same change actions a bulk job uses, is logged as a
+     * one-product job (Undo in Recent changes), and with $lock locks the
+     * field against imports.
+     *
+     * @return array|\WP_Error The product's refreshed row.
+     */
+    public static function set_product_field( int $id, string $field, string $value, bool $lock, array $meta_cols = [] ) {
+        if ( get_post_type( $id ) !== 'product' ) {
+            return new \WP_Error( 'product', 'Unknown product.' );
+        }
+        $meta_key = self::meta_sort_key( $field );
+        if ( $meta_key !== '' ) {
+            $meta_key = Stock_Override_Resolver::sanitize_field_name( $meta_key );
+            if ( $meta_key === '' || Custom_Rule_Actions::is_reserved_meta_key( $meta_key ) ) {
+                return new \WP_Error( 'field', 'WooCommerce’s own fields are edited through their columns or Set WooCommerce Field, not as meta.' );
+            }
+            $action = 'set_meta';
+            $params = [ 'meta_key' => $meta_key, 'meta_value' => sanitize_textarea_field( $value ) ];
+            $label  = sprintf( 'Meta "%s"', $meta_key );
+        } elseif ( $field === 'title' ) {
+            $value = trim( sanitize_text_field( $value ) );
+            if ( $value === '' ) {
+                return new \WP_Error( 'value', 'A product needs a title.' );
+            }
+            $action = 'set_title';
+            $params = [];
+            $label  = 'Title';
+        } elseif ( $field === 'regular' || $field === 'sale' ) {
+            $value = trim( $value );
+            if ( $field === 'sale' && $value === '' ) {
+                $action = 'clear_sale_price';
+                $params = [];
+            } else {
+                $action = $field === 'regular' ? 'set_regular_price' : 'set_sale_price';
+                $params = Custom_Rule_Actions::sanitize_params( $action, [ 'value' => $value ] );
+                if ( empty( $params ) ) {
+                    return new \WP_Error( 'value', 'Enter a price, e.g. 49.99.' );
+                }
+            }
+            $label = $field === 'regular' ? 'Regular price' : 'Sale price';
+        } elseif ( $field === 'stock_qty' ) {
+            $action = 'set_wc_field';
+            $params = Custom_Rule_Actions::sanitize_params( $action, [ 'wc_field' => 'stock_quantity', 'wc_value' => trim( $value ) ] );
+            $product = wc_get_product( $id );
+            if ( empty( $params ) ) {
+                return new \WP_Error( 'value', 'Enter a whole number.' );
+            }
+            if ( ! $product || ! Custom_Rule_Actions::wc_field_applies( $product, 'stock_quantity' ) ) {
+                return new \WP_Error( 'value', 'This product doesn’t manage stock, so it has no quantity. Turn on Manage stock first.' );
+            }
+            $label = 'Stock quantity';
+        } else {
+            return new \WP_Error( 'field', 'That field can’t be edited here.' );
+        }
+
+        $before = self::state( $id, $action, $params );
+        if ( $action === 'set_title' ) {
+            if ( $value !== $before['title'] ) {
+                wp_update_post( [ 'ID' => $id, 'post_title' => $value ] );
+            }
+        } else {
+            Custom_Rule_Actions::apply( $id, $action, $params );
+        }
+        clean_post_cache( $id );
+        wp_cache_delete( $id, 'post_meta' );
+        $after = self::state( $id, $action, $params );
+
+        if ( $after != $before ) { // phpcs:ignore Universal.Operators.StrictComparisons -- array value equality.
+            $fields = $action === 'set_title' ? [ 'post_title' ] : self::lock_fields( $action, $params );
+            $fields = class_exists( 'MMI_Pipeline_Field_Locks' ) ? array_values( array_intersect( $fields, array_keys( \MMI_Pipeline_Field_Locks::lockable_fields() ) ) ) : [];
+            if ( $lock && $fields ) {
+                $current = \MMI_Pipeline_Field_Locks::get( $id );
+                $added   = array_values( array_diff( $fields, $current ) );
+                if ( $added ) {
+                    \MMI_Pipeline_Field_Locks::set( $id, array_merge( $current, $added ) );
+                    $before['locks_added'] = $added;
+                }
+            }
+            self::record_row_edit( $id, $action, $params, $before, $after,
+                sprintf( '%s → %s', $label, self::describe( $after, $action ) ), [ 'field' => $field ] );
+        }
+
+        return self::rows( [ $id ], self::sanitize_meta_columns( $meta_cols ) )[0] ?? new \WP_Error( 'product', 'Unknown product.' );
     }
 
     /** Recent jobs for the Recent Changes table. */

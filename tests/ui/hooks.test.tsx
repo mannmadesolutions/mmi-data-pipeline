@@ -8,7 +8,7 @@ import { SEARCH_DEBOUNCE_MS, useSearch, type SearchInputs } from "../../src/work
 
 const result = (total: number, ids: number[] = []): SearchResult => ({
   total, page: 1, pages: 1, per_page: 50, facets: [], checks: {},
-  rows: ids.map((id) => ({ id, title: `P${id}`, status: "publish", sku: "", stock: "instock", price: "", categories: [], brands: [],
+  rows: ids.map((id) => ({ id, title: `P${id}`, status: "publish", sku: "", stock: "instock", price: "", regular: "", sale: "", stock_qty: null, type: "simple", modified: "", meta: {}, categories: [], brands: [],
     supplier: "all", health: [], locked: [], thumb: "", edit_url: "", view_url: "" })),
 });
 
@@ -88,17 +88,19 @@ describe("useSearch", () => {
     expect(h.current.view.pending).toBe(false);
   });
 
-  it("clears results when nothing is left to search for", async () => {
-    vi.spyOn(api, "search").mockResolvedValue(result(2, [1, 2]));
+  it("an empty search lists every product (browsing), with its meta columns", async () => {
+    const spy = vi.spyOn(api, "search").mockResolvedValue(result(2, [1, 2]));
     const cb = callbacks();
     const { result: h, rerender } = renderHook(({ i }) => useSearch(i, 50, cb), { initialProps: { i: inputs("x") } });
     act(() => h.current.schedule(0));
     await act(async () => { vi.advanceTimersByTime(0); });
-    rerender({ i: inputs("") });
+    rerender({ i: { ...inputs(""), metaCols: ["_mmi_platforms"] } });
     act(() => h.current.schedule(0));
     await act(async () => { vi.advanceTimersByTime(0); });
-    expect(h.current.view.result).toBeNull();
-    expect(h.current.view.filter).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1]![0].q).toBe("");
+    expect(spy.mock.calls[1]![1].metaCols).toEqual(["_mmi_platforms"]);
+    expect(h.current.view.result?.total).toBe(2);
   });
 
   it("reports a failed search and lets the same search be retried", async () => {

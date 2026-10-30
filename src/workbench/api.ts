@@ -91,9 +91,10 @@ export async function post<T>(action: string, data: Record<string, FormValue> = 
 /* ── Endpoints ──────────────────────────────────────────────────────────── */
 
 export const api = {
-  search: (filter: Filter, o: { page: number; perPage: number; sort: string; dir: SortDir; fresh: boolean }, signal?: AbortSignal) =>
+  search: (filter: Filter, o: { page: number; perPage: number; sort: string; dir: SortDir; fresh: boolean; metaCols?: string[] }, signal?: AbortSignal) =>
     post<SearchResult>("mmi_workbench_search", {
       filter: filter as unknown as FormValue, page: o.page, per_page: o.perPage, sort: o.sort, dir: o.dir, fresh: o.fresh ? 1 : 0,
+      meta_cols: o.metaCols ?? [],
     }, signal),
 
   preview: (selection: Selection, action: string, params: Record<string, string>) =>
@@ -113,8 +114,12 @@ export const api = {
   terms: (taxonomy: string) =>
     post<{ terms: { id: number; name: string; parent?: number }[] }>("mmi_pipeline_get_taxonomy_terms", { taxonomy }),
 
-  setTerms: (productId: number, taxonomy: string, termIds: number[]) =>
-    post<{ row: ProductRow }>("mmi_workbench_set_terms", { product_id: productId, taxonomy, term_ids: termIds }),
+  setTerms: (productId: number, taxonomy: string, termIds: number[], metaCols: string[] = []) =>
+    post<{ row: ProductRow }>("mmi_workbench_set_terms", { product_id: productId, taxonomy, term_ids: termIds, meta_cols: metaCols }),
+
+  /** Edit one cell: "title", "regular", "sale", "stock_qty" or "meta:{key}". */
+  setField: (productId: number, field: string, value: string, lock: boolean, metaCols: string[] = []) =>
+    post<{ row: ProductRow }>("mmi_workbench_set_field", { product_id: productId, field, value, lock: lock ? 1 : 0, meta_cols: metaCols }),
 
   saveSearch: (label: string, matchLogic: string, conditions: unknown[]) =>
     post<{ id: string }>("mmi_workbench_save_search", { label, match_logic: matchLogic, conditions: conditions as FormValue }),

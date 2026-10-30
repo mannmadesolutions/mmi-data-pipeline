@@ -173,3 +173,10 @@ describe("standing rules", () => {
     expect(sortRules(rs, "name", "desc").map((r) => r.id)).toEqual(["b", "a"]);
   });
 });
+
+describe("browsing every product", () => {
+  it("says ticks are needed rather than promising to change every result", () => {
+    expect(targetText(EMPTY_SELECTION, 8773, true, true)).toContain("Showing every product");
+    expect(targetText(EMPTY_SELECTION, 40, true, false)).toContain("Apply to all results changes every one of them");
+  });
+});

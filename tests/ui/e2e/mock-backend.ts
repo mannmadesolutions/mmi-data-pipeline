@@ -8,6 +8,7 @@ import type { Page, Route } from "@playwright/test";
 export interface Product {
   id: number; title: string; sku: string; status: string; stock: string;
   categories: { id: number; name: string }[]; brands: { id: number; name: string }[]; health: string[]; locked: string[];
+  regular: string; meta: Record<string, string>;
 }
 
 const CATS = [{ id: 10, name: "Software", parent: 0 }, { id: 11, name: "Bundles", parent: 10 }, { id: 12, name: "Plug-ins", parent: 10 }, { id: 13, name: "Hardware", parent: 0 }];
@@ -22,6 +23,7 @@ function catalog(): Product[] {
       stock: i % 5 === 0 ? "outofstock" : "instock",
       categories: [bundle ? { id: 11, name: "Bundles" } : { id: 12, name: "Plug-ins" }],
       brands: [BRANDS[i % 2]!], health: i % 4 === 0 ? ["no_image"] : [], locked: [],
+      regular: (19 + i).toFixed(2), meta: (i % 3 === 0 ? { _mmi_platforms: "mac,win" } : {}) as Record<string, string>,
     };
   });
 }
@@ -108,7 +110,7 @@ export class MockBackend {
         rows.forEach((r) => r.categories.forEach((c) => facets.set(c.name, (facets.get(c.name) ?? 0) + 1)));
         return this.reply(route, {
           total: rows.length, page: pageNo, pages, per_page: perPage,
-          rows: rows.slice((pageNo - 1) * perPage, pageNo * perPage).map((p) => this.row(p)),
+          rows: rows.slice((pageNo - 1) * perPage, pageNo * perPage).map((p) => this.row(p, body.getAll("meta_cols[]"))),
           facets: [...facets].map(([name, count]) => ({ id: CATS.find((c) => c.name === name)!.id, name, count })),
           checks: { no_image: { chip: "No image", label: "No featured image" } },
         });
@@ -161,6 +163,18 @@ export class MockBackend {
         if (tax === "product_brand") p.brands = terms; else p.categories = terms;
         p.locked = [...new Set([...p.locked, tax!])];
         return this.reply(route, { row: this.row(p) });
+      }
+      case "mmi_workbench_set_field": {
+        const p = this.products.find((x) => x.id === Number(body.get("product_id")))!;
+        const field = body.get("field") ?? "";
+        const value = body.get("value") ?? "";
+        if (field === "regular" && !/^\d+(\.\d+)?$/.test(value)) {
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: false, data: { message: "Enter a price, e.g. 49.99." } }) });
+        }
+        if (field === "title") p.title = value;
+        if (field === "regular") p.regular = value;
+        if (field.startsWith("meta:")) p.meta[field.slice(5)] = value;
+        return this.reply(route, { row: this.row(p, body.getAll("meta_cols[]")) });
       }
       case "mmi_workbench_save_search":
         return this.reply(route, { id: "wb:1" });
@@ -233,8 +247,11 @@ export class MockBackend {
     return { grade: "ok", matched, will_change: matched, findings: [] };
   }
 
-  private row(p: Product) {
-    return { ...p, price: "9.99", supplier: "all", thumb: "", edit_url: "#edit", view_url: "#view" };
+  private row(p: Product, metaCols: string[] = []) {
+    return {
+      ...p, price: p.regular, regular: p.regular, sale: "", stock_qty: p.id % 2 ? "5" : null, type: "simple", modified: "2026-10-30 12:00:00",
+      meta: Object.fromEntries(metaCols.map((k) => [k, p.meta[k] ?? null])), supplier: "all", thumb: "", edit_url: "#edit", view_url: "#view",
+    };
   }
 
   private job(body: URLSearchParams) {

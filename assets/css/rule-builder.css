@@ -44,6 +44,20 @@
     box-sizing: border-box;
 }
 
+/* Replace Text in Title's Match case: a plain checkbox, not a 28px box. */
+.mmi-crp-group .mmi-crp-case {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 400;
+}
+
+.mmi-crp-group .mmi-crp-case input {
+    height: auto;
+    padding: 0;
+    margin: 0;
+}
+
 .mmi-crp-group select:focus,
 .mmi-crp-group input:focus {
     border-color: #45852C;

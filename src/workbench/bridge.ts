@@ -201,6 +201,10 @@ export function loadAction(action: string, params: Record<string, string>): void
   set(S.DATE_TO_INPUT, params.date_to);
   set(S.SOURCE_FIELD_INPUT, params.source_field);
   set(S.META_KEY_INPUT, params.meta_key);
+  set(S.META_VALUE_INPUT, params.meta_value);
+  set(S.FIND_INPUT, params.find);
+  set(S.REPLACE_INPUT, params.replace);
+  if (S.CASE_INPUT) $scope.find(S.CASE_INPUT).prop("checked", params.case_sensitive === "1");
   if (action === "set_wc_field" && S.WC_FIELD_SELECT) {
     $scope.find(S.WC_FIELD_SELECT).val(params.wc_field ?? "");
     RB.updateActionParamsVisibility($scope); // shows the value control for that field

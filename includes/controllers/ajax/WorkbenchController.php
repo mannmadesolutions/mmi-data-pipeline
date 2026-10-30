@@ -10,6 +10,7 @@
  *   mmi_workbench_undo    — undo the job's next batch (client loops until undone)
  *   mmi_workbench_jobs    — Recent Changes list
  *   mmi_workbench_set_terms — set one product's categories or brand from the results table
+ *   mmi_workbench_set_field — set one product's title, price, stock quantity or a meta column from the results table
  *   mmi_workbench_save_search   — save the conditions as a named search (condition library "wb:")
  *   mmi_workbench_delete_search — delete one (from the library's Delete)
  *
@@ -18,6 +19,7 @@
  * @package MannMade\DataPipeline
  */
 
+use MannMade\DataPipeline\Stock_Override_Resolver;
 use MannMade\DataPipeline\Workbench\Product_Workbench;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -74,9 +76,11 @@ add_action( 'wp_ajax_mmi_workbench_search', function () {
         Product_Workbench::sanitize_filter( mmi_workbench_post_array( 'filter' ) ),
         absint( $_POST['page'] ?? 1 ),
         absint( $_POST['per_page'] ?? 50 ),
-        sanitize_key( wp_unslash( $_POST['sort'] ?? 'title' ) ),
+        // "meta:{key}" keeps the key's own spelling (sanitize_key would lowercase it).
+        Stock_Override_Resolver::sanitize_field_name( wp_unslash( $_POST['sort'] ?? 'title' ) ),
         sanitize_key( wp_unslash( $_POST['dir'] ?? 'asc' ) ),
-        ! empty( $_POST['fresh'] )
+        ! empty( $_POST['fresh'] ),
+        mmi_workbench_post_array( 'meta_cols' )
     );
     // phpcs:enable
     wp_send_json_success( $result );
@@ -175,7 +179,22 @@ add_action( 'wp_ajax_mmi_workbench_set_terms', function () {
     $row = Product_Workbench::set_product_terms(
         absint( $_POST['product_id'] ?? 0 ),
         sanitize_key( wp_unslash( $_POST['taxonomy'] ?? '' ) ),
-        array_map( 'absint', (array) ( $_POST['term_ids'] ?? [] ) )
+        array_map( 'absint', (array) ( $_POST['term_ids'] ?? [] ) ),
+        mmi_workbench_post_array( 'meta_cols' )
+    );
+    // phpcs:enable
+    is_wp_error( $row ) ? wp_send_json_error( [ 'message' => $row->get_error_message() ] ) : wp_send_json_success( [ 'row' => $row ] );
+} );
+
+add_action( 'wp_ajax_mmi_workbench_set_field', function () {
+    mmi_workbench_ajax_guard();
+    // phpcs:disable WordPress.Security.NonceVerification.Missing
+    $row = Product_Workbench::set_product_field(
+        absint( $_POST['product_id'] ?? 0 ),
+        Stock_Override_Resolver::sanitize_field_name( wp_unslash( $_POST['field'] ?? '' ) ),
+        (string) wp_unslash( $_POST['value'] ?? '' ),
+        ! empty( $_POST['lock'] ),
+        mmi_workbench_post_array( 'meta_cols' )
     );
     // phpcs:enable
     is_wp_error( $row ) ? wp_send_json_error( [ 'message' => $row->get_error_message() ] ) : wp_send_json_success( [ 'row' => $row ] );

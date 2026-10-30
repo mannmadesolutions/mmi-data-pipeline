@@ -41,7 +41,7 @@ final class Rule_Efficacy {
 
     /** Actions where matching most of the catalog by mistake is costly to put right. */
     const SWEEPING = [
-        'force_instock', 'force_outofstock', 'set_status_publish', 'set_status_draft', 'set_status_pending',
+        'force_instock', 'force_outofstock', 'set_status_publish', 'set_status_draft', 'set_status_pending', 'set_status_private',
         'set_regular_price', 'set_sale_price', 'clear_sale_price', 'set_sale_dates',
     ];
 
@@ -453,7 +453,7 @@ final class Rule_Efficacy {
         if ( $action === 'set_taxonomy_term' ) {
             return 'terms';
         }
-        if ( $action === 'copy_source_field_to_meta' ) {
+        if ( in_array( $action, [ 'copy_source_field_to_meta', 'set_meta', 'delete_meta' ], true ) ) {
             return 'meta';
         }
         return 'save';

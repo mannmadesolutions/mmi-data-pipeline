@@ -40,7 +40,7 @@ interface WorkbenchWindow {
   MMIConditionBuilder?: ConditionBuilderApi;
   MMIPagination?: { init: (o: { container: Element; totalPages: number; page: number; onPageChange: (p: number) => void }) => Pager };
   MMINonces?: NoncesApi;
-  MMI_ColumnResizer?: { initTable: ($table: JQuery) => void };
+  MMI_ColumnResizer?: { initTable: ($table: JQuery) => void; getTableId?: ($table: JQuery) => string };
   mmiRuleBuilder?: { ajaxUrl: string; nonce: string };
   mmiConditionBuilder?: { nonce: string };
   mmiWorkbench?: WorkbenchConfig;

@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 import { MESSAGES, fill } from "./messages";
-import { filterKey, hasParameters } from "./logic";
+import { filterKey } from "./logic";
 import type { Filter, SearchResult, SortDir } from "./types";
 
 export const SEARCH_DEBOUNCE_MS = 400;
@@ -20,6 +20,8 @@ export interface SearchInputs {
   filter: Filter;
   firstIncomplete: number;
   firstWithoutValue: number;
+  /** Meta keys shown as columns: their values come with each row. */
+  metaCols?: string[];
 }
 
 export interface SearchView {
@@ -70,7 +72,7 @@ export function useSearch(inputs: SearchInputs, defaultPerPage: number, callback
     inFlight.current = ctrl;
     const id = ++seq.current;
     patch({ pending: true, loading: true, hint: "" });
-    api.search(o.filter, o, ctrl.signal)
+    api.search(o.filter, { ...o, metaCols: inputsRef.current.metaCols }, ctrl.signal)
       .then((result) => {
         if (id !== seq.current) return;
         patch({ result, page: result.page });
@@ -87,19 +89,9 @@ export function useSearch(inputs: SearchInputs, defaultPerPage: number, callback
       });
   }, [patch]);
 
-  /** Back to "nothing searched": no results, nothing to apply to. */
-  const reset = useCallback(() => {
-    inFlight.current?.abort();
-    seq.current++;
-    keyRef.current = "";
-    cbRef.current.onNewSearch();
-    patch({ filter: null, result: null, pending: false, loading: false, hint: "" });
-  }, [patch]);
-
   /** Search with the inputs as they are now (the debounced step). */
   const runFresh = useCallback(() => {
     const { filter, firstIncomplete, firstWithoutValue } = inputsRef.current;
-    if (!firstIncomplete && !hasParameters(filter)) { reset(); return; }
     if (firstIncomplete) { patch({ pending: true, hint: fill(MESSAGES.INCOMPLETE, { n: firstIncomplete }) }); return; }
     if (firstWithoutValue) { patch({ pending: true, hint: fill(MESSAGES.WAITING_VALUE, { n: firstWithoutValue }) }); return; }
     const key = filterKey(filter);
@@ -109,7 +101,7 @@ export function useSearch(inputs: SearchInputs, defaultPerPage: number, callback
     const v = viewRef.current;
     patch({ filter, page: 1 });
     fetchPage({ filter, page: 1, perPage: v.perPage, sort: v.sort, dir: v.dir, fresh: true });
-  }, [fetchPage, patch, reset]);
+  }, [fetchPage, patch]);
 
   /** Search a moment after the last edit (0 = now). */
   const schedule = useCallback((delay: number = SEARCH_DEBOUNCE_MS) => {
