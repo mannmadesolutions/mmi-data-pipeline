@@ -116,7 +116,8 @@ add_action( 'wp_ajax_mmi_save_custom_rules', function () {
             ) );
         }
 
-        $sanitised[] = [
+        $clean_rule = [
+            'id'            => \MannMade\DataPipeline\Workbench\Standing_Rules::sanitize_id( $rule['id'] ?? '' ),
             'supplier'      => $supplier,
             'match_logic'   => $match_logic,
             'conditions'    => $conditions,
@@ -125,7 +126,15 @@ add_action( 'wp_ajax_mmi_save_custom_rules', function () {
             'name'          => $name,
             'enabled'       => $enabled,
         ];
+        if ( isset( $rule['statuses'] ) ) {
+            $clean_rule['statuses'] = \MannMade\DataPipeline\Stock_Override_Resolver::rule_statuses( [ 'statuses' => array_map( 'sanitize_key', (array) $rule['statuses'] ) ] );
+        }
+        $sanitised[] = $clean_rule;
     }
+
+    // Keeps each rule's id, and what this editor doesn't send (statuses,
+    // search filters), from the saved rule with the same id.
+    $sanitised = \MannMade\DataPipeline\Workbench\Standing_Rules::carry_over( $sanitised );
 
     MMI_DB::set_setting( 'mmi_stock_override_rules', $sanitised );
 
@@ -139,11 +148,30 @@ add_action( 'wp_ajax_mmi_save_custom_rules', function () {
         'message'   => 'Custom rules saved',
         'count'     => count( $sanitised ),
         'rules'     => $sanitised,
-        // rule index => messages, for rules that write a field an import
-        // profile also maps (see MMI_Pipeline_Field_Conflicts).
-        'conflicts' => (object) MMI_Pipeline_Field_Conflicts::for_custom_rules( $sanitised ),
+        // rule index => messages: fields an import profile also maps, and
+        // what the efficacy check found (worked out again for the saved set).
+        'conflicts' => (object) mmi_pipeline_rule_notices( $sanitised, true ),
     ] );
 } );
+
+/**
+ * Messages to show beside each rule, by position: import-field conflicts,
+ * then the efficacy check's findings (review and worse).
+ *
+ * @param array $rules   The rules as saved, in order.
+ * @param bool  $refresh Work the efficacy grades out now (after a save).
+ * @return array<int,string[]>
+ */
+function mmi_pipeline_rule_notices( array $rules, bool $refresh = false ): array {
+    $out = MMI_Pipeline_Field_Conflicts::for_custom_rules( $rules );
+    if ( $refresh ) {
+        \MannMade\DataPipeline\Workbench\Rule_Efficacy::refresh();
+    }
+    foreach ( \MannMade\DataPipeline\Workbench\Rule_Efficacy::notices_by_index() as $i => $messages ) {
+        $out[ $i ] = array_values( array_unique( array_merge( $out[ $i ] ?? [], $messages ) ) );
+    }
+    return $out;
+}
 
 /* ── Get ────────────────────────────────────────────────────────────────── */
 

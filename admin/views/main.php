@@ -128,10 +128,22 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
         <?php if ( class_exists( 'MMI_Feature_Gate' ) ) { MMI_Feature_Gate::render_works_with( 'mmi-data-pipeline' ); } ?>
         <?php
         $_mmi_no_sale = function_exists( 'mmi_canonical_candidates_nothing_on_sale_counts' ) ? mmi_canonical_candidates_nothing_on_sale_counts()['count'] : 0;
-        if ( $_mmi_no_sale ) : ?>
+        // Stored grades only; a stale one is worked out in the background.
+        \MannMade\DataPipeline\Workbench\Rule_Efficacy::refresh_later_if_stale();
+        $_mmi_rule_alerts = \MannMade\DataPipeline\Workbench\Rule_Efficacy::alerts();
+        if ( $_mmi_no_sale || $_mmi_rule_alerts ) : ?>
             <div class="mmi-header-alerts">
+                <?php if ( $_mmi_no_sale ) : ?>
                 <a class="mmi-badge warning" href="<?php echo esc_url( mmi_canonical_candidates_nothing_on_sale_url() ); ?>"
                    title="<?php esc_attr_e( 'Linked duplicates whose canonical listing is out of stock: customers can buy none of their listings', 'mmi-data-pipeline' ); ?>"><?php echo esc_html( 'Duplicates: ' . mmi_canonical_candidates_nothing_on_sale_label( $_mmi_no_sale ) ); ?></a>
+                <?php endif; ?>
+                <?php if ( $_mmi_rule_alerts ) : ?>
+                <a class="mmi-badge warning" id="mmi-rule-efficacy-alert"
+                   href="<?php echo esc_url( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_catalog=1' ) ); ?>"
+                   title="<?php echo esc_attr( implode( "\n", array_map( static fn( $a ) => $a['name'] . ': ' . $a['text'], $_mmi_rule_alerts ) ) ); ?>"><?php
+                    echo esc_html( 'Rules: ' . count( $_mmi_rule_alerts ) . ( count( $_mmi_rule_alerts ) === 1 ? ' needs' : ' need' ) . ' a look' );
+                ?></a>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
     </div>

@@ -734,7 +734,8 @@
 
             const conditions = RB.collectConditions($scope);
 
-            rules.push({ supplier, match_logic: matchLogic, conditions, action, action_params: RB.collectActionParams($scope), name, enabled });
+            const id         = String($header.data('rule-id') || '');
+            rules.push({ id, supplier, match_logic: matchLogic, conditions, action, action_params: RB.collectActionParams($scope), name, enabled, $header });
         });
         return rules;
     }
@@ -835,6 +836,7 @@
             customRulesPost['rules'] = [];
         } else {
             customRules.forEach(function(rule, i) {
+                customRulesPost[`rules[${i}][id]`]          = rule.id;
                 customRulesPost[`rules[${i}][supplier]`]    = rule.supplier;
                 customRulesPost[`rules[${i}][match_logic]`] = rule.match_logic;
                 customRulesPost[`rules[${i}][action]`]      = rule.action;
@@ -860,6 +862,13 @@
                 const catalogOk = catalogResp[0] && catalogResp[0].success;
                 const rulesOk   = customRulesResp[0] && customRulesResp[0].success;
                 if (catalogOk && rulesOk) {
+                    // New rules get their id from the server; the next save
+                    // must send it, or the rule would lose what it owns.
+                    const savedRules = (customRulesResp[0].data && customRulesResp[0].data.rules) || [];
+                    customRules.forEach(function(rule, i) {
+                        const id = savedRules[i] && savedRules[i].id;
+                        if (id) rule.$header.data('rule-id', id).attr('data-rule-id', id);
+                    });
                     renderRuleConflicts(customRulesResp[0].data && customRulesResp[0].data.conflicts);
                     $btn.html(LABELS.SAVED);
                     $status.text('Saved');
@@ -973,6 +982,18 @@
         });
     }
 
+    /**
+     * ?open_catalog=1 (the header's rule-efficacy alert) expands the section
+     * and scrolls to the first rule with a notice, like ?open_duplicates=1.
+     */
+    function maybeOpenFromUrl() {
+        if (new URLSearchParams(window.location.search).get('open_catalog') !== '1') return;
+        const $section = $('#mmi-catalog-maintenance-section').removeClass('collapsed');
+        window.MMICatalogMaintenance.ensureLoaded();
+        const $first = $(SELECTORS.TBODY).find(SELECTORS.CONFLICT_NOTICE).first();
+        ($first.length ? $first : $section)[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
     function initCatalogMaintenance() {
         if (!$(SELECTORS.TBODY).length) return;
 
@@ -985,6 +1006,7 @@
         } catch (e) { /* malformed attribute — no notices, nothing else affected */ }
 
         updateRunIndicator();
+        maybeOpenFromUrl();
 
         $(document)
 

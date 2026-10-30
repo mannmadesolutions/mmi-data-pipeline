@@ -1023,8 +1023,9 @@
             .on('blur', SELECTORS.COND_FIELD_CUSTOM, function() {
                 const $row = $(this).closest(SELECTORS.CONDITION_ROW);
                 const $sel = $row.find(SELECTORS.COND_FIELD_SEL);
-                // The server stores keys through sanitize_key(); match it here.
-                const key  = String($(this).val() || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                // Kept as typed (meta keys and feed columns can have capitals
+                // and spaces); the server only strips tags and line breaks.
+                const key  = String($(this).val() || '').replace(/[\u0000-\u001f<>]/g, '').trim();
                 $(this).addClass(CSS.HIDDEN);
                 $sel.removeClass(CSS.HIDDEN);
                 if (!key) return;

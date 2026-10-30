@@ -150,6 +150,19 @@ class Stock_Override_Resolver {
     /** Every status with_statuses() accepts. */
     const SEARCHABLE_STATUSES = [ 'publish', 'draft', 'pending', 'private' ];
 
+    /** Statuses a rule acts on when it names none: Custom Rules always meant published. */
+    const DEFAULT_RULE_STATUSES = [ 'publish' ];
+
+    /**
+     * The post statuses a saved rule acts on.
+     *
+     * @return string[] Subset of SEARCHABLE_STATUSES, never empty.
+     */
+    public static function rule_statuses( array $rule ): array {
+        $statuses = array_values( array_intersect( self::SEARCHABLE_STATUSES, array_map( 'strval', (array) ( $rule['statuses'] ?? [] ) ) ) );
+        return $statuses ?: self::DEFAULT_RULE_STATUSES;
+    }
+
     /**
      * Run $fn with the matcher scoped to $statuses, then restore the
      * previous scope — even if $fn throws.
@@ -195,6 +208,19 @@ class Stock_Override_Resolver {
     }
 
     /**
+     * A condition's field name as written: a postmeta key or a supplier feed
+     * column ("YOUR PRICE", "VendorName"). sanitize_key() would lowercase it
+     * and drop spaces, so the condition could never match. Tags, line breaks
+     * and surrounding space go; case and inner punctuation stay.
+     *
+     * @param mixed $field Raw field name.
+     */
+    public static function sanitize_field_name( $field ): string {
+        $field = is_scalar( $field ) ? sanitize_text_field( (string) $field ) : '';
+        return mb_substr( $field, 0, 191 );
+    }
+
+    /**
      * Sanitize one condition from request input into the stored shape, or
      * null when it can't be evaluated. Shared by the Custom Rules save
      * handler and Product Workbench so both accept exactly the same thing.
@@ -206,7 +232,7 @@ class Stock_Override_Resolver {
         if ( ! is_array( $cond ) ) {
             return null;
         }
-        $field    = sanitize_key( $cond['field'] ?? '' );
+        $field    = self::sanitize_field_name( $cond['field'] ?? '' );
         $operator = sanitize_text_field( $cond['operator'] ?? 'equals' );
         if ( $field === '' || ! in_array( $operator, self::VALID_OPERATORS, true ) ) {
             return null;
@@ -372,6 +398,7 @@ class Stock_Override_Resolver {
             // as enabled so a pre-existing rule keeps running exactly as it
             // always has, rather than silently going inert on the next save.
             $rule['enabled'] = ! isset( $rule['enabled'] ) || (bool) $rule['enabled'];
+            $rule['id']      = isset( $rule['id'] ) ? (string) $rule['id'] : '';
             return $rule;
         }
 
@@ -530,6 +557,14 @@ class Stock_Override_Resolver {
      * @return int[]        Array of WooCommerce product IDs.
      */
     public static function get_matched_product_ids_for_rule( array $rule ): array {
+        // A saved rule names the statuses it acts on; a search (Workbench)
+        // runs inside the caller's with_statuses() scope instead.
+        if ( isset( $rule['statuses'] ) ) {
+            $statuses = self::rule_statuses( $rule );
+            unset( $rule['statuses'] );
+            return self::with_statuses( $statuses, static fn() => self::get_matched_product_ids_for_rule( $rule ) );
+        }
+
         global $wpdb;
         $status_sql = self::status_sql();
 

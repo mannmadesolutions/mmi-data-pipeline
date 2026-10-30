@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     2.61.1
+ * Version:     2.62.0
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.61.1' );
+define( 'MMI_PIPELINE_VERSION', '2.62.0' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -238,6 +238,10 @@ add_action( 'plugins_loaded', function () {
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-workbench-change-log.php';
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-product-workbench.php';
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-health-checks.php';
+    // Standing rules: Workbench searches + a change, re-applied by every catalog run.
+    require_once MMI_PIPELINE_PATH . 'includes/workbench/class-standing-rules.php';
+    require_once MMI_PIPELINE_PATH . 'includes/workbench/class-rule-efficacy.php';
+    \MannMade\DataPipeline\Workbench\Rule_Efficacy::register();
 
     // Catalog run state + phase runner — the single execution path shared by
     // the "Update Store Catalog" button, the scheduled cron/Action Scheduler

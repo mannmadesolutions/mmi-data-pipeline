@@ -237,13 +237,8 @@ $p_mode_labels = [
 // and WP-CLI, so this count can never again disagree with what actually ran).
 $mmi_catalog_rules       = \MannMade\DataPipeline\Catalog\Catalog_Phase_Runner::get_rules();
 $mmi_catalog_rule_count  = \MannMade\DataPipeline\Catalog\Catalog_Phase_Runner::get_active_rule_count();
-$mmi_stock_override_rules = MMI_DB::get_setting( 'mmi_stock_override_rules', [] );
-if ( ! is_array( $mmi_stock_override_rules ) ) {
-    $mmi_stock_override_rules = [];
-}
-if ( class_exists( 'MannMade\DataPipeline\Stock_Override_Resolver' ) ) {
-    $mmi_stock_override_rules = \MannMade\DataPipeline\Stock_Override_Resolver::normalize_rules( $mmi_stock_override_rules );
-}
+// Normalized, each with its stable id (the editor sends it back on save).
+$mmi_stock_override_rules = \MannMade\DataPipeline\Workbench\Standing_Rules::all();
 $mmi_catalog_last_run   = MMI_DB::get_setting( 'mmi_last_run_catalog_update', '' );
 $mmi_catalog_last_dur   = MMI_DB::get_setting( 'mmi_catalog_update_duration', '' );
 $mmi_catalog_last_count = MMI_DB::get_setting( 'mmi_catalog_update_products_processed', 0 );

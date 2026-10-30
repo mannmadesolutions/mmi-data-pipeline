@@ -128,6 +128,17 @@ class MMI_Pipeline_Field_Conflicts {
         return array_map( static fn( $m ) => array_values( array_unique( $m ) ), $out );
     }
 
+    /**
+     * The fields one rule writes, whether or not it is enabled yet (the
+     * Workbench asks before a rule is saved).
+     *
+     * @return string[]
+     */
+    public static function rule_write_keys( array $rule ): array {
+        $rule['enabled'] = true;
+        return array_values( array_unique( array_column( self::rule_writers( [ $rule ] ), 'key' ) ) );
+    }
+
     /* ── Writers ─────────────────────────────────────────────────────────── */
 
     /**

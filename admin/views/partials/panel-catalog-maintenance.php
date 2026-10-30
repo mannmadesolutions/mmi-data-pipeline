@@ -198,7 +198,7 @@ if ( ! $mmi_wc_active ) {
             </thead>
             <?php /* Rules that write a field an import profile also maps — shown
                  beside each rule by import-pipeline-catalog-maintenance.js. */ ?>
-            <tbody id="mmi-catalog-ops-tbody" data-conflicts="<?php echo esc_attr( wp_json_encode( (object) MMI_Pipeline_Field_Conflicts::for_custom_rules( (array) $mmi_stock_override_rules ) ) ); ?>">
+            <tbody id="mmi-catalog-ops-tbody" data-conflicts="<?php echo esc_attr( wp_json_encode( (object) mmi_pipeline_rule_notices( (array) $mmi_stock_override_rules ) ) ); ?>">
 
             <?php foreach ( $mmi_cog_phases as $mmi_cog_phase ) :
                 if ( $mmi_cog_phase['phase'] === 'feed_sync' ) :
@@ -269,7 +269,7 @@ if ( ! $mmi_wc_active ) {
                 $mmi_cog_oname      = esc_attr( $mmi_cog_orule_norm['name'] ?? '' );
                 $mmi_cog_oenabled   = ! isset( $mmi_cog_orule_norm['enabled'] ) || (bool) $mmi_cog_orule_norm['enabled'];
             ?>
-                <tr class="mmi-cog-row mmi-cog-row--custom-rule mmi-uniform-row--selectable<?php echo $mmi_cog_oenabled ? '' : ' mmi-cog-rule-disabled'; ?>" data-phase="override_stock" data-index="<?php echo (int) $mmi_cog_oi; ?>" role="button" tabindex="0" aria-pressed="false">
+                <tr class="mmi-cog-row mmi-cog-row--custom-rule mmi-uniform-row--selectable<?php echo $mmi_cog_oenabled ? '' : ' mmi-cog-rule-disabled'; ?>" data-phase="override_stock" data-index="<?php echo (int) $mmi_cog_oi; ?>" data-rule-id="<?php echo esc_attr( $mmi_cog_orule_norm['id'] ?? '' ); ?>" role="button" tabindex="0" aria-pressed="false">
                     <td class="mmi-cog-col-name">
                         <input type="text" class="mmi-cog-rule-name-input" value="<?php echo $mmi_cog_oname; ?>" placeholder="Custom Rule" maxlength="80" aria-label="Rule name">
                         <button type="button" class="mmi-cog-expand-toggle" title="Edit conditions">

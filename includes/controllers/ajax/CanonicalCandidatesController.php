@@ -1126,7 +1126,8 @@ function mmi_canonical_candidates_held_by_rule( int $product_id, array $raw_item
         return '';
     }
     if ( get_post_meta( $product_id, '_mmi_stock_override', true ) === 'force_outofstock' ) {
-        return 'a per-product stock override';
+        $owner = \MannMade\DataPipeline\Workbench\Standing_Rules::owner_name( $product_id );
+        return $owner !== '' ? 'the standing rule "' . $owner . '"' : 'a per-product stock override';
     }
     foreach ( $rules as $rule ) {
         $n = Stock_Override_Resolver::normalize_rule( (array) $rule );

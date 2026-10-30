@@ -352,8 +352,8 @@ class Custom_Rule_Actions {
 
             case 'copy_field_meta':
                 $source_field = sanitize_text_field( (string) ( $raw['source_field'] ?? '' ) );
-                $meta_key     = sanitize_key( (string) ( $raw['meta_key'] ?? '' ) );
-                if ( $source_field === '' || $meta_key === '' || in_array( $meta_key, self::RESERVED_META_KEYS, true ) ) {
+                $meta_key     = Stock_Override_Resolver::sanitize_field_name( $raw['meta_key'] ?? '' );
+                if ( $source_field === '' || $meta_key === '' || self::is_reserved_meta_key( $meta_key ) ) {
                     return [];
                 }
                 return [ 'source_field' => $source_field, 'meta_key' => $meta_key ];
@@ -361,6 +361,14 @@ class Custom_Rule_Actions {
             default:
                 return [];
         }
+    }
+
+    /**
+     * Whether a meta key is one of WooCommerce's own. Compared without case:
+     * the postmeta key column's collation treats "_Price" as "_price".
+     */
+    public static function is_reserved_meta_key( string $meta_key ): bool {
+        return in_array( strtolower( $meta_key ), self::RESERVED_META_KEYS, true );
     }
 
     private static function sanitize_date( string $value ): string {
@@ -559,7 +567,7 @@ class Custom_Rule_Actions {
         // feed fields — sanitize_params() already blocks both for any rule
         // saved from now on, but a rule saved earlier is still applied via
         // its stored action_params, not re-sanitized on every run.
-        if ( in_array( $meta_key, self::RESERVED_META_KEYS, true ) ) {
+        if ( self::is_reserved_meta_key( $meta_key ) ) {
             return false;
         }
         if ( isset( $raw_item[ $source_field ] ) && is_array( $raw_item[ $source_field ] ) ) {
