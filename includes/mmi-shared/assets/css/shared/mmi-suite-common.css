@@ -4547,6 +4547,14 @@ body.mmi-page .mmi-toolbar .mmi-btn-profile:not([hidden]):not(.hidden) {
     white-space: nowrap;
 }
 
+/* WordPress core's `.widefat th.sortable { padding: 0 }` expects a link inside the heading to carry the padding.
+   MMI headings sort by script and have none, so their text sat on the borders in 17px-tall rows (owner,
+   2026-10-30: Reverb Refunds, SKU Conflicts and Category mapping). Right padding leaves room for the arrow. */
+.mmi-uniform-table thead th:is(.sortable, .sorted) {
+    padding: var(--mmi-table-cell-padding, 9px 12px);
+    padding-right: 24px;
+}
+
 .mmi-uniform-table thead th:last-child {
     border-right: none;
 }
