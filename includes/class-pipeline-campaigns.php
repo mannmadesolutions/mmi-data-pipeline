@@ -51,6 +51,19 @@ class Campaigns {
 	const META_HERO     = 'hero_image_id';
 	const META_SYNCED   = '_mmi_campaign_synced_at';
 
+	// Customer-facing labels, recomputed on every sync (Bricks reads them as {term_meta:…}).
+	const META_SUPPLIER_NAME = 'supplier_name';     // the distributor's own promotion name, kept for staff
+	const META_STATE         = 'state';             // active | upcoming | ended
+	const META_MAX_DISCOUNT  = 'max_discount';      // whole percent, from our own prices
+	const META_DISCOUNT_LBL  = 'discount_label';    // "Up to 65% off"
+	const META_SUMMARY       = 'summary';           // "43 EastWest titles"
+	const META_DATES_LBL     = 'dates_label';       // "Ends November 2" / "Starts November 4"
+	const META_BRANDS        = 'brands';            // JSON, by product count
+	const META_HERO_URL      = 'hero_image_url';
+	const META_AUTO_NAME     = '_mmi_campaign_auto_name';  // last name the sync wrote; a different name is the owner's
+	const META_AUTO_DESC     = '_mmi_campaign_auto_desc';
+	const META_HERO_AUTO     = '_mmi_campaign_hero_auto';  // '1' while the hero is the sync's choice
+
 	/** Product meta mirror so a query by campaign end date needs no term join. */
 	const PRODUCT_META_END = '_mmi_campaign_end';
 
@@ -175,17 +188,12 @@ class Campaigns {
 				$start = (string) ( $promo['start'] ?? '' );
 				$end   = (string) ( $promo['end'] ?? '' );
 				if ( $name === '' ) {
-					// Nameless promotions (Plugivery, SkuPort) group by the month they end in:
-					// a holiday sale that started in June and one that started in October
-					// but both end 2027-01-17 are one campaign to a shopper.
+					// Nameless promotions (Plugivery, SkuPort) group by the maker and the month
+					// they end in: a shopper sees "Overloud Sale", never the distributor's name.
 					$month = $end !== '' ? $end : ( $start !== '' ? $start : current_time( 'Y-m-d' ) );
-					$name  = sprintf(
-						/* translators: 1: supplier name, 2: month and year the promotions end */
-						__( '%1$s promotions ending %2$s', 'mmi-data-pipeline' ),
-						self::supplier_label( $supplier ),
-						date_i18n( 'F Y', strtotime( $month ) )
-					);
-					$key   = $supplier . '|' . substr( $month, 0, 7 );
+					$brand = self::brand_of( $post );
+					$name  = trim( ( $brand['name'] !== '' ? $brand['name'] : self::supplier_label( $supplier ) ) . ' ' . __( 'Sale', 'mmi-data-pipeline' ) );
+					$key   = $supplier . '|brand:' . ( $brand['slug'] !== '' ? $brand['slug'] : 'none' ) . '|' . substr( $month, 0, 7 );
 				} else {
 					$key = $supplier . '|' . mb_strtolower( $name );
 				}
@@ -280,6 +288,10 @@ class Campaigns {
 				delete_post_meta( $pid, self::PRODUCT_META_END );
 			}
 			update_term_meta( $term_id, self::META_SYNCED, time() );
+			if ( empty( get_term_meta( $term_id, self::META_SUPPLIER_NAME, true ) ) ) {
+				update_term_meta( $term_id, self::META_SUPPLIER_NAME, $g['name'] );
+			}
+			self::refresh_display( $term_id );
 		}
 
 		// Feed-derived campaigns whose promotions all ended: empty them.
@@ -297,6 +309,14 @@ class Campaigns {
 				delete_post_meta( $pid, self::PRODUCT_META_END );
 			}
 			update_term_meta( $term_id, self::META_SYNCED, time() );
+			self::maybe_delete_orphan( $term_id );
+		}
+		// Hand-made campaigns get the same labels (their names stay the owner's).
+		if ( ! $dry ) {
+			$hand = get_terms( [ 'taxonomy' => self::TAXONOMY, 'hide_empty' => false, 'fields' => 'ids', 'meta_query' => [ [ 'key' => self::META_KEY, 'compare' => 'NOT EXISTS' ] ] ] ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+			foreach ( is_array( $hand ) ? $hand : [] as $term_id ) {
+				self::refresh_display( (int) $term_id );
+			}
 		}
 		if ( ! $dry && class_exists( 'MMI_Logger' ) ) {
 			\MMI_Logger::info( 'Campaigns synced', $stats );
@@ -337,13 +357,7 @@ class Campaigns {
 		}
 		$result = wp_insert_term( $g['name'], self::TAXONOMY, [
 			'slug'        => $slug,
-			'description' => sprintf(
-				/* translators: 1: supplier name, 2: start date, 3: end date */
-				__( '%1$s promotion, %2$s to %3$s.', 'mmi-data-pipeline' ),
-				self::supplier_label( $g['supplier'] ),
-				$g['start'] !== '' ? $g['start'] : '?',
-				$g['end'] !== '' ? $g['end'] : '?'
-			),
+			'description' => '',
 		] );
 		if ( is_wp_error( $result ) ) {
 			if ( class_exists( 'MMI_Logger' ) ) {
@@ -353,6 +367,7 @@ class Campaigns {
 		}
 		$term_id = (int) $result['term_id'];
 		update_term_meta( $term_id, self::META_KEY, $g['key'] );
+		update_term_meta( $term_id, self::META_SUPPLIER_NAME, $g['name'] );
 		update_term_meta( $term_id, self::META_SUPPLIER, $g['supplier'] );
 		update_term_meta( $term_id, self::META_CODE, $g['code'] );
 		self::update_term_dates( $term_id, $g );
@@ -368,6 +383,285 @@ class Campaigns {
 		}
 		if ( $g['code'] !== '' && get_term_meta( $term_id, self::META_CODE, true ) === '' ) {
 			update_term_meta( $term_id, self::META_CODE, $g['code'] );
+		}
+	}
+
+	/* ── Customer-facing labels ────────────────────────────────────────── */
+
+	/** @return array{name:string,slug:string,id:int} the product's first brand */
+	private static function brand_of( int $post_id ): array {
+		static $cache = [];
+		if ( isset( $cache[ $post_id ] ) ) {
+			return $cache[ $post_id ];
+		}
+		$terms = taxonomy_exists( 'product_brand' ) ? wp_get_post_terms( $post_id, 'product_brand' ) : [];
+		$t     = is_array( $terms ) && $terms ? $terms[0] : null;
+		return $cache[ $post_id ] = [ 'name' => $t ? html_entity_decode( $t->name, ENT_QUOTES ) : '', 'slug' => $t ? $t->slug : '', 'id' => $t ? (int) $t->term_id : 0 ];
+	}
+
+	/**
+	 * A shopper-facing campaign name from the distributor's promotion name:
+	 * the maker and the event ("XLN Audio Black Friday Sale"), with dealer
+	 * words (US Cost, PP, XCHANGE), date ranges, prices and the vendor's own
+	 * percentage claims taken out. Our discount label states the percentage.
+	 *
+	 * @param string   $raw    the supplier's promotion name
+	 * @param string[] $brands member brand names, most products first
+	 */
+	public static function display_name( string $raw, array $brands ): string {
+		$months = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+		$day    = '\\d{1,2}(?:st|nd|rd|th)?';
+		$s      = html_entity_decode( $raw, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$s      = str_replace( [ '‘', '’', '“', '”', '"' ], '', $s );
+		$s      = str_replace( [ '—', '–' ], '-', $s );
+		$s      = preg_replace( '/Black\\s*Friday\\s*[-\\/&]\\s*Cyber\\s*Monday/i', 'Black Friday & Cyber Monday', $s );
+		$s      = preg_replace( [ '/\\bBlackFriday\\b/i', '/\\bCyberMonday\\b/i', '/\\bGreenMonday\\b/i' ], [ 'Black Friday', 'Cyber Monday', 'Green Monday' ], $s );
+		$s      = preg_replace( '/\\s*\\/\\s*/', ' / ', $s );
+		$s      = preg_replace( '/\\bpromotions?\\s+ending\\b.*$/i', '', $s );
+		// Pipe-separated parts: drop the ones that are only dates or percentages.
+		$parts = array_map( 'trim', explode( '|', $s ) );
+		$parts = array_filter( $parts, static function ( $part ) use ( $months, $day ) {
+			$bare = trim( preg_replace( "/\\b(?:{$months})\\.?\\s*{$day}\\b|[-\\s,.]+|\\b\\d{1,3}\\s*%(?:\\s*off)?/i", ' ', $part ) );
+			return $bare !== '' && ! preg_match( '/^(?:to|\\d+)?$/i', $bare );
+		} );
+		$s = implode( ' ', $parts );
+		$cut = [
+			"/\\b(?:{$months})\\.?\\s*{$day}(?:\\s*(?:-|to)\\s*(?:(?:{$months})\\.?\\s*)?{$day})?\\b/i", // "Nov 3 - 17", "Nov 4th"
+			"/\\b\\d{1,2}-(?:{$months})\\b(?:\\s*(?:to|-)\\s*\\d{1,2}-(?:{$months})\\b)?/i",               // "20-Oct to 02-Nov"
+			"/\\b(?:{$months})\\b\\.?(?=\\s*(?:20\\d\\d|$))/i",                                          // "OCT 2026"
+			'/\\b20\\d\\d\\b/',                                                  // years
+			'/\\bup\\s+to\\s+\\d{1,3}\\s*%\\s*(?:off)?/i',                            // "up to 81% OFF"
+			'/\\b\\d{1,3}\\s*%\\s*(?:off)?/i',                                         // "30%"
+			'/(?:US)?\\$\\s*\\d+(?:\\.\\d+)?/i',                                       // "$339", "US$35"
+			'/\\bwith\\s+(?:a\\s+)?free\\b.*$/i',                                       // vendor mechanics we can't promise
+			'/\\b(?:US\\s*Cost|All\\s+XCHANGE|XCHANGE|X-?Change|SkuPort|Plugivery|Dealers?|Resellers?|PP)\\b/i',
+			'/\\bthe\\s+(?=sale\\b)/i',
+		];
+		$s = preg_replace( $cut, ' ', $s );
+		$s = preg_replace( '/\\bPromo(?:tion)?s?\\b/i', 'Sale', $s );
+		$s = preg_replace( '/[\\s:,;\\/\\-]*\\(\\s*\\)/', ' ', $s );
+		$s = trim( preg_replace( '/\\s+/', ' ', $s ), " -:|,;./!" );
+		$s = str_replace( '!', '', $s );
+		$s = preg_replace( '/\\s+[-:]\\s*$|^\\s*[-:]\\s+/', '', $s );
+		// Headline case: shouting names come down, lowercase words go up.
+		$letters = preg_replace( '/[^A-Za-z]/', '', $s );
+		if ( $letters !== '' && strlen( preg_replace( '/[^A-Z]/', '', $letters ) ) / strlen( $letters ) > 0.6 ) {
+			$s = ucwords( strtolower( $s ) );
+		}
+		// Shouted sale words in an otherwise normal name ("SINGLE PLUGINS", "FLASH SALE").
+		$s = preg_replace_callback( '/\\b(SINGLE|PLUGINS?|BUNDLES?|SALES?|FLASH|HOLIDAY|ANNUAL|SUB|SPECIAL|LAUNCH|INTRO|RELEASE|EDITION|COLLECTION|BLACK|FRIDAY|CYBER|MONDAY|GREEN|HALLOWEEN|SUMMER|WINTER|SPRING|EARLY|SEASON|SOUND)\\b/', static fn( $m ) => ucfirst( strtolower( $m[1] ) ), $s );
+		$small = [ 'a', 'an', 'and', 'at', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'with' ];
+		$words = explode( ' ', $s );
+		foreach ( $words as $i => $w ) {
+			if ( $w !== '' && $w === strtolower( $w ) && ( $i === 0 || ! in_array( $w, $small, true ) ) ) {
+				$words[ $i ] = ucfirst( $w );
+			}
+		}
+		$s = implode( ' ', $words );
+		foreach ( [ 'FX', 'EQ', 'UA', 'XLN', 'DJ', 'VST', 'MIDI', 'FL', 'AI' ] as $acronym ) {
+			$s = preg_replace( '/\\b' . $acronym . '\\b/i', $acronym, $s );
+		}
+		$s = preg_replace_callback( '/\\b(Ii|Iii|Iv|Vi|Vii|Viii|Ix|Xi|Xii)\\b/', static fn( $m ) => strtoupper( $m[1] ), $s );
+		// The maker's own spelling, and the maker first when the name doesn't say whose sale it is.
+		$named = false;
+		foreach ( $brands as $b ) {
+			if ( $b === '' ) {
+				continue;
+			}
+			if ( stripos( $s, $b ) !== false ) {
+				$s     = preg_replace( '/' . preg_quote( $b, '/' ) . '/i', $b, $s );
+				$named = true;
+				continue;
+			}
+			$tokens   = preg_split( '/\\s+/', $b );
+			$initials = count( $tokens ) > 1 ? implode( '', array_map( static fn( $t ) => mb_substr( $t, 0, 1 ), $tokens ) ) : '';
+			if ( $initials !== '' && preg_match( '/\\b' . preg_quote( $initials, '/' ) . '\\b/i', $s ) ) {
+				$named = true; // "UA" for Universal Audio: the maker's own shorthand stays
+			} elseif ( count( $tokens ) > 1 && mb_strlen( $tokens[0] ) >= 3 && preg_match( '/\\b' . preg_quote( $tokens[0], '/' ) . '\\b/i', $s ) ) {
+				$s     = preg_replace( '/\\b' . preg_quote( $tokens[0], '/' ) . '\\b/i', $b, $s, 1 ); // "MAAT" → "MAAT Digital"
+				$named = true;
+			}
+		}
+		$generic = preg_match( '/^(?:sale|sales|special|deals?|offer|launch sale)?$/i', $s );
+		if ( $generic ) {
+			$s = trim( ( $brands[0] ?? '' ) . ' ' . ( $s !== '' ? $s : __( 'Sale', 'mmi-data-pipeline' ) ) );
+		} elseif ( ! $named && count( $brands ) === 1 && $brands[0] !== '' ) {
+			$s = $brands[0] . ' ' . $s;
+		} elseif ( ! $named && count( $brands ) === 2 ) {
+			$s = $brands[0] . ' & ' . $brands[1] . ' ' . $s;
+		}
+		if ( ! preg_match( '/\\b(?:sales?|special|deals?|event|offer|release|launch)\\b/i', $s ) ) {
+			$s .= ' ' . __( 'Sale', 'mmi-data-pipeline' );
+		}
+		return trim( preg_replace( '/\\s+/', ' ', $s ) );
+	}
+
+	/**
+	 * Recompute a campaign's shopper-facing labels from its members and dates.
+	 * Feed campaigns also get their name, slug and description, unless the owner
+	 * changed them (then the owner's text stays).
+	 */
+	public static function refresh_display( int $term_id ): void {
+		global $wpdb;
+		$term = get_term( $term_id, self::TAXONOMY );
+		if ( ! $term instanceof \WP_Term ) {
+			return;
+		}
+		$ids = self::members( $term_id );
+		$live = [];
+		if ( $ids ) {
+			$ph = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders built from ints
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT p.ID, rp.meta_value AS regular, pr.meta_value AS price, sp.meta_value AS sale, th.meta_value AS thumb
+				 FROM {$wpdb->posts} p
+				 LEFT JOIN {$wpdb->postmeta} rp ON rp.post_id = p.ID AND rp.meta_key = '_regular_price'
+				 LEFT JOIN {$wpdb->postmeta} pr ON pr.post_id = p.ID AND pr.meta_key = '_price'
+				 LEFT JOIN {$wpdb->postmeta} sp ON sp.post_id = p.ID AND sp.meta_key = '_sale_price'
+				 LEFT JOIN {$wpdb->postmeta} th ON th.post_id = p.ID AND th.meta_key = '_thumbnail_id'
+				 WHERE p.post_status = 'publish' AND p.ID IN ({$ph})",
+				...$ids
+			), ARRAY_A );
+			$live = (array) $rows;
+		}
+		$max        = 0;
+		$discounted = 0;
+		$brands     = [];
+		$thumb  = 0;
+		$best   = -1;
+		foreach ( $live as $r ) {
+			$regular = (float) $r['regular'];
+			$now     = (float) $r['price'];
+			$sale    = (float) $r['sale'];
+			$offer   = ( $sale > 0 && $sale < $regular ) ? $sale : $now;
+			$pct     = ( $regular > 0 && $offer > 0 && $offer < $regular ) ? (int) floor( ( 1 - $offer / $regular ) * 100 ) : 0;
+			$max     = max( $max, $pct );
+			if ( $pct >= 5 ) {
+				$discounted++;
+			}
+			$b       = self::brand_of( (int) $r['ID'] );
+			if ( $b['name'] !== '' ) {
+				$brands[ $b['name'] ] = ( $brands[ $b['name'] ] ?? 0 ) + 1;
+			}
+			if ( (int) $r['thumb'] > 0 && $pct > $best ) {
+				$best  = $pct;
+				$thumb = (int) $r['thumb'];
+			}
+		}
+		arsort( $brands );
+		$names = array_keys( $brands );
+		// A campaign counts the products it actually discounts (a supplier promotion our
+		// price doesn't follow yet is no deal to a shopper).
+		$count = $discounted > 0 ? $discounted : count( $live );
+
+		$start = (string) get_term_meta( $term_id, self::META_START, true );
+		$end   = (string) get_term_meta( $term_id, self::META_END, true );
+		$today = current_time( 'Y-m-d' );
+		$state = ( $end !== '' && $end < $today ) ? 'ended' : ( ( $start !== '' && $start > $today ) ? 'upcoming' : 'active' );
+		$fmt   = static function ( string $ymd ) use ( $today ): string {
+			$ts = strtotime( $ymd );
+			return $ts ? date_i18n( substr( $ymd, 0, 4 ) === substr( $today, 0, 4 ) ? 'F j' : 'F j, Y', $ts ) : '';
+		};
+		if ( $state === 'upcoming' ) {
+			$dates = sprintf( /* translators: %s: date */ __( 'Starts %s', 'mmi-data-pipeline' ), $fmt( $start ) );
+		} elseif ( $state === 'ended' ) {
+			$dates = sprintf( /* translators: %s: date */ __( 'Ended %s', 'mmi-data-pipeline' ), $fmt( $end ) );
+		} else {
+			$dates = $end !== '' ? sprintf( /* translators: %s: date */ __( 'Ends %s', 'mmi-data-pipeline' ), $fmt( $end ) ) : __( 'On now', 'mmi-data-pipeline' );
+		}
+		if ( count( $names ) === 1 ) {
+			$summary = sprintf( _n( '%1$d %2$s title', '%1$d %2$s titles', $count, 'mmi-data-pipeline' ), $count, $names[0] );
+		} elseif ( count( $names ) === 2 ) {
+			$summary = sprintf( _n( '%1$d title from %2$s and %3$s', '%1$d titles from %2$s and %3$s', $count, 'mmi-data-pipeline' ), $count, $names[0], $names[1] );
+		} elseif ( $names ) {
+			$summary = sprintf( __( '%1$d titles from %2$s, %3$s and %4$d more makers', 'mmi-data-pipeline' ), $count, $names[0], $names[1], count( $names ) - 2 );
+		} else {
+			$summary = sprintf( _n( '%d title', '%d titles', $count, 'mmi-data-pipeline' ), $count );
+		}
+		$discount = $max >= 5 ? sprintf( /* translators: %d: percent */ __( 'Up to %d%% off', 'mmi-data-pipeline' ), $max ) : __( 'Special pricing', 'mmi-data-pipeline' );
+
+		update_term_meta( $term_id, self::META_STATE, $state );
+		update_term_meta( $term_id, self::META_MAX_DISCOUNT, $max );
+		update_term_meta( $term_id, self::META_DISCOUNT_LBL, $discount );
+		update_term_meta( $term_id, self::META_SUMMARY, $summary );
+		update_term_meta( $term_id, self::META_DATES_LBL, $dates );
+		update_term_meta( $term_id, self::META_BRANDS, wp_json_encode( $names ) );
+
+		// Hero: the main maker's logo, else the best-discounted product's picture.
+		$hero_set = (int) get_term_meta( $term_id, self::META_HERO, true );
+		if ( ! $hero_set || get_term_meta( $term_id, self::META_HERO_AUTO, true ) === '1' ) {
+			$hero = 0;
+			if ( $names ) {
+				$bt = get_term_by( 'name', $names[0], 'product_brand' );
+				$hero = $bt ? (int) get_term_meta( $bt->term_id, 'thumbnail_id', true ) : 0;
+			}
+			if ( ! $hero ) {
+				$hero = $thumb;
+			}
+			if ( $hero ) {
+				update_term_meta( $term_id, self::META_HERO, $hero );
+				update_term_meta( $term_id, self::META_HERO_AUTO, '1' );
+				$hero_set = $hero;
+			}
+		}
+		$url = $hero_set ? (string) wp_get_attachment_image_url( $hero_set, 'medium_large' ) : '';
+		update_term_meta( $term_id, self::META_HERO_URL, $url );
+
+		// Name, slug and description: feed campaigns only, and only while they are still the sync's own.
+		if ( get_term_meta( $term_id, self::META_KEY, true ) === '' ) {
+			return;
+		}
+		$supplier_name = (string) get_term_meta( $term_id, self::META_SUPPLIER_NAME, true );
+		$auto_name     = (string) get_term_meta( $term_id, self::META_AUTO_NAME, true );
+		$current       = html_entity_decode( $term->name, ENT_QUOTES );
+		$args          = [];
+		if ( $supplier_name !== '' && ( $auto_name === '' ? $current === $supplier_name : $current === $auto_name ) ) {
+			$name = self::display_name( $supplier_name, $names );
+			if ( $name !== '' && $name !== $current ) {
+				$args['name'] = $name;
+				// The slug follows while it is still the one made from an earlier automatic name.
+				if ( $term->slug === sanitize_title( $current ) || $term->slug === sanitize_title( $current ) . '-' . get_term_meta( $term_id, self::META_SUPPLIER, true ) ) {
+					$slug = sanitize_title( $name );
+					$args['slug'] = term_exists( $slug, self::TAXONOMY ) ? $slug . '-' . $term_id : $slug;
+				}
+			}
+			update_term_meta( $term_id, self::META_AUTO_NAME, $name );
+		}
+		$auto_desc = (string) get_term_meta( $term_id, self::META_AUTO_DESC, true );
+		$desc      = (string) $term->description;
+		if ( $desc === '' || $desc === $auto_desc || preg_match( '/^(?:XChange|SkuPort|Plugivery) promotion,/', $desc ) ) {
+			$new_desc = $max >= 5
+				? sprintf( /* translators: 1: percent, 2: "43 EastWest titles", 3: "Ends November 2" */ __( 'Save up to %1$d%% on %2$s. %3$s.', 'mmi-data-pipeline' ), $max, $summary, $dates )
+				: sprintf( /* translators: 1: "43 EastWest titles", 2: "Ends November 2" */ __( 'Special pricing on %1$s. %2$s.', 'mmi-data-pipeline' ), $summary, $dates );
+			if ( $new_desc !== $desc ) {
+				$args['description'] = $new_desc;
+			}
+			update_term_meta( $term_id, self::META_AUTO_DESC, $new_desc );
+		}
+		if ( $args ) {
+			$r = wp_update_term( $term_id, self::TAXONOMY, $args );
+			if ( is_wp_error( $r ) && isset( $args['slug'] ) ) {
+				unset( $args['slug'] );
+				wp_update_term( $term_id, self::TAXONOMY, $args );
+			}
+		}
+	}
+
+	/**
+	 * Remove a feed campaign that holds nothing and never will: the brand-less
+	 * monthly groups the first build made (2026-10-29), and campaigns over a
+	 * month past their end. A campaign that ever fed a Reverb sale is kept.
+	 */
+	private static function maybe_delete_orphan( int $term_id ): void {
+		if ( self::members( $term_id ) || get_term_meta( $term_id, 'reverb_sale_id', true ) !== '' || get_term_meta( $term_id, '_reverb_sale_members', true ) ) {
+			return;
+		}
+		$key = (string) get_term_meta( $term_id, self::META_KEY, true );
+		$end = (string) get_term_meta( $term_id, self::META_END, true );
+		$stale_month_group = (bool) preg_match( '/^(?:skuport|plugivery)\\|\\d{4}-\\d{2}$/', $key );
+		$long_over         = $end !== '' && $end < gmdate( 'Y-m-d', time() - 30 * DAY_IN_SECONDS );
+		if ( $stale_month_group || $long_over ) {
+			wp_delete_term( $term_id, self::TAXONOMY );
 		}
 	}
 

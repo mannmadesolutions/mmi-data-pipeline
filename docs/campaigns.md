@@ -11,6 +11,22 @@ Built 2026-10-29 (mmi-data-pipeline 2.61.0) for the owner's sales plan: promotio
 - Product meta mirror `_mmi_campaign_end` (Y-m-d) so a query loop can sort or filter by "ends soon" without a term join.
 - Feed-made terms carry `_mmi_campaign_key` = `supplier|lower-cased promotion name` (or `supplier|YYYY-MM` of the end month for suppliers that name nothing). Hand-made terms have no key and the sync never touches them.
 
+## Shopper-facing names and labels (2.61.1)
+
+Distributor promotion names are dealer copy ("2026 McDSP Spooky Sale US Cost", "MAAT — All XCHANGE 30% OCT 2026"). Every sync runs `refresh_display()` on each campaign:
+
+- **Name** (feed campaigns): `display_name()` makes "McDSP Spooky Sale", "MAAT Digital Sale", "UA Black Friday Part 1 Sale" from the supplier name and the members' brands. It removes date ranges, years, prices, the vendor's percentage claims, "with free …" mechanics and dealer words (US Cost, PP, XCHANGE, SkuPort, Plugivery), fixes shouting and brand spelling, puts the maker first when the name doesn't say whose sale it is, and ends with "Sale" when no sale word is left. The slug follows while it is still the automatic one. The supplier's name stays in term meta `supplier_name`. A name the owner edits is kept (`_mmi_campaign_auto_name` records the last automatic name).
+- **Nameless supplier promotions** (Plugivery, SkuPort) group by the product's brand and end month: "Overloud Sale", never "Plugivery promotions ending November".
+- **Labels** (term meta, read by Bricks as `{term_meta:…}` and by the campaign email): `state` (active, upcoming, ended), `max_discount` (whole percent from our own regular vs sale price, scheduled sale included), `discount_label` ("Up to 65% off", or "Special pricing" under 5%), `summary` ("43 EastWest titles", counting discounted products), `dates_label` ("Ends November 2", "Starts November 4"), `brands` (JSON), `hero_image_id` and `hero_image_url` (the main maker's logo, else the best-discounted product's picture; a hero the owner sets is kept).
+- **Description** (feed campaigns, while automatic): "Save up to 65% on 43 EastWest titles. Ends November 2."
+- **Cleanup**: empty feed campaigns from the first build's distributor-month groups, and any empty feed campaign over 30 days past its end, are deleted (never one that fed a Reverb sale).
+
+A campaign whose products aren't discounted on the store (a supplier promotion our price doesn't follow yet, e.g. Plugivery until its promo mapping is approved) gets `max_discount` 0. The Deals page and the email skip it.
+
+## The Deals page (`/deals/`, Bricks page #225780)
+
+Built from the homepage's classes (`mmhome-section`, `mmhome-inner`, `mmhome-hero__*`, `mmhome-eyebrow`, `mmhome-h2`, `mmhome-btn--green`, `mmi-lp-grid`, `mmi-lp-card*`). A dark hero with "Shop everything on sale" (the shop's on-sale filter), then "On now" (`state = active`, `max_discount >= 5`, biggest discount first) and "Coming soon" (`state = upcoming`, by start date) term loops. Each card is one link: brand logo on a light panel, green discount badge, name, summary, dates and "Shop the sale →". Campaign archives (`/deals/<slug>/`) use the Product Archive template (#21067, condition `mmi_campaign::all`).
+
 ## How membership is decided
 
 `Campaigns::from_feeds()` reads every registered feed catalog's promotion rows (`MMI_Pipeline_Feed_Catalog::rows('promotions')`, the same rows the Distributors › Promotions tab shows). A product joins a campaign while:
