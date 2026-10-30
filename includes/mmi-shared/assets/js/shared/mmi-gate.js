@@ -124,6 +124,12 @@ window.MMIGate = (function ($) {
 		return `<li><strong>${escapeHtml(f.title)}</strong> — ${escapeHtml(f.pitch)}</li>`;
 	}
 
+	// A bare plugin slug also covers its modules ('slug:module'), as in MMI_Feature_Gate::consumes().
+	function consumes(consumer, consumers) {
+		return consumers.indexOf(consumer) !== -1
+			|| (consumer.indexOf(':') === -1 && consumers.some(function (c) { return c.indexOf(consumer + ':') === 0; }));
+	}
+
 	function contentFor(trigger) {
 		const slug = trigger.getAttribute('data-gate-slug');
 		const p = plugin(slug);
@@ -136,7 +142,7 @@ window.MMIGate = (function ($) {
 			// Header chip: everything this plugin adds to the page's plugin.
 			const items = Object.keys(data.features || {})
 				.map(feature)
-				.filter(function (f) { return f && f.provider === slug && f.consumers.indexOf(consumer) !== -1; });
+				.filter(function (f) { return f && f.provider === slug && consumes(consumer, f.consumers); });
 			body = `<p>${escapeHtml(format(p.available ? i18n.activeAdds : i18n.adds, p.label))}</p>`
 				+ `<ul class="mmi-gate-popover__list">${items.map(featureItemHtml).join('')}</ul>`;
 		} else {

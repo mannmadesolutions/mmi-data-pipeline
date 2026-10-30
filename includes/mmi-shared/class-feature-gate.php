@@ -259,11 +259,14 @@ final class MMI_Feature_Gate {
 	 * "Works with" chips for a plugin's page header: one per plugin that adds
 	 * live features to $consumer_slug, ✓ when active, locked when not. The
 	 * tooltip lists what each one adds. Prints nothing if none apply.
+	 * A bare plugin slug also covers its modules' consumers ('slug:module'),
+	 * for a page that shows every module at once.
 	 */
 	public static function render_works_with( string $consumer_slug ): void {
 		$providers = array();
+		$plugin    = strtok( $consumer_slug, ':' );
 		foreach ( self::features() as $feature ) {
-			if ( in_array( $consumer_slug, $feature['consumers'], true ) && $feature['provider'] !== $consumer_slug ) {
+			if ( self::consumes( $consumer_slug, $feature['consumers'] ) && $feature['provider'] !== $plugin ) {
 				$providers[ $feature['provider'] ] = true;
 			}
 		}
@@ -299,6 +302,22 @@ final class MMI_Feature_Gate {
 			);
 		}
 		echo '</div>';
+	}
+
+	/** $consumer_slug is in $consumers, or is the bare plugin slug of a 'slug:module' there. */
+	private static function consumes( string $consumer_slug, array $consumers ): bool {
+		if ( in_array( $consumer_slug, $consumers, true ) ) {
+			return true;
+		}
+		if ( strpos( $consumer_slug, ':' ) !== false ) {
+			return false;
+		}
+		foreach ( $consumers as $consumer ) {
+			if ( strpos( $consumer, $consumer_slug . ':' ) === 0 ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

@@ -2235,6 +2235,11 @@ div.wrap div.mmi-header p,
   background: var(--mmi-info);
 }
 
+/* Off or not built yet (added 2026-10-30, mmi-distributors' switcher). */
+.mmi-status-dot.neutral {
+  background: var(--mmi-text-muted, #a7aaad);
+}
+
 /* Divider */
 .mmi-divider {
   border: 0;
@@ -4069,6 +4074,33 @@ body.mmi-page .mmi-toolbar label:not([hidden]) {
 
 .mmi-section-content {
     padding: var(--mmi-section-content-padding, 14px);
+}
+
+/* A section header's buttons, beside its title block (added 2026-10-30,
+   mmi-distributors: markup already used it with no rule). */
+.mmi-section-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 16px;
+}
+
+/* Nothing to show yet: one line, optionally a button after it, inside a
+   section or a table cell (added 2026-10-30, mmi-distributors; replaces
+   plain <p> lines and per-plugin empty classes). */
+.mmi-empty-state {
+    margin: 0;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-empty-state .button {
+    margin-left: 8px;
+}
+td.mmi-empty-state {
+    padding: 24px 16px;
 }
 
 .mmi-section-description {
