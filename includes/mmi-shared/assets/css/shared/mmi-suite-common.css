@@ -4103,6 +4103,18 @@ td.mmi-empty-state {
     padding: 24px 16px;
 }
 
+/* "Loading…" copy carries the shared spinner, drawn in the line's own grey
+   and in line with the text (.mmi-loading's default fill is white, for
+   primary buttons). When the data arrives the line's text is replaced and
+   the spinner goes with it, so "Nothing to show" never spins. */
+:is(.mmi-empty-state, .mmi-log-empty) .mmi-loading {
+    width: 18px;
+    height: 18px;
+    color: var(--mmi-text-secondary, #646970);
+    vertical-align: -4px;
+    margin-right: 8px;
+}
+
 .mmi-section-description {
     margin: 0 0 10px 0;
     color: var(--mmi-section-description-color, #666666);
