@@ -86,6 +86,40 @@ export function MultiSelect({ id, label, options, checked, onChange, before }: {
 }
 
 /**
+ * A toolbar button that opens a menu below it, in the .mmi-multiselect
+ * look. Closes on an outside click, Escape, or when the content calls close().
+ */
+export function MenuButton({ id, label, count, title, children }: {
+  id: string;
+  label: string;
+  /** Shown as a badge when above 0. */
+  count?: number;
+  title?: string;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("click", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("click", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <div ref={ref} className={`mmi-multiselect mmi-wb-filter mmi-wb-menu${open ? " is-open" : ""}${count ? " has-value" : ""}`} id={id}>
+      <button type="button" className="mmi-ms-trigger" aria-expanded={open} aria-haspopup="true" title={title} onClick={() => setOpen((o) => !o)}>
+        <span className="mmi-ms-label">{label}</span>
+        <span className="mmi-ms-badge" hidden={!count}>{count}</span>
+        <span className="mmi-ms-caret" aria-hidden="true">▼</span>
+      </button>
+      <div className="mmi-ms-menu" hidden={!open}>{open ? children(() => setOpen(false)) : null}</div>
+    </div>
+  );
+}
+
+/**
  * Hosts server-rendered markup (by element id) inside the React tree. The
  * node is moved, not copied, so the jQuery component keeps its state and its
  * delegated handlers; on unmount it goes back to its hidden holder.

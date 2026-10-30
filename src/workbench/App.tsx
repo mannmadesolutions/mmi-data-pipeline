@@ -21,10 +21,10 @@ import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
-import type { ActionChoice, ConditionsState, Efficacy, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
+import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
 import { SEARCH_DEBOUNCE_MS, useSearch } from "./useSearch";
-import { BusyButton, Dashicon, Island, MultiSelect, Pager, Section } from "./ui";
+import { BusyButton, Dashicon, Island, MenuButton, MultiSelect, Pager, Section } from "./ui";
 
 type Message = { text: string; kind: "" | "error" | "ok" };
 type Lifetime = "once" | "keep";
@@ -387,7 +387,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
       </Section>
 
       <Section id="mmi-wb-results-section" icon="list-view" title="Results"
-        desc="Choose a change. Once applies it to the ticked products or every result now, with Undo; Keep applying saves it as a standing rule that every catalog run applies again. Click a category to narrow to it"
+        desc="Choose a change. Once applies it to the ticked products or every result now, with Undo; Keep applying saves it as a standing rule that every catalog run applies again. Categories (above the table) narrows to one"
         actions={keep ? <>
           <BusyButton id="mmi-wb-rule-check-btn" busy={ruleBusy === "check"} icon="analytics" label={LABELS.CHECK_RULE} busyLabel={LABELS.CHECKING}
             disabled={!view.filter || busy || ruleBusy !== null} onClick={checkRule} />
@@ -470,17 +470,6 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
         {!view.result && <div className="mmi-wb-empty" id="mmi-wb-empty">{MESSAGES.EMPTY}</div>}
         <div className={`mmi-wb-results${view.result ? "" : " mmi-hidden"}`} id="mmi-wb-results">
-          {view.result && view.result.facets.length > 0 && (
-            <div className="mmi-wb-facets" id="mmi-wb-facets" aria-label="Categories in these results">
-              <span className="mmi-wb-label">Categories in results</span>
-              {view.result.facets.map((f) => (
-                <button key={`${f.id}-${f.name}`} type="button" className={`mmi-wb-facet${activeFacets.includes(f.name) ? " is-active" : ""}`}
-                  title={fill(MESSAGES.FACET_TITLE, { name: f.name })} onClick={() => onFacet(f.name, f.id === 0)}>
-                  <span>{f.name}</span> <b>{num(f.count)}</b>
-                </button>
-              ))}
-            </div>
-          )}
           <div className="mmi-toolbar mmi-wb-selection">
             <span className="mmi-wb-count" id="mmi-wb-count">{view.result ? fill(MESSAGES.FOUND, { count: num(total), s: plural(total) }) : ""}</span>
             <span className="mmi-wb-selected" id="mmi-wb-selected">{n ? fill(MESSAGES.SELECTED, { count: num(n) }) : ""}</span>
@@ -490,6 +479,9 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
               </button>
             )}
             {n > 0 && <button type="button" className="button-link" id="mmi-wb-clear-selection" onClick={() => setSelection(EMPTY_SELECTION)}>Clear selection</button>}
+            {view.result && view.result.facets.length > 0 && (
+              <CategoryMenu facets={view.result.facets} active={activeFacets} onPick={onFacet} />
+            )}
             <ColumnsMenu columns={columns} max={cfg.maxMetaColumns} onChange={setColumns} />
             <label className="mmi-pagination-size-label mmi-wb-per-page">Per page:{" "}
               <select className="mmi-pagination-size" id="mmi-wb-per-page" value={view.perPage}
@@ -590,5 +582,41 @@ function ColumnsMenu({ columns, max, onChange }: { columns: string[]; max: numbe
           {note && <span className="mmi-wb-none">{note}</span>}
         </span>
       } />
+  );
+}
+
+/**
+ * "Categories" in the results toolbar: how the results are categorized
+ * (name and count, most first), in a menu instead of a row of chips. Picking
+ * one narrows the search to it, as a category condition. A filter box helps
+ * when the list is long.
+ */
+function CategoryMenu({ facets, active, onPick }: {
+  facets: Facet[]; active: string[]; onPick: (name: string, none: boolean) => void;
+}) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const shown = needle ? facets.filter((f) => f.name.toLowerCase().includes(needle)) : facets;
+  return (
+    <MenuButton id="mmi-wb-facets" label={MESSAGES.CATEGORIES} count={active.length} title={MESSAGES.CATEGORIES_TITLE}>
+      {(close) => (
+        <>
+          {facets.length > 10 && (
+            <input type="search" className="mmi-wb-facet-search" placeholder={MESSAGES.CATEGORIES_SEARCH} aria-label={MESSAGES.CATEGORIES_SEARCH}
+              value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          )}
+          <div className="mmi-wb-facet-list" role="menu">
+            {shown.map((f) => (
+              <button key={`${f.id}-${f.name}`} type="button" role="menuitem"
+                className={`mmi-wb-facet${active.includes(f.name) ? " is-active" : ""}`}
+                title={fill(MESSAGES.FACET_TITLE, { name: f.name })} onClick={() => { onPick(f.name, f.id === 0); close(); }}>
+                <span>{f.name}</span> <b>{num(f.count)}</b>
+              </button>
+            ))}
+            {!shown.length && <span className="mmi-wb-none">{MESSAGES.NO_MATCH}</span>}
+          </div>
+        </>
+      )}
+    </MenuButton>
   );
 }

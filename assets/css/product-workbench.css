@@ -127,29 +127,34 @@ button.mmi-health-chip:focus-visible {
     color: var(--mmi-wb-muted);
 }
 
-.mmi-wb-facets {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 10px;
+.mmi-wb-menu .mmi-ms-menu {
+    min-width: 280px;
 }
 
-.mmi-wb-facets .mmi-wb-label {
-    margin-right: 4px;
+.mmi-wb-facet-search {
+    display: block;
+    width: calc(100% - 16px);
+    margin: 6px 8px;
+}
+
+/* The Categories menu: one category per line, its count on the right. */
+.mmi-wb-facet-list {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 0;
 }
 
 .mmi-wb-facet {
-    display: inline-flex;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border: 1px solid var(--mmi-wb-border);
-    border-radius: 12px;
-    background: #fff;
+    gap: 12px;
+    padding: 5px 10px;
+    border: 0;
+    background: none;
     color: #1d2327;
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 13px;
+    text-align: left;
     cursor: pointer;
 }
 
@@ -160,13 +165,17 @@ button.mmi-health-chip:focus-visible {
 
 .mmi-wb-facet:hover,
 .mmi-wb-facet:focus-visible {
-    border-color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
     outline: none;
 }
 
 .mmi-wb-facet.is-active {
-    border-color: var(--mmi-wb-accent);
-    background: var(--mmi-wb-accent-bg);
+    color: var(--mmi-wb-accent);
+    font-weight: 600;
+}
+
+.mmi-wb-facet-list > .mmi-wb-none {
+    padding: 5px 10px;
 }
 
 .mmi-wb-selection {

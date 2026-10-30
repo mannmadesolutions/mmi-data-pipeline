@@ -78,9 +78,13 @@ test("an unfinished condition holds the search and disables Apply", async ({ pag
 test("a category chip adds a real condition row and narrows the search", async ({ page }) => {
   const { backend } = await open(page);
   await searchFor(page, "test");
+  await page.locator("#mmi-wb-facets .mmi-ms-trigger").click();
   await page.locator(".mmi-wb-facet", { hasText: "Plug-ins" }).click();
+  await expect(page.locator("#mmi-wb-facets .mmi-ms-menu")).toBeHidden(); // picking closes the menu
   await expect(page.locator("#mmi-wb-conditions .mmi-condition-row")).toHaveCount(1);
   await expect.poll(() => backend.callsTo("mmi_workbench_search").at(-1)?.body.get("filter[conditions][0][value]")).toBe("Plug-ins");
+  await expect(page.locator("#mmi-wb-facets .mmi-ms-badge")).toHaveText("1"); // one category picked
+  await page.locator("#mmi-wb-facets .mmi-ms-trigger").click();
   await expect(page.locator(".mmi-wb-facet", { hasText: "Plug-ins" })).toHaveClass(/is-active/);
 });
 
@@ -182,6 +186,7 @@ test("changing what to change clears the preview and shows only relevant lock sw
 test("Clear all resets the search, filters and conditions", async ({ page }) => {
   await open(page);
   await searchFor(page, "synth");
+  await page.locator("#mmi-wb-facets .mmi-ms-trigger").click();
   await page.locator(".mmi-wb-facet").first().click();
   await expect(page.locator("#mmi-wb-conditions .mmi-condition-row")).toHaveCount(1);
   await page.locator(".mmi-wb-filters-clear").click();
