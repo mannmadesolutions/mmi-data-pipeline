@@ -422,8 +422,149 @@ td.mmi-wb-col-thumb img,
 .mmi-wb-change > .mmi-wb-target,
 .mmi-wb-change > .mmi-wb-progress,
 .mmi-wb-change > .mmi-wb-message,
-.mmi-wb-change > .mmi-wb-preview {
+.mmi-wb-change > .mmi-wb-preview,
+.mmi-wb-change > .mmi-wb-lifetime-row,
+.mmi-wb-change > .notice,
+.mmi-wb-change > .mmi-wb-rule-check {
     flex: 1 0 100%;
+}
+
+/* ── Once / Keep applying ──────────────────────────────────────────────── */
+
+.mmi-wb-lifetime-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mmi-wb-gap) 12px;
+    margin-bottom: var(--mmi-wb-gap);
+}
+
+.mmi-wb-rule-name-input {
+    flex: 0 1 320px;
+    min-width: 0;
+}
+
+.mmi-wb-change > .notice {
+    margin: 0 0 var(--mmi-wb-gap);
+}
+
+.mmi-wb-rule-check {
+    margin-top: var(--mmi-wb-gap);
+    padding: 8px 12px;
+    border-left: 4px solid var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+}
+
+.mmi-wb-rule-check.needs-look {
+    border-left-color: var(--mmi-wb-danger);
+    background: var(--mmi-bg-white, #fff);
+}
+
+.mmi-wb-rule-check-head {
+    margin: 0 0 4px;
+}
+
+.mmi-wb-rule-check-list {
+    margin: 4px 0 8px 18px;
+    list-style: disc;
+}
+
+.mmi-wb-rule-check-list .is-inefficient {
+    color: var(--mmi-wb-danger);
+}
+
+.mmi-wb-rule-fix {
+    color: var(--mmi-wb-muted);
+}
+
+/* ── Standing rules ────────────────────────────────────────────────────── */
+
+.mmi-wb-rules-table .mmi-wb-rule-pos {
+    width: 2.5em;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-rules-table .mmi-wb-rule-off td:not(.mmi-wb-rule-actions) {
+    opacity: 0.55;
+}
+
+.mmi-wb-rules-table tr.is-editing td {
+    box-shadow: inset 0 0 0 9999px var(--mmi-wb-accent-bg);
+}
+
+.mmi-wb-rule-name .notice {
+    margin: 6px 0 0;
+}
+
+.mmi-wb-rule-name .notice p {
+    margin: 4px 0;
+}
+
+.mmi-wb-rule-actions .button + .button {
+    margin-left: 4px;
+}
+
+.mmi-wb-icon-btn {
+    padding-inline: 4px !important;
+}
+
+.mmi-wb-rule-delete:not(:disabled) {
+    color: var(--mmi-wb-danger);
+}
+
+/* ── Catalog upkeep ────────────────────────────────────────────────────── */
+
+.mmi-wb-upkeep-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mmi-wb-upkeep-schedule {
+    flex-wrap: wrap;
+    gap: var(--mmi-wb-gap) 16px;
+    margin-bottom: var(--mmi-wb-gap);
+}
+
+.mmi-wb-upkeep-next,
+.mmi-wb-upkeep-last,
+.mmi-wb-step-about {
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-step-about {
+    display: block;
+    font-size: 12px;
+}
+
+.mmi-wb-step-active {
+    color: var(--mmi-wb-accent);
+}
+
+.mmi-wb-step-error td:last-child {
+    color: var(--mmi-wb-danger);
+}
+
+.mmi-wb-step-skipped td {
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-step-state .mmi-loading {
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.mmi-wb-upkeep-table + .mmi-wb-upkeep-progress,
+.mmi-wb-upkeep-progress {
+    margin: var(--mmi-wb-gap) 0 0;
+}
+
+/* Header buttons wrap under the title on a phone instead of widening the page. */
+@media (max-width: 782px) {
+    .mmi-wb-section-actions {
+        flex-wrap: wrap;
+        flex-shrink: 1;
+    }
 }
 
 .mmi-wb-action {

@@ -33,28 +33,6 @@
             console.log('MMI Product Import: Initializing');
             this.bindEvents();
             this.maybeOpenScheduleFromUrl();
-            this.bindCatalogRunAbortOnUnload();
-        },
-
-        // If the browser navigates away mid-run, tell the server so it can
-        // release the shared catalog-update lock immediately rather than
-        // waiting out its own TTL (Catalog_Run_State::LOCK_TTL) — sendBeacon
-        // is the only request type guaranteed to actually fire during unload.
-        bindCatalogRunAbortOnUnload: function() {
-            const self = this;
-            window.addEventListener('beforeunload', function() {
-                if (!self._catalogRunId || !navigator.sendBeacon) return;
-                const nonce = (window.mmiImportSettings && window.mmiImportSettings.nonce)
-                           || (window.mmiProductImportData && window.mmiProductImportData.nonce)
-                           || '';
-                const ajaxUrl = (window.mmiGlobal && window.mmiGlobal.ajaxUrl) || window.ajaxurl;
-                const data = new FormData();
-                data.append('action', 'mmi_catalog_finish_run');
-                data.append('run_id', self._catalogRunId);
-                data.append('aborted', '1');
-                data.append('nonce', nonce);
-                navigator.sendBeacon(ajaxUrl, data);
-            });
         },
 
         // Deep-link support for the header's "Next scheduled run" link (main.php) —
@@ -102,8 +80,6 @@
             // Handle "View Logs" button
             $(document).on('click', '#view-logs-all', this.viewLogs.bind(this));
             
-            // Handle "Run Catalog Update" button
-            $(document).on('click', '#run-catalog-update', this.runCatalogUpdatePhased.bind(this));
 
             // Schedule panel toggle
             $(document).on('click', '#mmi-schedule-toggle', this.toggleSchedulePanel.bind(this));
@@ -486,150 +462,6 @@
             });
         },
 
-        // Current run's id — set once mmi_catalog_start_run succeeds, cleared on
-        // finish/abort. Used by the beforeunload handler below so navigating away
-        // mid-run still releases the shared catalog lock instead of leaving it to
-        // expire on its own TTL.
-        _catalogRunId: null,
-
-        runCatalogUpdatePhased: function(e) {
-            const self    = this;
-            const $button = $(e.currentTarget);
-            if (!confirm('Run Catalog Update now? This will process all catalog maintenance operations shown below.')) return;
-
-            const nonce = (window.mmiImportSettings && window.mmiImportSettings.nonce)
-                       || (window.mmiProductImportData && window.mmiProductImportData.nonce)
-                       || '';
-            const ajaxUrl = (window.mmiGlobal && window.mmiGlobal.ajaxUrl) || window.ajaxurl;
-
-            $button.prop('disabled', true).addClass('mmi-is-loading');
-
-            $.post(ajaxUrl, { action: 'mmi_catalog_start_run', nonce: nonce })
-                .done(function(response) {
-                    if (!response || !response.success) {
-                        const err = response && response.data;
-                        const msg = err && err.code === 'locked'
-                            ? 'A catalog update is already running (started ' + (err.started_at || 'recently') + ').'
-                            : ((err && err.message) || 'Could not start catalog update.');
-                        self.showFlashMessage(msg, 'warning', $('#manual-import-status'));
-                        $button.prop('disabled', false).removeClass('mmi-is-loading');
-                        return;
-                    }
-
-                    const runId  = response.data.run_id;
-                    const phases = response.data.phases || [];
-                    self._catalogRunId = runId;
-
-                    const $progressPanel  = $('#mmi-catalog-progress-panel');
-                    const $phaseContainer = $('#mmi-catalog-progress-phases');
-                    const $progressTitle  = $('#mmi-catalog-progress-title');
-                    $phaseContainer.empty();
-                    $progressTitle.text('Running Catalog Update… (0 / ' + phases.length + ')');
-
-                    phases.forEach(function(p, i) {
-                        $phaseContainer.append(
-                            '<div class="mmi-catalog-phase-row mmi-phase-pending" data-phase-index="' + i + '">' +
-                            '<span class="mmi-phase-icon dashicons dashicons-minus"></span>' +
-                            '<span class="mmi-phase-label">' + escHtml(p.label) + '</span>' +
-                            '<span class="mmi-phase-detail"></span>' +
-                            '</div>'
-                        );
-                    });
-
-                    $progressPanel.slideDown(200);
-                    $button.css('min-width', $button.outerWidth() + 'px');
-
-                    self.runCatalogPhases(runId, phases, 0, $button, $progressPanel, $progressTitle);
-                })
-                .fail(function() {
-                    self.showFlashMessage('Network error — could not start catalog update.', 'error', $('#manual-import-status'));
-                    $button.prop('disabled', false).removeClass('mmi-is-loading');
-                });
-        },
-
-        runCatalogPhases: function(runId, phases, index, $button, $progressPanel, $progressTitle) {
-            const self  = this;
-            const nonce = (window.mmiImportSettings && window.mmiImportSettings.nonce)
-                       || (window.mmiProductImportData && window.mmiProductImportData.nonce)
-                       || '';
-            const ajaxUrl = (window.mmiGlobal && window.mmiGlobal.ajaxUrl) || window.ajaxurl;
-
-            const finish = function() {
-                $progressTitle.text('Finalizing…');
-                $.post(ajaxUrl, { action: 'mmi_catalog_finish_run', run_id: runId, nonce: nonce })
-                    .always(function() {
-                        self._catalogRunId = null;
-                        $button.prop('disabled', false).removeClass('mmi-is-loading').css('min-width', '');
-                        $progressTitle.text('Catalog Update Complete');
-                        setTimeout(function() { $progressPanel.slideUp(300); }, 2500);
-                        self.showFlashMessage('Store catalog updated successfully!', 'success', $('#manual-import-status'));
-                        location.reload();
-                    });
-            };
-
-            if (index >= phases.length) {
-                finish();
-                return;
-            }
-
-            const $phaseRow = $('[data-phase-index="' + index + '"]');
-            $phaseRow.removeClass('mmi-phase-pending').addClass('mmi-phase-running')
-                .find('.mmi-phase-icon').attr('class', 'mmi-phase-icon mmi-loading');
-            $progressTitle.text('Running Catalog Update… (' + index + ' / ' + phases.length + ')');
-
-            $.post(ajaxUrl, { action: 'mmi_catalog_run_phase', run_id: runId, index: index, nonce: nonce })
-                .done(function(response) {
-                    const ok   = response && response.success;
-                    const data = (ok && response.data) ? response.data : {};
-
-                    if (!ok) {
-                        // A lost/expired lock means someone else's run — or ours
-                        // timing out — took over; stop advancing this chain rather
-                        // than keep hammering a run_id that's no longer ours.
-                        $phaseRow.removeClass('mmi-phase-running').addClass('mmi-phase-error')
-                            .find('.mmi-phase-icon').attr('class', 'mmi-phase-icon dashicons dashicons-warning');
-                        $phaseRow.find('.mmi-phase-detail').text((response.data && response.data.message) || 'error');
-                        self.showFlashMessage('Catalog update stopped: ' + ((response.data && response.data.message) || 'unknown error'), 'error', $('#manual-import-status'));
-                        self._catalogRunId = null;
-                        $button.prop('disabled', false).removeClass('mmi-is-loading').css('min-width', '');
-                        $progressTitle.text('Catalog Update Stopped');
-                        return;
-                    }
-
-                    $phaseRow.removeClass('mmi-phase-running').addClass(data.error ? 'mmi-phase-error' : 'mmi-phase-done');
-                    $phaseRow.find('.mmi-phase-icon').attr('class',
-                        'mmi-phase-icon dashicons dashicons-' + (data.error ? 'warning' : 'yes'));
-
-                    if (data.skipped) {
-                        $phaseRow.find('.mmi-phase-detail').text(data.message || 'skipped');
-                        $phaseRow.find('.mmi-phase-icon').attr('class', 'mmi-phase-icon dashicons dashicons-minus');
-                        $phaseRow.addClass('mmi-phase-skipped');
-                    } else {
-                        const duration = data.duration_ms != null ? (data.duration_ms / 1000).toFixed(1) : '';
-                        const items    = data.items_processed != null ? data.items_processed : '';
-                        const detail   = items !== '' ? items + ' items · ' + duration + 's' : duration + 's';
-                        $phaseRow.find('.mmi-phase-detail').text(detail);
-                    }
-
-                    setTimeout(function() {
-                        self.runCatalogPhases(runId, phases, index + 1, $button, $progressPanel, $progressTitle);
-                    }, 300);
-                })
-                .fail(function() {
-                    // Genuine network failure — stop rather than silently continuing
-                    // past a phase we don't know the result of, since a stopped
-                    // chain still leaves the lock held (bounded by its own TTL)
-                    // rather than a partially-run sequence reported as complete.
-                    $phaseRow.removeClass('mmi-phase-running').addClass('mmi-phase-error')
-                        .find('.mmi-phase-icon').attr('class', 'mmi-phase-icon dashicons dashicons-warning');
-                    $phaseRow.find('.mmi-phase-detail').text('network error');
-                    self.showFlashMessage('Network error — catalog update stopped mid-run. It will resume being lockable once the lock expires.', 'error', $('#manual-import-status'));
-                    self._catalogRunId = null;
-                    $button.prop('disabled', false).removeClass('mmi-is-loading').css('min-width', '');
-                    $progressTitle.text('Catalog Update Stopped');
-                });
-        },
-        
         saveIndividualSchedule: function(e) {
             const $select = $(e.currentTarget);
             const processKey = $select.data('process');

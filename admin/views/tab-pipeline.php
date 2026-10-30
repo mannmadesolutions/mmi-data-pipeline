@@ -231,26 +231,10 @@ $p_mode_labels = [
     'availability-sync' => 'Availability Sync',
 ];
 
-// Catalog Maintenance section data — rules, brand OOS rules, stock override
-// rules, and last-run stats, all read once here via the single shared
-// Catalog_Phase_Runner (also used by the AJAX button, the cron dispatcher,
-// and WP-CLI, so this count can never again disagree with what actually ran).
-$mmi_catalog_rules       = \MannMade\DataPipeline\Catalog\Catalog_Phase_Runner::get_rules();
-$mmi_catalog_rule_count  = \MannMade\DataPipeline\Catalog\Catalog_Phase_Runner::get_active_rule_count();
-// Normalized, each with its stable id (the editor sends it back on save).
-$mmi_stock_override_rules = \MannMade\DataPipeline\Workbench\Standing_Rules::all();
-$mmi_catalog_last_run   = MMI_DB::get_setting( 'mmi_last_run_catalog_update', '' );
-$mmi_catalog_last_dur   = MMI_DB::get_setting( 'mmi_catalog_update_duration', '' );
-$mmi_catalog_last_count = MMI_DB::get_setting( 'mmi_catalog_update_products_processed', 0 );
-$mmi_catalog_is_locked  = \MannMade\DataPipeline\Catalog\Catalog_Run_State::is_locked();
-
-// Master enable/disable switches for the Catalog Maintenance and Duplicate
-// Products sections — each is a full kill switch for that section's logic
-// (not just a UI dim), gated at the same single shared entry point every
-// caller (button, scheduled cron, WP-CLI) already goes through: see
-// Catalog_Phase_Runner::is_enabled() and mmi_scan_duplicate_candidates's own
-// gate in CanonicalCandidatesController.php.
-$mmi_catalog_maintenance_enabled = \MannMade\DataPipeline\Catalog\Catalog_Phase_Runner::is_enabled();
+// Master enable/disable switch for the Duplicate Products section — a full
+// kill switch for its logic (not just a UI dim): see
+// mmi_scan_duplicate_candidates's own gate in CanonicalCandidatesController.php.
+// Catalog upkeep's own switch moved to the Product Workbench with it.
 $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true );
 
 ?>
@@ -754,36 +738,27 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
                         </tr>
                         <?php endforeach; ?>
                         <?php
-                        // Catalog Maintenance (the section below): its own recurring run, plus one
-                        // 5 minutes after every successful data fetch unless this is Disabled.
+                        // Catalog upkeep moved to the Product Workbench (2026-10-30) with its
+                        // schedule; this row only says when it runs and links there.
                         $cat_freq  = (string) MMI_DB::get_setting( 'mmi_schedule_catalog_update', 'sixhourly' );
-                        $cat_time  = (string) MMI_DB::get_setting( 'mmi_schedule_time_catalog_update', '' );
                         $cat_next  = wp_next_scheduled( 'mmi_scheduled_catalog_update' );
                         $cat_label = $cat_next ? human_time_diff( $cat_next, time() ) . ' from now' : 'Not scheduled';
-                        $cat_freqs = [ 'disabled' => 'Disabled', 'hourly' => 'Every Hour', 'sixhourly' => 'Every 6 Hours', 'twicedaily' => 'Twice Daily', 'daily' => 'Daily' ];
+                        $cat_freqs = [ 'disabled' => 'Disabled', 'hourly' => 'Every hour', 'sixhourly' => 'Every 6 hours', 'twicedaily' => 'Twice daily', 'daily' => 'Daily' ];
+                        $cat_url   = admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench#mmi-wb-upkeep' );
                         ?>
                         <tr class="mmi-tsched-group-header">
                             <td colspan="4">Store Catalog</td>
                         </tr>
-                        <tr class="mmi-tsched-row<?php echo ( 'disabled' === $cat_freq ) ? ' mmi-sched-is-disabled' : ''; ?>">
+                        <tr class="mmi-tsched-row<?php echo ( 'disabled' === $cat_freq ) ? ' mmi-sched-is-disabled' : ''; ?>" id="mmi-catalog-upkeep-pointer">
                             <td>
                                 <div class="mmi-tsched-process">
                                     <span class="dashicons dashicons-admin-tools mmi-tsched-icon mmi-tsched-icon--catalog"></span>
-                                    Catalog Maintenance
+                                    Catalog upkeep
                                 </div>
                             </td>
-                            <td>
-                                <div class="mmi-schedule-controls">
-                                <select id="sched-catalog-update" class="mmi-schedule-select mmi-autosave-schedule" data-process="catalog_update">
-                                    <?php foreach ( $cat_freqs as $val => $lbl ) : ?>
-                                        <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $cat_freq, $val ); ?>><?php echo esc_html( $lbl ); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <?php mmi_pipeline_render_schedule_time_control( 'catalog_update', $cat_freq, $cat_time ); ?>
-                                </div>
-                            </td>
-                            <td class="mmi-tsched-next" id="sched-catalog-update-next"><?php echo esc_html( $cat_label ); ?></td>
-                            <td class="mmi-tsched-detail">Every Catalog Maintenance operation, in order. Also runs 5 minutes after each successful data fetch.</td>
+                            <td><?php echo esc_html( $cat_freqs[ $cat_freq ] ?? $cat_freq ); ?></td>
+                            <td class="mmi-tsched-next"><?php echo esc_html( $cat_label ); ?></td>
+                            <td class="mmi-tsched-detail">Stock cleanup, duplicates, feed sync and standing rules. Also runs 5 minutes after each successful data fetch. <a href="<?php echo esc_url( $cat_url ); ?>">Manage in Product Workbench</a></td>
                         </tr>
                     </tbody>
                 </table>
@@ -838,10 +813,6 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
          section-profile-wizard.php) — that panel no longer has a standalone
          include of its own. */ ?>
     <?php include __DIR__ . '/partials/section-profile-wizard.php'; ?>
-
-    <!-- ── Catalog Maintenance — merges what were Stock Overrides, Catalog
-         Rules, and "Update Store Catalog" into one section/table. ── -->
-    <?php include __DIR__ . '/partials/panel-catalog-maintenance.php'; ?>
 
     <!-- ── Duplicate Products — moved here from its own top-level tab
          2026-09-02; see main.php's ?pipeline_tab=duplicates redirect. ── -->

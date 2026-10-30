@@ -118,6 +118,255 @@ final class Standing_Rules {
         return preg_match( '/^r[a-f0-9]{12}$/', $id ) ? $id : '';
     }
 
+    /* ── Editing (Product Workbench) ───────────────────────────────────── */
+
+    /** Saved rules as stored (not normalized), with ids. */
+    private static function stored(): array {
+        self::all(); // assigns ids to any rule saved without one
+        $raw = MMI_DB::get_setting( self::SETTING, [] );
+        return is_array( $raw ) ? array_values( array_filter( $raw, 'is_array' ) ) : [];
+    }
+
+    private static function position( array $rules, string $id ): ?int {
+        foreach ( $rules as $i => $rule ) {
+            if ( ( $rule['id'] ?? '' ) === $id ) {
+                return $i;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A rule from a Workbench search and change, sanitized, or an error that
+     * says what to fix. Keeps $base's id, name and on/off when given.
+     *
+     * @param  array $raw_filter Search filter (Product_Workbench::sanitize_filter input).
+     * @return array|\WP_Error
+     */
+    public static function build( array $raw_filter, string $action, array $raw_params, string $name, array $base = [] ) {
+        if ( ! Custom_Rule_Actions::is_valid( $action ) ) {
+            return new \WP_Error( 'action', 'Pick what the rule should change.' );
+        }
+        $params = Custom_Rule_Actions::needs_params( $action ) ? Custom_Rule_Actions::sanitize_params( $action, $raw_params ) : [];
+        if ( Custom_Rule_Actions::needs_params( $action ) && empty( $params ) ) {
+            return new \WP_Error( 'params', sprintf( '"%s" needs its settings filled in.', Custom_Rule_Actions::label_for( $action ) ) );
+        }
+        $filter = Product_Workbench::sanitize_filter( $raw_filter );
+        $name   = mb_substr( trim( sanitize_text_field( $name ) ), 0, 80 );
+        $rule   = [
+            'id'            => (string) ( $base['id'] ?? '' ),
+            'name'          => $name !== '' ? $name : mb_substr( Product_Workbench::action_summary( $action, $params ), 0, 80 ),
+            'enabled'       => array_key_exists( 'enabled', $base ) ? (bool) $base['enabled'] : true,
+            'supplier'      => $filter['supplier'],
+            'match_logic'   => $filter['match_logic'],
+            'conditions'    => $filter['conditions'],
+            'statuses'      => $filter['statuses'],
+            'action'        => $action,
+            'action_params' => $params,
+        ];
+        $filters = self::filters_from_search( $filter );
+        if ( $filters ) {
+            $rule['filters'] = $filters;
+        }
+        return $rule;
+    }
+
+    /**
+     * Save a built rule: over the saved rule with its id, or as a new rule
+     * at the end. Returns the saved rule.
+     */
+    public static function save( array $rule ): array {
+        $rules = self::stored();
+        $at    = $rule['id'] !== '' ? self::position( $rules, $rule['id'] ) : null;
+        if ( $at === null ) {
+            $rule['id'] = self::new_id();
+            $rules[]    = $rule;
+        } else {
+            if ( isset( $rules[ $at ]['efficacy_ack'] ) ) {
+                $rule['efficacy_ack'] = $rules[ $at ]['efficacy_ack'];
+            }
+            $rules[ $at ] = $rule;
+        }
+        MMI_DB::set_setting( self::SETTING, $rules );
+        return $rule;
+    }
+
+    /** Switch a rule on or off. Off releases its stock overrides now, not at the next run. */
+    public static function set_enabled( string $id, bool $enabled ): bool {
+        $rules = self::stored();
+        $at    = self::position( $rules, $id );
+        if ( $at === null ) {
+            return false;
+        }
+        $rules[ $at ]['enabled'] = $enabled;
+        MMI_DB::set_setting( self::SETTING, $rules );
+        if ( ! $enabled ) {
+            self::release( $id );
+        }
+        return true;
+    }
+
+    public static function delete( string $id ): bool {
+        $rules = self::stored();
+        $at    = self::position( $rules, $id );
+        if ( $at === null ) {
+            return false;
+        }
+        array_splice( $rules, $at, 1 );
+        MMI_DB::set_setting( self::SETTING, $rules );
+        self::release( $id );
+        return true;
+    }
+
+    /** Move a rule one place earlier ($by -1) or later (+1). Order decides which stock rule wins. */
+    public static function move( string $id, int $by ): bool {
+        $rules = self::stored();
+        $at    = self::position( $rules, $id );
+        $to    = $at === null ? null : $at + ( $by < 0 ? -1 : 1 );
+        if ( $at === null || $to < 0 || $to >= count( $rules ) ) {
+            return false;
+        }
+        [ $rules[ $at ], $rules[ $to ] ] = [ $rules[ $to ], $rules[ $at ] ];
+        MMI_DB::set_setting( self::SETTING, $rules );
+        return true;
+    }
+
+    /**
+     * Run one stock rule now (Run now in the Workbench), exactly as the
+     * catalog run would: products an earlier stock rule takes stay its.
+     *
+     * @return array{matched:int,changed:int,released:int,deferred:int}|null Null: no such stock rule.
+     */
+    public static function apply_one( string $id ): ?array {
+        $claimed = [];
+        foreach ( self::all() as $rule ) {
+            $action = (string) ( $rule['action'] ?? '' );
+            if ( ! Custom_Rule_Actions::is_stock_action( $action ) ) {
+                continue;
+            }
+            if ( $rule['id'] !== $id ) {
+                if ( ! empty( $rule['enabled'] ) ) {
+                    $claimed += array_fill_keys( self::matched_ids( $rule ), true );
+                }
+                continue;
+            }
+            $ids    = self::matched_ids( $rule );
+            $mine   = array_values( array_diff( $ids, array_keys( $claimed ) ) );
+            $result = self::hold( $id, $action, $mine, microtime( true ) + self::TIME_BUDGET );
+            return [
+                'matched'  => count( $ids ),
+                'changed'  => count( $result['changed'] ),
+                'released' => self::release( $id, $mine ),
+                'deferred' => $result['deferred'],
+            ];
+        }
+        return null;
+    }
+
+    /**
+     * Every rule as the Workbench lists it: what it searches for and
+     * changes in words, its search (to open or run it), its stored
+     * efficacy grade and its last recorded run.
+     *
+     * @return list<array>
+     */
+    public static function listing(): array {
+        $snapshot = Rule_Efficacy::snapshot();
+        $history  = self::history();
+        $out      = [];
+        foreach ( self::all() as $i => $rule ) {
+            $action = (string) ( $rule['action'] ?? '' );
+            $params = (array) ( $rule['action_params'] ?? [] );
+            $runs   = $history[ $rule['id'] ] ?? [];
+            $out[]  = [
+                'id'          => $rule['id'],
+                'position'    => $i + 1,
+                'name'        => $rule['name'] !== '' ? $rule['name'] : 'Rule ' . ( $i + 1 ),
+                'enabled'     => ! empty( $rule['enabled'] ),
+                'action'      => $action,
+                'params'      => (object) $params,
+                'stock'       => Custom_Rule_Actions::is_stock_action( $action ),
+                'change'      => Custom_Rule_Actions::is_valid( $action ) ? Product_Workbench::action_summary( $action, $params ) : '',
+                'search'      => self::describe( $rule ),
+                'filter'      => self::filter_for( $rule ),
+                'efficacy'    => $snapshot[ $rule['id'] ] ?? null,
+                'last_run'    => $runs[0] ?? null,
+            ];
+        }
+        return $out;
+    }
+
+    /** A rule's search in words: "Title contains "promo" or Brands is any of "Apogee Digital, Prism Sound" · Published". */
+    public static function describe( array $rule ): string {
+        $filter    = self::filter_for( $rule );
+        $suppliers = [];
+        foreach ( \MMI_Pipeline_Admin::get_configured_suppliers() as $sid => $info ) {
+            $suppliers[ (string) $sid ] = (string) ( $info['supplier_name'] ?? $sid );
+        }
+        $parts = [];
+        if ( $filter['q'] !== '' ) {
+            $where   = [ 'title_sku' => 'Title or SKU', 'title' => 'Title', 'sku' => 'SKU' ][ $filter['q_in'] ];
+            $parts[] = sprintf( '%s contains "%s"', $where, $filter['q'] );
+        }
+        $conds = [];
+        foreach ( $filter['conditions'] as $c ) {
+            $phrase  = trim( self::field_label( $c, $suppliers ) . ' ' . self::operator_label( $c ) );
+            $conds[] = [ $phrase, ! empty( $c['or'] ) ];
+        }
+        if ( $conds ) {
+            $joined = '';
+            foreach ( $conds as $k => [ $phrase, $or ] ) {
+                $joined .= $k === 0 ? $phrase : ( ( $filter['match_logic'] === 'any' || $or ) ? ' or ' : ' and ' ) . $phrase;
+            }
+            $parts[] = $joined;
+        }
+        if ( $filter['supplier'] !== 'all' ) {
+            $parts[] = 'Supplier: ' . ( $filter['supplier'] === 'native' ? 'none (created here)' : ( $suppliers[ $filter['supplier'] ] ?? $filter['supplier'] ) );
+        }
+        $status_labels = [ 'publish' => 'Published', 'draft' => 'Draft', 'pending' => 'Pending', 'private' => 'Private' ];
+        $parts[]       = implode( ', ', array_map( static fn( $s ) => $status_labels[ $s ] ?? $s, $filter['statuses'] ) );
+        if ( $filter['stock'] ) {
+            $stock_labels = [ 'instock' => 'In stock', 'outofstock' => 'Out of stock', 'onbackorder' => 'Backorder' ];
+            $parts[]      = implode( ', ', array_map( static fn( $s ) => $stock_labels[ $s ] ?? $s, $filter['stock'] ) );
+        }
+        if ( $filter['health'] ) {
+            $checks  = Health_Checks::all();
+            $mode    = [ 'any' => 'Fails any of: ', 'all' => 'Fails all of: ', 'none' => 'Passes: ' ][ $filter['health_mode'] ];
+            $parts[] = $mode . implode( ', ', array_map( static fn( $id ) => $checks[ $id ]['label'] ?? $id, $filter['health'] ) );
+        }
+        return implode( ' · ', $parts );
+    }
+
+    private static function field_label( array $c, array $suppliers ): string {
+        $field  = (string) ( $c['field'] ?? '' );
+        $source = (string) ( $c['source'] ?? '' );
+        if ( $source === Stock_Override_Resolver::TAXONOMY_SOURCE ) {
+            $tax = get_taxonomy( $field );
+            return $tax ? $tax->labels->name : $field;
+        }
+        if ( $source === Stock_Override_Resolver::POSTMETA_SOURCE ) {
+            $post_fields = [ '__post_title' => 'Title', '__post_content' => 'Description', '__post_excerpt' => 'Short description', '__post_name' => 'Slug', '__post_status' => 'Status' ];
+            return $post_fields[ $field ] ?? $field;
+        }
+        return trim( ( $suppliers[ $source ] ?? $source ) . ' ' . $field );
+    }
+
+    private static function operator_label( array $c ): string {
+        $op    = (string) ( $c['operator'] ?? 'equals' );
+        $label = class_exists( 'MMI_Condition_Builder' ) ? ( \MMI_Condition_Builder::OPERATOR_LABELS[ $op ] ?? $op ) : $op;
+        $label = preg_replace( '/^[=≠<>]\s*/u', '', $label );
+        if ( in_array( $op, [ 'is_empty', 'is_not_empty', 'term_default_only' ], true ) ) {
+            return $label;
+        }
+        $value = (string) ( $c['value'] ?? '' );
+        if ( $op === 'matches_pattern' ) {
+            $value = Stock_Override_Resolver::PATTERNS[ $value ] ?? $value;
+            return $label . ' ' . $value;
+        }
+        $value = str_replace( Stock_Override_Resolver::LIST_VALUE_DELIMITER, ', ', $value );
+        return sprintf( '%s "%s"', $label, $value ) . ( ! empty( $c['include_children'] ) ? ' or a child term' : '' );
+    }
+
     /* ── Matching ──────────────────────────────────────────────────────── */
 
     /**

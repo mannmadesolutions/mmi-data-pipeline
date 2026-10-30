@@ -598,7 +598,7 @@
 
     /**
      * Keeps the app/notice visibility in sync with the master toggle without
-     * a page reload — mirrors import-pipeline-catalog-maintenance.js's
+     * a page reload — mirrors the old Catalog Maintenance panel's
      * identical applyMasterEnabledState(). The server (mmi_scan_duplicate_
      * candidates' own gate in CanonicalCandidatesController.php) stays the
      * real authority; this is the visual side.

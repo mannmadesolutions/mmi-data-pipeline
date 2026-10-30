@@ -5,7 +5,7 @@
 import {
   HEALTH_MODE_LABELS, JOB_STATUS_LABELS, MESSAGES, SEARCH_IN_LABELS, STATUS_LABELS, STOCK_LABELS, fill, num, plural,
 } from "./messages";
-import type { ActionChoice, Filter, Job, Selection, WorkbenchConfig } from "./types";
+import type { ActionChoice, Efficacy, Filter, Grade, Job, Selection, StandingRule, WorkbenchConfig } from "./types";
 
 /* ── Filter ─────────────────────────────────────────────────────────────── */
 
@@ -49,6 +49,14 @@ export function buildFilter(quick: QuickFilters, conditions: Filter["conditions"
 }
 
 export const filterKey = (f: Filter): string => JSON.stringify(f);
+
+/** The quick filters a saved search (a standing rule's) stands for, to load it back into Find. */
+export function quickFromFilter(f: Filter): QuickFilters {
+  return {
+    q: f.q, qCase: !!f.q_case, qIn: f.q_in, supplier: f.supplier,
+    statuses: [...f.statuses], stock: [...f.stock], health: [...f.health], healthMode: f.health_mode,
+  };
+}
 
 /** Whether the filter narrows anything. Results (and Apply to all) wait until it does. */
 export function hasParameters(f: Filter): boolean {
@@ -252,4 +260,55 @@ export function termTree(terms: { id: number; name: string; parent?: number }[],
 /** Ticked terms first, so the current choice is visible without scrolling. */
 export function orderTicked(terms: TreeTerm[], ticked: ReadonlySet<number>): TreeTerm[] {
   return [...terms.filter((t) => ticked.has(t.id)), ...terms.filter((t) => !ticked.has(t.id))];
+}
+
+/* ── Standing rules ─────────────────────────────────────────────────────── */
+
+/** Badge for an efficacy grade (shared .mmi-badge kinds). */
+const GRADE_BADGES: Record<Grade, { kind: string; label: string }> = {
+  ok: { kind: "success", label: "Works" },
+  info: { kind: "success", label: "Works" },
+  review: { kind: "warning", label: "Check it" },
+  inefficient: { kind: "error", label: "Works against itself" },
+};
+export const gradeBadge = (g: Grade | undefined): { kind: string; label: string } =>
+  (g ? GRADE_BADGES[g] : undefined) ?? { kind: "", label: "Not checked yet" };
+
+/** Findings worth showing before or beside a rule: "review" and worse, then the rest. */
+export const findingsToShow = (e: Efficacy | null, all = false) =>
+  (e?.findings ?? []).filter((f) => all || f.severity === "review" || f.severity === "inefficient");
+
+/** Whether saving should stop to show what the check found first. */
+export const needsLook = (e: Efficacy): boolean => e.grade === "review" || e.grade === "inefficient";
+
+/** "Changed 3 of 144 · 2 h ago" for a rule's last recorded run. */
+export function lastRunText(r: StandingRule, now = Date.now()): string {
+  const run = r.last_run;
+  if (!run) return MESSAGES.RULE_NOT_RUN;
+  const mins = Math.max(0, Math.round((now / 1000 - run.at) / 60));
+  const ago = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} d ago`;
+  return fill(MESSAGES.RULE_LAST_RUN, { changed: num(run.changed), matched: num(run.matched), ago })
+    + (run.deferred ? fill(MESSAGES.RULE_DEFERRED, { count: num(run.deferred) }) : "");
+}
+
+export type RuleSortKey = "position" | "name" | "search" | "change" | "grade" | "last_run" | "enabled";
+const GRADE_RANK: Record<string, number> = { ok: 0, info: 1, review: 2, inefficient: 3 };
+
+/** Standing rules sorted in memory (a handful of rows; run order is "position"). */
+export function sortRules(rules: StandingRule[], key: RuleSortKey, dir: "asc" | "desc"): StandingRule[] {
+  const sign = dir === "desc" ? -1 : 1;
+  const val = (r: StandingRule): string | number => {
+    switch (key) {
+      case "position": return r.position;
+      case "grade": return GRADE_RANK[r.efficacy?.grade ?? ""] ?? -1;
+      case "last_run": return r.last_run?.changed ?? -1;
+      case "enabled": return r.enabled ? 1 : 0;
+      default: return r[key];
+    }
+  };
+  return [...rules].sort((a, b) => {
+    const av = val(a), bv = val(b);
+    const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), undefined, { sensitivity: "base", numeric: true });
+    return cmp * sign;
+  });
 }

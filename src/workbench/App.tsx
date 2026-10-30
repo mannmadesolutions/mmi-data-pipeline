@@ -7,23 +7,27 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ApiError, api } from "./api";
+import { ApiError, api, type RuleDraft } from "./api";
 import * as bridge from "./bridge";
 import { IDS } from "./bridge";
 import {
-  EMPTY_QUICK, EMPTY_SELECTION, allPayload, buildFilter, describeFilter, filterKey, isSelected, lockOptions,
+  EMPTY_QUICK, EMPTY_SELECTION, allPayload, buildFilter, describeFilter, filterKey, isSelected, lockOptions, needsLook, quickFromFilter,
   selectAllMatching, selectedCount, selectionPayload, targetText, toggleRows, type QuickFilters, type SelectionState,
 } from "./logic";
+import { CatalogUpkeep } from "./CatalogUpkeep";
 import { LABELS, MESSAGES, fill, num, plural } from "./messages";
 import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
+import { RuleCheck } from "./RuleCheck";
+import { StandingRules, type RowNotice } from "./StandingRules";
 import { ResultsTable } from "./ResultsTable";
-import type { ActionChoice, ConditionsState, Job, Preview, WorkbenchConfig } from "./types";
+import type { ActionChoice, ConditionsState, Efficacy, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
 import { SEARCH_DEBOUNCE_MS, useSearch } from "./useSearch";
 import { BusyButton, Dashicon, Island, MultiSelect, Pager, Section } from "./ui";
 
 type Message = { text: string; kind: "" | "error" | "ok" };
+type Lifetime = "once" | "keep";
 
 export function App({ cfg }: { cfg: WorkbenchConfig }) {
   /* ── Inputs ───────────────────────────────────────────────────────────── */
@@ -44,6 +48,17 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const [message, setMessage] = useState<Message>({ text: "", kind: "" });
   const [jobs, setJobs] = useState<Job[] | null>(null);
 
+  /* ── Standing rules: Keep applying, the rule being edited, the list ───── */
+
+  const [lifetime, setLifetime] = useState<Lifetime>("once");
+  const [editing, setEditing] = useState<StandingRule | null>(null);
+  const [ruleName, setRuleName] = useState("");
+  const [rules, setRules] = useState<StandingRule[] | null>(null);
+  const [ruleNotice, setRuleNotice] = useState<RowNotice | null>(null);
+  const [check, setCheck] = useState<Efficacy | null>(null);
+  const [ruleBusy, setRuleBusy] = useState<"check" | "save" | "row" | null>(null);
+  const keep = lifetime === "keep";
+
   const search = useSearch(
     { filter, firstIncomplete: cond.firstIncomplete, firstWithoutValue: cond.firstWithoutValue },
     cfg.defaultPerPage,
@@ -59,6 +74,9 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const loadJobs = useCallback(() => {
     api.jobs().then((d) => setJobs(d.jobs)).catch(() => setJobs((j) => j ?? []));
   }, []);
+  const loadRules = useCallback(() => {
+    api.rules().then((d) => setRules(d.rules)).catch(() => setRules((r) => r ?? []));
+  }, []);
 
   const runner = useJobRunner((r) => {
     setApplying(null);
@@ -68,6 +86,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     // The job is finished with these products: drop the selection, or ones that no
     // longer match stay selected out of sight. A failed run keeps it for a retry.
     if (r.ok) setSelection(EMPTY_SELECTION);
+    loadRules(); // a rule's Run now is a job too
     search.refetch(); // results now show the new values
   });
 
@@ -93,6 +112,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     bridge.initActionPicker();
     setAction(bridge.readAction());
     loadJobs();
+    loadRules();
     const offCond = bridge.onConditionsChange(() => setCond(bridge.readConditions()));
     const offAction = bridge.onActionChange((kind) => {
       setPreview(null);
@@ -102,7 +122,12 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
       setAction(bridge.readAction());
     });
     return () => { offCond(); offAction(); };
-  }, [loadJobs]);
+  }, [loadJobs, loadRules]);
+
+  // Force In/Out of Stock is offered only for Keep applying; a check is for one search + change.
+  useEffect(() => { bridge.allowActions(cfg.stockActions, keep); }, [keep, cfg.stockActions]);
+  const actionKey = `${action.action}|${JSON.stringify(action.params)}`;
+  useEffect(() => { setCheck(null); }, [key, actionKey]);
 
   /* ── Handlers ─────────────────────────────────────────────────────────── */
 
@@ -167,6 +192,116 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     void runner.run(jobStub(job.id), "apply", true);
   };
 
+  /* ── Standing rules ───────────────────────────────────────────────────── */
+
+  const stockOnce = !keep && cfg.stockActions.includes(action.action);
+
+  const draft = (): RuleDraft | null => (view.filter
+    ? { id: editing?.id ?? "", name: ruleName, filter: view.filter, action: action.action, params: action.params }
+    : null);
+
+  const checkRule = () => {
+    const d = draft();
+    if (!d) return;
+    setRuleBusy("check");
+    setMessage({ text: "", kind: "" });
+    api.ruleCheck(d).then(setCheck)
+      .catch((e: ApiError) => setMessage({ text: e.message, kind: "error" }))
+      .finally(() => setRuleBusy(null));
+  };
+
+  /** Save the search + change as a standing rule; a rule the check has doubts about waits for "Save anyway". */
+  const saveRule = async (anyway = false) => {
+    const d = draft();
+    if (!d) return;
+    setRuleBusy("save");
+    setMessage({ text: "", kind: "" });
+    try {
+      if (!anyway) {
+        const e = await api.ruleCheck(d);
+        setCheck(e);
+        if (needsLook(e)) return;
+      }
+      const saved = await api.ruleSave(d);
+      setMessage({ text: fill(d.id ? MESSAGES.RULE_UPDATED : MESSAGES.RULE_SAVED, { name: saved.rule.name }), kind: "ok" });
+      setCheck(saved.efficacy);
+      setRuleName(saved.rule.name);
+      const list = await api.rules();
+      setRules(list.rules);
+      setEditing(list.rules.find((r) => r.id === saved.rule.id) ?? null); // further saves update it
+    } catch (e) {
+      setMessage({ text: (e as ApiError).message, kind: "error" });
+    } finally {
+      setRuleBusy(null);
+    }
+  };
+
+  const stopEditing = () => { setEditing(null); setRuleName(""); setCheck(null); };
+
+  /** Load a rule's search and change into Find products, to see its products or edit it. */
+  const openRule = (r: StandingRule) => {
+    setLifetime("keep");
+    bridge.allowActions(cfg.stockActions, true); // before the picker is set to a stock change
+    setQuick(quickFromFilter(r.filter));
+    const skipped = bridge.loadConditions(r.filter.conditions, r.filter.match_logic);
+    bridge.loadAction(r.action, r.params);
+    setCond(bridge.readConditions());
+    setAction(bridge.readAction());
+    setEditing(r);
+    setRuleName(r.name);
+    setPreview(null);
+    setMessage({ text: skipped.length ? fill(MESSAGES.RULE_SKIPPED_FIELDS, { fields: skipped.join(", ") }) : fill(MESSAGES.RULE_OPENED, { name: r.name }), kind: skipped.length ? "error" : "ok" });
+    searchNow();
+    document.getElementById("mmi-wb-find")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const rowDo = (r: StandingRule, call: Promise<unknown>, ok: string) => {
+    setRuleBusy("row");
+    call.then(() => { setRuleNotice(ok ? { id: r.id, text: ok, kind: "ok" } : null); loadRules(); })
+      .catch((e: ApiError) => { setRuleNotice({ id: r.id, text: e.message, kind: "error" }); loadRules(); })
+      .finally(() => setRuleBusy(null));
+  };
+
+  const runRule = (r: StandingRule) => {
+    if (busy || ruleBusy) return;
+    if (r.stock) {
+      if (!window.confirm(fill(MESSAGES.CONFIRM_HOLD_RULE, { name: r.name }))) return;
+      setRuleBusy("row");
+      api.ruleHold(r.id)
+        .then((h) => {
+          setRuleNotice({ id: r.id, kind: "ok", text: fill(MESSAGES.HOLD_DONE, {
+            name: r.name, changed: num(h.changed), matched: num(h.matched),
+            released: h.released ? fill(MESSAGES.HOLD_RELEASED, { count: num(h.released) }) : "",
+            deferred: h.deferred ? fill(MESSAGES.HOLD_DEFERRED, { count: num(h.deferred) }) : "",
+          }) });
+          loadRules();
+        })
+        .catch((e: ApiError) => setRuleNotice({ id: r.id, text: e.message, kind: "error" }))
+        .finally(() => setRuleBusy(null));
+      return;
+    }
+    // Any other change runs as an ordinary Workbench job: Recent changes can undo it.
+    const count = r.efficacy?.matched ?? r.last_run?.matched ?? 0;
+    if (!window.confirm(fill(MESSAGES.CONFIRM_RUN_RULE, { summary: r.change, name: r.name, count: num(count), s: plural(count) }))) return;
+    const ruleLock = lockOptions({ action: r.action, params: r.params }, { skip: false, add: false }, cfg);
+    setMessage({ text: "", kind: "" });
+    api.start(allPayload(r.filter), r.action, r.params, `Standing rule “${r.name}”: ${r.search}`, ruleLock)
+      .then((d) => runner.run(d.job, "apply"))
+      .catch((e: ApiError) => setRuleNotice({ id: r.id, text: e.message, kind: "error" }));
+  };
+
+  const toggleRule = (r: StandingRule, on: boolean) => {
+    // The switch moves at once; a failed save puts it back (rowDo reloads either way).
+    setRules((list) => list && list.map((x) => (x.id === r.id ? { ...x, enabled: on } : x)));
+    rowDo(r, api.ruleEnable(r.id, on), fill(on ? MESSAGES.RULE_ON : MESSAGES.RULE_OFF, { name: r.name }));
+  };
+  const moveRule = (r: StandingRule, by: -1 | 1) => rowDo(r, api.ruleMove(r.id, by), "");
+  const deleteRule = (r: StandingRule) => {
+    if (!window.confirm(fill(MESSAGES.CONFIRM_DELETE_RULE, { name: r.name }))) return;
+    if (editing?.id === r.id) stopEditing();
+    rowDo(r, api.ruleDelete(r.id), fill(MESSAGES.RULE_GONE, { name: r.name }));
+  };
+
   /* ── Render ───────────────────────────────────────────────────────────── */
 
   const rows = view.result?.rows ?? [];
@@ -179,7 +314,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   return (
     <>
       <Section id="mmi-wb-find" icon="search" title="Find products"
-        desc="Search titles and SKUs, then narrow with the same conditions Custom Rules use — supplier feed fields, categories and other taxonomies, post fields and meta. Results update as you type">
+        desc="Search titles and SKUs, then narrow with conditions on supplier feed fields, categories and other taxonomies, post fields and meta. Results update as you type">
         <div className="mmi-toolbar mmi-wb-quick">
           <input type="search" id="mmi-wb-q" className="mmi-wb-q" placeholder="Search titles and SKUs… (e.g. bundle)" aria-label="Search products"
             value={quick.q} onChange={(e) => setQ({ q: e.target.value })}
@@ -227,21 +362,48 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
       </Section>
 
       <Section id="mmi-wb-results-section" icon="list-view" title="Results"
-        desc="Choose a change, then apply it to the ticked products or to every result. Click a category to narrow to it. Replace swaps every existing term in that taxonomy for the one chosen"
-        actions={<>
+        desc="Choose a change. Once applies it to the ticked products or every result now, with Undo; Keep applying saves it as a standing rule that every catalog run applies again. Click a category to narrow to it"
+        actions={keep ? <>
+          <BusyButton id="mmi-wb-rule-check-btn" busy={ruleBusy === "check"} icon="analytics" label={LABELS.CHECK_RULE} busyLabel={LABELS.CHECKING}
+            disabled={!view.filter || busy || ruleBusy !== null} onClick={checkRule} />
+          <BusyButton id="mmi-wb-rule-save" className="button button-primary" busy={ruleBusy === "save"} icon="saved"
+            label={editing ? LABELS.UPDATE_RULE : LABELS.SAVE_RULE} busyLabel={LABELS.SAVING}
+            disabled={!view.filter || busy || ruleBusy !== null} onClick={() => void saveRule()} />
+        </> : <>
           <BusyButton id="mmi-wb-preview" busy={previewBusy} icon="visibility" label={LABELS.PREVIEW} busyLabel={LABELS.PREVIEWING}
-            disabled={!(n || haveResults) || busy} onClick={runPreview} />
+            disabled={!(n || haveResults) || busy || stockOnce} onClick={runPreview} />
           <BusyButton id="mmi-wb-apply-all" busy={applying === "all"} icon="database" busyLabel={LABELS.APPLYING}
             label={haveResults ? fill(LABELS.APPLY_ALL, { count: num(total) }) : LABELS.APPLY_ALL_NONE}
             title={tooMany ? fill(MESSAGES.TOO_MANY, { count: num(total), max: num(cfg.maxSelection) }) : MESSAGES.APPLY_ALL_TITLE}
-            disabled={!haveResults || busy || tooMany || applying !== null} onClick={() => apply(true)} />
+            disabled={!haveResults || busy || tooMany || applying !== null || stockOnce} onClick={() => apply(true)} />
           <BusyButton id="mmi-wb-apply" className="button button-primary" busy={applying === "selected"} icon="yes"
-            label={LABELS.APPLY} busyLabel={LABELS.APPLYING} disabled={!n || busy || applying !== null} onClick={() => apply(false)} />
+            label={LABELS.APPLY} busyLabel={LABELS.APPLYING} disabled={!n || busy || applying !== null || stockOnce} onClick={() => apply(false)} />
         </>}>
         <div className="mmi-wb-change" id="mmi-wb-change" role="group" aria-label="Change products">
-          <span className="mmi-wb-filters-label mmi-wb-change-label">Change</span>
+          <div className="mmi-wb-lifetime-row">
+            <span className="mmi-wb-filters-label mmi-wb-change-label">Change</span>
+            <div className="mmi-filter-pills mmi-wb-lifetime" role="group" aria-label="How long the change lasts" title={MESSAGES.LIFETIME_TITLE}>
+              {(["once", "keep"] as Lifetime[]).map((l) => (
+                <button key={l} type="button" id={`mmi-wb-lifetime-${l}`} className={`mmi-pill${lifetime === l ? " active" : ""}`} aria-pressed={lifetime === l}
+                  disabled={busy || ruleBusy !== null} onClick={() => { setLifetime(l); setPreview(null); setMessage({ text: "", kind: "" }); }}>
+                  {l === "once" ? MESSAGES.LIFETIME_ONCE : MESSAGES.LIFETIME_KEEP}
+                </button>
+              ))}
+            </div>
+            {keep && (
+              <input type="text" id="mmi-wb-rule-name" className="mmi-wb-rule-name-input" placeholder={MESSAGES.RULE_NAME} aria-label="Rule name"
+                maxLength={80} value={ruleName} onChange={(e) => setRuleName(e.target.value)} />
+            )}
+          </div>
+          {keep && editing && (
+            <div className="notice notice-info inline mmi-wb-editing" id="mmi-wb-editing">
+              <p>{fill(MESSAGES.EDITING_RULE, { name: editing.name })}{" "}
+                <button type="button" className="button-link" onClick={stopEditing}>{MESSAGES.STOP_EDITING}</button></p>
+            </div>
+          )}
           <Island sourceId="mmi-wb-island-action" className="mmi-wb-island" />
-          {lock.fields.length > 0 && (
+          {stockOnce && <div className="notice notice-warning inline" id="mmi-wb-stock-once"><p>{MESSAGES.STOCK_ONCE}</p></div>}
+          {!keep && lock.fields.length > 0 && (
             <div className="mmi-wb-lock-options" id="mmi-wb-lock-options">
               <label className="mmi-wb-lock-option">
                 <span className="mmi-toggle-switch">
@@ -261,7 +423,9 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
               )}
             </div>
           )}
-          <p className="mmi-wb-target" id="mmi-wb-target">{targetText(selection, total, haveResults)}</p>
+          <p className="mmi-wb-target" id="mmi-wb-target">
+            {keep ? (view.filter ? fill(MESSAGES.KEEP_TARGET, { count: num(total), s: plural(total) }) : MESSAGES.KEEP_EMPTY) : targetText(selection, total, haveResults)}
+          </p>
           {runner.progress && (
             <div className="mmi-wb-progress" id="mmi-wb-progress">
               <div className="mmi-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={runner.progress.pct}
@@ -275,7 +439,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
           <div className={`mmi-wb-message${message.kind === "error" ? " is-error" : message.kind === "ok" ? " is-success" : ""}`} id="mmi-wb-message" role="status">
             {message.text}
           </div>
-          {preview && <PreviewPanel preview={preview} lock={lock} />}
+          {!keep && preview && <PreviewPanel preview={preview} lock={lock} />}
+          {keep && check && <RuleCheck check={check} saving={ruleBusy !== null} onSaveAnyway={() => void saveRule(true)} />}
         </div>
 
         {!view.result && <div className="mmi-wb-empty" id="mmi-wb-empty">{MESSAGES.EMPTY}</div>}
@@ -314,12 +479,17 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
         </div>
       </Section>
 
+      <StandingRules rules={rules} busy={busy || ruleBusy !== null} editingId={keep && editing ? editing.id : ""} notice={ruleNotice}
+        onOpen={openRule} onRun={runRule} onToggle={toggleRule} onMove={moveRule} onDelete={deleteRule} />
+
+      <CatalogUpkeep onRunFinished={loadRules} />
+
       <RecentChanges jobs={jobs} busy={runner.running !== null} onUndo={onUndo} onResume={onResume} />
     </>
   );
 }
 
-/** "Save search": keeps the builder's conditions as a named search, loadable here and in Catalog Maintenance. */
+/** "Save search": keeps the builder's conditions as a named search, loadable in every condition builder. */
 function SaveSearch({ matchLogic }: { matchLogic: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -345,7 +515,7 @@ function SaveSearch({ matchLogic }: { matchLogic: string }) {
   if (!open) {
     return (
       <button type="button" className="mmi-cb-btn-secondary" id="mmi-wb-save-search" onClick={() => { setName(""); setOpen(true); }}
-        title="Keep these conditions as a named search, loadable from Load saved conditions here and in Catalog Maintenance">
+        title="Keep these conditions as a named search, loadable from Load saved conditions here and in Field Mapping">
         <Dashicon name="saved" /> Save search
       </button>
     );

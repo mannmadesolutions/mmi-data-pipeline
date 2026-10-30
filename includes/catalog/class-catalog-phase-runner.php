@@ -174,7 +174,7 @@ final class Catalog_Phase_Runner {
         $has_overrides  = is_array( $override_rules ) && ! empty( $override_rules );
         $phases[] = [
             'phase'       => 'override_stock',
-            'label'       => 'Re-apply bulk custom rules',
+            'label'       => 'Apply standing rules',
             'args'        => [],
             'skipped'     => ! $has_overrides,
             'skip_reason' => $has_overrides ? '' : 'No custom rules configured',
@@ -350,10 +350,17 @@ final class Catalog_Phase_Runner {
                 if ( ! class_exists( 'MannMade\\DataPipeline\\Stock_Override_Resolver' ) ) {
                     throw new \RuntimeException( 'Stock_Override_Resolver class not available.' );
                 }
-                $override_rules = MMI_DB::get_setting( 'mmi_stock_override_rules', [] );
-                $result         = \MannMade\DataPipeline\Stock_Override_Resolver::apply_to_catalog( (array) $override_rules );
-                $processed      = $result['changed'] ?? 0;
-                return [ $processed, "{$processed} product(s) stock status updated via override rules" ];
+                // Standing rules match through the Workbench search, so a run
+                // changes exactly what a rule's preview lists; stock rules
+                // hold their products with a rule-owned stock override,
+                // which feed sync respects.
+                $result  = \MannMade\DataPipeline\Workbench\Standing_Rules::apply_all();
+                $changed = (int) $result['changed'];
+                $message = "{$changed} product(s) changed by " . count( $result['rules'] ) . ' standing rule(s)';
+                if ( $result['deferred'] > 0 ) {
+                    $message .= "; {$result['deferred']} left for the next run (time budget)";
+                }
+                return [ $changed, $message ];
 
             case 'categories':
                 $result    = $updater->assign_categories_comprehensive( 'uncategorized', true, 100 );
@@ -452,7 +459,7 @@ final class Catalog_Phase_Runner {
      */
     /**
      * Is Catalog Maintenance actually keeping up? One owner for the badge,
-     * the section-header alert and the notice (panel-catalog-maintenance.php).
+     * the health notice in Product Workbench's Catalog upkeep section.
      * Two cheap queries; phase labels come from the caller's already-built
      * phase list (build_phases() reads the feed files, too heavy to repeat).
      *
@@ -491,13 +498,13 @@ final class Catalog_Phase_Runner {
             ];
         }
         if ( 'disabled' === $freq ) {
-            return [ 'level' => 'disabled', 'text' => 'Schedule off', 'detail' => 'The Catalog Maintenance schedule is disabled (Schedules panel). It only runs when "Update Store Catalog" is clicked.' ];
+            return [ 'level' => 'disabled', 'text' => 'Schedule off', 'detail' => 'The catalog upkeep schedule is off. It only runs when "Run upkeep now" is clicked (Product Workbench).' ];
         }
         if ( $last_ts === 0 || time() - $last_ts > 2 * $interval + HOUR_IN_SECONDS ) {
             return [
                 'level'  => 'error',
                 'text'   => 'Overdue',
-                'detail' => $last_ts ? sprintf( 'No complete run for %s — the schedule expects one every %s.', human_time_diff( $last_ts ), human_time_diff( 0, $interval ) ) : 'Catalog Maintenance has never completed a run.',
+                'detail' => $last_ts ? sprintf( 'No complete run for %s — the schedule expects one every %s.', human_time_diff( $last_ts ), human_time_diff( 0, $interval ) ) : 'Catalog upkeep has never completed a run.',
             ];
         }
         $errored = array_filter( (array) MMI_DB::get_setting( 'mmi_catalog_last_run_errors', [] ) );

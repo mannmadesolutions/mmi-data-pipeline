@@ -18,6 +18,7 @@ export interface RuleBuilderApi {
 }
 
 export interface ConditionBuilderApi {
+  loadConditions: ($root: JQuery, conditions: Condition[], matchLogic: string, replace: boolean) => { loaded: number; skipped: string[] };
   showNotice: ($root: JQuery, text: string) => void;
   updateEmptyHint: ($root: JQuery) => void;
   refreshLibrary: () => void;

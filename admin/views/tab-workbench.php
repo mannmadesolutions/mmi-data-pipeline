@@ -2,15 +2,16 @@
 /**
  * Product Workbench tab
  *
- * Find products with the same condition builder Custom Rules use (plus a
- * quick title/SKU search and any post status), review how they're
- * categorized, then apply one change to all or some of them — with a
- * preview first and Undo after.
+ * Find products with the suite's condition builder (plus a quick
+ * title/SKU search and any post status), then change them: Once (a preview
+ * first and Undo after), or Keep applying as a standing rule that every
+ * catalog run applies again. Standing rules and catalog upkeep (the old
+ * Catalog Maintenance) are sections of this screen.
  *
  * The screen is a React app (src/workbench, built to build/workbench.js).
  * This view prints its mount point plus the two shared jQuery components it
- * hosts, so they stay identical to Catalog Maintenance and Field Mapping:
- * the suite-wide condition builder and the Custom Rule change picker. They
+ * hosts, so they stay identical to Field Mapping's: the suite-wide
+ * condition builder and the change picker. They
  * wait in a hidden holder until the app moves them into place. Server side:
  * MannMade\DataPipeline\Workbench\Product_Workbench.
  *
@@ -39,8 +40,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     <div class="mmi-wb-islands" hidden>
         <div id="mmi-wb-island-conditions" class="mmi-wb-island">
             <?php
-            // The suite-wide condition builder (same as Catalog Maintenance
-            // and Field Mapping), with its own match logic here. The app
+            // The suite-wide condition builder (same as Field Mapping), with
+            // its own match logic here. The app
             // renders Save search into the slot.
             MMI_Condition_Builder::render( [
                 'sources'      => Rule_Builder_View::source_groups( Rule_Builder_View::sources( MMI_Pipeline_Admin::get_configured_suppliers() ) ),
@@ -57,7 +58,8 @@ if ( ! defined( 'ABSPATH' ) ) {
         <div id="mmi-wb-island-action" class="mmi-wb-island">
             <div class="mmi-wb-action" id="mmi-wb-action-scope">
                 <select class="mmi-custom-rule-action" id="mmi-wb-action" aria-label="What to change">
-                    <?php Rule_Builder_View::action_options( 'set_taxonomy_term', true ); ?>
+                    <?php // Force In/Out of Stock included: the app enables it only for Keep applying. ?>
+                    <?php Rule_Builder_View::action_options( 'set_taxonomy_term' ); ?>
                 </select>
                 <div class="mmi-custom-rule-params">
                     <?php Rule_Builder_View::action_params( [ 'taxonomy' => 'product_cat', 'mode' => 'replace' ] ); ?>

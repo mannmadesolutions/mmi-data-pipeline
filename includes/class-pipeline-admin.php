@@ -239,19 +239,10 @@ class MMI_Pipeline_Admin {
                     'mmi-pipeline-sources'              => 'import-pipeline-sources.js',
                     'mmi-pipeline-csv'                  => 'import-pipeline-csv.js',
                     'mmi-pipeline-ui'                    => 'import-pipeline-ui.js',
-                    // Replaces the retired import-pipeline-stock-overrides.js and
-                    // import-pipeline-catalog-rules.js — those two panels and this
-                    // one "Update Store Catalog" button are now one Catalog
-                    // Maintenance section/table; see Catalog_Phase_Runner.
-                    'mmi-pipeline-catalog-maintenance' => 'import-pipeline-catalog-maintenance.js',
                     'mmi-pipeline-attributes'           => 'import-pipeline-attributes.js',
                 ];
                 foreach ( $modules as $handle => $file ) {
                     $deps = [ 'jquery', 'mmi-pipeline-core', 'mmi-escape-html' ];
-                    if ( 'mmi-pipeline-catalog-maintenance' === $handle ) {
-                        $deps[] = 'mmi-modal'; // Match Review modal, see MOD-DPL-01.
-                        $deps[] = 'mmi-pipeline-rule-builder';
-                    }
                     self::enqueue_script( $handle, 'assets/js/' . $file, $deps );
                 }
 
@@ -1033,6 +1024,7 @@ class MMI_Pipeline_Admin {
             // Which import fields each change writes, for the lock switches.
             'lockLabels'       => \MannMade\DataPipeline\Workbench\Product_Workbench::lock_labels(),
             'actionLockFields' => \MannMade\DataPipeline\Workbench\Product_Workbench::ACTION_LOCK_FIELDS,
+            'stockActions'     => \MannMade\DataPipeline\Stock_Override_Resolver::VALID_OVERRIDES,
         ];
     }
 

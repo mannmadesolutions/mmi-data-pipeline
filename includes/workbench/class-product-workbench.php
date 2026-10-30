@@ -411,7 +411,7 @@ final class Product_Workbench {
             return new \WP_Error( 'action', 'Pick what to change.' );
         }
         if ( Custom_Rule_Actions::is_stock_action( $action ) ) {
-            return new \WP_Error( 'action', 'Force In/Out of Stock only holds as a Custom Rule (Catalog Maintenance); a one-off change would be undone by the next feed sync.' );
+            return new \WP_Error( 'action', 'Force In/Out of Stock only holds as a standing rule (Keep applying); a one-off change would be undone by the next feed sync.' );
         }
         $params = Custom_Rule_Actions::needs_params( $action ) ? Custom_Rule_Actions::sanitize_params( $action, $raw_params ) : [];
         if ( Custom_Rule_Actions::needs_params( $action ) && empty( $params ) ) {

@@ -3,7 +3,7 @@
  * Custom Rule Actions
  *
  * The action registry and executor for the Catalog Maintenance "Custom Rule"
- * builder (panel-catalog-maintenance.php) — every action a rule's condition
+ * builder (Product Workbench) — every action a rule's condition
  * cascade can trigger once matched, beyond the two original stock actions
  * (force_instock/force_outofstock, still owned by Stock_Override_Resolver's
  * tiered real-time resolution). Everything here is bulk-apply only: it runs
@@ -13,7 +13,7 @@
  * not import-time stock resolution.
  *
  * ACTION_GROUPS is the single source of truth for the action <select>'s
- * <optgroup>s (panel-catalog-maintenance.php) and for validating/sanitizing
+ * <optgroup>s (Rule_Builder_View, Product Workbench) and for validating/sanitizing
  * a saved rule's action + action_params (StockOverrideController.php).
  *
  * @package MannMade\DataPipeline

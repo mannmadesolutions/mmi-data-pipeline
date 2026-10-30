@@ -42,7 +42,7 @@ add_action( 'wp_ajax_mmi_catalog_start_run', function () {
     }
 
     if ( ! Catalog_Phase_Runner::is_enabled() ) {
-        wp_send_json_error( [ 'code' => 'disabled', 'message' => 'Catalog Maintenance is disabled — enable it via the section toggle before running.' ] );
+        wp_send_json_error( [ 'code' => 'disabled', 'message' => 'Catalog upkeep is off. Turn on its Enabled switch (Product Workbench) to run it.' ] );
     }
 
     $run_id = Catalog_Run_State::try_acquire( 'ajax' );

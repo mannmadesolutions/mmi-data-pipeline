@@ -135,9 +135,11 @@ test("edit a product's categories in the row", async ({ page }) => {
 test("a stale nonce is refreshed and the request resent, unseen", async ({ page }) => {
   const { backend } = await open(page, { staleNonce: 1 });
   await searchFor(page, "synth");
-  // The page's first Workbench call (Recent changes) met the stale nonce: refreshed once, resent, and every later call uses the new one.
+  // The page opens with three Workbench calls (Recent changes, Standing rules, Catalog upkeep); the one that met
+  // the stale nonce was refreshed once and resent, and every later call uses the new one.
   expect(backend.callsTo("mmi_refresh_nonces")).toHaveLength(1);
-  expect(backend.callsTo("mmi_workbench_jobs").map((c) => c.body.get("nonce"))).toEqual([expect.not.stringMatching(/^nonce-2$/), "nonce-2"]);
+  const opening = ["mmi_workbench_jobs", "mmi_workbench_rules", "mmi_workbench_upkeep"].flatMap((a) => backend.callsTo(a));
+  expect(opening.filter((c) => c.body.get("nonce") === "nonce-2")).toHaveLength(1);
   expect(backend.callsTo("mmi_workbench_search").map((c) => c.body.get("nonce"))).toEqual(["nonce-2"]);
   await expect(page.locator(".mmi-cb-notice")).not.toContainText("expired");
 });
@@ -191,4 +193,118 @@ test("a column-resize drag never sorts (shared guard)", async ({ page }) => {
   await page.mouse.up();
   await page.waitForTimeout(300);
   expect(backend.callsTo("mmi_workbench_search").length).toBe(before);
+});
+
+/* ── Standing rules and catalog upkeep ──────────────────────────────────── */
+
+test("Force In/Out of Stock is offered only for Keep applying", async ({ page }) => {
+  await open(page);
+  const force = page.locator('#mmi-wb-action option[value="force_outofstock"]');
+  await expect(force).toBeDisabled();
+  await page.locator("#mmi-wb-lifetime-keep").click();
+  await expect(force).toBeEnabled();
+  await expect(page.locator("#mmi-wb-rule-save")).toBeVisible();
+  await expect(page.locator("#mmi-wb-apply")).toHaveCount(0);
+  await page.locator("#mmi-wb-lifetime-once").click();
+  await expect(force).toBeDisabled();
+});
+
+test("Keep applying checks the rule first, and saves after Save anyway", async ({ page }) => {
+  const { backend, errors } = await open(page);
+  await page.locator("#mmi-wb-lifetime-keep").click();
+  await searchFor(page, "synth");
+  await page.locator("#mmi-wb-action").selectOption("force_outofstock");
+  await page.locator("#mmi-wb-rule-name").fill("Synths out");
+  await page.locator("#mmi-wb-rule-save").click();
+  // The check found a problem: nothing saved yet, the finding and Save anyway shown in place.
+  await expect(page.locator("#mmi-wb-rule-check")).toContainText("Feed sync puts 12");
+  expect(backend.callsTo("mmi_workbench_rule_save")).toHaveLength(0);
+  await page.locator("#mmi-wb-rule-save-anyway").click();
+  await expect(page.locator("#mmi-wb-message")).toContainText("Saved the standing rule “Synths out”");
+  const row = page.locator("#mmi-wb-rules-rows tr", { hasText: "Synths out" });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("Works against itself");
+  await expect(page.locator("#mmi-wb-editing")).toContainText("Synths out");
+  const saved = backend.callsTo("mmi_workbench_rule_save")[0]!.body;
+  expect(saved.get("wb_action")).toBe("force_outofstock");
+  expect(saved.get("filter[q]")).toBe("synth");
+  expect(errors).toEqual([]);
+});
+
+test("a rule that checks out saves straight away; Open loads it to edit, and saving updates it", async ({ page }) => {
+  const { backend } = await open(page);
+  await page.locator("#mmi-wb-lifetime-keep").click();
+  await searchFor(page, "bundle");
+  await page.locator("#mmi-wb-rule-name").fill("Bundles");
+  await page.locator("#mmi-wb-rule-save").click();
+  await expect(page.locator("#mmi-wb-rules-rows tr", { hasText: "Bundles" })).toBeVisible();
+  await page.locator("#mmi-wb-editing button").click(); // stop editing
+  await page.locator("#mmi-wb-lifetime-once").click();
+  await page.locator("#mmi-wb-q").fill("");
+
+  await page.locator("#mmi-wb-rules-rows tr", { hasText: "Bundles" }).getByRole("button", { name: "Open" }).click();
+  await expect(page.locator("#mmi-wb-q")).toHaveValue("bundle");
+  await expect(page.locator("#mmi-wb-lifetime-keep")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#mmi-wb-rule-name")).toHaveValue("Bundles");
+  await page.locator("#mmi-wb-rule-save").click();
+  await expect(page.locator("#mmi-wb-message")).toContainText("Updated the standing rule");
+  const saves = backend.callsTo("mmi_workbench_rule_save");
+  expect(saves).toHaveLength(2);
+  expect(saves[1]!.body.get("rule_id")).toBe(saves[0]!.body.get("rule_id") || "r000000000001");
+});
+
+test("rule rows switch off, move, run and delete in place", async ({ page }) => {
+  const { backend } = await open(page);
+  backend.rules = [
+    { id: "r000000000001", name: "First", enabled: true, action: "set_status_draft", params: {}, stock: false, change: "Set to Draft",
+      search: "Title contains \"old\"", filter: { stock: [], health: [], health_mode: "any", q: "old", q_case: 0, q_in: "title_sku", supplier: "all", match_logic: "all", statuses: ["publish"], conditions: [] },
+      efficacy: { grade: "ok", matched: 3, will_change: 3, findings: [] }, last_run: { at: 0, matched: 3, changed: 1, deferred: 0, ms: 10 } },
+    { id: "r000000000002", name: "Second", enabled: true, action: "force_outofstock", params: {}, stock: true, change: "Force Out of Stock",
+      search: "Brand is \"Acme\"", filter: { stock: [], health: [], health_mode: "any", q: "", q_case: 0, q_in: "title_sku", supplier: "all", match_logic: "all", statuses: ["publish"], conditions: [] },
+      efficacy: null, last_run: null },
+  ];
+  await page.reload();
+  const second = page.locator("#mmi-wb-rules-rows tr", { hasText: "Second" });
+  await second.getByRole("button", { name: "Move Second earlier" }).click();
+  await expect(page.locator("#mmi-wb-rules-rows tr").first()).toContainText("Second");
+  await second.getByRole("checkbox").uncheck();
+  await expect(second.locator(".mmi-wb-rule-notice")).toContainText("is off");
+  await second.getByRole("checkbox").check();
+  await second.getByRole("button", { name: "Run now" }).click();
+  await expect(second.locator(".mmi-wb-rule-notice")).toContainText("40 of 40 changed");
+  await page.locator("#mmi-wb-rules-rows tr", { hasText: "First" }).getByRole("button", { name: "Delete First" }).click();
+  await expect(page.locator("#mmi-wb-rules-rows tr", { hasText: "First" })).toHaveCount(0);
+  expect(backend.callsTo("mmi_workbench_rule_move")[0]!.body.get("by")).toBe("-1");
+  expect(backend.callsTo("mmi_workbench_rule_hold")).toHaveLength(1);
+});
+
+test("a non-stock rule's Run now is an undoable Workbench job", async ({ page }) => {
+  const { backend } = await open(page);
+  backend.rules = [{ id: "r000000000001", name: "Drafts", enabled: true, action: "set_status_draft", params: {}, stock: false, change: "Set to Draft",
+    search: "Title contains \"synth\"", filter: { stock: [], health: [], health_mode: "any", q: "synth", q_case: 0, q_in: "title_sku", supplier: "all", match_logic: "all", statuses: ["publish", "draft"], conditions: [] },
+    efficacy: { grade: "ok", matched: 40, will_change: 40, findings: [] }, last_run: null }];
+  await page.reload();
+  await page.locator("#mmi-wb-rules-rows tr", { hasText: "Drafts" }).getByRole("button", { name: "Run now" }).click();
+  await expect(page.locator("#mmi-wb-message")).toContainText("Done:");
+  const start = backend.callsTo("mmi_workbench_start")[0]!.body;
+  expect(start.get("selection[mode]")).toBe("filter");
+  expect(start.get("selection[filter][q]")).toBe("synth");
+  expect(start.get("wb_action")).toBe("set_status_draft");
+  await expect(page.locator("#mmi-wb-jobs-rows .mmi-wb-job-undo")).toBeVisible();
+});
+
+test("catalog upkeep runs every step in order and saves its switches and schedule", async ({ page }) => {
+  const { backend, errors } = await open(page);
+  const up = page.locator("#mmi-wb-upkeep");
+  await expect(up.locator("#mmi-wb-upkeep-steps tbody tr")).toHaveCount(3);
+  await up.locator("#mmi-wb-upkeep-steps").getByRole("checkbox").uncheck();
+  await expect.poll(() => backend.callsTo("mmi_save_catalog_rules").length).toBe(1);
+  expect(backend.callsTo("mmi_save_catalog_rules")[0]!.body.get("toggles[cleanup_stock_meta]")).toBe("");
+  await up.locator("#mmi-wb-upkeep-frequency").selectOption("daily");
+  await expect(up.locator("#mmi-wb-upkeep-message")).toContainText("Schedule saved");
+  await up.locator("#mmi-wb-upkeep-run").click();
+  await expect(up.locator("#mmi-wb-upkeep-message")).toContainText("6,553 products processed");
+  expect(backend.callsTo("mmi_catalog_run_phase").map((c) => c.body.get("index"))).toEqual(["0", "1", "2"]);
+  expect(backend.callsTo("mmi_catalog_finish_run")[0]!.body.get("aborted")).toBeNull();
+  expect(errors).toEqual([]);
 });

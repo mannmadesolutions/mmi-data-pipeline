@@ -48,6 +48,14 @@ if ( isset( $_GET['pipeline_tab'] ) && 'duplicates' === $_GET['pipeline_tab'] ) 
     exit;
 }
 
+// Catalog Maintenance (an Import tab section until 2026-10-30) moved into the
+// Product Workbench as Standing rules + Catalog upkeep. Links made for it
+// (?open_catalog=1, e.g. the rule alert's) land on Standing rules.
+if ( isset( $_GET['open_catalog'] ) ) {
+    wp_redirect( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench#mmi-wb-rules' ) );
+    exit;
+}
+
 // Collect pipeline process errors to surface as admin notices.
 // Every profile is checked (not just whichever one ?profile= happens to name) —
 // a scheduled profile import runs with no browser context at all, so scoping
@@ -139,7 +147,7 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
                 <?php endif; ?>
                 <?php if ( $_mmi_rule_alerts ) : ?>
                 <a class="mmi-badge warning" id="mmi-rule-efficacy-alert"
-                   href="<?php echo esc_url( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_catalog=1' ) ); ?>"
+                   href="<?php echo esc_url( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench#mmi-wb-rules' ) ); ?>"
                    title="<?php echo esc_attr( implode( "\n", array_map( static fn( $a ) => $a['name'] . ': ' . $a['text'], $_mmi_rule_alerts ) ) ); ?>"><?php
                     echo esc_html( 'Rules: ' . count( $_mmi_rule_alerts ) . ( count( $_mmi_rule_alerts ) === 1 ? ' needs' : ' need' ) . ' a look' );
                 ?></a>

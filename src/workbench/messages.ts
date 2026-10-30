@@ -28,7 +28,7 @@ export const MESSAGES = {
   WAITING_VALUE:    "Condition %n% needs a value before the results update.",
   CONFIRM_UNDO:     "Undo \"%summary%\"?\n\nEach product gets its previous value back, unless it has been edited again since.",
   INCOMPLETE:       "Condition %n%: pick a Source and a Field, or remove it.",
-  SAVED_SEARCH:     "Saved “%name%”. Load it from Load saved conditions, here or in Catalog Maintenance.",
+  SAVED_SEARCH:     "Saved “%name%”. Load it from Load saved conditions, here or in Field Mapping.",
   NETWORK:          "Network error — please try again.",
   LOGIN_EXPIRED:    "Your login has expired. Reload the page to sign in again; nothing was changed.",
   RUN_SAVED:        "%message% The run is saved — resume it from Recent changes.",
@@ -59,6 +59,57 @@ export const MESSAGES = {
   CHANGE_TERMS:     "Change %label%",
   SELECT_ROW:       "Select %title%",
   SAVE_SEARCH_NAME: "Name this search…",
+
+  /* Once / Keep applying */
+  LIFETIME_ONCE:    "Once",
+  LIFETIME_KEEP:    "Keep applying",
+  LIFETIME_TITLE:   "Once changes these products now, with Undo. Keep applying saves the search and change as a standing rule that every catalog run applies again, including to products that come to match later.",
+  STOCK_ONCE:       "Force In/Out of Stock only holds as a standing rule: the next feed sync would undo a one-off change. Choose Keep applying.",
+  RULE_NAME:        "Name this rule…",
+  EDITING_RULE:     "Editing the standing rule “%name%”. Save rule keeps its place in the run order.",
+  STOP_EDITING:     "Stop editing",
+  KEEP_TARGET:      "The rule covers every product this search finds, now %count% product%s%, and products that come to match later. Ticks don't apply.",
+  KEEP_EMPTY:       "Search for the products the rule should cover first.",
+  CHECKING_RULE:    "Checking how well this rule will work…",
+  CHECK_OK:         "Check: works. %matched% product%s% match, %changing% would change on the next run.",
+  CHECK_LOOK:       "Check: this rule needs a look before you keep it.",
+  SAVE_ANYWAY:      "Save anyway",
+  RULE_SAVED:       "Saved the standing rule “%name%”. The next catalog run applies it; Run now applies it straight away.",
+  RULE_UPDATED:     "Updated the standing rule “%name%”.",
+
+  /* Standing rules */
+  RULES_LOADING:    "Loading…",
+  NO_RULES:         "No standing rules yet. Search for products, choose a change, pick Keep applying and save.",
+  RULE_NOT_RUN:     "Not run since it was saved",
+  RULE_LAST_RUN:    "Changed %changed% of %matched% · %ago%",
+  RULE_DEFERRED:    " · %count% wait for the next run",
+  CONFIRM_DELETE_RULE: "Delete the standing rule “%name%”?\n\nWhat it already changed stays. A stock rule's hold on its products is released, so feed sync and imports set their stock again.",
+  CONFIRM_RUN_RULE: "%summary%\n\nApply the standing rule “%name%” now to all %count% product%s% it finds? You can undo this run from Recent changes.",
+  CONFIRM_HOLD_RULE:"Apply the standing rule “%name%” now? It holds its products with their own stock override, as the catalog run does.",
+  HOLD_DONE:        "“%name%”: %changed% of %matched% changed%released%%deferred%.",
+  HOLD_RELEASED:    ", %count% no longer match and were released",
+  HOLD_DEFERRED:    ", %count% left for the next run",
+  RULE_OFF:         "“%name%” is off: catalog runs skip it.",
+  RULE_ON:          "“%name%” is on again.",
+  RULE_GONE:        "Deleted “%name%”.",
+  RULE_OPENED:      "Opened “%name%” in Find products. Change the search or the change, then Save rule.",
+  RULE_SKIPPED_FIELDS: "Some conditions couldn't load here (%fields%): their source isn't set up on this site.",
+
+  /* Catalog upkeep */
+  UPKEEP_LOADING:   "Loading…",
+  UPKEEP_OFF:       "Catalog upkeep is off: neither the schedule nor Run upkeep now runs it.",
+  UPKEEP_CONFIRM:   "Run catalog upkeep now? Every step below runs in order, as the scheduled run does.",
+  UPKEEP_RUNNING:   "Running catalog upkeep… (%done% of %total%)",
+  UPKEEP_FINALIZING:"Finishing…",
+  UPKEEP_DONE:      "Catalog upkeep finished: %count% product%s% processed.",
+  UPKEEP_STOPPED:   "Catalog upkeep stopped at “%label%”: %message%",
+  UPKEEP_LOCKED:    "A catalog run is already going (started %when%). Wait for it to finish.",
+  UPKEEP_BUSY:      "A catalog run is going (started %when%).",
+  UPKEEP_LAST:      "Last complete run %ago%%duration%, %count% product%s% processed.",
+  UPKEEP_NEVER:     "No complete run yet.",
+  STEP_SKIPPED:     "Skipped: %reason%",
+  STEP_ACTIVE:      "Runs",
+  SCHEDULE_SAVED:   "Schedule saved. Next run %next%.",
 } as const;
 
 /** Button contents: an icon and a label, swapped for the spinner while busy. */
@@ -70,6 +121,11 @@ export const LABELS = {
   APPLYING:      "Applying…",
   APPLY_ALL:     "Apply to all %count% results",
   APPLY_ALL_NONE:"Apply to all results",
+  CHECK_RULE:    "Check rule",
+  CHECKING:      "Checking…",
+  SAVE_RULE:     "Save rule",
+  UPDATE_RULE:   "Save rule",
+  SAVING:        "Saving…",
 } as const;
 
 export const STATUS_LABELS: Record<string, string> = { publish: "Published", draft: "Draft", pending: "Pending", private: "Private" };

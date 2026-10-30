@@ -41,6 +41,19 @@ export class MockBackend {
   products = catalog();
   calls: { action: string; body: URLSearchParams }[] = [];
   jobs: Record<string, unknown>[] = [];
+  rules: Record<string, unknown>[] = [];
+  upkeep = {
+    enabled: true,
+    schedule: { frequency: "hourly", time: "00:40", next: "20 mins from now", options: { disabled: "Disabled", hourly: "Every hour", daily: "Daily" } },
+    steps: [
+      { phase: "cleanup", label: "Clean up duplicate stock metadata", about: "Removes duplicate stock rows.", kind: "Maintenance", switch: "cleanup_stock_meta", on: true, skipped: false, skip_reason: "" },
+      { phase: "feed_sync", label: "Feed sync: Example", about: "Feed presence.", kind: "From data sources", switch: "", on: null, skipped: false, skip_reason: "" },
+      { phase: "override_stock", label: "Apply standing rules", about: "Applies the rules.", kind: "Standing rules", switch: "", on: null, skipped: false, skip_reason: "" },
+    ],
+    last_run: { at: "2026-10-30 14:43:28", ago: "1 hour ago", duration: "3 min", processed: 6553 },
+    health: { level: "ok", text: "", detail: "" },
+    running: null,
+  };
   nonce = "nonce-1";
 
   constructor(private o: MockOptions = {}) {}
@@ -151,9 +164,73 @@ export class MockBackend {
       }
       case "mmi_workbench_save_search":
         return this.reply(route, { id: "wb:1" });
+      case "mmi_workbench_rules":
+        return this.reply(route, { rules: this.rules.map((r, i) => ({ ...r, position: i + 1 })) });
+      case "mmi_workbench_rule_check":
+        return this.reply(route, this.check(body));
+      case "mmi_workbench_rule_save": {
+        const id = body.get("rule_id") || `r${String(this.rules.length + 1).padStart(12, "0")}`;
+        const filter = {
+          stock: [], health: [], health_mode: "any", q: body.get("filter[q]") ?? "", q_case: 0, q_in: "title_sku", supplier: "all",
+          match_logic: "all", statuses: body.getAll("filter[statuses][]"), conditions: [],
+        };
+        const rule = {
+          id, name: body.get("name") || "Unnamed rule", enabled: true, action: body.get("wb_action"), params: {},
+          stock: (body.get("wb_action") ?? "").startsWith("force_"), change: body.get("wb_action"), search: `Title or SKU contains "${filter.q}"`,
+          filter, efficacy: this.check(body), last_run: null,
+        };
+        const at = this.rules.findIndex((r) => r.id === id);
+        if (at >= 0) this.rules[at] = rule; else this.rules.push(rule);
+        return this.reply(route, { rule: { id, name: rule.name }, efficacy: rule.efficacy });
+      }
+      case "mmi_workbench_rule_enable": {
+        const r = this.rules.find((x) => x.id === body.get("rule_id"))!;
+        r.enabled = body.get("enabled") === "1";
+        return this.reply(route, null);
+      }
+      case "mmi_workbench_rule_move": {
+        const at = this.rules.findIndex((x) => x.id === body.get("rule_id"));
+        const to = at + Number(body.get("by"));
+        [this.rules[at], this.rules[to]] = [this.rules[to]!, this.rules[at]!];
+        return this.reply(route, null);
+      }
+      case "mmi_workbench_rule_delete":
+        this.rules = this.rules.filter((x) => x.id !== body.get("rule_id"));
+        return this.reply(route, null);
+      case "mmi_workbench_rule_hold":
+        return this.reply(route, { matched: 40, changed: 40, released: 0, deferred: 0 });
+      case "mmi_workbench_upkeep":
+        return this.reply(route, this.upkeep);
+      case "mmi_toggle_catalog_maintenance":
+        this.upkeep.enabled = body.get("enabled") === "1";
+        return this.reply(route, { enabled: this.upkeep.enabled });
+      case "mmi_save_catalog_rules":
+        this.upkeep.steps[0]!.on = body.get("toggles[cleanup_stock_meta]") === "1";
+        return this.reply(route, { rules: {} });
+      case "mmi_autosave_schedule":
+        this.upkeep.schedule.frequency = body.get("frequency") ?? "";
+        this.upkeep.schedule.time = body.get("time") ?? "";
+        return this.reply(route, {});
+      case "mmi_catalog_start_run":
+        return this.reply(route, { run_id: "run-1", phases: this.upkeep.steps, total: this.upkeep.steps.length });
+      case "mmi_catalog_run_phase":
+        return this.reply(route, { items_processed: 12, duration_ms: 1500 });
+      case "mmi_catalog_finish_run":
+        return this.reply(route, body.get("aborted") ? { aborted: true } : { total_processed: 6553 });
       default:
         return route.fulfill({ status: 400, body: "0" });
     }
+  }
+
+  /** As Rule_Efficacy::predict(): a Force Out of Stock rule fights feed sync; anything else works. */
+  private check(body: URLSearchParams) {
+    const matched = this.match(body, "filter").length;
+    if (body.get("wb_action") === "force_outofstock") {
+      return { grade: "inefficient", matched, will_change: matched, findings: [
+        { code: "fights_feed_sync", severity: "inefficient", text: "Feed sync puts 12 of these products back in stock on every run.", fix: "Hold them with their own stock override.", count: 12 },
+      ] };
+    }
+    return { grade: "ok", matched, will_change: matched, findings: [] };
   }
 
   private row(p: Product) {

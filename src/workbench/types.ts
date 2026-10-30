@@ -118,6 +118,8 @@ export interface WorkbenchConfig {
   maxSelection: number;
   lockLabels: Record<string, string>;
   actionLockFields: Record<string, string[]>;
+  /** Changes that only hold as a standing rule (Force In/Out of Stock). */
+  stockActions: string[];
 }
 
 /** The shared action picker's current choice, read from its markup. */
@@ -139,3 +141,60 @@ export interface ConditionsState {
   /** One readable phrase per complete condition, for the job's "searched for" label; `or` = joined by OR. */
   phrases: { text: string; or: boolean }[];
 }
+
+/* ── Standing rules and catalog upkeep (StandingRulesController.php) ────── */
+
+export type Grade = "ok" | "info" | "review" | "inefficient";
+
+/** One thing the efficacy check found (Rule_Efficacy). */
+export interface Finding { code: string; severity: Grade; text: string; fix: string; count: number }
+
+export interface Efficacy { grade: Grade; matched: number; will_change: number; findings: Finding[]; at?: number }
+
+export interface RuleRun { at: number; matched: number; changed: number; deferred: number; ms: number }
+
+/** A standing rule as mmi_workbench_rules lists it (Standing_Rules::listing()). */
+export interface StandingRule {
+  id: string;
+  position: number;
+  name: string;
+  enabled: boolean;
+  action: string;
+  params: Record<string, string>;
+  stock: boolean;
+  change: string;
+  search: string;
+  filter: Filter;
+  efficacy: Efficacy | null;
+  last_run: RuleRun | null;
+}
+
+export interface HoldResult { matched: number; changed: number; released: number; deferred: number }
+
+export interface UpkeepStep {
+  phase: string;
+  label: string;
+  about: string;
+  kind: string;
+  /** mmi_catalog_rules key this step's switch writes, or "" when it has none. */
+  switch: string;
+  on: boolean | null;
+  skipped: boolean;
+  skip_reason: string;
+}
+
+/** Catalog upkeep's state (mmi_workbench_upkeep). */
+export interface Upkeep {
+  enabled: boolean;
+  schedule: { frequency: string; time: string; next: string; options: Record<string, string> };
+  steps: UpkeepStep[];
+  last_run: { at: string; ago: string; duration: string; processed: number } | null;
+  health: { level: "ok" | "disabled" | "warning" | "error"; text: string; detail: string };
+  running: { owner: string; started_at: string } | null;
+}
+
+/** One phase of a catalog run as mmi_catalog_start_run lists it. */
+export interface RunPhase { phase: string; label: string; skipped: boolean; skip_reason: string }
+
+/** mmi_catalog_run_phase's reply (Catalog_Phase_Runner::run_phase()). */
+export interface PhaseResult { skipped?: boolean; error?: string; message?: string; items_processed?: number; duration_ms?: number }

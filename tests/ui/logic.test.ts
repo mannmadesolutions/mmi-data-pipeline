@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_QUICK, EMPTY_SELECTION, buildFilter, describeFilter, finishMessage, hasParameters, isSelected, jobActions,
-  jobChangedText, lockOptions, orderTicked, progressOf, runFinished, selectAllMatching, selectedCount, selectionPayload,
-  sortJobs, targetText, termTree, toggleRows,
+  EMPTY_QUICK, EMPTY_SELECTION, buildFilter, describeFilter, findingsToShow, finishMessage, gradeBadge, hasParameters, isSelected, jobActions,
+  jobChangedText, lastRunText, lockOptions, needsLook, orderTicked, progressOf, quickFromFilter, runFinished, selectAllMatching, selectedCount, selectionPayload,
+  sortJobs, sortRules, targetText, termTree, toggleRows,
 } from "../../src/workbench/logic";
-import type { Job } from "../../src/workbench/types";
+import type { Job, StandingRule } from "../../src/workbench/types";
 
 const cfg = {
   suppliers: [{ id: "xchange", name: "XChange" }],
@@ -122,5 +122,54 @@ describe("term trees", () => {
   });
   it("puts ticked terms first", () => {
     expect(orderTicked(termTree(terms, true), new Set([3])).map((t) => t.id)).toEqual([3, 1, 2, 4]);
+  });
+});
+
+/* ── Standing rules ─────────────────────────────────────────────────────── */
+
+describe("standing rules", () => {
+  const filter = {
+    stock: ["outofstock"], health: ["no_image"], health_mode: "all" as const, q: "synth", q_case: 1 as const, q_in: "title" as const,
+    supplier: "xchange", match_logic: "any" as const, statuses: ["publish", "private"], conditions: [],
+  };
+  const rule = (o: Partial<StandingRule>): StandingRule => ({
+    id: "r000000000001", position: 1, name: "A", enabled: true, action: "set_status_draft", params: {}, stock: false,
+    change: "Set to Draft", search: "", filter, efficacy: null, last_run: null, ...o,
+  });
+
+  it("loads a rule's search back into the quick filters", () => {
+    const q = quickFromFilter(filter);
+    expect(q).toEqual({ q: "synth", qCase: true, qIn: "title", supplier: "xchange", statuses: ["publish", "private"], stock: ["outofstock"], health: ["no_image"], healthMode: "all" });
+    expect(buildFilter(q, [], "any")).toEqual(filter);
+  });
+
+  it("asks for a look only on review and inefficient grades", () => {
+    expect(needsLook({ grade: "info", matched: 1, will_change: 0, findings: [] })).toBe(false);
+    expect(needsLook({ grade: "review", matched: 0, will_change: 0, findings: [] })).toBe(true);
+    expect(gradeBadge("inefficient").kind).toBe("error");
+    expect(gradeBadge(undefined).label).toBe("Not checked yet");
+  });
+
+  it("shows findings that need action beside a rule, all of them before saving", () => {
+    const e = { grade: "review" as const, matched: 1, will_change: 1, findings: [
+      { code: "nothing_to_change", severity: "info" as const, text: "", fix: "", count: 0 },
+      { code: "too_broad", severity: "review" as const, text: "", fix: "", count: 0 },
+    ] };
+    expect(findingsToShow(e).map((f) => f.code)).toEqual(["too_broad"]);
+    expect(findingsToShow(e, true)).toHaveLength(2);
+  });
+
+  it("says what the last run did", () => {
+    const now = 1_000_000_000_000;
+    expect(lastRunText(rule({}))).toBe("Not run since it was saved");
+    expect(lastRunText(rule({ last_run: { at: now / 1000 - 7200, matched: 144, changed: 3, deferred: 2, ms: 10 } }), now))
+      .toBe("Changed 3 of 144 · 2 h ago · 2 wait for the next run");
+  });
+
+  it("sorts by run order by default, and by grade worst last", () => {
+    const rs = [rule({ id: "b", position: 2, name: "B", efficacy: { grade: "inefficient", matched: 0, will_change: 0, findings: [] } }), rule({ id: "a", position: 1, name: "A" })];
+    expect(sortRules(rs, "position", "asc").map((r) => r.id)).toEqual(["a", "b"]);
+    expect(sortRules(rs, "grade", "asc").map((r) => r.id)).toEqual(["a", "b"]);
+    expect(sortRules(rs, "name", "desc").map((r) => r.id)).toEqual(["b", "a"]);
   });
 });

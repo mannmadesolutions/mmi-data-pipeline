@@ -74,7 +74,7 @@ class Stock_Override_Resolver {
     /**
      * Delimiter joining multiple selected values for the 'in_list'/
      * 'not_in_list' operators, written by the condition row's checklist UI
-     * (import-pipeline-catalog-maintenance.js's joinListValue()) and read
+     * (the shared condition builder's joinListValue()) and read
      * back via split_list_value() below. A pipe survives sanitize_text_field()
      * unmangled — unlike a newline, which that function collapses to a
      * space — and essentially never appears in a real taxonomy term name or
@@ -293,7 +293,7 @@ class Stock_Override_Resolver {
     }
 
     /* ── Supplier scope resolution (generic — any configured source) ────────
-     * The Custom Rule builder's supplier <select> (panel-catalog-maintenance.php)
+     * A rule's supplier scope (Product Workbench's supplier <select>)
      * already loops over every real configured data source, not just Xchange/
      * SkuPort — these three helpers are the single place that resolves "which
      * products belong to supplier X" for every consumer in this class

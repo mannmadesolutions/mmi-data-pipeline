@@ -8,7 +8,9 @@
  */
 import { NONCE_ACTION, page } from "./globals";
 import { MESSAGES } from "./messages";
-import type { BatchResponse, Filter, Job, Preview, ProductRow, SearchResult, Selection, SortDir } from "./types";
+import type {
+  BatchResponse, Efficacy, Filter, HoldResult, Job, PhaseResult, Preview, ProductRow, RunPhase, SearchResult, Selection, SortDir, StandingRule, Upkeep,
+} from "./types";
 
 export type ApiErrorKind = "server" | "network" | "auth" | "abort";
 
@@ -116,4 +118,30 @@ export const api = {
 
   saveSearch: (label: string, matchLogic: string, conditions: unknown[]) =>
     post<{ id: string }>("mmi_workbench_save_search", { label, match_logic: matchLogic, conditions: conditions as FormValue }),
+
+  /* Standing rules */
+  rules: () => post<{ rules: StandingRule[] }>("mmi_workbench_rules"),
+  ruleCheck: (r: RuleDraft) => post<Efficacy>("mmi_workbench_rule_check", ruleBody(r)),
+  ruleSave: (r: RuleDraft) => post<{ rule: { id: string; name: string }; efficacy: Efficacy | null }>("mmi_workbench_rule_save", ruleBody(r)),
+  ruleEnable: (id: string, enabled: boolean) => post<null>("mmi_workbench_rule_enable", { rule_id: id, enabled: enabled ? 1 : 0 }),
+  ruleMove: (id: string, by: -1 | 1) => post<null>("mmi_workbench_rule_move", { rule_id: id, by }),
+  ruleDelete: (id: string) => post<null>("mmi_workbench_rule_delete", { rule_id: id }),
+  ruleHold: (id: string) => post<HoldResult>("mmi_workbench_rule_hold", { rule_id: id }),
+
+  /* Catalog upkeep (its writes are the endpoints the scheduled run shares) */
+  upkeep: () => post<Upkeep>("mmi_workbench_upkeep"),
+  upkeepEnable: (enabled: boolean) => post<{ enabled: boolean }>("mmi_toggle_catalog_maintenance", { enabled: enabled ? 1 : "" }),
+  upkeepSwitches: (switches: Record<string, boolean>) =>
+    post<{ rules: Record<string, boolean> }>("mmi_save_catalog_rules", { toggles: Object.fromEntries(Object.entries(switches).map(([k, v]) => [k, v ? 1 : ""])) }),
+  upkeepSchedule: (frequency: string, time: string) =>
+    post<unknown>("mmi_autosave_schedule", { process: "catalog_update", frequency, time }),
+  catalogStart: () => post<{ run_id: string; phases: RunPhase[]; total: number }>("mmi_catalog_start_run"),
+  catalogPhase: (runId: string, index: number) => post<PhaseResult>("mmi_catalog_run_phase", { run_id: runId, index }),
+  catalogFinish: (runId: string, aborted = false) => post<unknown>("mmi_catalog_finish_run", { run_id: runId, ...(aborted ? { aborted: 1 } : {}) }),
 };
+
+/** A search + change about to become (or replace) a standing rule. */
+export interface RuleDraft { id: string; name: string; filter: Filter; action: string; params: Record<string, string> }
+
+const ruleBody = (r: RuleDraft): Record<string, FormValue> =>
+  ({ rule_id: r.id, name: r.name, filter: r.filter as unknown as FormValue, wb_action: r.action, params: r.params });

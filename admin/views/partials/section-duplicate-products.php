@@ -170,7 +170,7 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                 </div>
 
                 <!-- Confirmed Collisions — a different detection mode, see
-                     panel-catalog-maintenance's own mmi-dupes-description-collisions
+                     the old Catalog Maintenance panel's mmi-dupes-description-collisions
                      text above. Deliberately a separate, simpler table rather than
                      reusing #mmi-dupes-table's candidate-specific columns/sort/
                      resize machinery — a real collision group has no brand/price-

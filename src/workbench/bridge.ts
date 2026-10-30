@@ -12,7 +12,7 @@
  */
 import { page } from "./globals";
 import { MESSAGES, fill } from "./messages";
-import type { ActionChoice, ConditionsState, MatchLogic } from "./types";
+import type { ActionChoice, Condition, ConditionsState, MatchLogic } from "./types";
 
 export const IDS = {
   BUILDER: "mmi-wb-cb",
@@ -172,6 +172,48 @@ export function onActionChange(cb: (kind: "action" | "params") => void): () => v
     if ((e.target as HTMLElement).id !== IDS.ACTION) cb("params");
   });
   return () => $scope.off(ns);
+}
+
+/**
+ * Put a saved rule's conditions into the builder, replacing what is there.
+ * Returns the fields of conditions this builder couldn't take (an unknown source).
+ */
+export function loadConditions(conditions: Condition[], matchLogic: MatchLogic): string[] {
+  return page().MMIConditionBuilder!.loadConditions(byId(IDS.BUILDER), conditions, matchLogic, true).skipped;
+}
+
+/** Put a saved rule's change and its settings into the picker. */
+export function loadAction(action: string, params: Record<string, string>): void {
+  const RB = rb()!;
+  const S = RB.SELECTORS;
+  const $scope = byId(IDS.ACTION_SCOPE);
+  byId(IDS.ACTION).val(action);
+  RB.updateActionParamsVisibility($scope);
+  const set = (sel: string | undefined, v: string | undefined) => { if (sel && v !== undefined) $scope.find(sel).val(v); };
+  if (action === "set_taxonomy_term") {
+    set(S.TAX_SELECT, params.taxonomy);
+    set(S.TAX_MODE_SELECT, params.mode);
+    const $group = $scope.find(`${S.PARAM_GROUP}[data-action-types~="set_taxonomy_term"]`).first();
+    RB.loadTaxonomyTerms($group, params.taxonomy ?? "", params.term_id ?? "");
+  }
+  set(S.PRICE_INPUT, params.value);
+  set(S.DATE_FROM_INPUT, params.date_from);
+  set(S.DATE_TO_INPUT, params.date_to);
+  set(S.SOURCE_FIELD_INPUT, params.source_field);
+  set(S.META_KEY_INPUT, params.meta_key);
+  if (action === "set_wc_field" && S.WC_FIELD_SELECT) {
+    $scope.find(S.WC_FIELD_SELECT).val(params.wc_field ?? "");
+    RB.updateActionParamsVisibility($scope); // shows the value control for that field
+    $scope.find(`${S.WC_VALUE}:not(:disabled)`).val(params.wc_value ?? "");
+  }
+  // One event, so App re-reads the choice (and resets its lock switches).
+  byId(IDS.ACTION).trigger("change");
+}
+
+/** Force In/Out of Stock can be picked only for a standing rule; Once greys them out. */
+export function allowActions(blocked: string[], allowed: boolean): void {
+  const $options = byId(IDS.ACTION).find("option").filter(function () { return blocked.includes(String($()(this).val())); });
+  $options.prop("disabled", !allowed);
 }
 
 /** First-time setup of the picker: show the chosen change's settings and load the default taxonomy's terms. */
