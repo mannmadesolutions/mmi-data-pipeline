@@ -41,18 +41,6 @@ final class MMI_Feature_Gate {
 	const PREVIEW_PARAM  = 'mmi_gate_preview';
 	const PREVIEW_COOKIE = 'mmi_gate_preview';
 
-	/**
-	 * Plugins merged into another: old slug => new slug. A site still running
-	 * an old plugin counts as having the new one, so a rollback to the old
-	 * plugins keeps their features unlocked. Remove an entry once no site
-	 * runs the old plugin.
-	 */
-	const MERGED_INTO = array(
-		'mmi-xchange-integration'   => 'mmi-distributors',
-		'mmi-skuport-integration'   => 'mmi-distributors',
-		'mmi-plugivery-integration' => 'mmi-distributors',
-	);
-
 	/** @var array<string,array{label?:string,product_url?:string}> Overrides from register(). */
 	private static $registry = array();
 
@@ -85,14 +73,6 @@ final class MMI_Feature_Gate {
 	public static function is_available( string $slug ): bool {
 		$plugins = function_exists( 'mmi_shared_lib_loaded_plugins' ) ? mmi_shared_lib_loaded_plugins() : array();
 		$loaded  = isset( $plugins[ $slug ] );
-		if ( ! $loaded ) {
-			foreach ( self::MERGED_INTO as $old => $new ) {
-				if ( $new === $slug && isset( $plugins[ $old ] ) ) {
-					$loaded = true;
-					break;
-				}
-			}
-		}
 		/**
 		 * @param bool   $available Whether the plugin's bundled shared library loaded this request.
 		 * @param string $slug
