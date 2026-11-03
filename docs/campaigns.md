@@ -17,8 +17,8 @@ Distributor promotion names are dealer copy ("2026 McDSP Spooky Sale US Cost", "
 
 - **Name** (feed campaigns): `display_name()` makes "McDSP Spooky Sale", "MAAT Digital Sale", "UA Black Friday Part 1 Sale" from the supplier name and the members' brands. It removes date ranges, years, prices, the vendor's percentage claims, "with free …" mechanics and dealer words (US Cost, PP, XCHANGE, SkuPort, Plugivery), fixes shouting and brand spelling, puts the maker first when the name doesn't say whose sale it is, and ends with "Sale" when no sale word is left. The slug follows while it is still the automatic one. The supplier's name stays in term meta `supplier_name`. A name the owner edits is kept (`_mmi_campaign_auto_name` records the last automatic name).
 - **Nameless supplier promotions** (Plugivery, SkuPort) group by the product's brand and end month: "Overloud Sale", never "Plugivery promotions ending November".
-- **Labels** (term meta, read by Bricks as `{term_meta:…}` and by the campaign email): `state` (active, upcoming, ended), `max_discount` (whole percent from our own regular vs sale price, scheduled sale included), `discount_label` ("Up to 65% off", or "Special pricing" under 5%), `summary` ("43 EastWest titles", counting discounted products), `dates_label` ("Ends November 2", "Starts November 4"), `brands` (JSON), `hero_image_id` and `hero_image_url` (the main maker's logo, else the best-discounted product's picture; a hero the owner sets is kept).
-- **Description** (feed campaigns, while automatic): "Save up to 65% on 43 EastWest titles. Ends November 2."
+- **Labels** (term meta, read by Bricks as `{term_meta:…}` and by the campaign email): `state` (active, upcoming, ended), `max_discount` (whole percent from our own regular vs sale price, scheduled sale included), `discount_label` ("Up to 65% off", or "Special pricing" under 5%), `summary` ("43 EastWest titles", counting discounted products), `dates_label` ("Valid thru November 2"; upcoming: "Starts November 4 · Valid thru November 11"; 2.64.2, was "Ends …"), `brands` (JSON), `hero_image_id` and `hero_image_url` (the main maker's logo, else the best-discounted product's picture; a hero the owner sets is kept).
+- **Description** (feed campaigns, while automatic): "Save up to 65% on 43 EastWest titles. Valid thru November 2."
 - **Cleanup**: empty feed campaigns from the first build's distributor-month groups, and any empty feed campaign over 30 days past its end, are deleted (never one that fed a Reverb sale).
 
 A campaign whose products aren't discounted on the store (a supplier promotion our price doesn't follow yet, e.g. Plugivery until its promo mapping is approved) gets `max_discount` 0. The Deals page and the email skip it.
@@ -54,6 +54,10 @@ Bricks needs no plugin template:
 - Index at `/deals/`: a page with a query loop over terms of `mmi_campaign`, ordered by the `end` meta, showing only terms whose `end` is today or later.
 - Badge on product cards: `{post_terms_mmi_campaign}` with the condition "is not empty".
 - The existing On Sale carousel keeps working; campaigns sit on top of it.
+- Product card tags (2.64.2, group "MMI Campaigns"), each empty when the loop's product isn't on sale, so an "is not empty" condition hides the element:
+  - `{mmi_sale_off}` "76% off" and `{mmi_sale_percent}` "76": whole percent from our regular vs current price, rounded down (a variable product: its best variation). `Campaigns::sale_percent()`.
+  - `{mmi_sale_valid_thru}` "Valid thru Nov 3": the product's own sale end date, else its campaign's end (`_mmi_campaign_end`). `Campaigns::sale_last_day()`.
+- Homepage (#34675): the On Sale carousel cards carry a `{mmi_sale_off}` pill on the picture and a `{mmi_sale_valid_thru}` line under the price; under the carousel a "Coming soon" row shows the next four upcoming campaigns (`state = upcoming`, `max_discount >= 5`, by start). The header (#214352) has a green Deals pill after the categories and a Deals link in the mobile menu. Built by `mmi-admin/scripts/deals-bricks-enhancements.php` (re-runnable; global classes `mmi-deal-pill`, `mmi-hd__deals`).
 
 ## Elsewhere in the suite
 

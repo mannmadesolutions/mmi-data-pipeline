@@ -57,7 +57,7 @@ class Campaigns {
 	const META_MAX_DISCOUNT  = 'max_discount';      // whole percent, from our own prices
 	const META_DISCOUNT_LBL  = 'discount_label';    // "Up to 65% off"
 	const META_SUMMARY       = 'summary';           // "43 EastWest titles"
-	const META_DATES_LBL     = 'dates_label';       // "Ends November 2" / "Starts November 4"
+	const META_DATES_LBL     = 'dates_label';       // "Valid thru November 2" / "Starts November 4 · Valid thru November 11"
 	const META_BRANDS        = 'brands';            // JSON, by product count
 	const META_HERO_URL      = 'hero_image_url';
 	const META_AUTO_NAME     = '_mmi_campaign_auto_name';  // last name the sync wrote; a different name is the owner's
@@ -84,6 +84,7 @@ class Campaigns {
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'mmi campaigns', [ __CLASS__, 'cli' ] );
 		}
+		add_action( 'after_setup_theme', [ __CLASS__, 'maybe_register_bricks' ], 20 );
 	}
 
 	/* ── Taxonomy ──────────────────────────────────────────────────────── */
@@ -563,11 +564,14 @@ class Campaigns {
 			return $ts ? date_i18n( substr( $ymd, 0, 4 ) === substr( $today, 0, 4 ) ? 'F j' : 'F j, Y', $ts ) : '';
 		};
 		if ( $state === 'upcoming' ) {
-			$dates = sprintf( /* translators: %s: date */ __( 'Starts %s', 'mmi-data-pipeline' ), $fmt( $start ) );
+			$dates = $end !== ''
+				? sprintf( /* translators: 1: start date, 2: last day */ __( 'Starts %1$s · Valid thru %2$s', 'mmi-data-pipeline' ), $fmt( $start ), $fmt( $end ) )
+				: sprintf( /* translators: %s: date */ __( 'Starts %s', 'mmi-data-pipeline' ), $fmt( $start ) );
 		} elseif ( $state === 'ended' ) {
 			$dates = sprintf( /* translators: %s: date */ __( 'Ended %s', 'mmi-data-pipeline' ), $fmt( $end ) );
 		} else {
-			$dates = $end !== '' ? sprintf( /* translators: %s: date */ __( 'Ends %s', 'mmi-data-pipeline' ), $fmt( $end ) ) : __( 'On now', 'mmi-data-pipeline' );
+			// "Valid thru": the end date is the sale's last day (store calendar).
+			$dates = $end !== '' ? sprintf( /* translators: %s: last day */ __( 'Valid thru %s', 'mmi-data-pipeline' ), $fmt( $end ) ) : __( 'On now', 'mmi-data-pipeline' );
 		}
 		if ( count( $names ) === 1 ) {
 			$summary = sprintf( _n( '%1$d %2$s title', '%1$d %2$s titles', $count, 'mmi-data-pipeline' ), $count, $names[0] );
@@ -727,6 +731,115 @@ class Campaigns {
 			return null;
 		}
 		return self::describe( $terms[0] );
+	}
+
+	/* ── Bricks tags for product cards ─────────────────────────────────── */
+
+	/** Tag → label. Each reads the loop's product; empty when it isn't on sale, so "is not empty" conditions hide the element. */
+	const BRICKS_TAGS = [
+		'mmi_sale_off'        => 'Sale: percent off ("76% off")',
+		'mmi_sale_percent'    => 'Sale: percent off (number)',
+		'mmi_sale_valid_thru' => 'Sale: last day ("Valid thru Nov 3")',
+	];
+
+	public static function maybe_register_bricks(): void {
+		if ( ! defined( 'BRICKS_VERSION' ) ) {
+			return;
+		}
+		add_filter( 'bricks/dynamic_tags_list', [ __CLASS__, 'bricks_tags' ] );
+		add_filter( 'bricks/dynamic_data/render_tag', [ __CLASS__, 'bricks_render_tag' ], 20, 3 );
+		add_filter( 'bricks/dynamic_data/render_content', [ __CLASS__, 'bricks_render_content' ], 20, 3 );
+		add_filter( 'bricks/frontend/render_data', [ __CLASS__, 'bricks_render_content' ], 20, 2 );
+	}
+
+	public static function bricks_tags( array $tags ): array {
+		foreach ( self::BRICKS_TAGS as $name => $label ) {
+			$tags[] = [ 'name' => '{' . $name . '}', 'label' => $label, 'group' => 'MMI Campaigns' ];
+		}
+		return $tags;
+	}
+
+	/**
+	 * Whole percent a product is reduced by right now, from our own regular and
+	 * current price (a variable product: its best variation).
+	 */
+	public static function sale_percent( \WC_Product $p ): int {
+		if ( ! $p->is_on_sale() ) {
+			return 0;
+		}
+		if ( $p->is_type( 'variable' ) ) {
+			$best = 0;
+			$prices = $p->get_variation_prices( true );
+			foreach ( $prices['regular_price'] as $vid => $reg ) {
+				$now  = (float) ( $prices['price'][ $vid ] ?? 0 );
+				$best = max( $best, ( (float) $reg > 0 && $now > 0 && $now < (float) $reg ) ? (int) floor( ( 1 - $now / (float) $reg ) * 100 ) : 0 );
+			}
+			return $best;
+		}
+		$reg = (float) $p->get_regular_price();
+		$now = (float) $p->get_price();
+		return ( $reg > 0 && $now > 0 && $now < $reg ) ? (int) floor( ( 1 - $now / $reg ) * 100 ) : 0;
+	}
+
+	/** Last day of a product's sale (Y-m-d, store calendar): its own sale end, else its campaign's end. */
+	public static function sale_last_day( \WC_Product $p ): string {
+		$to = $p->get_date_on_sale_to();
+		if ( $to ) {
+			return $to->date_i18n( 'Y-m-d' );
+		}
+		$end = (string) get_post_meta( $p->get_id(), self::PRODUCT_META_END, true );
+		return preg_match( '/^\d{4}-\d{2}-\d{2}$/', $end ) ? $end : '';
+	}
+
+	private static function bricks_value( string $tag, $post ): ?string {
+		if ( ! isset( self::BRICKS_TAGS[ $tag ] ) ) {
+			return null;
+		}
+		$p = wc_get_product( $post instanceof \WP_Post ? $post->ID : get_the_ID() );
+		if ( ! $p instanceof \WC_Product ) {
+			return '';
+		}
+		$pct = self::sale_percent( $p );
+		if ( $pct < 1 ) {
+			return '';
+		}
+		if ( $tag === 'mmi_sale_percent' ) {
+			return (string) $pct;
+		}
+		if ( $tag === 'mmi_sale_off' ) {
+			/* translators: %d: percent */
+			return sprintf( __( '%d%% off', 'mmi-data-pipeline' ), $pct );
+		}
+		$day = self::sale_last_day( $p );
+		$ts  = $day !== '' ? strtotime( $day ) : false;
+		if ( ! $ts ) {
+			return '';
+		}
+		$fmt = substr( $day, 0, 4 ) === current_time( 'Y' ) ? 'M j' : 'M j, Y';
+		/* translators: %s: last day of the sale, "Nov 3" */
+		return sprintf( __( 'Valid thru %s', 'mmi-data-pipeline' ), date_i18n( $fmt, $ts ) );
+	}
+
+	public static function bricks_render_tag( $tag, $post, $context = 'text' ) {
+		if ( ! is_string( $tag ) ) {
+			return $tag;
+		}
+		$value = self::bricks_value( trim( $tag, '{} ' ), $post );
+		return $value === null ? $tag : esc_html( $value );
+	}
+
+	public static function bricks_render_content( $content, $post, $context = 'text' ) {
+		if ( ! is_string( $content ) || strpos( $content, '{mmi_sale_' ) === false ) {
+			return $content;
+		}
+		return preg_replace_callback(
+			'/\{(mmi_sale_[a-z_]+)\}/',
+			static function ( $m ) use ( $post ) {
+				$value = self::bricks_value( $m[1], $post );
+				return $value === null ? $m[0] : esc_html( $value );
+			},
+			$content
+		);
 	}
 
 	/* ── Term screen fields ────────────────────────────────────────────── */
