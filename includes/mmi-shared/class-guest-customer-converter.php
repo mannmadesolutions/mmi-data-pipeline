@@ -2,35 +2,8 @@
 /**
  * MMI_Guest_Customer_Converter
  *
- * Converts a guest order's marketplace-relay billing address into a real,
- * linked customer account — the operation both mmi-reverb-integration's
- * automatic Reverb-reply flow (class-email-request-manager.php) and
- * mmi-xchange-integration's manual "Link to Customer" widget (Orders tab,
- * admin-xchange.js's .mmi-x-guest-convert-btn) perform, so the actual
- * create-or-link logic lives in exactly one place rather than being
- * duplicated per plugin.
- *
- * Originally lived in mmi-hub; deleted with it 2026-09-17
- * (mmi-hub-elimination migration) without being migrated. Every call site in
- * both consuming plugins was already class_exists()-guarded, so nothing
- * fataled — but the feature went completely dark: Reverb's auto-conversion
- * cron silently no-ops, mmi-xchange-integration's manual-fulfillment
- * "verified after external import" check (MMI_Xchange_Checkout::
- * is_verified_after_external_import()) fails closed with no way to ever
- * open it, and the Orders tab's "Link to Customer" button posts to an AJAX
- * action (mmi_guest_customer_convert) nothing has registered a handler for.
- * Reconstructed from calling-convention evidence across both plugins:
- * looks_like_relay_email()'s regex is the exact pattern already duplicated
- * inline (twice) in mmi-reverb-integration's class-software-handler.php;
- * EMAIL_LOCKED_META_KEY's literal value ('_mmi_billing_email_locked') comes
- * from class-order-importer.php, which had already hardcoded it as a
- * workaround once the constant reference stopped resolving; convert_order()'s
- * signature comes from class-email-request-manager.php's one call site; and
- * ajax_convert()'s request shape (order_id/email/send_welcome) comes from
- * admin-xchange.js's widget, which was never touched by the migration and
- * still posts the exact same fields the original mmi-hub handler expected.
- *
- * Added as the 20th bundled class (2026-09-19) — see bootstrap.php.
+ * Turns a guest order's marketplace-relay billing address into a linked
+ * customer account, so the create-or-link logic lives in one place.
  *
  * @package MannMade\SharedLib
  */
@@ -86,13 +59,13 @@ if ( ! class_exists( 'MMI_Guest_Customer_Converter', false ) ) {
 		 *                                an email address that already matches an
 		 *                                existing customer is linked silently
 		 *                                either way, since there is nothing new to
-		 *                                welcome them to. Automatic conversions (a
-		 *                                buyer's Reverb reply) pass false; the
+		 *                                welcome them to. Automatic conversions
+		 *                                pass false; the
 		 *                                manual "Link to Customer" widget exposes
 		 *                                this as an admin-facing checkbox.
 		 * @param string    $reason       Free-text context recorded in the order
 		 *                                note, e.g. "manual admin conversion" or
-		 *                                "automatic Reverb reply conversion".
+		 *                                "automatic conversion".
 		 * @return array{success:bool, message:string, customer_id?:int}
 		 */
 		public static function convert_order( \WC_Order $order, string $email, bool $send_welcome, string $reason ): array {
