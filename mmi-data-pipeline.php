@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     2.64.2
+ * Version:     2.64.3
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '2.64.2' );
+define( 'MMI_PIPELINE_VERSION', '2.64.3' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -216,6 +216,7 @@ add_action( 'plugins_loaded', function () {
     // Embargoed products ("[Embargoed Nov 5th 10am UK]" in a supplier's name): out of stock until that time,
     // through the resolver's per-product override above (owner 2026-10-29).
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-embargo.php';
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-product-state.php';
     \MannMade\DataPipeline\Embargo::init();
 
     // Campaigns: each supplier promotion window is a dated `mmi_campaign` term (URL base /deals/),

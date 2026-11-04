@@ -217,6 +217,7 @@ class Embargo {
 		}
 		Stock_Override_Resolver::force_stock_status( $id, $status );
 		\MMI_Logger::info( "Embargo released: product {$id} → {$status}", [ 'product_id' => $id, 'until' => $until ], 'sync', 'Embargo' );
+		do_action( 'mmi_pipeline_embargo_released', $id );
 		return true;
 	}
 
