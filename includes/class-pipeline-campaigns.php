@@ -66,6 +66,7 @@ class Campaigns {
 
 	/** Product meta mirror so a query by campaign end date needs no term join. */
 	const PRODUCT_META_END = '_mmi_campaign_end';
+	const LAST_DAY_HOUR    = 18; // a sale ending before this hour, store time, isn't promised for that day
 
 	public static function init(): void {
 		add_action( 'init', [ __CLASS__, 'register_taxonomy' ], 5 );
@@ -187,7 +188,7 @@ class Campaigns {
 				}
 				$name = trim( (string) ( $promo['name'] ?? '' ) );
 				$start = (string) ( $promo['start'] ?? '' );
-				$end   = (string) ( $promo['end'] ?? '' );
+				$end   = ! empty( $promo['end_at'] ) ? self::last_day_of( (int) $promo['end_at'] ) : (string) ( $promo['end'] ?? '' );
 				if ( $name === '' ) {
 					// Nameless promotions (Plugivery, SkuPort) group by the maker and the month
 					// they end in: a shopper sees "Overloud Sale", never the distributor's name.
@@ -282,6 +283,8 @@ class Campaigns {
 			}
 			foreach ( $add as $pid ) {
 				wp_set_object_terms( $pid, [ $term_id ], self::TAXONOMY, true );
+			}
+			foreach ( $wanted as $pid ) { // Every member: a promotion's end can move after a product joined it.
 				update_post_meta( $pid, self::PRODUCT_META_END, $g['end'] );
 			}
 			foreach ( $remove as $pid ) {
@@ -781,11 +784,21 @@ class Campaigns {
 		return ( $reg > 0 && $now > 0 && $now < $reg ) ? (int) floor( ( 1 - $now / $reg ) * 100 ) : 0;
 	}
 
+	/**
+	 * The last day a sale ending at $ts can be promised (Y-m-d, store calendar). A promotion ending at midnight somewhere
+	 * else lands in the small hours here: "Nov 5th - Dec 1" ends at 6 am on Dec 2 in this store, and "Valid thru Dec 2"
+	 * would be false for that whole day. So a day counts only if the sale lasts into its evening.
+	 */
+	public static function last_day_of( int $ts ): string {
+		$at = ( new \DateTimeImmutable( '@' . $ts ) )->setTimezone( wp_timezone() );
+		return ( (int) $at->format( 'G' ) >= self::LAST_DAY_HOUR ? $at : $at->modify( '-1 day' ) )->format( 'Y-m-d' );
+	}
+
 	/** Last day of a product's sale (Y-m-d, store calendar): its own sale end, else its campaign's end. */
 	public static function sale_last_day( \WC_Product $p ): string {
 		$to = $p->get_date_on_sale_to();
 		if ( $to ) {
-			return $to->date_i18n( 'Y-m-d' );
+			return self::last_day_of( $to->getTimestamp() );
 		}
 		$end = (string) get_post_meta( $p->get_id(), self::PRODUCT_META_END, true );
 		return preg_match( '/^\d{4}-\d{2}-\d{2}$/', $end ) ? $end : '';

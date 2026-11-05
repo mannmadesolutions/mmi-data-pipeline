@@ -264,10 +264,13 @@ class MMI_Pipeline_Xchange_Updater
      */
     protected function fetch_promotions(string $etok): array
     {
+        // timezone: dates come in New York time unless asked otherwise, with nothing in them to say so, and every reader
+        // of this file takes them as UTC: promotions landed about five hours early.
         $query = http_build_query([
             'include_long_desc' => 'yes',
             'include_webassets' => 'yes',
             'future' => 'yes',
+            'timezone' => 'UTC',
         ]);
 
         $url = $this->creds['api_url'] . '/promotions?' . $query;
