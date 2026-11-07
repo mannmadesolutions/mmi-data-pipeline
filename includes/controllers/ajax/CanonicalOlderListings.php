@@ -410,6 +410,7 @@ function mmi_canonical_candidates_dismiss_older( int $live_id, array $old_ids ):
         MMI_DB::set_setting( 'mmi_canonical_candidates_review_index', [ 'scanned_at' => $index['scanned_at'], 'groups' => $index['groups'] ] );
     }
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
+    do_action( 'mmi_duplicate_groups_changed' );
 }
 
 /* ── Link older listings in bulk (Duplicates queue) ─────────────────────────── */

@@ -677,6 +677,9 @@ add_action( 'wp_ajax_mmi_dismiss_duplicate_group', function () {
 
     delete_transient( 'mmi_canonical_candidates_scan_cache' );
 
+    /** Fires when a decision changes which listings count as one product. */
+    do_action( 'mmi_duplicate_groups_changed' );
+
     wp_send_json_success( [ 'message' => 'Dismissed' ] );
 } );
 
@@ -941,6 +944,7 @@ function mmi_canonical_candidates_link_group( int $canonical_id, array $associat
 
     delete_transient( 'mmi_canonical_candidates_scan_cache' );
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
+    do_action( 'mmi_duplicate_groups_changed' );
 
     return [ 'associated' => $associated, 'suppressed' => $suppressed, 'on_sale' => $on_sale ];
 }
@@ -1626,6 +1630,8 @@ add_action( 'wp_ajax_mmi_canonical_remove_group_member', function () {
         update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $remaining ) );
     }
 
+    do_action( 'mmi_duplicate_groups_changed' );
+
     mmi_data_pipeline_audit( 'canonical.remove_member', [
         'object_type' => 'product',
         'object_id'   => $canonical_id,
@@ -1685,6 +1691,8 @@ add_action( 'wp_ajax_mmi_canonical_reassign_canonical', function () {
     $on_sale = mmi_canonical_candidates_put_canonical_on_sale( $new_canonical_id );
     mmi_canonical_candidates_forget_nothing_on_sale( [ $old_canonical_id ] );
 
+    do_action( 'mmi_duplicate_groups_changed' );
+
     mmi_data_pipeline_audit( 'canonical.reassign', [
         'object_type' => 'product',
         'object_id'   => $new_canonical_id,
@@ -1727,6 +1735,8 @@ add_action( 'wp_ajax_mmi_canonical_unlink_group', function () {
     mmi_canonical_candidates_forget_nothing_on_sale( [ $canonical_id ] );
 
     mmi_canonical_candidates_refresh_legacy_group( 0 ); // drops the scan cache
+
+    do_action( 'mmi_duplicate_groups_changed' );
 
     mmi_data_pipeline_audit( 'canonical.unlink', [
         'object_type' => 'product',
