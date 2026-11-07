@@ -107,6 +107,11 @@ $mmi_duplicate_products_enabled = $mmi_duplicate_products_enabled ?? false;
                             title="Groups where no listing can be sold: each is out of stock and either gone from its supplier's feed or held out by a stock rule. The canonical pick changes nothing customers can buy.">
                         Not sold: <strong id="mmi-dupes-notsold-count">0</strong>
                     </button>
+                    <button type="button" class="mmi-dupes-stat mmi-dupes-stat-older mmi-hidden" id="mmi-dupes-stat-older" data-status-filter="older"
+                            title="An old listing no supplier carries any more, beside a listing of the same product on sale. Linking them changes nothing customers can buy.">
+                        Older listings: <strong id="mmi-dupes-older-count">0</strong>
+                    </button>
+                    <button type="button" class="button button-primary mmi-hidden" id="mmi-dupes-link-older"></button>
                 </div>
             </div>
 

@@ -22,6 +22,9 @@
         NO_SALE_COUNT:  '#mmi-dupes-nosale-count',
         NOT_SOLD_STAT:  '#mmi-dupes-stat-notsold',
         NOT_SOLD_COUNT: '#mmi-dupes-notsold-count',
+        OLDER_STAT:     '#mmi-dupes-stat-older',
+        OLDER_COUNT:    '#mmi-dupes-older-count',
+        LINK_OLDER_BTN: '#mmi-dupes-link-older',
         STAT_FILTER_BTN:'.mmi-dupes-stat',
         BRAND_FILTER_ROW:      '#mmi-dupes-brand-filter-row',
         BRAND_FILTER_INLINE:   '#mmi-dupes-brand-filters',
@@ -320,6 +323,7 @@
     function matchBasis( group ) {
         if ( group.source === 'mpn' ) { return `Same ${ group.brand } part number, ${ group.match }`; }
         if ( group.source === 'legacy' ) { return `Already linked to canonical #${ group.canonical_product_id }`; }
+        if ( group.source === 'older' ) { return 'Same product: the other listings are out of stock and in no supplier feed'; }
         return 'Same brand and product name in the supplier feeds';
     }
 
@@ -332,7 +336,11 @@
         const count = Number( group.price_count ) || 0;
         const off   = group.members.filter( ( m ) => priceState( m, refPrice ) === 'off' ).length;
         let headline, figure, note;
-        if ( ! count ) {
+        if ( group.source === 'older' ) {
+            headline = 'Older listing of a product on sale';
+            figure   = formatPrice( group.price_min );
+            note     = 'The price on sale. An old listing’s price isn’t compared: nobody can pay it';
+        } else if ( ! count ) {
             headline = 'No prices to compare';
             figure   = '—';
             note     = 'No listing has a MAP or store price';
@@ -1016,7 +1024,45 @@
         const notSold = allGroups.filter( g => g.availability === 'notsold' ).length;
         $( SELECTORS.NOT_SOLD_COUNT ).text( notSold );
         $( SELECTORS.NOT_SOLD_STAT ).toggleClass( 'mmi-hidden', ! notSold && statusFilter !== 'not_sold' );
+        const older = allGroups.filter( g => g.source === 'older' ).length;
+        $( SELECTORS.OLDER_COUNT ).text( older );
+        $( SELECTORS.OLDER_STAT ).toggleClass( 'mmi-hidden', ! older && statusFilter !== 'older' );
+        drawLinkOlder();
         $( SELECTORS.STATS ).removeClass( 'mmi-hidden' );
+    }
+
+    /** "Link 12 older listings", while the Older listings filter is on: only the groups a brand filter leaves shown. */
+    function drawLinkOlder() {
+        const groups = statusFilter === 'older' ? visibleGroups().filter( g => g.source === 'older' ) : [];
+        const n      = groups.reduce( ( sum, g ) => sum + g.members.length - 1, 0 );
+        $( SELECTORS.LINK_OLDER_BTN ).toggleClass( 'mmi-hidden', ! n ).text( `Link ${ n } older listing${ n === 1 ? '' : 's' }` );
+    }
+
+    /** Links the shown older listings 25 groups at a time, so a whole catalog can't outrun a request. */
+    async function linkOlder() {
+        const $btn = $( SELECTORS.LINK_OLDER_BTN );
+        const keys = visibleGroups().filter( g => g.source === 'older' ).map( g => g.group_key );
+        let linked = 0;
+        const skipped = {};
+        $btn.prop( 'disabled', true );
+        try {
+            for ( let i = 0; i < keys.length; i += 25 ) {
+                $btn.text( `Linking… ${ i } of ${ keys.length }` );
+                const resp = await $.post( AJAX_URL, { action: 'mmi_link_older_listings', nonce: NONCE, group_keys: keys.slice( i, i + 25 ) } );
+                if ( ! resp.success ) {
+                    throw new Error( resp.data?.message || 'Unknown error' );
+                }
+                linked += resp.data.linked;
+                Object.assign( skipped, resp.data.skipped );
+            }
+            const reasons = [ ...new Set( Object.values( skipped ) ) ].join( ' ' );
+            const left    = Object.keys( skipped ).length;
+            showNotice( `Linked ${ linked } older listing${ linked === 1 ? '' : 's' }.${ left ? ` ${ left } left to do by hand: ${ reasons }` : '' }`, left ? 'warning' : 'success' );
+        } catch ( e ) {
+            showNotice( `Linking stopped after ${ linked }: ${ e.message || e.statusText || 'Unknown error' }`, 'error' );
+        }
+        $btn.prop( 'disabled', false );
+        $( SELECTORS.REFRESH_BTN ).trigger( 'click' );
     }
 
     function bindStatFilters() {
@@ -1026,7 +1072,9 @@
             $( SELECTORS.STAT_FILTER_BTN ).removeClass( 'is-active' );
             $btn.addClass( 'is-active' );
             renderTable( visibleGroups() );
+            drawLinkOlder();
         } );
+        $( document ).on( 'click', SELECTORS.LINK_OLDER_BTN, linkOlder );
     }
 
     /**
@@ -1109,6 +1157,7 @@
             } );
             brandFilter = selected;
             sortAndRerender();
+            drawLinkOlder();
         } );
     }
 
@@ -1118,6 +1167,7 @@
         else if ( statusFilter === 'linked' ) { groups = groups.filter( g => g.already_linked ); }
         else if ( statusFilter === 'no_sale' ) { groups = groups.filter( g => g.nothing_on_sale ); }
         else if ( statusFilter === 'not_sold' ) { groups = groups.filter( g => g.availability === 'notsold' ); }
+        else if ( statusFilter === 'older' ) { groups = groups.filter( g => g.source === 'older' ); }
 
         const brandKeys = Object.keys( brandFilter );
         if ( brandKeys.length ) {
@@ -1244,7 +1294,7 @@
                 $td.append( ' ', $( '<span class="mmi-dupes-price-chip">' ).text( 'Same price' ) );
             }
         }
-        if ( count < group.members.length ) {
+        if ( count < group.members.length && group.source !== 'older' ) {
             $td.attr( 'title', `${ count } of ${ group.members.length } listings have a price` );
         }
         return $td;
@@ -1288,13 +1338,16 @@
         const statusLabel = group.nothing_on_sale ? 'Nothing on sale' : ( group.already_linked ? 'Linked' : 'New' );
         const isLegacy     = group.source === 'legacy';
         const isMpn        = group.source === 'mpn';
-        const sourceClass  = isLegacy ? 'info' : ( isMpn ? 'success' : 'warning' );
-        const sourceLabel  = isLegacy ? 'Legacy link' : ( isMpn ? 'Same MPN' : 'Fresh match' );
+        const isOlder      = group.source === 'older';
+        const sourceClass  = isLegacy || isOlder ? 'info' : ( isMpn ? 'success' : 'warning' );
+        const sourceLabel  = isLegacy ? 'Legacy link' : ( isMpn ? 'Same MPN' : ( isOlder ? 'Older listing' : 'Fresh match' ) );
         const sourceTitle  = isLegacy
             ? 'A real, pre-existing canonical/associated_product_ids link found directly in the database'
             : ( isMpn
                 ? `Same brand and manufacturer part number (${ group.match || '' }) — the strongest evidence of one product listed more than once`
-                : 'Detected by matching brand + product name across live supplier feeds' );
+                : ( isOlder
+                    ? 'An old listing no supplier carries any more, beside a listing of the same product on sale'
+                    : 'Detected by matching brand + product name across live supplier feeds' ) );
 
         const $tr = $( '<tr class="mmi-dupes-row" role="button" tabindex="0">' )
             .toggleClass( 'is-not-sold', group.availability === 'notsold' )
@@ -1602,7 +1655,7 @@
             || 0;
 
         const ctx = startReviewBox( $box, group, preselectedCanonicalId, [
-            'Pick the canonical listing (the one customers see; the lowest cost is preselected) and tick every listing that is the same item.'
+            `Pick the canonical listing (the one customers see; ${ group.source === 'older' ? 'the one on sale' : 'the lowest cost' } is preselected) and tick every listing that is the same item.`
                 + ( group.members.some( m => ! m.wc_product_id ) ? ' Listings not imported yet can’t be linked until they are.' : '' ),
             group.multiple_canonicals ? 'More than one is marked canonical: approving keeps the one you pick and folds the other’s links into it.' : '',
             ( group.covers || [] ).length ? `This row replaces ${ group.covers.join( ' and ' ) }; linking here completes it.` : '',

@@ -59,6 +59,7 @@
 .mmi-dupes-stat-linked strong { color: var(--mmi-primary, #45852C); }
 .mmi-dupes-stat-nosale strong { color: #c26a12; }
 .mmi-dupes-stat-notsold strong { color: #646970; }
+.mmi-dupes-stat-older strong { color: #646970; }
 
 /* Notice area */
 .mmi-dupes-notice {

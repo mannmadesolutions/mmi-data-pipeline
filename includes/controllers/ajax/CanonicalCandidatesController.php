@@ -590,8 +590,9 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
  * Durable record of the groups the Duplicates queue shows as needing review (not
  * dismissed, not already linked), so other screens can show a product's duplicate
  * status without re-reading the feeds. Each scan replaces its own source's groups:
- * 'candidate' (brand + name feed matches) or 'mpn' (same part number). Approving or
- * dismissing a group removes it.
+ * 'candidate' (brand + name feed matches), 'mpn' (same part number) or 'older' (an old
+ * listing of a product on sale, CanonicalOlderListings.php). Approving or dismissing a
+ * group removes it.
  */
 function mmi_canonical_candidates_save_review_index( array $groups, string $source ): void {
     $index = mmi_canonical_candidates_review_index();
@@ -605,6 +606,7 @@ function mmi_canonical_candidates_save_review_index( array $groups, string $sour
             'name'        => (string) $g['name'],
             'product_ids' => array_values( array_unique( array_filter( array_map( 'intval', array_column( $g['members'], 'wc_product_id' ) ) ) ) ),
             'skus'        => array_values( array_unique( array_filter( array_map( 'strval', array_column( $g['members'], 'sku' ) ) ) ) ),
+            'recommended_id' => (int) ( $g['recommended_product_id'] ?? 0 ),
         ];
     }
     MMI_DB::set_setting( 'mmi_canonical_candidates_review_index', [ 'scanned_at' => time(), 'groups' => $kept ] );
@@ -657,6 +659,13 @@ add_action( 'wp_ajax_mmi_dismiss_duplicate_group', function () {
     $group_key = sanitize_text_field( $_POST['group_key'] ?? '' );
     if ( $group_key === '' ) {
         wp_send_json_error( [ 'message' => 'Missing group_key' ] );
+    }
+
+    // An older-listing group is dismissed pair by pair, so a new old listing of the product still shows.
+    if ( preg_match( '/^older-(\d+)$/', $group_key, $older ) ) {
+        $group = mmi_canonical_candidates_review_index()['groups'][ $group_key ] ?? null;
+        mmi_canonical_candidates_dismiss_older( (int) $older[1], array_diff( array_map( 'intval', (array) ( $group['product_ids'] ?? [] ) ), [ (int) $older[1] ] ) );
+        wp_send_json_success( [ 'message' => 'Dismissed' ] );
     }
 
     $dismissed = (array) MMI_DB::get_setting( 'mmi_canonical_candidates_dismissed', [] );
@@ -890,10 +899,41 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
         $associated = array_values( array_unique( $associated ) );
     }
 
+    $done       = mmi_canonical_candidates_link_group( $canonical_id, $associated, $merged );
+    $associated = $done['associated'];
+
+    mmi_data_pipeline_audit( 'canonical.approve', [
+        'object_type' => 'product',
+        'object_id'   => $canonical_id,
+        'outcome'     => 'success',
+        'details'     => [ 'associated_product_ids' => array_values( $associated ), 'suppressed' => $done['suppressed'] ],
+    ] );
+    wp_send_json_success( [
+        'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ) . '.' . $done['on_sale'],
+        'canonical_product_id'   => $canonical_id,
+        'associated_product_ids' => $associated,
+        'fields_applied'         => $fields_applied,
+    ] );
+} );
+
+/**
+ * Makes one listing canonical over others: the writes every link shares, from the review panel
+ * and from a bulk link of older listings. The listing's existing links stay.
+ *
+ * @param int   $canonical_id
+ * @param int[] $associated   The listings to link.
+ * @param int[] $merged       Former canonical listings folded in (their review state is forgotten too).
+ * @param bool  $put_on_sale  Off where the link must change nothing a customer can buy.
+ * @return array{associated: int[], suppressed: int, on_sale: string}
+ */
+function mmi_canonical_candidates_link_group( int $canonical_id, array $associated, array $merged = [], bool $put_on_sale = true ): array {
+    $existing   = array_filter( mmi_canonical_candidates_parse_associated_ids( get_post_meta( $canonical_id, 'associated_product_ids', true ) ), static fn( $id ) => $id > 0 && $id !== $canonical_id && get_post_type( $id ) === 'product' );
+    $associated = array_values( array_unique( array_merge( array_map( 'intval', $existing ), array_map( 'intval', $associated ) ) ) );
+
     update_post_meta( $canonical_id, 'canonical', 'TRUE' );
     update_post_meta( $canonical_id, 'associated_product_ids', implode( ',', $associated ) );
     $suppressed = mmi_canonical_candidates_suppress_now( array_merge( [ $canonical_id ], $associated ) );
-    $on_sale    = mmi_canonical_candidates_put_canonical_on_sale( $canonical_id );
+    $on_sale    = $put_on_sale ? mmi_canonical_candidates_put_canonical_on_sale( $canonical_id ) : '';
     mmi_canonical_candidates_forget_nothing_on_sale( array_merge( [ $canonical_id ], $merged ) );
     // A group is worked once every listing it found is in this link.
     $linked = array_flip( array_merge( [ $canonical_id ], $associated ) );
@@ -902,19 +942,8 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
     delete_transient( 'mmi_canonical_candidates_scan_cache' );
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 
-    mmi_data_pipeline_audit( 'canonical.approve', [
-        'object_type' => 'product',
-        'object_id'   => $canonical_id,
-        'outcome'     => 'success',
-        'details'     => [ 'associated_product_ids' => array_values( $associated ), 'suppressed' => $suppressed ],
-    ] );
-    wp_send_json_success( [
-        'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ) . '.' . $on_sale,
-        'canonical_product_id'   => $canonical_id,
-        'associated_product_ids' => $associated,
-        'fields_applied'         => $fields_applied,
-    ] );
-} );
+    return [ 'associated' => $associated, 'suppressed' => $suppressed, 'on_sale' => $on_sale ];
+}
 
 /**
  * Apply per-field winners to an already-linked (legacy) group's CURRENT
@@ -1530,6 +1559,11 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
     $mpn_groups = mmi_canonical_candidates_mpn_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() );
     mmi_canonical_candidates_save_review_index( $mpn_groups, 'mpn' );
     $groups = array_merge( $groups, $mpn_groups );
+
+    // Old listings of products on sale ride here too: they read the same index.
+    $older_groups = mmi_canonical_candidates_older_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() );
+    mmi_canonical_candidates_save_review_index( $older_groups, 'older' );
+    $groups = array_merge( $groups, $older_groups );
 
     usort( $groups, fn( $a, $b ) => $b['price_spread'] <=> $a['price_spread'] );
 
