@@ -178,6 +178,11 @@
  * licensing-helpers.php, since it needs a hook registered once per request
  * rather than a lazily-autoloaded class.
  *
+ * Added MMI_Brand_Website (1.47.0, 2026-11-08): one "Brand website" per brand
+ * (product_brand term meta _mmi_brand_website) shared by mmi-seo,
+ * mmi-data-pipeline and mmi-admin. Whichever plugin calls init() first puts the
+ * field on the brand screen; later callers share it. See its docblock.
+ *
  * @package MannMade\SharedLib
  */
 
@@ -196,7 +201,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.46.54';
+$mmi_shared_lib_this_copy_version = '1.47.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -242,6 +247,7 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_Condition_Builder' => 'class-condition-builder.php',
 	'MMI_Audit_Log'      => 'class-audit-log.php',
 	'MMI_Credentials'    => 'class-credentials.php',
+	'MMI_Brand_Website'  => 'class-brand-website.php',
 );
 
 // ── Candidate registry ──────────────────────────────────────────────────
