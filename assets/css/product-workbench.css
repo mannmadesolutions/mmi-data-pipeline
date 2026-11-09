@@ -1164,3 +1164,81 @@ tr.mmi-wb-mp-gone > * {
 tr.mmi-wb-mp-gone .notice {
     opacity: 1;
 }
+
+/* ── Brands & sites (src/workbench/BrandSites.tsx) ── */
+.mmi-wb-bs-list {
+    max-height: 420px;
+    overflow-y: auto;
+}
+.mmi-wb-bs-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.mmi-wb-bs-brand img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+#mmi-wb-bs-rows tr.is-open {
+    box-shadow: inset 3px 0 0 var(--mmi-wb-accent);
+}
+.mmi-wb-bs-host {
+    display: inline-block;
+    margin: 0 6px 2px 0;
+    padding: 0 6px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 3px;
+}
+.mmi-wb-bs-todo .mmi-badge {
+    margin-right: 4px;
+}
+.mmi-wb-bs-drawer {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--mmi-wb-border);
+    border-left: 3px solid var(--mmi-wb-accent);
+    border-radius: 4px;
+    scroll-margin-top: 40px;
+}
+.mmi-wb-bs-drawer-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.mmi-wb-bs-drawer-head h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+.mmi-wb-bs-drawer-head img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+.mmi-wb-bs-drawer h5 {
+    margin: 16px 0 6px;
+    font-size: 14px;
+}
+.mmi-wb-bs-forms {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 24px;
+    margin-top: 8px;
+}
+.mmi-wb-bs-forms form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-wb-bs-found label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 6px;
+}
+.mmi-wb-bs-found a {
+    word-break: break-all;
+}

@@ -24,6 +24,17 @@ export class MakerPagesMock {
     { id: 4007, title: "Acme Bass (Download)", current: "https://maker.example/bass", verified: true, proposed: "https://shop.example/bass", status: "rejected", conf: null, reason: "sitemap_slug" },
   ];
 
+  brands = [
+    { id: 20, name: "Acme Audio", website: "https://acme.example", url: "https://acme.example", logo: "", products: 7, open: 2, failed_open: 1, no_url: 1, no_page: 0, gone: false, bundles: 0, bundles_none: 0,
+      sites: [{ host: "acme.example", n: 5, read: 4, unread: 0, failed: 1, unverified: 0, better: 0, bundles: 0, open: 2, role: "official", why: "", saved: true, map: "", shared: 0 },
+        { host: "shop.example", n: 1, read: 1, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role: "", why: "", saved: false, map: "", shared: 0 }] },
+    { id: 21, name: "Example Sound", website: "", url: "", logo: "", products: 3, open: 0, failed_open: 0, no_url: 3, no_page: 0, gone: false, bundles: 0, bundles_none: 0,
+      sites: [{ host: "resell.example", n: 3, read: 3, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role: "reseller", why: "", saved: true, map: "", shared: 0 }] },
+    { id: 22, name: "Old Maker", website: "", url: "", logo: "", products: 2, open: 0, failed_open: 0, no_url: 0, no_page: 2, gone: true, bundles: 0, bundles_none: 0, sites: [] },
+  ];
+  /** Reading a maker site's product list: the first ask answers "still reading". */
+  readsLeft = 1;
+
   group(p: MockPage): string {
     if (p.status === "candidate" && p.proposed) return "open";
     if (p.noPage) return "";
@@ -139,6 +150,42 @@ export class MakerPagesMock {
         return { data: { rows } };
       }
       case "pages/queue": return { data: { queued: (body.ids as number[]).length, started: true, status: {}, states: {} } };
+      case "brand-sites": return { data: { brands: this.brands, shared: {}, find: {} } };
+      case "urls/set-many": {
+        const done: number[] = [];
+        for (const it of body.items as { id: number; url: string }[]) { Object.assign(find(it.id), { current: it.url, verified: true, status: "approved", broken: false, wrong: undefined }); done.push(it.id); }
+        return { data: { done, errors: {}, queue: null } };
+      }
+    }
+    const bs = path.match(/^brand-sites\/(\d+)(?:\/(products|pages))?$/);
+    if (bs) {
+      const b = this.brands.find((x) => x.id === Number(bs[1]))!;
+      if (!bs[2] && method === "POST") {
+        if (body.website !== undefined) b.website = String(body.website);
+        if (body.gone !== undefined) b.gone = !!body.gone;
+        for (const [host, role] of Object.entries((body.roles ?? {}) as Record<string, string>)) {
+          const s = b.sites.find((x) => x.host === host);
+          if (s) s.role = role === "unknown" ? "" : role; else b.sites.push({ host, n: 0, read: 0, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role, why: "", saved: true, map: "", shared: 0 });
+        }
+        return { data: { brand: b, find: null } };
+      }
+      if (bs[2] === "products") {
+        const g = url.searchParams.get("group") ?? "work";
+        const mine = b.id === 20 ? this.pages : [];
+        const rows = mine.filter((p) => (g === "all" ? true : g === "nopub" ? !!p.noPage : g === "work" ? ["open", "broken", "none", "wrong"].includes(this.group(p)) : false))
+          .map((p) => { const r = this.row(p, ""); return { ...r, op_group: undefined, op_conf: undefined, op_wrong: undefined, op_wrong_note: undefined, bs: { kind: "site" }, groups: ["all"], shared: null }; });
+        return { data: { group: g, rows, total: rows.length, page: 1, per_page: 50, brand: b } };
+      }
+      if (bs[2] === "pages") {
+        const host = url.searchParams.get("host") ?? "";
+        if (this.readsLeft > 0) { this.readsLeft--; return { data: { pending: true, hosts: [host], host, reading: { at: "", source: "sitemap", page: 2 } } }; }
+        const ids = url.searchParams.getAll("ids[]").map(Number);
+        const known: Record<number, { url: string; name: string; score: number; why: string }> = {
+          4004: { url: "https://acme.example/cable-10", name: "Cable 10 ft", score: 88, why: "its name names it" },
+          4001: { url: "https://acme.example/synth-one", name: "Synth One", score: 62, why: "a weak match" },
+        };
+        return { data: { hosts: [host], host, source: "sitemap", blocked: false, base: "https://acme.example/", items: null, cards: [], matches: Object.fromEntries(ids.map((id) => [id, known[id] ?? null])) } };
+      }
     }
     return null;
   }
