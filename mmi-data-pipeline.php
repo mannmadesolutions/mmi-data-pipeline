@@ -172,6 +172,8 @@ add_action( 'plugins_loaded', function () {
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-field-locks.php';
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-workbench-change-log.php';
     require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-write.php';
+    // What a bundle is and contains: product pages read it, so it is ungated too.
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-bundles.php';
 }, 5 );
 
 // Duplicate listings point search engines at their main listing (mmi-seo's
