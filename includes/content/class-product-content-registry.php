@@ -741,6 +741,12 @@ class MMI_Product_Content_Registry {
                 return array_values( array_intersect( $allowed, array_map( 'strtolower', array_map( 'strval', (array) $value ) ) ) );
 
             case 'videos':
+                // The stored shape, and XChange's web assets, are { main, extras[] }: flatten
+                // it first, or array_values() turns the extras list into one junk row and every
+                // extra video is lost (found 2026-11-09 comparing imports with FeedFill).
+                if ( is_array( $value ) && array_key_exists( 'main', $value ) ) {
+                    $value = array_merge( [ $value['main'] ], array_values( (array) ( $value['extras'] ?? [] ) ) );
+                }
                 $urls = array_column( self::video_rows( array_values( (array) $value ) ), 'value' );
                 return $urls ? [ 'main' => array_shift( $urls ), 'extras' => $urls ] : [];
 

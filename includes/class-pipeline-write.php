@@ -166,6 +166,63 @@ final class MMI_Pipeline_Write {
         clean_post_cache( $id );
     }
 
+    /* ── Fill-empty mappings ───────────────────────────────────────────── */
+
+    /**
+     * Whether a product's field holds nothing, by the field's own idea of
+     * empty: a registry concept with no rows, no title/text, no featured
+     * picture or gallery, no terms, or meta that is missing or blank. A stored
+     * '0' is a value.
+     *
+     * @param string $field An import mapping key, an alias, 'tax:{slug}', or a gateway field.
+     */
+    public static function is_field_empty( int $id, string $field ): bool {
+        $key = class_exists( 'MMI_Pipeline_Field_Locks' ) ? MMI_Pipeline_Field_Locks::canonical( $field ) : $field;
+        if ( class_exists( 'MMI_Product_Content_Registry' ) ) {
+            foreach ( MMI_Product_Content_Registry::CONCEPTS as $concept => $def ) {
+                if ( ( $def['store'][0] ?? '' ) === $key ) {
+                    return MMI_Product_Content_Registry::count( $id, $concept ) === 0;
+                }
+            }
+        }
+        if ( in_array( $key, [ 'post_title', 'post_content', 'post_excerpt' ], true ) ) {
+            return trim( (string) get_post_field( $key, $id, 'raw' ) ) === '';
+        }
+        if ( $key === '_product_image_url' || $key === '_thumbnail_id' ) {
+            return ! (int) get_post_thumbnail_id( $id );
+        }
+        if ( $key === '_product_gallery_urls' || $key === '_product_image_gallery' ) {
+            return trim( (string) get_post_meta( $id, '_product_image_gallery', true ) ) === '';
+        }
+        if ( taxonomy_exists( $key ) ) {
+            $ids = wp_get_object_terms( $id, $key, [ 'fields' => 'ids' ] );
+            return is_wp_error( $ids ) || ! $ids;
+        }
+        $v = get_post_meta( $id, $key, true );
+        if ( is_array( $v ) ) {
+            return ! array_filter( $v, static fn( $x ) => $x !== '' && $x !== null && $x !== [] );
+        }
+        return in_array( trim( (string) $v ), [ '', '[]', '{}', 'null' ], true );
+    }
+
+    /**
+     * The fields an import must leave on this product because their mapping is
+     * "Only fill when empty" and the product already has a value. Callers add
+     * them to the product's locked list for this run.
+     *
+     * @param array<string,array> $mappings Effective field mappings of the profile.
+     * @return string[]
+     */
+    public static function filled_fields( int $id, array $mappings ): array {
+        $out = [];
+        foreach ( $mappings as $field => $mapping ) {
+            if ( is_array( $mapping ) && ! empty( $mapping['fill_empty'] ) && ! self::is_field_empty( $id, (string) $field ) ) {
+                $out[] = class_exists( 'MMI_Pipeline_Field_Locks' ) ? MMI_Pipeline_Field_Locks::canonical( (string) $field ) : (string) $field;
+            }
+        }
+        return $out;
+    }
+
     /* ── Internals ─────────────────────────────────────────────────────── */
 
     private static function normalize( string $field, $value ) {

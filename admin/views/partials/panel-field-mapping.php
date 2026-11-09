@@ -900,6 +900,17 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                                 </div>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
+                                        <?php if (!empty($configured_suppliers)): ?>
+                                            <label class="mmi-per-source-constant-toggle mmi-fill-empty-toggle" title="An existing product that already has a value for this field keeps it; the import only fills it when it is empty. New products always get it.">
+                                                <input type="checkbox"
+                                                       name="field_mappings[<?php echo esc_attr($field_name); ?>][fill_empty]"
+                                                       value="1"
+                                                       class="fill-empty-checkbox"
+                                                       data-field="<?php echo esc_attr($field_name); ?>"
+                                                       <?php checked(!empty($mapping['fill_empty'])); ?>>
+                                                Only fill when empty
+                                            </label>
+                                        <?php endif; ?>
                                     </div>
                                 <?php elseif (!empty($mapping['source'])): ?>
                                     <?php /* Legacy single source (backward compatibility) — a saved

@@ -110,6 +110,10 @@ class Product_Import_Worker {
             // product perpetually "changed". Reads the meta cache
             // wc_get_product() just primed; no extra query.
             $options['locked_fields'] = MMI_Pipeline_Field_Locks::get( (int) $product_id );
+            // "Only fill when empty" mappings leave a field the product already has, like a lock for this run.
+            if ( class_exists( 'MMI_Pipeline_Write' ) ) {
+                $options['locked_fields'] = array_merge( $options['locked_fields'], \MMI_Pipeline_Write::filled_fields( (int) $product_id, (array) $mappings ) );
+            }
             // A duplicate listing's stock is the Duplicates rule's, never the feed's:
             // the Pricing profile's constant "instock" would otherwise put it back
             // on sale on every manual run.
@@ -592,6 +596,7 @@ class Product_Import_Worker {
         switch ( $field_name ) {
             case 'post_title':     return (string) $product->get_name();
             case 'post_content':   return (string) $product->get_description();
+            case 'post_excerpt':   return (string) $product->get_short_description();
             case '_sku':           return (string) $product->get_sku();
             case '_regular_price': return (string) $product->get_regular_price();
             case '_sale_price':    return (string) $product->get_sale_price();
@@ -896,6 +901,9 @@ class Product_Import_Worker {
             $product->set_name( $value );
         } elseif ( $field_name === 'post_content' ) {
             $product->set_description( $value );
+        } elseif ( $field_name === 'post_excerpt' ) {
+            // Was missing until 2026-11-09: a Short Description mapping was stored as meta named "post_excerpt".
+            $product->set_short_description( $value );
         } elseif ( $field_name === '_sku' ) {
             $product->set_sku( $value );
         } elseif ( $field_name === '_regular_price' ) {

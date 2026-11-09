@@ -792,7 +792,12 @@ class MMI_Dynamic_Product_Importer {
             // profile mapping _virtual's constant '1' against WooCommerce's
             // stored 'yes' otherwise never matches, so every such product
             // gets needlessly re-saved on every scheduled run).
-            $update_result = $this->product_crud->update_product($product_id, $this->resolve_crud_taxonomy_terms($item, $product_data), $field_types);
+            $crud_data = $this->resolve_crud_taxonomy_terms($item, $product_data);
+            // "Only fill when empty" mappings leave a field the product already has (dropped like a locked field).
+            if ( class_exists( 'MMI_Pipeline_Write' ) ) {
+                $crud_data = \MMI_Pipeline_Field_Locks::filter_data( $crud_data, \MMI_Pipeline_Write::filled_fields( (int) $product_id, $this->field_mappings ) );
+            }
+            $update_result = $this->product_crud->update_product($product_id, $crud_data, $field_types);
             $this->stats['stock_updated'] += $update_result['stock_updated_count'];
             if ($update_result['status'] !== 'unchanged') {
                 $this->stats['updated']++;

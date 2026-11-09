@@ -403,6 +403,12 @@ jQuery(document).ready(function($) {
         autosaveFieldProperty($checkbox.data('field'), 'image_array_mode', $checkbox.is(':checked') ? 1 : 0, $checkbox.data('supplier'));
     });
 
+    // Auto-save: "Only fill when empty" (per field) — see MMI_Pipeline_Write::filled_fields().
+    $(document).on('change', '.fill-empty-checkbox', function() {
+        const $checkbox = $(this);
+        autosaveFieldProperty($checkbox.data('field'), 'fill_empty', $checkbox.is(':checked') ? 1 : 0);
+    });
+
     // Auto-save: Constant Value input/select (per source)
     $(document).on('change input', '.constant-value-select, .constant-value-input-text', function() {
         const $input = $(this);
@@ -3917,7 +3923,9 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'mmi_pipeline_validate_profile_config',
-                nonce: mmiImportSettings.nonce,
+                // The handler checks 'mmi_pipeline_nonce' (importNonce); mmiImportSettings.nonce is the
+                // import-settings one, so until 2026-11-09 this check was refused (403) on every autosave.
+                nonce: (window.mmiImportSettings && window.mmiImportSettings.importNonce) || '',
                 profile: profileId,
                 sources: JSON.stringify(wizardSelectedSources()),
                 import_mode: $('input[name="new_profile_mode"]:checked').val() || 'update-only',
