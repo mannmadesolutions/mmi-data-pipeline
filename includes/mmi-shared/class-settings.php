@@ -120,6 +120,7 @@ class MMI_Settings {
 			'mmi_vip_'        => 'VIP',
 			'mmi_stripe_'     => 'Stripe',
 			'mmi_hub_'        => 'MMI Hub',
+			'mmi_ai_'         => 'AI',
 		);
 		foreach ( $prefixes as $prefix => $tab ) {
 			if ( str_starts_with( $key, $prefix ) ) {

@@ -178,6 +178,11 @@
  * licensing-helpers.php, since it needs a hook registered once per request
  * rather than a lazily-autoloaded class.
  *
+ * Added MMI_AI, MMI_AI_Claude_Code and MMI_Product_Identifiers (1.48.0,
+ * 2026-11-09): one AI provider setup (keys, plan, daily cap) for every plugin,
+ * lifted from mmi-seo, with settings under neutral mmi_ai_* keys; and one GTIN /
+ * MPN reader, lifted from mmi-google-services. Product Data migration phase 1.
+ *
  * Added MMI_Brand_Website (1.47.0, 2026-11-08): one "Brand website" per brand
  * (product_brand term meta _mmi_brand_website) shared by mmi-seo,
  * mmi-data-pipeline and mmi-admin. Whichever plugin calls init() first puts the
@@ -201,7 +206,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.47.0';
+$mmi_shared_lib_this_copy_version = '1.48.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -248,6 +253,9 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_Audit_Log'      => 'class-audit-log.php',
 	'MMI_Credentials'    => 'class-credentials.php',
 	'MMI_Brand_Website'  => 'class-brand-website.php',
+	'MMI_AI'             => 'class-ai.php',
+	'MMI_AI_Claude_Code' => 'class-ai-claude-code.php',
+	'MMI_Product_Identifiers' => 'class-product-identifiers.php',
 );
 
 // ── Candidate registry ──────────────────────────────────────────────────
