@@ -8,9 +8,9 @@
  * business. It asks the rule pack that filter `mmi_pipeline_title_rules`
  * returns: an instance of a subclass of this class.
  *
- * This base class is the neutral pack: no rules, nothing proposed, no products
- * exempt from the duplicate-title check, no follow-up work. A store with no
- * pack attached runs the engine, stores nothing and shows an empty queue.
+ * This base class proposes nothing: no rules, no products exempt from the
+ * duplicate-title check, no follow-up work. A store that attaches no pack gets
+ * BasicTitleRules (tidy, fix ALL CAPS, capitalize, brand first), which extends it.
  *
  * A context (contexts()) needs `title`. The engine also reads, when present:
  * `brand`, `feed` (where the product's data comes from), `feed_title` (the
@@ -42,12 +42,15 @@ class TitleRules {
 	/** @var TitleRules|null the attached pack, once one answered */
 	private static $pack = null;
 
-	/** The store's rule pack, or the neutral one when none is attached. */
+	/** @var TitleRules|null the default pack (BasicTitleRules), kept for the request */
+	private static $default = null;
+
+	/** The store's rule pack, or BasicTitleRules when none is attached. */
 	public static function pack(): TitleRules {
 		if ( self::$pack === null ) {
 			$pack = apply_filters( 'mmi_pipeline_title_rules', null );
 			if ( ! $pack instanceof self ) {
-				return new self(); // not kept: a pack attached later in the request still counts
+				return self::$default ?? ( self::$default = new BasicTitleRules() ); // the filter is asked again next time: a pack attached later still counts
 			}
 			self::$pack = $pack;
 		}
