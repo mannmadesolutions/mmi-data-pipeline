@@ -7,6 +7,7 @@
 import { useState, type ReactNode } from "react";
 import { ApiError } from "./api";
 import { CONF_BANDS, CONFIRM, confBand, DONE, movedTo, NOTE_ICON, pageActions, pageFills, urlError, type Evidence, type PageAction, type PageRow } from "./pagesApi";
+import type { Match, SitePages } from "./brandsApi";
 import { rest, storedPageUrl, type TitleRulesConfig } from "./titleRulesApi";
 import { Dashicon } from "./ui";
 
@@ -38,7 +39,24 @@ export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Prom
   const [armed, setArmed] = useState<{ id: number | "bulk"; action: PageAction } | null>(null);
   const [editing, setEditing] = useState<{ id: number; text: string; error: string } | null>(null);
   const [evidence, setEvidence] = useState<Record<number, Evidence | "loading" | string>>({});
-  const reset = () => { setState({}); setEditing(null); setArmed(null); setEvidence({}); };
+  /** The maker site's own product pages for the address editor (GET /brand-sites/{brand}/pages), per product. */
+  const [sitePages, setSitePages] = useState<Record<number, { state: "loading" | "pending" | "ready" | "none" | "error"; host?: string; page?: number; items?: { url: string; name: string }[]; best?: Match | null; text?: string }>>({});
+  const reset = () => { setState({}); setEditing(null); setArmed(null); setEvidence({}); setSitePages({}); };
+
+  /** A large store's list is read in steps: ask again every 3 s, up to a minute, while the editor is open. */
+  const loadPages = async (row: PageRow, tries = 0) => {
+    if (!row.brand?.id) { setSitePages((m) => ({ ...m, [row.id]: { state: "none" } })); return; }
+    if (!tries) setSitePages((m) => ({ ...m, [row.id]: { state: "loading" } }));
+    try {
+      const d = await rest<SitePages & { items?: { url: string; name: string }[] | null }>(cfg, "GET", `brand-sites/${row.brand.id}/pages?ids[]=${row.id}`);
+      if (d.pending) {
+        setSitePages((m) => ({ ...m, [row.id]: { state: "pending", host: d.host, page: d.reading?.page ?? 1 } }));
+        if (tries < 20) window.setTimeout(() => void loadPages(row, tries + 1), 3000);
+        return;
+      }
+      setSitePages((m) => ({ ...m, [row.id]: d.host ? { state: "ready", host: d.host, items: d.items ?? [], best: d.matches?.[String(row.id)] ?? null } : { state: "none" } }));
+    } catch (e) { setSitePages((m) => ({ ...m, [row.id]: { state: "error", text: msg(e) } })); }
+  };
 
   const call = async (row: PageRow, a: PageAction, url = ""): Promise<string> => {
     switch (a) {
@@ -93,7 +111,11 @@ export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Prom
     if (a === "set") {
       return (
         <button key={a} type="button" className="button button-small" disabled={busy !== null} data-action={a}
-          onClick={() => setEditing(editing?.id === row.id ? null : { id: row.id, text: row.current || row.proposed || "", error: "" })}>
+          onClick={() => {
+            if (editing?.id === row.id) { setEditing(null); return; }
+            setEditing({ id: row.id, text: row.current || row.proposed || "", error: "" });
+            if (!sitePages[row.id] || sitePages[row.id]!.state === "error") void loadPages(row);
+          }}>
           <Dashicon name="edit" /> {row.current ? "Change the page" : LABEL.set}
         </button>
       );
@@ -144,6 +166,26 @@ export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Prom
     );
   };
 
+  /** Under the editor: the site's pages as you type, and the page that names the product best. */
+  const pickLine = (row: PageRow) => {
+    const sp = sitePages[row.id];
+    if (!sp || sp.state === "none") return null;
+    if (sp.state === "loading") return <p className="description mmi-wb-mp-pick" role="status"><span className="mmi-loading" aria-hidden="true" /> Loading the maker site's pages…</p>;
+    if (sp.state === "pending") return <p className="description mmi-wb-mp-pick" role="status"><span className="mmi-loading" aria-hidden="true" /> Reading {sp.host}'s product list (page {sp.page})…</p>;
+    if (sp.state === "error") return <p className="description mmi-wb-mp-pick">{sp.text}</p>;
+    const best = sp.best && sp.best.url.replace(/\/+$/, "") !== row.current.replace(/\/+$/, "") ? sp.best : null;
+    return (
+      <p className="description mmi-wb-mp-pick">
+        {best && (
+          <span className="mmi-wb-mp-best">Names it best: <a href={best.url} target="_blank" rel="noreferrer">{best.name || best.url}</a> ({best.score}%{best.score < 70 && best.why ? `, ${best.why}` : ""}){" "}
+            <button type="button" className="button button-small" onClick={() => setEditing({ ...editing!, text: best.url, error: "" })}>Use this page</button>{" "}
+          </span>
+        )}
+        {sp.items?.length ? `Type to pick from the ${sp.items.length} pages on ${sp.host}, or paste an address.` : `${sp.host} publishes no product list the finder can read: paste the address.`}
+      </p>
+    );
+  };
+
   const editor = (row: PageRow) => (
     <form className="mmi-wb-mp-editor" noValidate onSubmit={(e) => {
       e.preventDefault();
@@ -151,11 +193,13 @@ export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Prom
       if (err) setEditing({ ...editing!, error: err }); else void act(row, "set", editing!.text.trim());
     }}>
       <label className="screen-reader-text" htmlFor={`mmi-wb-mp-url-${row.id}`}>The maker page's address for {row.title}</label>
-      <input id={`mmi-wb-mp-url-${row.id}`} type="url" className="regular-text" placeholder="https://" value={editing!.text} autoFocus
+      <input id={`mmi-wb-mp-url-${row.id}`} type="url" className="regular-text" placeholder="https://" value={editing!.text} autoFocus list={`mmi-wb-mp-pages-${row.id}`}
         onChange={(e) => setEditing({ ...editing!, text: e.target.value, error: "" })} onKeyDown={(e) => { if (e.key === "Escape") setEditing(null); }} />
+      <datalist id={`mmi-wb-mp-pages-${row.id}`}>{(sitePages[row.id]?.items ?? []).map((i) => <option key={i.url} value={i.url} label={i.name} />)}</datalist>
       <button type="submit" className="button button-small button-primary" disabled={busy !== null}>Save</button>
       <button type="button" className="button button-small" onClick={() => setEditing(null)}>Cancel</button>
       {editing!.error ? <p className="mmi-wb-mp-error" role="alert">{editing!.error}</p> : <p className="description">Saving makes this the product's maker page and reads it now.</p>}
+      {pickLine(row)}
     </form>
   );
 

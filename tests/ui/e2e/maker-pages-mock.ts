@@ -34,6 +34,14 @@ export class MakerPagesMock {
       sites: [{ host: "resell.example", n: 3, read: 3, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role: "reseller", why: "", saved: true, map: "", shared: 0 }] },
     { id: 22, name: "Old Maker", website: "", url: "", logo: "", products: 2, open: 0, failed_open: 0, no_url: 0, no_page: 2, gone: true, bundles: 0, bundles_none: 0, sites: [] },
   ];
+  sites = [
+    { host: "acme.example", status: "draft", pattern: "/products/{slug}", render: 0, stats: { products: 3, pages: 3, read: 2, refused: 0, blocked: 0, at: "" }, gaps: { products: 3, gain: 2, fields: 3, proposals: 0, pending: 0, at: "" }, map_at: "2026-11-01 10:00:00", checked: "" },
+    { host: "fine.example", status: "confirmed", pattern: "/{slug}", render: 0, stats: { products: 4, pages: 4, read: 4, refused: 0, blocked: 0, at: "" }, gaps: { products: 4, gain: 0, fields: 0, proposals: 0, pending: 0, at: "" }, map_at: "", checked: "" },
+    { host: "wall.example", status: "refused", pattern: "", render: 0, stats: { products: 2, pages: 2, read: 0, refused: 2, blocked: 2, at: "" }, gaps: [], map_at: "", checked: "" },
+  ];
+  filled = false;
+  undone = false;
+
   /** Reading a maker site's product list: the first ask answers "still reading". */
   readsLeft = 1;
 
@@ -153,10 +161,44 @@ export class MakerPagesMock {
       }
       case "pages/queue": return { data: { queued: (body.ids as number[]).length, started: true, status: {}, states: {} } };
       case "brand-sites": return { data: { brands: this.brands, shared: {}, find: {} } };
+      case "maps": return { data: { rows: this.sites, fields: {}, modes: {}, fills: [], reasons: {}, runner: { running: false, waiting: 0, note: "", finished_at: "" } } };
       case "urls/set-many": {
         const done: number[] = [];
         for (const it of body.items as { id: number; url: string }[]) { Object.assign(find(it.id), { current: it.url, verified: true, status: "approved", broken: false, wrong: undefined }); done.push(it.id); }
         return { data: { done, errors: {}, queue: null } };
+      }
+    }
+    const mp = path.match(/^maps\/([a-z0-9.-]+)\/(gaps|fills|fill|fills\/undo|reading|reread|off|reopen)$/);
+    if (mp) {
+      const host = decodeURIComponent(mp[1]!);
+      const s = this.sites.find((x) => x.host === host)!;
+      const cell = (c: string, now = "") => [c, "", now, ""];
+      switch (mp[2]) {
+        case "gaps": {
+          const done = this.filled;
+          const rows = [
+            { id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", edit: "post.php?post=4001", page: "read", status: "ok", note: "", cells: { images: cell(done ? "H" : "A", "No images"), description: cell("H"), manual: cell(done ? "H" : "A"), size: cell("-") } },
+            { id: 4002, title: "Acme Synth 2 (Download)", url: "https://acme.example/products/synth-2", edit: "post.php?post=4002", page: "read", status: "ok", note: "", cells: { images: cell(done ? "H" : "A"), description: cell("G"), size: cell("-") } },
+            { id: 4003, title: "Acme Drum 1 (Download)", url: "https://acme.example/products/drum-1", edit: "post.php?post=4003", page: "unread", status: "", note: "", cells: { images: cell("U"), description: cell("U"), size: cell("-") } },
+          ];
+          const fill = done || host !== "acme.example"
+            ? { confirm: false, products: 0, fields: 0, per: [], waiting: 0, why: "Nothing to fill: every gain the pages offer is written.", scrape: 0, pictures: 0 }
+            : { confirm: s.status === "draft", products: 2, fields: 3, per: { images: 2, manual: 1 }, waiting: 0, why: "", scrape: 1, pictures: 2 };
+          return { data: { host, status: s.status, products: 3, no_card: 0, ready: { read: 2, blocked: 0, unread: 1, broken: 0 }, pending: 0, rows, totals: { images: { A: 2, U: 1 } }, layouts: [], parts: {}, writes: {}, at: "", ms: 1, fill } };
+        }
+        case "fill": {
+          this.filled = true; s.status = "confirmed";
+          const skip = (body.skip as number[]) ?? [];
+          return { data: { confirmed: true, scrape: skip.includes(4001) ? 0 : 1, pictures: 2 - skip.length, started: true, since: "2026-11-09 23:00:00", per: {}, products: 2 - skip.length } };
+        }
+        case "fills": return { data: { runs: this.filled && !this.undone ? [{ run: "20261109230000-abcd", at: "2026-11-09 23:00:00", items: [
+          { id: 4001, title: "Acme Synth 1 (Download)", edit: "", state: "written", wrote: ["manual"], pictures: "2 added", pics: null, undo: null, undoable: true },
+          { id: 4002, title: "Acme Synth 2 (Download)", edit: "", state: "queued", wrote: [], pictures: "", pics: null, undo: null, undoable: false }] }] : [] } };
+        case "fills/undo": this.undone = true; this.filled = false; return { data: { undone: 1, kept: 0, queued: 0, items: [], runs: [] } };
+        case "reading": return { data: { products: 3, stored: 3, waiting: 0, working: 0, done: 1, read: 1, failed: 0, running: false, busy: false } };
+        case "reread": return { data: { started: true } };
+        case "off": s.status = "off"; return { data: { status: "off" } };
+        case "reopen": s.status = "draft"; return { data: { status: "draft" } };
       }
     }
     const bs = path.match(/^brand-sites\/(\d+)(?:\/(products|pages|move|to-own|bundles-none))?$/);
@@ -184,13 +226,14 @@ export class MakerPagesMock {
       }
       if (bs[2] === "pages") {
         const host = url.searchParams.get("host") ?? "";
-        if (this.readsLeft > 0) { this.readsLeft--; return { data: { pending: true, hosts: [host], host, reading: { at: "", source: "sitemap", page: 2 } } }; }
+        if (this.readsLeft > 0) { this.readsLeft--; return { data: { pending: true, hosts: [host || "acme.example"], host: host || "acme.example", reading: { at: "", source: "sitemap", page: 2 } } }; }
         const ids = url.searchParams.getAll("ids[]").map(Number);
         const known: Record<number, { url: string; name: string; score: number; why: string }> = {
           4004: { url: "https://acme.example/cable-10", name: "Cable 10 ft", score: 88, why: "its name names it" },
           4001: { url: "https://acme.example/synth-one", name: "Synth One", score: 62, why: "a weak match" },
         };
-        return { data: { hosts: [host], host, source: "sitemap", blocked: false, base: "https://acme.example/", items: null, cards: [], matches: Object.fromEntries(ids.map((id) => [id, known[id] ?? null])) } };
+        const items = url.searchParams.get("list") === "0" ? null : [{ url: "https://acme.example/cable-10", name: "Cable 10 ft" }, { url: "https://acme.example/synth-one", name: "Synth One" }, { url: "https://acme.example/drum-one", name: "Drum One" }];
+        return { data: { hosts: [host], host: host || "acme.example", source: "sitemap", blocked: false, base: "https://acme.example/", items, cards: [], matches: Object.fromEntries(ids.map((id) => [id, known[id] ?? null])) } };
       }
     }
     return null;

@@ -65,7 +65,7 @@ test("a moved page, a home page, a product with none: new address, keep, set wit
   expect(api.callsTo("page-list/4005/keep")).toHaveLength(1);
 
   await row(page, 4004).getByRole("button", { name: "Set the page" }).click();
-  const input = row(page, 4004).getByRole("textbox");
+  const input = row(page, 4004).getByRole("combobox");
   await input.fill("maker.example/cable");
   await row(page, 4004).getByRole("button", { name: "Save" }).click();
   await expect(row(page, 4004).getByRole("alert")).toHaveText("That isn't a web address.");
@@ -124,4 +124,18 @@ test("evidence refused while the server is busy says so and asks again", async (
   await row(page, 4001).getByRole("button", { name: "Try again" }).click();
   await expect(row(page, 4001).locator(".mmi-wb-mp-notes li").first()).toHaveText(/Its title names it/);
   expect(api.callsTo("urls/evidence")).toHaveLength(2);
+});
+
+test("the address editor offers the maker site's pages and the one that names the product best", async ({ page }) => {
+  const { api } = await open(page);
+  await row(page, 4004).getByRole("button", { name: "Set the page" }).click();
+  await expect(row(page, 4004).locator(".mmi-wb-mp-pick")).toContainText("Reading acme.example's product list (page 2)");
+  await expect(row(page, 4004).locator(".mmi-wb-mp-best")).toContainText("Names it best: Cable 10 ft (88%)", { timeout: 10_000 });
+  await expect(row(page, 4004).locator(".mmi-wb-mp-pick")).toContainText("Type to pick from the 3 pages on acme.example");
+  await expect(row(page, 4004).locator("datalist option")).toHaveCount(3);
+  await row(page, 4004).getByRole("button", { name: "Use this page" }).click();
+  await expect(row(page, 4004).getByRole("combobox")).toHaveValue("https://acme.example/cable-10");
+  await row(page, 4004).getByRole("button", { name: "Save" }).click();
+  await expect(row(page, 4004).locator(".notice")).toContainText("Saved: now its maker page");
+  expect(api.callsTo("urls/4004/set")[0]!.body).toEqual({ url: "https://acme.example/cable-10" });
 });
