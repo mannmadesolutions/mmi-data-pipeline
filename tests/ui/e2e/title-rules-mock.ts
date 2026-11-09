@@ -42,6 +42,7 @@ export class TitleRulesMock {
       dupes: 0, brand, stock: "instock", post_status: "publish", sku: `SKU-${id}`, price: "$49.00",
       why: { tidy: { from: "", to: "(Download)", confidence: 95, source: "punctuation" }, deshout: { from: "SYNTH", to: "Synth", confidence: 85, source: "title was in capitals" } },
       renamed: null, error: "", edit_url: `post.php?post=${id}&action=edit`, view_url: "#",
+      cats: [{ id: 12, name: "Plug-ins" }], brands: [{ id: i % 2 ? 21 : 20, name: brand }], cat_locked: i === 1, brand_locked: false, missing: i === 6 ? ["sku"] : [] as string[],
     };
   });
   applyState = { phase: "idle", enabled: true, queue: 3, applied_today: 0, batch_size: 25, next_at: null as number | null, now: 1000, run: null as unknown };
@@ -115,9 +116,16 @@ export class TitleRulesMock {
     if (this.o.staleOnce && req.headers()["x-wp-nonce"] === "rn-1") {
       return this.json(route, { code: "rest_cookie_invalid_nonce", message: "Cookie check failed" }, 403);
     }
-    const m = path.match(/^proposals\/(\d+)\/(suggest-rules|edit|apply|revert)$/);
+    const m = path.match(/^proposals\/(\d+)\/(suggest-rules|edit|apply|revert|categories|brands)$/);
     if (m) {
       const row = this.proposals.find((r) => r.id === Number(m[1]))!;
+      if (m[2] === "categories" || m[2] === "brands") {
+        const ids = body.ids as number[];
+        const names: Record<number, string> = { 10: "Software", 12: "Plug-ins", 20: "Acme Audio", 21: "Example Sound" };
+        if (m[2] === "categories") { row.cats = ids.map((i) => ({ id: i, name: names[i] ?? String(i) })); row.cat_locked = true; }
+        else { row.brands = ids.map((i) => ({ id: i, name: names[i] ?? String(i) })); row.brand_locked = true; }
+        return this.json(route, row);
+      }
       if (m[2] === "suggest-rules") {
         return this.json(route, { suggestions: [{ key: "a".repeat(32), kind: "replace", from: "Model", to: "Mk", label: '"Model" → "Mk"', brand: row.brand, reach: { brand: 14, all: 29 }, samples: {} }] });
       }
@@ -152,6 +160,10 @@ export class TitleRulesMock {
         for (const r of this.proposals) if ((body.ids as number[]).includes(r.id) && r.status !== "applied") { r.status = r.status === "edited" && body.action === "accept" ? "edited" : to!; if (body.action === "reset") r.edited = null; n++; }
         this.applyState.queue = this.proposals.filter((r) => ["accepted", "edited"].includes(r.status)).length;
         return this.json(route, { updated: n });
+      }
+      case "proposals/bulk-terms": {
+        const rows = this.proposals.filter((r) => (body.products as number[]).includes(r.id));
+        return this.json(route, { rows, removed: [], errors: {} });
       }
       case "apply-status": return this.json(route, this.applyState);
       case "apply-run":

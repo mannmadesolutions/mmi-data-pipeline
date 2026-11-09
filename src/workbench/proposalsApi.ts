@@ -30,7 +30,22 @@ export interface ProposalRow {
   error: string;
   edit_url: string;
   view_url: string;
+  cats: { id: number; name: string }[];
+  brands: { id: number; name: string }[];
+  cat_locked: boolean;
+  brand_locked: boolean;
+  /** Composer inputs the product lacks: brand, category, sku. */
+  missing: string[];
 }
+
+/** What a missing input costs the title (Store::MISSING_INPUTS). */
+export const MISSING_LABELS: Record<string, [string, string]> = {
+  brand: ["No brand", "No brand: the brand can't be put first."],
+  category: ["No category", "Only the default category: the rules can't tell what the product is."],
+  sku: ["No SKU", "No SKU: the supplier's data can't be matched."],
+};
+
+export type TermKind = "cats" | "brands";
 
 export interface ProposalPage { rows: ProposalRow[]; total: number; pages: number }
 
@@ -62,7 +77,7 @@ export interface Suggestion {
   reach: { brand: number; all: number };
 }
 
-export type QueueSort = "id" | "proposed" | "brand" | "rules" | "confidence" | "stock" | "status";
+export type QueueSort = "id" | "proposed" | "brand" | "category" | "rules" | "confidence" | "stock" | "status";
 
 export interface QueueFilter { status: string; q: string; brand: string; rule: string; page: number; per_page: number; orderby: QueueSort; order: "asc" | "desc" }
 
@@ -188,4 +203,12 @@ export function applyLine(s: ApplyStatus, nowSec: number): string {
   }
   if (s.phase === "interrupted") return `The last batch stopped part-way; it resumes with the next. ${waiting}`;
   return `${waiting}${s.applied_today ? ` ${s.applied_today} written today.` : ""}`;
+}
+
+/** Terms whose name or path holds the search (any case), chosen ones first. */
+export function filterTerms<T extends { id: number; name: string; path: string }>(terms: T[], q: string, chosen: number[], limit = 200): T[] {
+  const s = q.trim().toLowerCase();
+  const hit = s ? terms.filter((t) => t.path.toLowerCase().includes(s)) : terms;
+  const first = hit.filter((t) => chosen.includes(t.id));
+  return [...first, ...hit.filter((t) => !chosen.includes(t.id))].slice(0, limit);
 }

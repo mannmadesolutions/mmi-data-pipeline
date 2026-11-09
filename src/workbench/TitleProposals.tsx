@@ -9,16 +9,17 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ApiError } from "./api";
 import {
-  actionsFor, applyLine, confKind, EMPTY_FILTER, filterQuery, STATUS_LABEL, STATUS_VIEWS, target, viewCount, wordDiff,
-  type ApplyStatus, type DiffPart, type ProposalPage, type ProposalRow, type QueueFilter, type QueueSort, type QueueSummary, type RowAction, type Suggestion,
+  actionsFor, applyLine, confKind, EMPTY_FILTER, filterQuery, filterTerms, MISSING_LABELS, STATUS_LABEL, STATUS_VIEWS, target, viewCount, wordDiff,
+  type ApplyStatus, type DiffPart, type ProposalPage, type ProposalRow, type QueueFilter, type QueueSort, type QueueSummary, type RowAction, type Suggestion, type TermKind,
 } from "./proposalsApi";
-import { rest, type TitleRulesConfig } from "./titleRulesApi";
+import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, Section } from "./ui";
 
 const COLS: { key: QueueSort; label: string }[] = [
   { key: "id", label: "ID" },
   { key: "proposed", label: "Title: now → proposed" },
   { key: "brand", label: "Brand" },
+  { key: "category", label: "Category" },
   { key: "rules", label: "Rules" },
   { key: "confidence", label: "Sure" },
   { key: "stock", label: "Stock" },
@@ -31,6 +32,56 @@ interface Editing { id: number; text: string; suggestions: Suggestion[] | null; 
 const Diff = ({ parts }: { parts: DiffPart[] }) => (
   <>{parts.map((p, i) => (p.kind === "same" ? <span key={i}>{p.text}</span> : <span key={i} className={p.kind === "del" ? "mmi-wb-before" : "mmi-wb-after"}>{p.text}</span>))}</>
 );
+
+interface TermEdit { target: number | "bulk"; kind: TermKind; mode: "replace" | "add" }
+
+/** A searchable checkbox list of categories or brands, with the chosen ones as chips. */
+function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onCancel }: {
+  terms: TermOption[] | null; chosen: number[]; kind: TermKind; bulk: number; mode: "replace" | "add"; busy: boolean;
+  onMode: (m: "replace" | "add") => void; onSave: (ids: number[]) => void; onCancel: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<number[]>(chosen);
+  const noun = kind === "cats" ? "categories" : "brands";
+  const name = (id: number) => terms?.find((t) => t.id === id)?.path ?? `#${id}`;
+  return (
+    <div className="mmi-wb-pr-terms" id="mmi-wb-pr-terms">
+      <div className="mmi-wb-tr-fields">
+        <label className="mmi-wb-tr-field mmi-wb-tr-grow">
+          <span className="mmi-wb-label">{bulk ? `${kind === "cats" ? "Categories" : "Brands"} for ${bulk} ticked product${bulk === 1 ? "" : "s"}` : kind === "cats" ? "Categories" : "Brands"}</span>
+          <input type="search" id="mmi-wb-pr-terms-q" placeholder={`Search ${noun}`} value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+        {bulk > 0 && (
+          <label className="mmi-wb-tr-field">
+            <span className="mmi-wb-label">How</span>
+            <select id="mmi-wb-pr-terms-mode" value={mode} onChange={(e) => onMode(e.target.value as "replace" | "add")}>
+              <option value="replace">Replace their {noun}</option>
+              <option value="add">Add to their {noun}</option>
+            </select>
+          </label>
+        )}
+      </div>
+      <div className="mmi-wb-pr-chips">{picked.map((id) => (
+        <button key={id} type="button" className="mmi-wb-pr-chip is-active" aria-label={`Remove ${name(id)}`} onClick={() => setPicked((p) => p.filter((x) => x !== id))}>{name(id)} ×</button>
+      ))}</div>
+      <div className="mmi-wb-pr-term-list" role="group" aria-label={noun}>
+        {!terms && <p className="description">Loading {noun}…</p>}
+        {terms && filterTerms(terms, q, picked).map((t) => (
+          <label key={t.id} className="mmi-wb-pr-term" style={{ paddingLeft: `${t.depth * 14}px` }} title={t.path}>
+            <input type="checkbox" checked={picked.includes(t.id)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, t.id] : p.filter((x) => x !== t.id)))} />
+            {" "}{q ? t.path : t.name}
+          </label>
+        ))}
+      </div>
+      <p className="description">Saved {noun} are locked against supplier imports; the title is recomposed now.</p>
+      <div className="mmi-wb-tr-buttons">
+        <BusyButton id="mmi-wb-pr-terms-save" className="button button-primary" busy={busy} icon="saved" label={`Save ${noun}`} busyLabel="Saving…"
+          disabled={kind === "cats" && !picked.length || mode === "add" && !picked.length} onClick={() => onSave(picked)} />
+        <button type="button" className="button" id="mmi-wb-pr-terms-cancel" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
 
 export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   const [filter, setFilter] = useState<QueueFilter>(EMPTY_FILTER);
@@ -49,6 +100,8 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   const seq = useRef(0);
   const skew = useRef(0);
   const lastApply = useRef<ApplyStatus | null>(null);
+  const [terms, setTerms] = useState<TermEdit | null>(null);
+  const [termLists, setTermLists] = useState<Record<TermKind, TermOption[] | null>>({ cats: null, brands: null });
 
   const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 
@@ -165,6 +218,50 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
     } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setApplyBusy(false); }
   };
 
+  const openTerms = (t: TermEdit) => {
+    setEditing(null);
+    setTerms(t);
+    if (!termLists[t.kind]) {
+      const path = t.kind === "cats" ? "categories" : "brands";
+      rest<Record<string, TermOption[]>>(cfg, "GET", path).then((d) => setTermLists((l) => ({ ...l, [t.kind]: d[path] ?? [] }))).catch((e) => setNotice({ text: msg(e), kind: "error" }));
+    }
+  };
+
+  const saveTerms = async (ids: number[]) => {
+    if (!terms) return;
+    const noun = terms.kind === "cats" ? "Categories" : "Brands";
+    setBusy(terms.target === "bulk" ? "bulk" : terms.target);
+    try {
+      if (terms.target === "bulk") {
+        const d = await rest<{ rows: ProposalRow[]; removed: number[]; errors: Record<string, string> }>(cfg, "POST", "proposals/bulk-terms",
+          { kind: terms.kind, mode: terms.mode, products: selected, ids });
+        const n = d.rows.length + d.removed.length;
+        const failed = Object.keys(d.errors).length;
+        setNotice({ text: `${noun} saved on ${n} product${n === 1 ? "" : "s"}; their titles were recomposed.${failed ? ` ${failed} failed: ${Object.values(d.errors)[0]}` : ""}`, kind: failed ? "error" : "ok" });
+        setSelected([]);
+      } else {
+        const id = terms.target;
+        const d = await rest<{ removed?: boolean }>(cfg, "POST", `proposals/${id}/${terms.kind === "cats" ? "categories" : "brands"}`, { ids });
+        setNotice({ text: d.removed ? `${noun} saved for #${id}. Its title now matches the rules, so it left the queue.` : `${noun} saved for #${id}; its title was recomposed.`, kind: "ok" });
+      }
+      setTerms(null);
+      refresh();
+    } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setBusy(null); }
+  };
+
+  const termCell = (row: ProposalRow, kind: TermKind) => {
+    const list = kind === "cats" ? row.cats : row.brands;
+    const locked = kind === "cats" ? row.cat_locked : row.brand_locked;
+    return (
+      <td className="mmi-wb-pr-termcell">
+        {list.map((x) => x.name).join(", ") || <span className="description">None</span>}
+        {locked && <span title="Locked against supplier imports"> <Dashicon name="lock" /></span>}
+        {" "}<button type="button" className="button-link mmi-wb-pr-term-edit" aria-label={`Change ${kind === "cats" ? "categories" : "brands"} of #${row.id}`}
+          disabled={busy !== null} onClick={() => openTerms({ target: row.id, kind, mode: "replace" })}><Dashicon name="edit" /></button>
+      </td>
+    );
+  };
+
   const sortBy = (key: QueueSort) => setFilter((f) => ({ ...f, orderby: key, order: f.orderby === key && f.order === "desc" ? "asc" : "desc", page: 1 }));
   const onKey = (e: KeyboardEvent, key: QueueSort) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); } };
   const rows = page?.rows ?? [];
@@ -178,7 +275,7 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
       case "accept": return <button key={a} type="button" className="button button-small button-primary" disabled={dis} onClick={() => decide("accept", [row.id])}><Dashicon name="yes" /> Accept</button>;
       case "reject": return <button key={a} type="button" className="button button-small mmi-wb-icon-btn mmi-wb-rule-delete" disabled={dis} aria-label={`Reject #${row.id}`} title="Reject: keep the current title" onClick={() => decide("reject", [row.id])}><Dashicon name="no-alt" /></button>;
       case "reset": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => decide("reset", [row.id])}><Dashicon name="undo" /> Undo</button>;
-      case "edit": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => setEditing({ id: row.id, text: target(row), suggestions: null, picks: {} })}><Dashicon name="edit" /> Edit</button>;
+      case "edit": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => { setTerms(null); setEditing({ id: row.id, text: target(row), suggestions: null, picks: {} }); }}><Dashicon name="edit" /> Edit</button>;
       case "apply": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => writeOne(row, "apply")}><Dashicon name="upload" /> Write now</button>;
       case "revert": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => writeOne(row, "revert")}><Dashicon name="backup" /> Put back</button>;
     }
@@ -223,10 +320,16 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
             <span className="mmi-wb-selected">{selected.length} ticked</span>
             <button type="button" className="button button-small button-primary" id="mmi-wb-pr-accept-ticked" disabled={busy !== null || !openTicked.length} onClick={() => decide("accept", openTicked)}>Accept {openTicked.length}</button>
             <button type="button" className="button button-small" id="mmi-wb-pr-reject-ticked" disabled={busy !== null || !openTicked.length} onClick={() => decide("reject", openTicked)}>Reject {openTicked.length}</button>
+            <button type="button" className="button button-small" id="mmi-wb-pr-cats-ticked" disabled={busy !== null} onClick={() => openTerms({ target: "bulk", kind: "cats", mode: "replace" })}>Change category</button>
+            <button type="button" className="button button-small" id="mmi-wb-pr-brands-ticked" disabled={busy !== null} onClick={() => openTerms({ target: "bulk", kind: "brands", mode: "replace" })}>Change brand</button>
           </span>
         )}
       </div>
 
+      {terms && terms.target === "bulk" && (
+        <TermPicker key={`bulk-${terms.kind}`} terms={termLists[terms.kind]} chosen={[]} kind={terms.kind} bulk={selected.length} mode={terms.mode} busy={busy === "bulk"}
+          onMode={(m) => setTerms({ ...terms, mode: m })} onSave={saveTerms} onCancel={() => setTerms(null)} />
+      )}
       <div className="mmi-table-scroll-wrapper">
         <table className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-pr-table">
           <thead>
@@ -245,8 +348,8 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
             </tr>
           </thead>
           <tbody id="mmi-wb-pr-rows">
-            {!page && <tr><td colSpan={9} className="mmi-wb-empty-cell">Loading proposals…</td></tr>}
-            {page && !rows.length && <tr><td colSpan={9} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
+            {!page && <tr><td colSpan={10} className="mmi-wb-empty-cell">Loading proposals…</td></tr>}
+            {page && !rows.length && <tr><td colSpan={10} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
             {rows.map((row) => {
               const shown = row.status === "applied" || row.status === "reverted" ? wordDiff(row.original ?? "", row.current) : wordDiff(row.current, target(row));
               const [statusText, statusKind] = STATUS_LABEL[row.status] ?? [row.status, ""];
@@ -261,11 +364,13 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
                     <div className="mmi-wb-pr-now"><Diff parts={shown.before} /></div>
                     <div className="mmi-wb-pr-new"><Diff parts={shown.after} /></div>
                     {row.renamed && <div className="description">The supplier renamed it: “{row.renamed.from}” → “{row.renamed.to}”.</div>}
+                    {row.missing.length > 0 && <div className="mmi-wb-pr-flags">{row.missing.map((k) => <span key={k} className="mmi-badge error inline" title={MISSING_LABELS[k]?.[1]}>{MISSING_LABELS[k]?.[0] ?? k}</span>)}</div>}
                     {row.flags.length > 0 && <div className="mmi-wb-pr-flags">{row.flags.map((f) => <span key={f} className="mmi-badge warning inline">{f.split(":")[0]!.replace(/_/g, " ")}</span>)}</div>}
                     {row.error && <div className="notice notice-error inline"><p>{row.error}</p></div>}
                     {mine && <div className={`notice notice-${mine.kind === "error" ? "error" : "success"} inline mmi-wb-pr-row-notice`} role="status"><p>{mine.text}</p></div>}
                   </td>
-                  <td>{row.brand}</td>
+                  {termCell(row, "brands")}
+                  {termCell(row, "cats")}
                   <td className="mmi-wb-pr-rules">
                     {row.rules.map((r) => (
                       <button key={r} type="button" className={`mmi-wb-pr-chip${filter.rule === r ? " is-active" : ""}`} title={row.why[r] ? `${row.why[r]!.from || "—"} → ${row.why[r]!.to} (${row.why[r]!.source})` : undefined}
@@ -279,7 +384,7 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
                 </tr>,
                 ed ? (
                   <tr key={`${row.id}-edit`} className="mmi-wb-pr-edit-row">
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="mmi-wb-pr-edit" id="mmi-wb-pr-edit">
                         <label className="mmi-wb-tr-field mmi-wb-tr-grow">
                           <span className="mmi-wb-label">Your title for #{row.id}</span>
@@ -308,6 +413,14 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
                           <button type="button" className="button" id="mmi-wb-pr-edit-cancel" onClick={() => setEditing(null)}>Cancel</button>
                         </div>
                       </div>
+                    </td>
+                  </tr>
+                ) : null,
+                terms && terms.target === row.id ? (
+                  <tr key={`${row.id}-terms`} className="mmi-wb-pr-edit-row">
+                    <td colSpan={10}>
+                      <TermPicker key={`${row.id}-${terms.kind}`} terms={termLists[terms.kind]} chosen={(terms.kind === "cats" ? row.cats : row.brands).map((x) => x.id)}
+                        kind={terms.kind} bulk={0} mode="replace" busy={busy === row.id} onMode={() => {}} onSave={saveTerms} onCancel={() => setTerms(null)} />
                     </td>
                   </tr>
                 ) : null,

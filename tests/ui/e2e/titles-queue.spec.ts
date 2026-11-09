@@ -111,3 +111,41 @@ test("the writer starts and counts down; a row is written now and put back", asy
   await view(page, "reverted").click();
   await expect(row(page, 2023)).toContainText("Put back");
 });
+
+test("a row's categories change in place: search, tick, save; the lock shows", async ({ page }) => {
+  const { api } = await open(page);
+  await expect(row(page, 2002).locator(".mmi-wb-pr-termcell").nth(1)).toContainText("Plug-ins");
+  await expect(row(page, 2002).locator(".mmi-wb-pr-termcell").nth(1).locator(".dashicons-lock")).toHaveCount(1);
+  await row(page, 2001).getByRole("button", { name: "Change categories of #2001" }).click();
+  const picker = page.locator("#mmi-wb-pr-terms");
+  await expect(picker.getByRole("checkbox", { name: "Plug-ins" })).toBeChecked();
+  await page.locator("#mmi-wb-pr-terms-q").fill("soft");
+  await picker.getByRole("checkbox", { name: "Software", exact: true }).check();
+  await picker.getByRole("button", { name: "Remove Software › Plug-ins" }).click();
+  await page.locator("#mmi-wb-pr-terms-save").click();
+  await expect(page.locator("#mmi-wb-pr-notice")).toHaveText("Categories saved for #2001; its title was recomposed.");
+  expect(api.callsTo("proposals/2001/categories")[0]!.body).toEqual({ ids: [10] });
+  await expect(row(page, 2001).locator(".mmi-wb-pr-termcell").nth(1)).toContainText("Software");
+});
+
+test("ticked rows change brand together, replacing or adding", async ({ page }) => {
+  const { api } = await open(page);
+  await row(page, 2001).getByRole("checkbox").check();
+  await row(page, 2003).getByRole("checkbox").check();
+  await page.locator("#mmi-wb-pr-brands-ticked").click();
+  await expect(page.locator("#mmi-wb-pr-terms")).toContainText("Brands for 2 ticked products");
+  await expect(page.locator("#mmi-wb-pr-terms-save")).toBeEnabled(); // replacing with none clears the brand
+  await page.locator("#mmi-wb-pr-terms-mode").selectOption("add");
+  await expect(page.locator("#mmi-wb-pr-terms-save")).toBeDisabled(); // adding needs one
+  await page.locator("#mmi-wb-pr-terms").getByRole("checkbox", { name: "Example Sound" }).check();
+  await page.locator("#mmi-wb-pr-terms-save").click();
+  await expect(page.locator("#mmi-wb-pr-notice")).toHaveText("Brands saved on 2 products; their titles were recomposed.");
+  expect(api.callsTo("proposals/bulk-terms")[0]!.body).toEqual({ kind: "brands", mode: "add", products: [2001, 2003], ids: [21] });
+});
+
+test("a product missing an input says so, and what it costs", async ({ page }) => {
+  await open(page);
+  const badge = row(page, 2007).locator(".mmi-badge.error");
+  await expect(badge).toHaveText("No SKU");
+  await expect(badge).toHaveAttribute("title", "No SKU: the supplier's data can't be matched.");
+});
