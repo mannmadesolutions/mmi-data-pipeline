@@ -134,7 +134,7 @@ class Store {
 		$out   = [];
 		$pack  = TitleRules::pack();
 		$fixed = $pack->always_on();
-		foreach ( array_keys( $pack->rules() ) as $id ) {
+		foreach ( array_keys( $pack->all_rules() ) as $id ) {
 			$r          = is_array( $saved[ $id ] ?? null ) ? $saved[ $id ] : [];
 			$always     = in_array( $id, $fixed, true );
 			$out[ $id ] = [
@@ -150,7 +150,7 @@ class Store {
 	}
 
 	public static function set_rule( string $id, bool $approved ): void {
-		if ( ! isset( TitleRules::pack()->rules()[ $id ] ) ) {
+		if ( ! isset( TitleRules::pack()->all_rules()[ $id ] ) ) {
 			return;
 		}
 		$saved = \MMI_Settings::get( self::RULES_KEY, [] );
@@ -162,7 +162,7 @@ class Store {
 
 	/** Switch a rule on or off ("In use"); keeps its auto-apply approval. */
 	public static function set_rule_enabled( string $id, bool $enabled ): bool {
-		if ( ! isset( TitleRules::pack()->rules()[ $id ] ) || in_array( $id, TitleRules::pack()->always_on(), true ) ) {
+		if ( ! isset( TitleRules::pack()->all_rules()[ $id ] ) || in_array( $id, TitleRules::pack()->always_on(), true ) ) {
 			return false;
 		}
 		$saved = \MMI_Settings::get( self::RULES_KEY, [] );
@@ -171,6 +171,7 @@ class Store {
 		$saved[ $id ] = [ 'enabled' => $enabled, 'enabled_by' => get_current_user_id(), 'enabled_at' => current_time( 'mysql' ) ] + $keep;
 		\MMI_Settings::set( self::RULES_KEY, $saved );
 		TitleRules::pack()->rules_changed();
+		CustomRules::reset();
 		return true;
 	}
 
@@ -475,11 +476,11 @@ class Store {
 			$where[] = 'status = %s';
 			$args[]  = $status;
 		}
-		if ( ! empty( $f['rule'] ) && isset( TitleRules::pack()->rules()[ $f['rule'] ] ) ) {
+		if ( ! empty( $f['rule'] ) && isset( TitleRules::pack()->all_rules()[ $f['rule'] ] ) ) {
 			$where[] = 'FIND_IN_SET(%s, rules) > 0';
 			$args[]  = $f['rule'];
 		}
-		if ( ! empty( $f['only_rule'] ) && isset( TitleRules::pack()->rules()[ $f['only_rule'] ] ) ) {
+		if ( ! empty( $f['only_rule'] ) && isset( TitleRules::pack()->all_rules()[ $f['only_rule'] ] ) ) {
 			$where[] = 'rules = %s';
 			$args[]  = $f['only_rule'];
 		}
@@ -601,7 +602,7 @@ class Store {
 		foreach ( $status as $s ) {
 			$by[ $s['status'] ] = (int) $s['n'];
 		}
-		$catalog = TitleRules::pack()->rules();
+		$catalog = TitleRules::pack()->all_rules();
 		$sums    = [];
 		foreach ( array_keys( $catalog ) as $id ) {
 			$sums[] = $wpdb->prepare( 'SUM(FIND_IN_SET(%s, rules) > 0) AS %i', $id, 'r_' . $id );

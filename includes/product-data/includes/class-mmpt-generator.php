@@ -288,7 +288,7 @@ class Generator {
 		// product, Product Content owns its title once written).
 		$feed_title = (string) ( $ctx['feed_title'] ?? '' );
 		if ( $row && $row['status'] === 'applied' && self::renamed( (string) ( $row['feed_title'] ?? '' ), $feed_title ) ) {
-			$r    = TitleRules::pack()->compose( [ 'title' => $feed_title ] + $ctx );
+			$r    = TitleRules::pack()->propose( [ 'title' => $feed_title ] + $ctx );
 			$live = PageName::clean( $ctx['title'] );
 			if ( $r['title'] !== $live && ! Store::same_words( $r['title'], $live ) ) {
 				$wpdb->update(
@@ -312,7 +312,7 @@ class Generator {
 			}
 		}
 		$keep_feed = mb_substr( $feed_title !== '' ? $feed_title : (string) ( $row['feed_title'] ?? '' ), 0, 500 ); // out of the feed for now: its last name is kept
-		$c         = TitleRules::pack()->compose( $ctx );
+		$c         = TitleRules::pack()->propose( $ctx );
 
 		if ( ! $c['changed'] ) {
 			$stats['unchanged_titles']++;
