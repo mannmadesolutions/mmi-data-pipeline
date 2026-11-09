@@ -41,6 +41,32 @@ export class MakerPagesMock {
   ];
   filled = false;
   undone = false;
+  proposals = [
+    { id: 27, host: "acme.example", field: "pictures", layout: -1, scope: "site", sel: "section#hero img", mode: "img", found: 3, of: 3, note: "Checked: the product's banner picture.", checked: "claude", status: "proposed",
+      samples: [{ id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", short: "1 picture", urls: ["https://acme.example/img/hero-1.webp"] }] },
+    { id: 28, host: "acme.example", field: "manual", layout: -1, scope: "site", sel: "a.manual", mode: "links", found: 2, of: 3, note: "", checked: "", status: "proposed",
+      samples: [{ id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", short: "1 manual" }] },
+    { id: 29, host: "fine.example", field: "description", layout: -1, scope: "site", sel: "div.desc", mode: "text", found: 4, of: 4, note: "", checked: "", status: "approved", samples: [] },
+  ];
+  noneFields = new Set<string>(); // "id:field" a person closed
+  reqDecided = false;
+  skips: string[] = [];
+  /** Picture choices: id → { kind, scope, product, key }. */
+  choices = new Map<number, { kind: string; scope: string; product: number; key: string }>();
+  nextChoice = 1;
+  private pics(product: number) {
+    const all = [
+      { url: "https://acme.example/img/logo.png", key: "logo", att: 0 },
+      { url: "https://acme.example/img/shot-" + product + ".jpg", key: "shot" + product, att: 0 },
+      { url: "https://store.example/own-" + product + ".jpg", key: "own" + product, att: 500 + product },
+    ];
+    const vetoOf = (key: string) => [...this.choices.entries()].find(([, c]) => c.kind === "veto" && c.key === key && (c.scope === "site" || c.product === product))?.[0] ?? 0;
+    const feat = [...this.choices.entries()].find(([, c]) => c.kind === "featured" && c.product === product);
+    let final = all.filter((p) => !vetoOf(p.key)).map((p) => ({ url: p.url, src: p.att ? "" : p.url, kind: p.att ? "kept" : "new", att: p.att, key: p.key, choice: 0 }));
+    if (feat) { const i = final.findIndex((p) => p.key === feat[1].key); if (i > 0) { const [f] = final.splice(i, 1); final = [{ ...f!, choice: feat[0] }, ...final]; } }
+    const page = all.filter((p) => !p.att).map((p) => ({ url: p.url, kind: vetoOf(p.key) ? "vetoed" : "new", key: p.key, choice: vetoOf(p.key) }));
+    return { final, page, featured: feat?.[0] ?? 0, counts: {}, summary: `${final.filter((p) => p.kind === "new").length} new · ${final.filter((p) => p.kind === "kept").length} kept` };
+  }
 
   /** Reading a maker site's product list: the first ask answers "still reading". */
   readsLeft = 1;
@@ -161,6 +187,8 @@ export class MakerPagesMock {
       }
       case "pages/queue": return { data: { queued: (body.ids as number[]).length, started: true, status: {}, states: {} } };
       case "brand-sites": return { data: { brands: this.brands, shared: {}, find: {} } };
+      case "map-proposals": return { data: { rows: this.proposals } };
+      case "map-proposals/site": { const mine = this.proposals.filter((x) => x.host === body.host && x.status === "proposed"); mine.forEach((x) => { x.status = "approved"; }); return { data: { approved: mine.length, failed: [], rows: [] } }; }
       case "maps": return { data: { rows: this.sites, fields: {}, modes: {}, fills: [], reasons: {}, runner: { running: false, waiting: 0, note: "", finished_at: "" } } };
       case "urls/set-many": {
         const done: number[] = [];
@@ -168,7 +196,38 @@ export class MakerPagesMock {
         return { data: { done, errors: {}, queue: null } };
       }
     }
-    const mp = path.match(/^maps\/([a-z0-9.-]+)\/(gaps|fills|fill|fills\/undo|reading|reread|off|reopen)$/);
+    if (path === "pictures/choices" && method === "POST") {
+      const product = Number(body.product);
+      const p = this.pics(product);
+      const it = ([...p.final, ...p.page] as { url: string; key: string; att?: number; src?: string }[]).find((x) => (body.att && x.att === body.att) || (!body.att && (x.src === body.url || x.url === body.url)));
+      if (!it) return { data: { message: "That picture can’t be read." }, status: 400 };
+      if (body.kind === "featured") for (const [id, c] of this.choices) if (c.kind === "featured" && c.product === product) this.choices.delete(id);
+      const id = this.nextChoice++;
+      this.choices.set(id, { kind: String(body.kind), scope: String(body.scope), product, key: it.key });
+      return { data: { id, kind: body.kind, scope: body.scope } };
+    }
+    const prop = path.match(/^map-proposals\/(\d+)$/);
+    if (prop && method === "POST") { const x = this.proposals.find((y) => y.id === Number(prop[1]))!; x.status = body.decision === "approve" ? "approved" : "rejected"; return { data: { id: x.id, status: x.status } }; }
+    const del = path.match(/^pictures\/choices\/(\d+)$/);
+    if (del && method === "DELETE") { const c = this.choices.get(Number(del[1])); this.choices.delete(Number(del[1])); return { data: { removed: Number(del[1]), kind: c?.kind, scope: c?.scope } }; }
+    const mprod = path.match(/^maps\/([a-z0-9.-]+)\/(product|pictures)$/);
+    if (mprod) {
+      if (mprod[2] === "product") {
+        const id = Number(url.searchParams.get("id"));
+        return { data: { id, title: `Product ${id}`, fields: { pictures: { action: "merge", why: "", merge: this.pics(id) } }, writes: {}, written: {} } };
+      }
+      const ids = (url.searchParams.get("ids") ?? "").split(",").map(Number).filter(Boolean);
+      const groups = new Map<string, { key: string; thumb: string; att: number; url: string; products: number[]; kinds: Record<string, number>; veto: number; featured: number }>();
+      for (const id of ids) for (const p of [...this.pics(id).final, ...this.pics(id).page.filter((x) => x.kind === "vetoed")]) {
+        const g = groups.get(p.key) ?? { key: p.key, thumb: p.url, att: (p as { att?: number }).att ?? 0, url: p.url, products: [], kinds: {}, veto: 0, featured: 0 };
+        if (!g.products.includes(id)) g.products.push(id);
+        g.kinds[p.kind] = (g.kinds[p.kind] ?? 0) + 1;
+        if (p.kind === "vetoed") g.veto = p.choice ?? 0;
+        groups.set(p.key, g);
+      }
+      return { data: { groups: [...groups.values()], products: {}, next: null, of: ids.length } };
+    }
+    const mp = path.match(/^maps\/([a-z0-9.-]+)\/(gaps|fills|fill|fills\/undo|reading|reread|off|reopen|requirements|none|text|text-skip|settings)$/);
     if (mp) {
       const host = decodeURIComponent(mp[1]!);
       const s = this.sites.find((x) => x.host === host)!;
@@ -177,8 +236,8 @@ export class MakerPagesMock {
         case "gaps": {
           const done = this.filled;
           const rows = [
-            { id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", edit: "post.php?post=4001", page: "read", status: "ok", note: "", cells: { images: cell(done ? "H" : "A", "No images"), description: cell("H"), manual: cell(done ? "H" : "A"), size: cell("-") } },
-            { id: 4002, title: "Acme Synth 2 (Download)", url: "https://acme.example/products/synth-2", edit: "post.php?post=4002", page: "read", status: "ok", note: "", cells: { images: cell(done ? "H" : "A"), description: cell("G"), size: cell("-") } },
+            { id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", edit: "post.php?post=4001", page: "read", status: "ok", note: "", none: [], req: this.reqDecided ? "" : "differs", cells: { images: cell(done ? "H" : "A", "No images"), description: cell("H"), os: cell(this.reqDecided ? "H" : "R", "Mac and Windows"), manual: cell(done ? "H" : "A"), size: cell("-") } },
+            { id: 4002, title: "Acme Synth 2 (Download)", url: "https://acme.example/products/synth-2", edit: "post.php?post=4002", page: "read", status: "ok", note: "", none: this.noneFields.has("4002:description") ? ["description"] : [], cells: { images: cell(done ? "H" : "A"), description: cell(this.noneFields.has("4002:description") ? "-" : "G"), size: cell("-") } },
             { id: 4003, title: "Acme Drum 1 (Download)", url: "https://acme.example/products/drum-1", edit: "post.php?post=4003", page: "unread", status: "", note: "", cells: { images: cell("U"), description: cell("U"), size: cell("-") } },
           ];
           const fill = done || host !== "acme.example"
@@ -197,6 +256,13 @@ export class MakerPagesMock {
         case "fills/undo": this.undone = true; this.filled = false; return { data: { undone: 1, kept: 0, queued: 0, items: [], runs: [] } };
         case "reading": return { data: { products: 3, stored: 3, waiting: 0, working: 0, done: 1, read: 1, failed: 0, running: false, busy: false } };
         case "reread": return { data: { started: true } };
+        case "requirements": this.reqDecided = true; return { data: { state: "done", note: body.choice === "use" ? "The page's requirements are written." : "Ours kept." } };
+        case "none": { const k = `${body.id}:${body.field}`; if (body.undo) this.noneFields.delete(k); else this.noneFields.add(k); return { data: { state: "done", note: body.undo ? "Taken back: the gap is open again." : "Closed: its page has none of this.", ids: [body.id] } }; }
+        case "text":
+          if (method === "GET") return { data: { skips: this.skips, scan: null } };
+          return { data: { skips: this.skips, scan: { host, checked: 3, pages: 3, partial: false, repeated: [{ text: "Add to cart", pages: 3 }, { text: "Free shipping over $50", pages: 3 }], auto: [], at: "" } } };
+        case "text-skip": this.skips = [...this.skips.filter((s) => !((body.remove as string[]) ?? []).includes(s)), ...((body.add as string[]) ?? [])]; return { data: { skips: this.skips, scan: null } };
+        case "settings": s.pattern = String(body.pattern); s.render = body.render ? 1 : 0; return { data: { saved: true } };
         case "off": s.status = "off"; return { data: { status: "off" } };
         case "reopen": s.status = "draft"; return { data: { status: "draft" } };
       }

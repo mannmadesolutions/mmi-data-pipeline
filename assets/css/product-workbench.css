@@ -1314,3 +1314,116 @@ tr.mmi-wb-mp-gone .notice {
     margin: 2px 0 10px 16px;
     list-style: disc;
 }
+
+/* ── Pictures in the Fill review (src/workbench/SitePictures.tsx) ── */
+.mmi-wb-sm-review ul {
+    max-height: 520px;
+}
+.mmi-wb-pc,
+.mmi-wb-pc-site {
+    margin: 6px 0 10px;
+}
+.mmi-wb-pc-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.mmi-wb-pc-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 150px;
+    padding: 4px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 4px;
+    background: #fff;
+}
+.mmi-wb-pc-tile img {
+    width: 100%;
+    height: 110px;
+    object-fit: contain;
+}
+.mmi-wb-pc-tile.is-up {
+    border-color: var(--mmi-wb-accent);
+}
+.mmi-wb-pc-tile.is-warn {
+    border-color: #dba617;
+}
+.mmi-wb-pc-tile.is-vetoed img {
+    opacity: 0.35;
+}
+.mmi-wb-pc-word {
+    font-size: 12px;
+    font-weight: 600;
+}
+.mmi-wb-pc-kinds {
+    font-size: 11px;
+}
+.mmi-wb-pc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+.mmi-wb-pc-actions .button {
+    font-size: 11px;
+    min-height: 22px;
+    line-height: 20px;
+    padding: 0 6px;
+}
+.mmi-wb-sm-cellbtn {
+    text-decoration: none;
+}
+.mmi-wb-sm-cell.is-picked {
+    outline: 2px solid var(--mmi-wb-accent);
+    outline-offset: -2px;
+}
+.mmi-wb-sm-cellbar {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--mmi-wb-accent);
+    background: var(--mmi-gray-100, #f6f7f7);
+}
+.mmi-wb-sm-cellbar p {
+    margin: 0 0 6px;
+}
+.mmi-wb-sm-more {
+    margin: 10px 0;
+}
+.mmi-wb-sm-more summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+.mmi-wb-sm-settings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin-top: 6px;
+}
+.mmi-wb-sm-proposals {
+    margin: 8px 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 4px;
+}
+.mmi-wb-sm-proposal {
+    padding: 6px 0;
+    border-top: 1px solid var(--mmi-wb-border);
+}
+.mmi-wb-sm-proposal p {
+    margin: 0 0 4px;
+}
+.mmi-wb-sm-proposal ul {
+    margin: 0 0 6px 16px;
+    list-style: disc;
+}
+.mmi-wb-sm-proposal code {
+    word-break: break-all;
+}
+.mmi-wb-sm-prop-pics img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    margin-left: 4px;
+    vertical-align: middle;
+}

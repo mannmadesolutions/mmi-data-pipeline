@@ -190,7 +190,7 @@ async function fetchNonce(cfg: TitleRulesConfig): Promise<string> {
 }
 
 /** One REST call. Rejects with ApiError carrying the server's own message when it gives one. */
-export async function rest<T>(cfg: TitleRulesConfig, method: "GET" | "POST", path: string, body?: Record<string, unknown>): Promise<T> {
+export async function rest<T>(cfg: TitleRulesConfig, method: "GET" | "POST" | "DELETE", path: string, body?: Record<string, unknown>): Promise<T> {
   const send = (n: string) => fetch(cfg.rest + path, {
     method, credentials: "same-origin",
     headers: body ? { "X-WP-Nonce": n, "Content-Type": "application/json" } : { "X-WP-Nonce": n },

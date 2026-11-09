@@ -25,6 +25,9 @@ export type Cell = [string, string, string, string, number?];
 export interface GapRow {
   id: number; title: string; url: string; edit: string; page: "read" | "blocked" | "unread" | "broken" | string; status: string; note: string;
   cells: Record<string, Cell>;
+  /** Fields a person said its page has none of (SiteGaps::decide_none()). */
+  none?: string[];
+  req?: string;
 }
 
 export interface FillPlan { confirm: boolean; products: number; fields: number; per: Record<string, number> | []; waiting: number; why: string; scrape: number; pictures: number }
@@ -118,3 +121,63 @@ export function fillDone(d: { confirmed: boolean; scrape: number; pictures: numb
 
 /** Products the readiness line can act on, by page state. */
 export const idsWith = (g: Gaps, page: string): number[] => g.rows.filter((r) => r.page === page).map((r) => r.id);
+
+/* ── Pictures in the Fill review (PictureMatch::merge(), PictureChoices) ── */
+
+/** One picture as a product's merge has it: kept, a sharper copy, new, a duplicate, already there, over the cap, vetoed. */
+export interface PicItem { url: string; src?: string; kind: string; att?: number; key?: string; choice?: number; doubt?: boolean }
+export interface PicMerge { final: PicItem[]; page: PicItem[]; featured: number; counts: Record<string, number>; summary: string }
+export interface ProductPlan { id: number; title: string; fields: { pictures?: { merge?: PicMerge; why?: string; action?: string } } }
+
+export const PIC_WORDS: Record<string, [string, string]> = {
+  kept: ["Kept", "same"], sharper: ["Sharper copy", "up"], new: ["New", "up"], duplicate: ["Duplicate", "warn"],
+  have: ["Has it", "same"], over_cap: ["Over the cap", "warn"], unreadable: ["Kept", "same"], vetoed: ["Vetoed", "warn"],
+};
+
+/** The pictures the product ends up with, in order (the first is featured), then the page's pictures a person vetoed. */
+export function tilesOf(m: PicMerge | undefined): PicItem[] {
+  if (!m) return [];
+  const seen = new Set(m.final.map((p) => p.key || p.url));
+  return [...m.final, ...m.page.filter((p) => p.kind === "vetoed" && !seen.has(p.key || p.url))];
+}
+
+/** POST /pictures/choices: veto or feature one picture on this product, or veto it on every product of the site. */
+export function choiceBody(kind: "veto" | "featured", scope: "product" | "site", host: string, product: number, p: { att?: number; url?: string }): Record<string, unknown> {
+  return { kind, scope, host, product, att: p.att ?? 0, url: p.att ? "" : p.url ?? "" };
+}
+
+/** Every distinct picture across the reviewed products (GET /maps/{host}/pictures), grouped by fingerprint. */
+export interface PicGroup { key: string; thumb: string; att: number; url: string; products: number[]; kinds: Record<string, number>; veto: number; featured: number }
+export interface SitePictures { groups: PicGroup[]; products: Record<string, string[]>; next: number | null; of: number }
+
+/** What happens to a picture across products, in words ("New on 3, kept on 1"). */
+export const kindsText = (k: Record<string, number>): string =>
+  Object.entries(k).filter(([, n]) => n > 0).map(([kind, n]) => `${(PIC_WORDS[kind]?.[0] ?? kind).toLowerCase()} on ${n}`).join(", ").replace(/^./, (c) => c.toUpperCase());
+
+/** What a person can decide on a cell: a requirement to review, a gap its page has none of, or that taken back. */
+export type CellAction = "use" | "keep" | "none" | "unnone";
+export function cellActions(r: GapRow, field: string): CellAction[] {
+  const code = r.cells[field]?.[0] ?? "-";
+  if ((r.none ?? []).includes(field)) return ["unnone"];
+  if (code === "R" && field === "os") return ["use", "keep"];
+  if (code === "G" || code === "S") return ["none"];
+  return [];
+}
+export const CELL_ACTION_LABEL: Record<CellAction, string> = {
+  use: "Use the page's requirements", keep: "Keep ours", none: "Its page has none of this", unnone: "Take back \"its page has none\"",
+};
+
+/** Text the reader leaves out on a site (GET /maps/{host}/text): lines and, after a scan, suggestions. */
+export interface TextSkips { skips: string[]; scan: { repeated?: { text: string; pages: number }[]; pages?: number; checked?: number } | null }
+
+/* ── Proposed maps (MapProposals, /map-proposals): a part found on the site's pages, approved by a person ── */
+export interface Proposal {
+  id: number; host: string; field: string; layout: number; scope: string; sel: string; mode: string; found: number; of: number;
+  note: string; checked: string; status: "proposed" | "approved" | "rejected" | string;
+  samples: { id: number; title: string; url: string; short: string; urls?: string[] }[];
+}
+export const PART_LABEL: Record<string, string> = {
+  pictures: "Pictures", description: "Description", features: "Features", requirements: "System requirements", version: "Version",
+  manual: "Manual", videos: "Videos", audio: "Audio", disclaimer: "Disclaimer",
+};
+export const proposalHosts = (rows: Proposal[]): Set<string> => new Set(rows.filter((p) => p.status === "proposed").map((p) => p.host));
