@@ -23,8 +23,10 @@
  * A site can hand the call to its own runner through the
  * `mmi_ai_claude_code_run` filter (return the CLI's result object, or
  * ['error' => …]). Arguments: null, $system, $schema, $content, $model,
- * $timeout, $thinking (always false: turn thinking off). The filter's name
- * before shared library 1.48.0, `mmi_seo_claude_code_run`, is still applied.
+ * $timeout, $thinking (false: turn thinking off; true from 1.49.0 when a
+ * caller asks for it through MMI_AI::ask()), $purpose (1.49.0: who asked, for
+ * the site's own call log). The filter's name before shared library 1.48.0,
+ * `mmi_seo_claude_code_run`, is still applied.
  *
  * Always one item at a time and only with a person there.
  *
@@ -192,6 +194,26 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 		 * @return array|WP_Error { answer: array, input: int, output: int }
 		 */
 		public static function complete( string $system, string $user, array $schema, ?array $image = null ) {
+			$content = array();
+			if ( $image ) {
+				$content[] = array( 'type' => 'image', 'source' => array( 'type' => 'base64', 'media_type' => $image['mime'], 'data' => $image['data'] ) );
+			}
+			$content[] = array( 'type' => 'text', 'text' => $user );
+			return self::complete_content( $system, $content, $schema );
+		}
+
+		/**
+		 * One answer matching $schema, from Messages API content blocks (text, and
+		 * base64 images), with the caller's model, time and thinking (1.49.0).
+		 *
+		 * @param string $model    A model the CLI takes (alias or id); '' = the AI settings' plan model.
+		 * @param int    $timeout  Seconds; 0 = TIMEOUT (web requests). Longer only where nothing waits on it (WP-CLI).
+		 * @param bool   $thinking Leave the model's thinking on (it costs time and plan usage).
+		 * @return array|WP_Error { answer: array, input: int, output: int }
+		 */
+		public static function complete_content( string $system, array $content, array $schema, string $model = '', int $timeout = 0, bool $thinking = false, string $purpose = '' ) {
+			$model   = $model !== '' ? $model : self::model();
+			$timeout = $timeout > 0 ? $timeout : self::TIMEOUT;
 			if ( self::paused_at() ) {
 				return new WP_Error(
 					'mmi_ai_paused',
@@ -203,31 +225,25 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 					array( 'stop' => true )
 				);
 			}
-			$content = array();
-			if ( $image ) {
-				$content[] = array( 'type' => 'image', 'source' => array( 'type' => 'base64', 'media_type' => $image['mime'], 'data' => $image['data'] ) );
-			}
-			$content[] = array( 'type' => 'text', 'text' => $user );
-
 			$start = microtime( true );
-			$out   = apply_filters( self::RUN_FILTER, null, $system, $schema, $content, self::model(), self::TIMEOUT, false );
+			$out   = apply_filters( self::RUN_FILTER, null, $system, $schema, $content, $model, $timeout, $thinking, $purpose );
 			if ( ! is_array( $out ) ) {
-				$out = apply_filters( self::LEGACY_RUN_FILTER, null, $system, $schema, $content, self::model(), self::TIMEOUT, false );
+				$out = apply_filters( self::LEGACY_RUN_FILTER, null, $system, $schema, $content, $model, $timeout, $thinking );
 			}
 			if ( ! is_array( $out ) ) {
 				if ( ! self::ready() ) {
 					/* translators: %s: where AI is set up */
 					return new WP_Error( 'mmi_ai_off', sprintf( __( 'Claude Code on this server isn\'t signed in with a Claude Pro or Max plan. Open %s for the steps.', 'mmi-shared' ), MMI_AI::where() ), array( 'stop' => true ) );
 				}
-				$out = self::run( $system, $schema, $content );
+				$out = self::run( $system, $schema, $content, $model, $timeout, $thinking );
 			}
-			if ( isset( $out['error'] ) && microtime( true ) - $start >= self::TIMEOUT - 2 ) {
+			if ( isset( $out['error'] ) && microtime( true ) - $start >= $timeout - 2 ) {
 				return new WP_Error(
 					'mmi_ai_timeout',
 					sprintf(
 						/* translators: %d: seconds */
 						__( 'Claude didn\'t answer within %d seconds, so the call was stopped. Nothing was changed. Try again.', 'mmi-shared' ),
-						self::TIMEOUT
+						$timeout
 					)
 				);
 			}
@@ -247,7 +263,7 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 		}
 
 		/** One headless CLI run. @return array the CLI's result object, or ['error' => …] */
-		private static function run( string $system, array $schema, array $content ): array {
+		private static function run( string $system, array $schema, array $content, string $model, int $timeout, bool $thinking ): array {
 			$cwd = trailingslashit( get_temp_dir() ) . 'mmi-ai-claude-' . wp_generate_password( 8, false, false );
 			if ( ! wp_mkdir_p( $cwd ) ) {
 				return array( 'error' => __( 'No temporary folder could be made for the Claude call.', 'mmi-shared' ) );
@@ -255,7 +271,7 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 			$cmd = array(
 				self::bin(), '-p',
 				'--system-prompt', $system,
-				'--model', self::model(),
+				'--model', $model,
 				'--tools', '',
 				'--strict-mcp-config',
 				'--no-session-persistence',
@@ -265,7 +281,7 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 				'--verbose',
 			);
 			$stdin = wp_json_encode( array( 'type' => 'user', 'message' => array( 'role' => 'user', 'content' => $content ) ) ) . "\n";
-			$r     = self::proc( $cmd, $stdin, $cwd, self::TIMEOUT );
+			$r     = self::proc( $cmd, $stdin, $cwd, $timeout, $thinking );
 			@rmdir( $cwd ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 
 			$out = null;
@@ -307,8 +323,11 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 		 *
 		 * @return array{stdout:string, stderr:string, rc:int}
 		 */
-		private static function proc( array $cmd, string $stdin, string $cwd, int $timeout ): array {
-			$env  = array( 'HOME' => self::home(), 'PATH' => '/usr/local/bin:/usr/bin:/bin', 'LANG' => 'C.UTF-8', 'MAX_THINKING_TOKENS' => '0' );
+		private static function proc( array $cmd, string $stdin, string $cwd, int $timeout, bool $thinking = false ): array {
+			$env = array( 'HOME' => self::home(), 'PATH' => '/usr/local/bin:/usr/bin:/bin', 'LANG' => 'C.UTF-8' );
+			if ( ! $thinking ) {
+				$env['MAX_THINKING_TOKENS'] = '0';
+			}
 			$proc = proc_open( $cmd, array( 0 => array( 'pipe', 'r' ), 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes, $cwd, $env );
 			if ( ! is_resource( $proc ) ) {
 				return array( 'stdout' => '', 'stderr' => 'proc_open failed', 'rc' => -1 );

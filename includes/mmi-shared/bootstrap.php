@@ -178,6 +178,10 @@
  * licensing-helpers.php, since it needs a hook registered once per request
  * rather than a lazily-autoloaded class.
  *
+ * MMI_AI::ask() and preflight(), and MMI_AI_Claude_Code::complete_content() (1.49.0,
+ * 2026-11-09): content blocks with several pictures, a per-call model, time and
+ * thinking on a plan, and a check before a batch starts (filter mmi_ai_preflight).
+ *
  * Added MMI_AI, MMI_AI_Claude_Code and MMI_Product_Identifiers (1.48.0,
  * 2026-11-09): one AI provider setup (keys, plan, daily cap) for every plugin,
  * lifted from mmi-seo, with settings under neutral mmi_ai_* keys; and one GTIN /
@@ -206,7 +210,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.48.0';
+$mmi_shared_lib_this_copy_version = '1.49.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir

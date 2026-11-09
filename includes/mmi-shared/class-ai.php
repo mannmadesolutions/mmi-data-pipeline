@@ -545,6 +545,124 @@ if ( ! class_exists( 'MMI_AI' ) ) :
 			return isset( $reply['answer']['text'] ) && count( $reply['answer'] ) === 1 ? (string) $reply['answer']['text'] : (string) wp_json_encode( $reply['answer'] );
 		}
 
+		/**
+		 * Whether a call can go now, and why not. Checks the provider is set up,
+		 * today's cap, a plan paused for extra usage, and whatever the site adds
+		 * (filter 'mmi_ai_preflight', e.g. a live check of the plan's usage).
+		 * For batch callers that want to stop before starting work.
+		 *
+		 * @return array{ok:bool, reason:string}
+		 */
+		public static function preflight(): array {
+			if ( ! self::ready() ) {
+				/* translators: %s: where AI is set up */
+				return array( 'ok' => false, 'reason' => sprintf( __( 'AI isn\'t set up: choose a provider on %s.', 'mmi-shared' ), self::where() ) );
+			}
+			if ( self::remaining_today() <= 0 ) {
+				/* translators: %d: daily request cap */
+				return array( 'ok' => false, 'reason' => sprintf( __( 'Today\'s limit of %d AI requests is reached.', 'mmi-shared' ), self::daily_cap() ) );
+			}
+			if ( self::on_subscription() && MMI_AI_Claude_Code::paused_at() ) {
+				return array( 'ok' => false, 'reason' => __( 'Writing on the plan is paused for a day: a call was billed as extra usage.', 'mmi-shared' ) );
+			}
+			$r = apply_filters( 'mmi_ai_preflight', array( 'ok' => true, 'reason' => '' ) );
+			return array( 'ok' => ! empty( $r['ok'] ), 'reason' => (string) ( $r['reason'] ?? '' ) );
+		}
+
+		/**
+		 * One structured answer for callers that need more than complete(): several
+		 * pictures in one question, a bigger model, more time, thinking (1.49.0).
+		 * Counted against the same daily cap and usage as complete().
+		 *
+		 * @param array $args {
+		 *     system     string  The instructions.
+		 *     content    string|array  The question: text, or Messages API content blocks
+		 *                       ( { type: text, text } and { type: image, source: { type: base64, media_type, data } } ).
+		 *     schema     array   JSON schema of the answer (an object). Required.
+		 *     purpose    string  Who asks, for logs and a site's call log.
+		 *     model      string  On a plan: the model to use (alias or id). With an API key the AI settings' model is used.
+		 *     timeout    int     Seconds. On a plan, longer than a web request allows only from WP-CLI.
+		 *     thinking   bool    On a plan: leave thinking on (default off).
+		 *     max_tokens int     With an API key: the answer's length limit (default MAX_TOKENS).
+		 * }
+		 * @return array|WP_Error { answer: array, input: int, output: int }
+		 */
+		public static function ask( array $args ) {
+			$system  = (string) ( $args['system'] ?? '' );
+			$schema  = (array) ( $args['schema'] ?? array() );
+			$purpose = (string) ( $args['purpose'] ?? '' );
+			$content = $args['content'] ?? '';
+			$content = is_array( $content ) ? array_values( $content ) : array( array( 'type' => 'text', 'text' => (string) $content ) );
+			if ( ! $schema ) {
+				return new WP_Error( 'mmi_ai_schema', __( 'No answer shape was given.', 'mmi-shared' ) );
+			}
+			$pre = self::preflight();
+			if ( ! $pre['ok'] ) {
+				return new WP_Error( 'mmi_ai_off', $pre['reason'], array( 'stop' => true ) );
+			}
+			$slug    = self::provider();
+			$timeout = max( 0, (int) ( $args['timeout'] ?? 0 ) );
+			$start   = microtime( true );
+
+			if ( self::on_subscription() ) {
+				if ( $timeout > 0 ) {
+					set_time_limit( $timeout + 30 ); // phpcs:ignore Squiz.PHP.DiscouragedFunctions -- the caller asked for the time
+				}
+				$r = MMI_AI_Claude_Code::complete_content( $system, $content, $schema, (string) ( $args['model'] ?? '' ), $timeout, ! empty( $args['thinking'] ), $purpose );
+				if ( is_wp_error( $r ) ) {
+					self::log( 'warn', sprintf( '[AI] %s plan %s: %s', $slug, $purpose, $r->get_error_message() ) );
+					return $r;
+				}
+				self::record_usage( true, $r['input'], $r['output'] );
+				self::log( 'info', sprintf( '[AI] %s plan %s %s: %d in, %d out tokens, %d ms', $slug, (string) ( $args['model'] ?? '' ), $purpose, $r['input'], $r['output'], (int) ( ( microtime( true ) - $start ) * 1000 ) ) );
+				return $r;
+			}
+
+			$p      = self::PROVIDERS[ $slug ];
+			$images = array_filter( $content, static fn( $b ) => ( $b['type'] ?? '' ) === 'image' );
+			if ( $images && empty( $p['vision'] ) ) {
+				/* translators: %s: provider */
+				return new WP_Error( 'mmi_ai_no_vision', sprintf( __( '%s can\'t see pictures, and this question needs them. Choose another provider.', 'mmi-shared' ), self::name( $slug ) ), array( 'stop' => true ) );
+			}
+			$model  = self::model( $slug );
+			$system = $system . "\n\nAnswer with one JSON object only, no other text, matching this JSON schema:\n" . wp_json_encode( $schema );
+			if ( $p['format'] === 'anthropic' ) {
+				$body = array( 'model' => $model, 'max_tokens' => (int) ( $args['max_tokens'] ?? self::MAX_TOKENS ), 'system' => $system, 'messages' => array( array( 'role' => 'user', 'content' => $content ) ) );
+			} else {
+				$parts = array();
+				foreach ( $content as $b ) {
+					if ( ( $b['type'] ?? '' ) === 'image' ) {
+						$url     = 'data:' . $b['source']['media_type'] . ';base64,' . $b['source']['data'];
+						$parts[] = array( 'type' => 'image_url', 'image_url' => ! empty( $p['image_string'] ) ? $url : array( 'url' => $url, 'detail' => 'low' ) );
+					} else {
+						$parts[] = array( 'type' => 'text', 'text' => (string) ( $b['text'] ?? '' ) );
+					}
+				}
+				$body = array( 'model' => $model, 'messages' => array( array( 'role' => 'system', 'content' => $system ), array( 'role' => 'user', 'content' => $parts ) ) );
+				$body[ $slug === 'openai' ? 'max_completion_tokens' : 'max_tokens' ] = (int) ( $args['max_tokens'] ?? self::MAX_TOKENS );
+			}
+			if ( class_exists( 'MMI_API_Throttler' ) ) {
+				MMI_API_Throttler::throttle( 'ai_' . $slug, self::THROTTLE );
+			}
+			$response = wp_remote_post( $p['base'] . ( $p['format'] === 'anthropic' ? 'messages' : 'chat/completions' ), array( 'timeout' => max( self::TIMEOUT, $timeout ), 'headers' => self::headers( $slug, self::key( $slug ) ), 'body' => wp_json_encode( $body ) ) );
+			$decoded  = self::parse( $slug, $response );
+			if ( is_wp_error( $decoded ) ) {
+				if ( ! is_wp_error( $response ) && (int) wp_remote_retrieve_response_code( $response ) >= 500 ) {
+					self::record_usage( false, 0, 0 );
+				}
+				return $decoded;
+			}
+			$reply = self::read_reply( $slug, $decoded );
+			self::record_usage( true, $reply['input'], $reply['output'] );
+			self::log( 'info', sprintf( '[AI] %s %s %s: %d in, %d out tokens, %d ms', $slug, $model, $purpose, $reply['input'], $reply['output'], (int) ( ( microtime( true ) - $start ) * 1000 ) ) );
+			$answer = self::json_from( $reply['text'] );
+			if ( ! $answer ) {
+				/* translators: %s: provider */
+				return new WP_Error( 'mmi_ai_format', sprintf( __( '%s\'s answer couldn\'t be read. Try again, or choose another model.', 'mmi-shared' ), self::name( $slug ) ) );
+			}
+			return array( 'answer' => $answer, 'input' => $reply['input'], 'output' => $reply['output'] );
+		}
+
 		/** A JSON schema for an answer of plain string fields, all required. */
 		public static function schema( array $fields ): array {
 			return array(
