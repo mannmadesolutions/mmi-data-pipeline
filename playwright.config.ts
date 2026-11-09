@@ -5,6 +5,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "tests/ui/e2e",
   timeout: 30_000,
+  // Two browsers at a time: this runs on the live site's server. With four, WebKit was starved of CPU while the
+  // site was busy (load 9-12 on 8 cores, 2026-11-09): each click took 2.5-5 s and the longest tests ran out of time.
+  workers: 2,
   reporter: [["list"]],
   use: { baseURL: "http://127.0.0.1:4319/" },
   webServer: { command: "node tests/ui/e2e/serve.mjs", url: "http://127.0.0.1:4319/", reuseExistingServer: false },
