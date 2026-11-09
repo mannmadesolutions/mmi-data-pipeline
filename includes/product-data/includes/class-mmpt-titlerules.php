@@ -12,7 +12,7 @@
  * duplicate-title check, no follow-up work. A store that attaches no pack gets
  * BasicTitleRules (tidy, fix ALL CAPS, capitalize, brand first), which extends it.
  *
- * A context (contexts()) needs `title`. The engine also reads, when present:
+ * A context (contexts()) needs `title` and `id`. The engine also reads, when present:
  * `brand`, `feed` (where the product's data comes from), `feed_title` (the
  * supplier's own name for it: a change reopens an applied row), and keeps
  * `sku`, `sub_category` and `digital_why` in the row's detail for the screen.
@@ -121,7 +121,7 @@ class TitleRules {
 		foreach ( $ids as $id ) {
 			$post = get_post( $id );
 			if ( $post && $post->post_type === 'product' ) {
-				$out[ $id ] = [ 'title' => (string) $post->post_title, 'brand' => '', 'feed' => '', 'feed_title' => '' ];
+				$out[ $id ] = [ 'id' => $id, 'title' => (string) $post->post_title, 'brand' => '', 'feed' => '', 'feed_title' => '' ];
 			}
 		}
 		return $out;

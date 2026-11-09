@@ -276,6 +276,7 @@ class Generator {
 	/** Compose one product and sync its proposal row (the body of a full run). */
 	private static function process( int $id, array $ctx, ?array $row, string $run_id, string $now, array &$stats ): void {
 		global $wpdb;
+		$ctx += [ 'id' => $id ]; // a store's category or supplier rules need to know the product
 		$t = Store::table();
 		$stats['products']++;
 		if ( $row && $row['status'] === 'reverted' ) {

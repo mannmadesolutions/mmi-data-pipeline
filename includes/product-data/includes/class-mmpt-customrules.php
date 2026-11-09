@@ -38,8 +38,17 @@ class CustomRules {
 	/** Rows scanned when counting a rule's reach (the table holds one row per product). */
 	const SCAN_LIMIT = 20000;
 
-	/** Rule kinds: replace a phrase, remove it, or add words after it. */
-	const KINDS = [ 'replace', 'remove', 'insert' ];
+	/**
+	 * Rule kinds: replace a phrase, remove it, add words after it, move it into the trailing parentheses
+	 * ("Upgrade" → "… (Upgrade, Download)"), or an advanced pattern (a regular expression and its replacement).
+	 */
+	const KINDS = [ 'replace', 'remove', 'insert', 'qualifier', 'pattern' ];
+
+	/** Longest pattern a person may write. */
+	const MAX_PATTERN = 200;
+
+	/** Product meta naming the source a product was imported from (the pipeline's supplier tracking). */
+	const SUPPLIER_META = '_supplier_name';
 
 	/** @var bool|null whether the store's own rules are in use (memoized per request; reset() after a switch) */
 	private static $enabled = null;
@@ -70,7 +79,7 @@ class CustomRules {
 			return $r;
 		}
 		$rules  = isset( $ctx['custom_rules'] ) ? (array) $ctx['custom_rules'] : self::for_brand( (string) ( $ctx['brand'] ?? '' ) );
-		$custom = self::apply( (string) $r['title'], $rules );
+		$custom = self::apply( (string) $r['title'], $rules, (int) ( $ctx['id'] ?? 0 ) );
 		if ( ! $custom['applied'] ) {
 			return $r;
 		}
@@ -103,7 +112,19 @@ class CustomRules {
 		$from   = $squash( $in['from'] ?? '' );
 		$to     = $squash( $in['to'] ?? '' );
 		if ( ! in_array( $kind, self::KINDS, true ) ) {
-			return new \WP_Error( 'mmpt_rule_kind', __( 'Choose what the rule does: replace words, remove them, or add words after them.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_kind', __( 'Choose what the rule does: replace words, remove them, add words after them, move them into the parentheses, or a pattern.', 'mmi-admin' ), [ 'status' => 400 ] );
+		}
+		$extra = self::normalize_options( $in );
+		if ( is_wp_error( $extra ) ) {
+			return $extra;
+		}
+		if ( $kind === 'pattern' || $kind === 'qualifier' ) {
+			$special = $kind === 'pattern' ? self::normalize_pattern( (string) ( $in['from'] ?? '' ), (string) ( $in['to'] ?? '' ), $extra ) : self::normalize_qualifier( $from, $to );
+			if ( is_wp_error( $special ) ) {
+				return $special;
+			}
+			$brand = self::normalize_brand( $in );
+			return is_wp_error( $brand ) ? $brand : [ 'kind' => $kind ] + $special + [ 'brand' => $brand ] + $extra;
 		}
 		if ( $from === '' || mb_strlen( $from ) > self::MAX_PHRASE ) {
 			/* translators: %d: maximum characters */
@@ -124,6 +145,12 @@ class CustomRules {
 		if ( $kind === 'replace' && $to === $from ) {
 			return new \WP_Error( 'mmpt_rule_same', __( 'The rule would change nothing: the new words are the same as the old.', 'mmi-admin' ), [ 'status' => 400 ] );
 		}
+		$brand = self::normalize_brand( $in );
+		return is_wp_error( $brand ) ? $brand : [ 'kind' => $kind, 'from' => $from, 'to' => $to, 'brand' => $brand ] + $extra;
+	}
+
+	/** The brand a rule is for ('' = every brand), from brand_id or a brand name. @return string|\WP_Error */
+	private static function normalize_brand( array $in ) {
 		$brand = '';
 		$term  = ! empty( $in['brand_id'] ) ? get_term( (int) $in['brand_id'], 'product_brand' ) : null;
 		if ( ! $term && trim( (string) ( $in['brand'] ?? '' ) ) !== '' ) {
@@ -139,7 +166,129 @@ class CustomRules {
 		if ( $term && ! is_wp_error( $term ) ) {
 			$brand = html_entity_decode( (string) $term->name, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		}
-		return [ 'kind' => $kind, 'from' => $from, 'to' => $to, 'brand' => $brand ];
+		return $brand;
+	}
+
+	/**
+	 * Optional settings of a written rule, only those set: `case` = 'any' (match any capitals; the default
+	 * matches them exactly), `categories` (product_cat term ids; their child categories count too),
+	 * `suppliers` (the sources products were imported from).
+	 *
+	 * @return array|\WP_Error
+	 */
+	private static function normalize_options( array $in ) {
+		$out = [];
+		if ( ( $in['case'] ?? '' ) === 'any' ) {
+			$out['case'] = 'any';
+		}
+		$cats = array_values( array_unique( array_filter( array_map( 'intval', (array) ( $in['categories'] ?? [] ) ) ) ) );
+		foreach ( $cats as $c ) {
+			$t = get_term( $c, 'product_cat' );
+			if ( ! $t || is_wp_error( $t ) ) {
+				/* translators: %d: category id */
+				return new \WP_Error( 'mmpt_rule_category', sprintf( __( 'There is no product category %d.', 'mmi-admin' ), $c ), [ 'status' => 400 ] );
+			}
+		}
+		if ( $cats ) {
+			$out['categories'] = $cats;
+		}
+		$sups = array_values( array_unique( array_filter( array_map( static fn( $v ) => trim( (string) $v ), (array) ( $in['suppliers'] ?? [] ) ), 'strlen' ) ) );
+		if ( $sups ) {
+			$known = array_keys( self::suppliers() );
+			foreach ( $sups as $v ) {
+				if ( ! in_array( $v, $known, true ) ) {
+					/* translators: %s: supplier source */
+					return new \WP_Error( 'mmpt_rule_supplier', sprintf( __( 'No product was imported from "%s".', 'mmi-admin' ), $v ), [ 'status' => 400 ] );
+				}
+			}
+			$out['suppliers'] = $sups;
+		}
+		return $out;
+	}
+
+	/** A pattern rule: the expression (without delimiters) must compile; the replacement may be empty (delete). */
+	private static function normalize_pattern( string $rx, string $to, array $extra ) {
+		$rx = trim( $rx );
+		$to = trim( (string) preg_replace( '/\s+/u', ' ', $to ) );
+		if ( $rx === '' || mb_strlen( $rx ) > self::MAX_PATTERN ) {
+			/* translators: %d: maximum characters */
+			return new \WP_Error( 'mmpt_rule_pattern', sprintf( __( 'Type the pattern (a regular expression, up to %d characters).', 'mmi-admin' ), self::MAX_PATTERN ), [ 'status' => 400 ] );
+		}
+		if ( mb_strlen( $to ) > self::MAX_PHRASE ) {
+			/* translators: %d: maximum characters */
+			return new \WP_Error( 'mmpt_rule_to', sprintf( __( 'The replacement can be up to %d characters.', 'mmi-admin' ), self::MAX_PHRASE ), [ 'status' => 400 ] );
+		}
+		$rule = [ 'kind' => 'pattern', 'from' => $rx, 'to' => $to ] + $extra;
+		error_clear_last();
+		if ( @preg_match( self::user_pattern( $rule ), '' ) === false ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors -- reported to the person instead
+			$why = error_get_last()['message'] ?? preg_last_error_msg(); // a compile error is a warning ("Compilation failed: … at offset 9"), not preg_last_error()
+			/* translators: %s: the regular expression engine's message */
+			return new \WP_Error( 'mmpt_rule_pattern', sprintf( __( 'That pattern is not a valid regular expression (%s).', 'mmi-admin' ), preg_replace( '/^preg_match\(\):\s*/', '', (string) $why ) ), [ 'status' => 400 ] );
+		}
+		return [ 'from' => $rx, 'to' => $to ];
+	}
+
+	/** Move-into-the-parentheses: `from` is looked for in the name; `to` is how the parentheses say it (default: as found). */
+	private static function normalize_qualifier( string $from, string $to ) {
+		if ( $from === '' || mb_strlen( $from ) > self::MAX_PHRASE || mb_strlen( $to ) > self::MAX_PHRASE || strpbrk( $from . $to, '(),' ) !== false ) {
+			return new \WP_Error( 'mmpt_rule_from', __( 'Type the words to move into the parentheses (no parentheses or commas in them).', 'mmi-admin' ), [ 'status' => 400 ] );
+		}
+		return [ 'from' => $from, 'to' => $to !== '' ? $to : $from ];
+	}
+
+	/** Where products came from: source => product count (pipeline supplier tracking). @return array<string,int> */
+	public static function suppliers(): array {
+		static $memo = null;
+		if ( $memo === null ) {
+			global $wpdb;
+			$memo = [];
+			foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT meta_value v, COUNT(*) n FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> '' GROUP BY meta_value ORDER BY n DESC", self::SUPPLIER_META ), ARRAY_A ) as $r ) {
+				$memo[ (string) $r['v'] ] = (int) $r['n'];
+			}
+		}
+		return $memo;
+	}
+
+	/** A rule's scope in words ("in Plug-Ins; from xchange"), '' when it has none. */
+	public static function scope_label( array $r ): string {
+		$parts = [];
+		if ( ! empty( $r['categories'] ) ) {
+			$names   = array_filter( array_map( static fn( $c ) => ( $t = get_term( (int) $c, 'product_cat' ) ) && ! is_wp_error( $t ) ? html_entity_decode( $t->name, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) : '', (array) $r['categories'] ) );
+			$parts[] = 'in ' . implode( ', ', $names );
+		}
+		if ( ! empty( $r['suppliers'] ) ) {
+			$parts[] = 'from ' . implode( ', ', (array) $r['suppliers'] );
+		}
+		if ( ( $r['case'] ?? '' ) === 'any' ) {
+			$parts[] = 'any capitals';
+		}
+		return implode( '; ', $parts );
+	}
+
+	/**
+	 * Put the saved rules in this order (rule ids); rules not listed keep their order after them.
+	 * Rules apply in order, each to the title the one before left.
+	 *
+	 * @param string[] $ids
+	 * @return array the rules in their new order
+	 */
+	public static function reorder( array $ids ): array {
+		$by = [];
+		foreach ( self::all() as $r ) {
+			$by[ $r['id'] ] = $r;
+		}
+		$out = [];
+		foreach ( $ids as $id ) {
+			$id = (string) $id;
+			if ( isset( $by[ $id ] ) ) {
+				$out[] = $by[ $id ];
+				unset( $by[ $id ] );
+			}
+		}
+		$out = array_merge( $out, array_values( $by ) );
+		\MMI_Settings::set( self::SETTINGS_KEY, $out );
+		Module::info( 'Title rules reordered', [ 'ids' => array_column( $out, 'id' ) ] );
+		return $out;
 	}
 
 	/**
@@ -153,7 +302,7 @@ class CustomRules {
 	public static function preview( array $rule, int $samples = 5 ): array {
 		global $wpdb;
 		$t      = Store::table();
-		$like   = '%' . $wpdb->esc_like( (string) $rule['from'] ) . '%';
+		$like   = $rule['kind'] === 'pattern' ? '%' : '%' . $wpdb->esc_like( (string) $rule['from'] ) . '%'; // a pattern is tried on every product
 		$status = "'" . implode( "','", Store::WORK_STATUSES ) . "'";
 		$rows   = $wpdb->get_results(
 			$wpdb->prepare(
@@ -167,7 +316,7 @@ class CustomRules {
 			),
 			ARRAY_A
 		); // phpcs:ignore WordPress.DB.PreparedSQL -- $status is constants only
-		$out  = [ 'count' => 0, 'samples' => [], 'scanned' => count( $rows ) ];
+		$out  = [ 'count' => 0, 'samples' => [], 'scanned' => count( $rows ), 'unstable' => 0 ];
 		$keep = array_flip( array_map( 'intval', (array) Exclusions::filter( array_map( 'intval', array_column( $rows, 'id' ) ) ) ) );
 		$brand = (string) ( $rule['brand'] ?? '' );
 		$names = $brand !== '' ? self::brands_of( array_keys( $keep ) ) : [];
@@ -178,8 +327,11 @@ class CustomRules {
 			}
 			$open   = $r['proposed'] !== null && in_array( (string) $r['pstatus'], Store::OPEN_STATUSES, true );
 			$before = $open ? (string) $r['proposed'] : PageName::clean( (string) $r['title'] );
-			$res    = self::apply( $before, [ $rule ] );
+			$res    = self::apply( $before, [ $rule ], $id );
 			if ( ! $res['applied'] ) {
+				if ( $rule['kind'] === 'pattern' && self::in_scope( $rule, $id ) && ( $once = @preg_replace( self::user_pattern( $rule ), (string) $rule['to'], $before ) ) !== $before ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors
+					$out['unstable']++; // it would change the title again on every run: skipped (see apply())
+				}
 				continue;
 			}
 			$out['count']++;
@@ -247,7 +399,7 @@ class CustomRules {
 			'by'      => get_current_user_id(),
 			'at'      => current_time( 'mysql' ),
 			'example' => $example,
-		];
+		] + array_intersect_key( $rule, [ 'case' => 1, 'categories' => 1, 'suppliers' => 1 ] );
 	}
 
 	/** product id => brand name (decoded), for these products. @return array<int,string> */
@@ -309,14 +461,29 @@ class CustomRules {
 	 *
 	 * @return array{title:string,applied:array}
 	 */
-	public static function apply( string $title, array $rules ): array {
+	public static function apply( string $title, array $rules, int $id = 0 ): array {
 		$applied = [];
 		foreach ( $rules as $r ) {
-			// Already done (an applied title recomposed, or an insert whose words are there): never stack.
-			if ( $r['kind'] !== 'remove' && preg_match( self::pattern( $r['to'] ), $title ) ) {
-				continue;
+			if ( ! self::in_scope( $r, $id ) ) {
+				continue; // a category or supplier rule, and this product isn't in it (or isn't known)
 			}
-			$next = preg_replace( self::pattern( $r['from'] ), self::replacement( $r ), $title, 1 );
+			if ( $r['kind'] === 'pattern' ) {
+				$next = @preg_replace( self::user_pattern( $r ), (string) $r['to'], $title ); // phpcs:ignore WordPress.PHP.NoSilencedErrors -- checked when saved
+				// Only a pattern that is done after one pass applies: one that would change its own result again
+				// ("Pro" → "Pro Edition") would grow the title on every run.
+				if ( ! is_string( $next ) || @preg_replace( self::user_pattern( $r ), (string) $r['to'], $next ) !== $next ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors
+					continue;
+				}
+			} elseif ( $r['kind'] === 'qualifier' ) {
+				$next = self::to_qualifier( $title, $r );
+			} else {
+				$any = ( $r['case'] ?? '' ) === 'any';
+				// Already done (an applied title recomposed, or an insert whose words are there): never stack.
+				if ( $r['kind'] !== 'remove' && preg_match( self::pattern( $r['to'], $any ), $title ) ) {
+					continue;
+				}
+				$next = preg_replace( self::pattern( $r['from'], $any ), self::replacement( $r ), $title, 1 );
+			}
 			if ( is_string( $next ) && $next !== $title ) {
 				$title     = trim( preg_replace( '/\s{2,}/', ' ', $next ) );
 				$applied[] = $r;
@@ -415,6 +582,10 @@ class CustomRules {
 		$t   = Store::table();
 		$ids = [];
 		foreach ( $rules as $rule ) {
+			if ( ( $rule['kind'] ?? '' ) === 'pattern' ) {
+				$ids = array_merge( $ids, Store::title_ids() ); // no phrase to look for: every product may change
+				continue;
+			}
 			$like = '%' . $wpdb->esc_like( (string) $rule['from'] ) . '%';
 			if ( $like === '%%' ) {
 				continue;
@@ -445,6 +616,12 @@ class CustomRules {
 		}
 		if ( $r['kind'] === 'insert' ) {
 			return sprintf( 'After "%s", add "%s"', $r['from'], trim( mb_substr( $r['to'], mb_strlen( $r['from'] ) ) ) );
+		}
+		if ( $r['kind'] === 'qualifier' ) {
+			return $r['to'] !== $r['from'] ? sprintf( 'Move "%s" into the parentheses as "%s"', $r['from'], $r['to'] ) : sprintf( 'Move "%s" into the parentheses', $r['from'] );
+		}
+		if ( $r['kind'] === 'pattern' ) {
+			return sprintf( 'Pattern %s → "%s"', $r['from'], $r['to'] );
 		}
 		return sprintf( '"%s" → "%s"', $r['from'], $r['to'] );
 	}
@@ -519,11 +696,78 @@ class CustomRules {
 		return null;
 	}
 
-	/** Whole-phrase match: no letter/digit glued on either side of a word-character edge. */
-	private static function pattern( string $from ): string {
+	/** Whole-phrase match: no letter/digit glued on either side of a word-character edge. $any: any capitals. */
+	private static function pattern( string $from, bool $any = false ): string {
 		$lead  = preg_match( '/^[\p{L}\p{N}]/u', $from ) ? '(?<![\p{L}\p{N}])' : '';
 		$trail = preg_match( '/[\p{L}\p{N}]$/u', $from ) ? '(?![\p{L}\p{N}])' : '';
-		return '/' . $lead . preg_quote( $from, '/' ) . $trail . '/u';
+		return '/' . $lead . preg_quote( $from, '/' ) . $trail . '/u' . ( $any ? 'i' : '' );
+	}
+
+	/** A pattern rule's expression, delimited (a ~ in it is escaped), Unicode, case-blind when the rule says so. */
+	private static function user_pattern( array $r ): string {
+		return '~' . str_replace( '~', '\~', (string) $r['from'] ) . '~u' . ( ( $r['case'] ?? '' ) === 'any' ? 'i' : '' );
+	}
+
+	/**
+	 * Move the rule's words out of the name into the trailing parentheses, first among them:
+	 * "Ozone 11 Upgrade (Download)" → "Ozone 11 (Upgrade, Download)". Nothing when the name doesn't have them,
+	 * or when nothing would be left of the name.
+	 */
+	private static function to_qualifier( string $title, array $r ): ?string {
+		$name  = $title;
+		$quals = [];
+		if ( preg_match( '/^(.*?)\s*\(([^()]*)\)\s*$/u', $title, $m ) ) {
+			$name  = $m[1];
+			$quals = array_values( array_filter( array_map( 'trim', explode( ',', $m[2] ) ), 'strlen' ) );
+		}
+		$rx = self::pattern( (string) $r['from'], ( $r['case'] ?? '' ) === 'any' );
+		if ( ! preg_match( $rx, $name ) ) {
+			return null;
+		}
+		$name = trim( (string) preg_replace( '/\s{2,}/u', ' ', (string) preg_replace( $rx, '', $name, 1 ) ), " \t-–—,:" );
+		if ( $name === '' ) {
+			return null;
+		}
+		$label = (string) $r['to'];
+		if ( ! array_filter( $quals, static fn( $q ) => mb_strtolower( $q ) === mb_strtolower( $label ) ) ) {
+			array_unshift( $quals, $label );
+		}
+		return $name . ' (' . implode( ', ', $quals ) . ')';
+	}
+
+	/** Whether a rule reaches this product: rules without a category or supplier reach every product. */
+	private static function in_scope( array $r, int $id ): bool {
+		$cats = (array) ( $r['categories'] ?? [] );
+		$sups = (array) ( $r['suppliers'] ?? [] );
+		if ( ! $cats && ! $sups ) {
+			return true;
+		}
+		if ( $id <= 0 ) {
+			return false;
+		}
+		return ( ! $cats || isset( self::members( 'cat', $cats )[ $id ] ) ) && ( ! $sups || isset( self::members( 'sup', $sups )[ $id ] ) );
+	}
+
+	/** Products in these categories (with their children) or from these suppliers, as a lookup (memoized per request). */
+	private static function members( string $what, array $values ): array {
+		static $memo = [];
+		$key = $what . ':' . implode( ',', $values );
+		if ( ! isset( $memo[ $key ] ) ) {
+			global $wpdb;
+			if ( $what === 'cat' ) {
+				$terms = [];
+				foreach ( $values as $c ) {
+					$children = get_term_children( (int) $c, 'product_cat' );
+					$terms     = array_merge( $terms, [ (int) $c ], is_array( $children ) ? array_map( 'intval', $children ) : [] );
+				}
+				$ids = get_objects_in_term( array_values( array_unique( $terms ) ), 'product_cat' );
+			} else {
+				$in  = implode( ',', array_fill( 0, count( $values ), '%s' ) );
+				$ids = $wpdb->get_col( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value IN ({$in})", array_merge( [ self::SUPPLIER_META ], array_values( $values ) ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- placeholders built above
+			}
+			$memo[ $key ] = array_flip( array_map( 'intval', is_array( $ids ) ? $ids : [] ) );
+		}
+		return $memo[ $key ];
 	}
 
 	private static function replacement( array $r ): string {
