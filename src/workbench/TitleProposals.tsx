@@ -1,0 +1,328 @@
+/**
+ * Title proposals: Product Data's review queue in the Workbench. Each row is a
+ * product whose composed title differs from its own: what changes (word diff),
+ * the rules that made the change and why, how sure they are, and the decision.
+ * Accept queues the title for the writer; Edit writes your own title and can
+ * save a rule from your change; Apply now writes one at once; Revert puts a
+ * written title back. "Write accepted titles" runs the throttled writer.
+ */
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ApiError } from "./api";
+import {
+  actionsFor, applyLine, confKind, EMPTY_FILTER, filterQuery, STATUS_LABEL, STATUS_VIEWS, target, viewCount, wordDiff,
+  type ApplyStatus, type DiffPart, type ProposalPage, type ProposalRow, type QueueFilter, type QueueSort, type QueueSummary, type RowAction, type Suggestion,
+} from "./proposalsApi";
+import { rest, type TitleRulesConfig } from "./titleRulesApi";
+import { BusyButton, Dashicon, Section } from "./ui";
+
+const COLS: { key: QueueSort; label: string }[] = [
+  { key: "id", label: "ID" },
+  { key: "proposed", label: "Title: now → proposed" },
+  { key: "brand", label: "Brand" },
+  { key: "rules", label: "Rules" },
+  { key: "confidence", label: "Sure" },
+  { key: "stock", label: "Stock" },
+  { key: "status", label: "Status" },
+];
+
+interface Notice { text: string; kind: "ok" | "error" }
+interface Editing { id: number; text: string; suggestions: Suggestion[] | null; picks: Record<string, "brand" | "all"> }
+
+const Diff = ({ parts }: { parts: DiffPart[] }) => (
+  <>{parts.map((p, i) => (p.kind === "same" ? <span key={i}>{p.text}</span> : <span key={i} className={p.kind === "del" ? "mmi-wb-before" : "mmi-wb-after"}>{p.text}</span>))}</>
+);
+
+export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
+  const [filter, setFilter] = useState<QueueFilter>(EMPTY_FILTER);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState<ProposalPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<QueueSummary | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [rowNotice, setRowNotice] = useState<{ id: number } & Notice | null>(null);
+  const [busy, setBusy] = useState<number | "bulk" | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [apply, setApply] = useState<ApplyStatus | null>(null);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  const seq = useRef(0);
+  const skew = useRef(0);
+  const lastApply = useRef<ApplyStatus | null>(null);
+
+  const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
+
+  const loadSummary = useCallback(() => {
+    rest<QueueSummary>(cfg, "GET", "summary").then(setSummary).catch(() => {});
+  }, [cfg]);
+
+  const load = useCallback(async (f: QueueFilter) => {
+    const mine = ++seq.current;
+    setLoading(true);
+    try {
+      const d = await rest<ProposalPage>(cfg, "GET", `proposals?${filterQuery(f)}`);
+      if (mine === seq.current) setPage(d);
+    } catch (e) {
+      if (mine === seq.current) { setPage({ rows: [], total: 0, pages: 1 }); setNotice({ text: msg(e), kind: "error" }); }
+    } finally {
+      if (mine === seq.current) setLoading(false);
+    }
+  }, [cfg]);
+
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => { void load(filter); setSelected([]); }, [filter, load]);
+  // The search waits for typing to pause.
+  useEffect(() => {
+    if (q === filter.q) return;
+    const t = window.setTimeout(() => setFilter((f) => ({ ...f, q, page: 1 })), 400);
+    return () => window.clearTimeout(t);
+  }, [q, filter.q]);
+
+  // The writer's status: polled often while it works, rarely otherwise; the countdown ticks every second.
+  const pollApply = useCallback(async () => {
+    try {
+      const s = await rest<ApplyStatus>(cfg, "GET", "apply-status");
+      skew.current = Date.now() / 1000 - s.now;
+      const before = lastApply.current;
+      lastApply.current = s;
+      setApply(s);
+      // Titles were written (or queued) since the last look: the rows on screen changed status.
+      if (before && (before.applied_today !== s.applied_today || before.queue !== s.queue)) { void load(filter); loadSummary(); }
+    } catch { /* the bar keeps its last state */ }
+  }, [cfg, filter, load, loadSummary]);
+  useEffect(() => {
+    void pollApply();
+    const active = apply && (apply.phase === "running" || apply.phase === "waiting");
+    const t = window.setInterval(() => void pollApply(), active ? 5000 : 30000);
+    return () => window.clearInterval(t);
+  }, [pollApply, apply?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (apply?.phase !== "waiting") return;
+    const t = window.setInterval(() => setNow(Date.now() / 1000 - skew.current), 1000);
+    return () => window.clearInterval(t);
+  }, [apply?.phase]);
+
+  const refresh = () => { void load(filter); loadSummary(); void pollApply(); };
+
+  const decide = async (action: "accept" | "reject" | "reset", ids: number[]) => {
+    setBusy(ids.length === 1 ? ids[0]! : "bulk");
+    setNotice(null);
+    try {
+      const d = await rest<{ updated: number }>(cfg, "POST", "decide", { action, ids });
+      const word = action === "accept" ? "accepted" : action === "reject" ? "rejected" : "back to review";
+      setNotice({ text: `${d.updated} title${d.updated === 1 ? "" : "s"} ${word}.${action === "accept" ? " They are written in the next batch." : ""}`, kind: "ok" });
+      setSelected([]);
+      refresh();
+    } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setBusy(null); }
+  };
+
+  const writeOne = async (row: ProposalRow, path: "apply" | "revert") => {
+    if (!window.confirm(path === "apply"
+      ? "Write this title to the product now? It is locked against imports and can be put back."
+      : "Put the product's previous title back?")) return;
+    setBusy(row.id);
+    try {
+      const r = await rest<{ result: string; message: string }>(cfg, "POST", `proposals/${row.id}/${path}`);
+      const ok = r.result === "applied" || r.result === "reverted";
+      setRowNotice({ id: row.id, text: ok ? (path === "apply" ? `Written: ${r.message}` : `Put back: ${r.message}`) : r.message, kind: ok ? "ok" : "error" });
+      refresh();
+    } catch (e) { setRowNotice({ id: row.id, text: msg(e), kind: "error" }); } finally { setBusy(null); }
+  };
+
+  // Editing: rules are suggested from the change as you type (CustomRules::suggest), ticked ones are saved with the title.
+  useEffect(() => {
+    if (!editing) return;
+    const row = page?.rows.find((r) => r.id === editing.id);
+    if (!row || editing.text.trim() === "" || editing.text === target(row)) { if (editing.suggestions?.length) setEditing((e) => e && { ...e, suggestions: [] }); return; }
+    const t = window.setTimeout(() => {
+      rest<{ suggestions: Suggestion[] }>(cfg, "POST", `proposals/${editing.id}/suggest-rules`, { title: editing.text })
+        .then((d) => setEditing((e) => (e && e.id === editing.id ? { ...e, suggestions: d.suggestions } : e)))
+        .catch(() => {});
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [cfg, editing?.id, editing?.text]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setBusy(editing.id);
+    try {
+      const rules = Object.entries(editing.picks).filter(([, scope]) => scope).map(([key, scope]) => ({ key, scope }));
+      const d = await rest<ProposalRow & { rules_saved: number; recomposed: { changed?: number; new?: number } | null }>(cfg, "POST", `proposals/${editing.id}/edit`, { title: editing.text.trim(), rules });
+      const more = d.rules_saved ? ` ${d.rules_saved} rule${d.rules_saved === 1 ? "" : "s"} saved; ${(d.recomposed?.changed ?? 0) + (d.recomposed?.new ?? 0)} other proposals updated.` : "";
+      setNotice({ text: `Your title for #${editing.id} is saved and goes out in the next batch.${more}`, kind: "ok" });
+      setEditing(null);
+      refresh();
+    } catch (e) { setRowNotice({ id: editing.id, text: msg(e), kind: "error" }); } finally { setBusy(null); }
+  };
+
+  const runWriter = async (stop = false) => {
+    if (!stop && apply && !window.confirm(`Write ${apply.queue} accepted title${apply.queue === 1 ? "" : "s"} to the live products? They go out ${apply.batch_size} at a time, a couple of minutes apart; each is locked against imports and can be put back.`)) return;
+    setApplyBusy(true);
+    try {
+      const s = await rest<ApplyStatus>(cfg, "POST", stop ? "apply-stop" : "apply-run");
+      setApply(s);
+      if (s.error) setNotice({ text: s.error, kind: "error" });
+    } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setApplyBusy(false); }
+  };
+
+  const sortBy = (key: QueueSort) => setFilter((f) => ({ ...f, orderby: key, order: f.orderby === key && f.order === "desc" ? "asc" : "desc", page: 1 }));
+  const onKey = (e: KeyboardEvent, key: QueueSort) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); } };
+  const rows = page?.rows ?? [];
+  const allTicked = rows.length > 0 && rows.every((r) => selected.includes(r.id));
+  const ruleLabel = (id: string) => summary?.rules[id]?.label ?? id;
+  const openTicked = selected.filter((id) => actionsFor(rows.find((r) => r.id === id)?.status ?? "applied").includes("accept"));
+
+  const button = (row: ProposalRow, a: RowAction): ReactNode => {
+    const dis = busy !== null;
+    switch (a) {
+      case "accept": return <button key={a} type="button" className="button button-small button-primary" disabled={dis} onClick={() => decide("accept", [row.id])}><Dashicon name="yes" /> Accept</button>;
+      case "reject": return <button key={a} type="button" className="button button-small mmi-wb-icon-btn mmi-wb-rule-delete" disabled={dis} aria-label={`Reject #${row.id}`} title="Reject: keep the current title" onClick={() => decide("reject", [row.id])}><Dashicon name="no-alt" /></button>;
+      case "reset": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => decide("reset", [row.id])}><Dashicon name="undo" /> Undo</button>;
+      case "edit": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => setEditing({ id: row.id, text: target(row), suggestions: null, picks: {} })}><Dashicon name="edit" /> Edit</button>;
+      case "apply": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => writeOne(row, "apply")}><Dashicon name="upload" /> Write now</button>;
+      case "revert": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => writeOne(row, "revert")}><Dashicon name="backup" /> Put back</button>;
+    }
+  };
+
+  return (
+    <Section id="mmi-wb-proposals" icon="editor-textcolor" title="Title proposals"
+      desc="Products whose title the rules would change. Accept a proposal to have it written, edit it to write your own (and save a rule from your change), or reject it to keep the current title. Written titles are locked against imports and can be put back"
+      actions={
+        <BusyButton id="mmi-wb-pr-write" className="button button-primary" busy={applyBusy} icon="upload" label="Write accepted titles" busyLabel="Starting…"
+          disabled={!apply || !apply.enabled || apply.queue === 0 || apply.phase === "running" || apply.phase === "waiting"} onClick={() => runWriter()} />
+      }>
+      <div className="mmi-wb-pr-writer" id="mmi-wb-pr-writer">
+        {apply ? applyLine(apply, now) : "Checking the writer…"}
+        {apply && (apply.phase === "running" || apply.phase === "waiting") && (
+          <button type="button" className="button button-small" id="mmi-wb-pr-stop" disabled={applyBusy} onClick={() => runWriter(true)}>Stop</button>
+        )}
+      </div>
+      {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-pr-notice"><p>{notice.text}</p></div>}
+
+      <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="Show">
+        {STATUS_VIEWS.map((v) => (
+          <button key={v.value} type="button" className={`mmi-pill${filter.status === v.value ? " active" : ""}`} aria-pressed={filter.status === v.value}
+            data-view={v.value} onClick={() => setFilter((f) => ({ ...f, status: v.value, page: 1 }))}>
+            {v.label} <span className="mmi-pill-count">{summary ? viewCount(summary.by_status, v.value) : "…"}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mmi-wb-filters mmi-wb-pr-filters">
+        <input type="search" id="mmi-wb-pr-q" placeholder="Search titles, SKU or ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search proposals" />
+        <select id="mmi-wb-pr-brand" value={filter.brand} aria-label="Brand" onChange={(e) => setFilter((f) => ({ ...f, brand: e.target.value, page: 1 }))}>
+          <option value="">Every brand</option>
+          {(summary?.brands ?? []).map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <select id="mmi-wb-pr-rule" value={filter.rule} aria-label="Rule" onChange={(e) => setFilter((f) => ({ ...f, rule: e.target.value, page: 1 }))}>
+          <option value="">Any rule</option>
+          {Object.entries(summary?.rules ?? {}).map(([id, r]) => <option key={id} value={id}>{r.label}</option>)}
+        </select>
+        <span className="mmi-wb-count" id="mmi-wb-pr-count">{page ? `${page.total} proposal${page.total === 1 ? "" : "s"}` : ""}</span>
+        {selected.length > 0 && (
+          <span className="mmi-wb-pr-bulk">
+            <span className="mmi-wb-selected">{selected.length} ticked</span>
+            <button type="button" className="button button-small button-primary" id="mmi-wb-pr-accept-ticked" disabled={busy !== null || !openTicked.length} onClick={() => decide("accept", openTicked)}>Accept {openTicked.length}</button>
+            <button type="button" className="button button-small" id="mmi-wb-pr-reject-ticked" disabled={busy !== null || !openTicked.length} onClick={() => decide("reject", openTicked)}>Reject {openTicked.length}</button>
+          </span>
+        )}
+      </div>
+
+      <div className="mmi-table-scroll-wrapper">
+        <table className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-pr-table">
+          <thead>
+            <tr>
+              <td className="check-column"><input type="checkbox" aria-label="Tick every row on this page" checked={allTicked}
+                onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])} /></td>
+              {COLS.map((c) => (
+                <th key={c.key} data-col={c.key} tabIndex={0}
+                  className={`mmi-wb-job-sortable${filter.orderby === c.key ? " is-active" : ""}${filter.orderby === c.key && filter.order === "desc" ? " is-desc" : ""}`}
+                  aria-sort={filter.orderby === c.key ? (filter.order === "desc" ? "descending" : "ascending") : "none"}
+                  onClick={() => sortBy(c.key)} onKeyDown={(e) => onKey(e, c.key)}>
+                  {c.label} <span className="sort-icon" />
+                </th>
+              ))}
+              <th><span className="screen-reader-text">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="mmi-wb-pr-rows">
+            {!page && <tr><td colSpan={9} className="mmi-wb-empty-cell">Loading proposals…</td></tr>}
+            {page && !rows.length && <tr><td colSpan={9} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
+            {rows.map((row) => {
+              const shown = row.status === "applied" || row.status === "reverted" ? wordDiff(row.original ?? "", row.current) : wordDiff(row.current, target(row));
+              const [statusText, statusKind] = STATUS_LABEL[row.status] ?? [row.status, ""];
+              const mine = rowNotice && rowNotice.id === row.id ? rowNotice : null;
+              const ed = editing && editing.id === row.id ? editing : null;
+              return [
+                <tr key={row.id} data-id={row.id} className={ed ? "is-editing" : undefined}>
+                  <th scope="row" className="check-column"><input type="checkbox" aria-label={`Tick #${row.id}`} checked={selected.includes(row.id)}
+                    onChange={(e) => setSelected((s) => (e.target.checked ? [...s, row.id] : s.filter((x) => x !== row.id)))} /></th>
+                  <td className="mmi-wb-col-id"><a href={row.edit_url} target="_blank" rel="noreferrer">{row.id}</a></td>
+                  <td className="mmi-wb-pr-title">
+                    <div className="mmi-wb-pr-now"><Diff parts={shown.before} /></div>
+                    <div className="mmi-wb-pr-new"><Diff parts={shown.after} /></div>
+                    {row.renamed && <div className="description">The supplier renamed it: “{row.renamed.from}” → “{row.renamed.to}”.</div>}
+                    {row.flags.length > 0 && <div className="mmi-wb-pr-flags">{row.flags.map((f) => <span key={f} className="mmi-badge warning inline">{f.split(":")[0]!.replace(/_/g, " ")}</span>)}</div>}
+                    {row.error && <div className="notice notice-error inline"><p>{row.error}</p></div>}
+                    {mine && <div className={`notice notice-${mine.kind === "error" ? "error" : "success"} inline mmi-wb-pr-row-notice`} role="status"><p>{mine.text}</p></div>}
+                  </td>
+                  <td>{row.brand}</td>
+                  <td className="mmi-wb-pr-rules">
+                    {row.rules.map((r) => (
+                      <button key={r} type="button" className={`mmi-wb-pr-chip${filter.rule === r ? " is-active" : ""}`} title={row.why[r] ? `${row.why[r]!.from || "—"} → ${row.why[r]!.to} (${row.why[r]!.source})` : undefined}
+                        onClick={() => setFilter((f) => ({ ...f, rule: f.rule === r ? "" : r, page: 1 }))}>{ruleLabel(r)}</button>
+                    ))}
+                  </td>
+                  <td><span className={`mmi-badge ${confKind(row.confidence)} inline`}>{row.confidence}%</span></td>
+                  <td>{row.stock === "instock" ? "In stock" : row.stock === "outofstock" ? "Out of stock" : row.stock === "onbackorder" ? "Backorder" : ""}</td>
+                  <td><span className={`mmi-badge ${statusKind} inline`}>{statusText}</span></td>
+                  <td className="mmi-wb-job-actions">{actionsFor(row.status).map((a) => button(row, a))}</td>
+                </tr>,
+                ed ? (
+                  <tr key={`${row.id}-edit`} className="mmi-wb-pr-edit-row">
+                    <td colSpan={9}>
+                      <div className="mmi-wb-pr-edit" id="mmi-wb-pr-edit">
+                        <label className="mmi-wb-tr-field mmi-wb-tr-grow">
+                          <span className="mmi-wb-label">Your title for #{row.id}</span>
+                          <input type="text" id="mmi-wb-pr-edit-input" value={ed.text} maxLength={250}
+                            onChange={(e) => setEditing({ ...ed, text: e.target.value, picks: {} })} />
+                        </label>
+                        {ed.suggestions && ed.suggestions.length > 0 && (
+                          <div className="mmi-wb-pr-suggest" id="mmi-wb-pr-suggest">
+                            <p className="description">Save a rule from your change, so other titles get it too (saving approves it):</p>
+                            {ed.suggestions.map((s) => (
+                              <div key={s.key} className="mmi-wb-pr-suggestion" data-key={s.key}>
+                                <strong>{s.label}</strong>
+                                <label><input type="checkbox" checked={ed.picks[s.key] === "brand"} disabled={!s.brand}
+                                  onChange={(e) => setEditing({ ...ed, picks: { ...ed.picks, [s.key]: e.target.checked ? "brand" : undefined } as Editing["picks"] })} />
+                                  {" "}for {s.brand || "this brand"} ({s.reach.brand} more)</label>
+                                <label><input type="checkbox" checked={ed.picks[s.key] === "all"}
+                                  onChange={(e) => setEditing({ ...ed, picks: { ...ed.picks, [s.key]: e.target.checked ? "all" : undefined } as Editing["picks"] })} />
+                                  {" "}for every brand ({s.reach.all} more)</label>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mmi-wb-tr-buttons">
+                          <BusyButton id="mmi-wb-pr-edit-save" className="button button-primary" busy={busy === row.id} icon="saved" label="Save my title" busyLabel="Saving…"
+                            disabled={ed.text.trim() === "" || ed.text === target(row)} onClick={saveEdit} />
+                          <button type="button" className="button" id="mmi-wb-pr-edit-cancel" onClick={() => setEditing(null)}>Cancel</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : null,
+              ];
+            })}
+          </tbody>
+        </table>
+      </div>
+      {page && page.pages > 1 && (
+        <div className="mmi-wb-pr-pager" id="mmi-wb-pr-pager">
+          <button type="button" className="button button-small" disabled={filter.page <= 1 || loading} onClick={() => setFilter((f) => ({ ...f, page: f.page - 1 }))}>‹ Previous</button>
+          <span>Page {filter.page} of {page.pages}</span>
+          <button type="button" className="button button-small" disabled={filter.page >= page.pages || loading} onClick={() => setFilter((f) => ({ ...f, page: f.page + 1 }))}>Next ›</button>
+        </div>
+      )}
+    </Section>
+  );
+}

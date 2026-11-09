@@ -597,7 +597,10 @@ class Store {
 	public static function summary(): array {
 		global $wpdb;
 		$t      = self::table();
-		$status = $wpdb->get_results( "SELECT status, COUNT(*) n FROM {$t} GROUP BY status", ARRAY_A );
+		// Products Product Data leaves alone keep their history rows; every count leaves them out, as the lists do,
+		// so a count always matches the list it opens (11-09: Written said 7,107, its list 6,725).
+		$x      = Exclusions::sql_not_excluded();
+		$status = $wpdb->get_results( "SELECT status, COUNT(*) n FROM {$t} WHERE 1=1{$x} GROUP BY status", ARRAY_A );
 		$by     = [];
 		foreach ( $status as $s ) {
 			$by[ $s['status'] ] = (int) $s['n'];
@@ -608,7 +611,7 @@ class Store {
 			$sums[] = $wpdb->prepare( 'SUM(FIND_IN_SET(%s, rules) > 0) AS %i', $id, 'r_' . $id );
 			$sums[] = $wpdb->prepare( 'SUM(rules = %s) AS %i', $id, 'o_' . $id );
 		}
-		$rule_row = $wpdb->get_row( 'SELECT ' . implode( ', ', $sums ) . " FROM {$t} WHERE status IN ('proposed','accepted','edited','stale')", ARRAY_A ) ?: [];
+		$rule_row = $wpdb->get_row( 'SELECT ' . implode( ', ', $sums ) . " FROM {$t} WHERE status IN ('proposed','accepted','edited','stale'){$x}", ARRAY_A ) ?: [];
 		$rules    = [];
 		foreach ( self::rules() as $id => $r ) {
 			$rules[ $id ] = $r + [
@@ -622,15 +625,15 @@ class Store {
 		$known = TitleRules::pack()->flags();
 		foreach ( array_merge( $known['blocking'], $known['shown'] ) as $flag ) {
 			$flags[ $flag ] = $flag === 'duplicate_title'
-				? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE dupes > 0 AND status IN ('proposed','accepted','edited','stale')" )
-				: (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE flags LIKE %s AND status IN ('proposed','accepted','edited','stale')", '%' . $wpdb->esc_like( $flag ) . '%' ) );
+				? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE dupes > 0 AND status IN ('proposed','accepted','edited','stale'){$x}" )
+				: (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE flags LIKE %s AND status IN ('proposed','accepted','edited','stale'){$x}", '%' . $wpdb->esc_like( $flag ) . '%' ) );
 		}
 		$brands = $wpdb->get_col( "SELECT brand FROM {$t} WHERE brand <> '' GROUP BY brand ORDER BY brand ASC LIMIT 500" );
-		$auto   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE " . self::auto_eligible_sql() ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$auto   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE " . self::auto_eligible_sql() . $x ); // phpcs:ignore WordPress.DB.PreparedSQL
 
 		return [
 			'by_status' => $by,
-			'changed'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE status = 'proposed' AND reviewed_at IS NOT NULL" ),
+			'changed'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE status = 'proposed' AND reviewed_at IS NOT NULL{$x}" ),
 			'rules'     => $rules,
 			'flags'     => $flags,
 			'brands'    => $brands,

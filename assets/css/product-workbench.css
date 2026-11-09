@@ -845,3 +845,84 @@ td.mmi-wb-col-thumb img,
 .mmi-wb-tr-wordlist textarea {
     width: 100%;
 }
+
+/* ── Title proposals (src/workbench/TitleProposals.tsx) ─────────────── */
+.mmi-wb-pr-writer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    font-weight: 600;
+}
+.mmi-wb-pr-views {
+    margin-bottom: 8px;
+}
+.mmi-wb-pr-filters {
+    display: flex;
+    align-items: center;
+}
+.mmi-wb-pr-filters input[type="search"] {
+    width: 260px;
+}
+.mmi-wb-pr-bulk {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+#mmi-wb-pr-table th {
+    white-space: nowrap;
+}
+.mmi-wb-pr-title {
+    min-width: 320px;
+}
+.mmi-wb-pr-now {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-pr-now .mmi-wb-before {
+    color: var(--mmi-wb-danger);
+    text-decoration: line-through;
+}
+.mmi-wb-pr-new {
+    font-weight: 600;
+}
+.mmi-wb-pr-new .mmi-wb-after {
+    color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+}
+.mmi-wb-pr-flags {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.mmi-wb-pr-chip {
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 10px;
+    background: #fff;
+    padding: 1px 8px;
+    margin: 0 4px 4px 0;
+    font-size: 12px;
+    cursor: pointer;
+}
+.mmi-wb-pr-chip.is-active {
+    border-color: var(--mmi-wb-accent);
+    color: var(--mmi-wb-accent);
+}
+.mmi-wb-pr-edit {
+    padding: 8px 4px;
+}
+.mmi-wb-pr-suggestion {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    margin: 4px 0;
+}
+.mmi-wb-pr-pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}

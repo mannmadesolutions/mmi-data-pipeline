@@ -56,7 +56,7 @@ test("searching waits for typing to pause, then sends one request", async ({ pag
 test("headings sort on the server and say which way", async ({ page }) => {
   const { backend } = await open(page);
   await searchFor(page, "synth");
-  const id = page.locator("th[data-col='id']");
+  const id = page.locator("#mmi-wb-table th[data-col='id']");
   await id.click();
   await expect(id).toHaveAttribute("aria-sort", "ascending");
   await id.click();
