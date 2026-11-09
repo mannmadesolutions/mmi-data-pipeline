@@ -41,7 +41,7 @@ test("a brand's sites: what each is, a site added, the Brand website", async ({ 
   const { api, sec } = await open(page);
   await sec.locator('[data-brand="20"] button').click();
   const d = drawer(page);
-  await expect(d.locator("#mmi-wb-bs-sites tr[data-host]")).toHaveCount(2);
+  await expect(d.locator("#mmi-wb-bs-sites tr[data-host]")).toHaveCount(3);
   await d.locator('[data-host="shop.example"] select').selectOption("reseller");
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("shop.example: A reseller.");
   expect(api.callsTo("brand-sites/20")[0]!.body).toEqual({ roles: { "shop.example": "reseller" } });
@@ -93,4 +93,30 @@ test("a brand with no maker site can be set aside, and brought back", async ({ p
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("Set aside: its maker has no site.");
   expect(api.callsTo("brand-sites/21")[0]!.body).toEqual({ gone: true });
   await expect(d.locator("#mmi-wb-bs-gone")).toHaveText("Bring it back");
+});
+
+test("a brand's site-wide fixes: pages moved, a reseller's products to the maker's pages, bundles, an unused site", async ({ page }) => {
+  const { api, sec } = await open(page);
+  await sec.locator('[data-brand="20"] button').click();
+  const d = drawer(page);
+  await d.getByRole("button", { name: "Move them to acme-audio.example" }).click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("2 pages moved to acme-audio.example; reading them.");
+  expect(api.callsTo("brand-sites/20/move")[0]!.body).toEqual({ from: "acme.example", to: "acme-audio.example" });
+  await expect(d.locator(".mmi-wb-bs-move")).toHaveCount(0);
+
+  await d.locator('[data-host="shop.example"] [data-site-action="to-own"]').click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("1 product moved to the maker's own pages; reading them.");
+  expect(api.callsTo("brand-sites/20/to-own")[0]!.body).toEqual({ from: "shop.example" });
+
+  await d.locator("#mmi-wb-bs-bundles-none").click();
+  expect(api.callsTo("brand-sites/20/bundles-none")).toHaveLength(0);
+  await d.locator("#mmi-wb-bs-bundles-none").click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("2 bundles marked: the maker doesn't publish them.");
+
+  await d.locator('[data-host="old.example"] [data-site-action="remove"]').click();
+  await expect(d.locator('[data-host="old.example"] [data-site-action="remove"]')).toHaveText("Click again to remove");
+  await d.locator('[data-host="old.example"] [data-site-action="remove"]').click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("old.example taken off the list.");
+  expect(api.callsTo("brand-sites/20").at(-1)!.body).toEqual({ remove: "old.example", bundles_none: false });
+  await expect(d.locator('[data-host="old.example"]')).toHaveCount(0);
 });

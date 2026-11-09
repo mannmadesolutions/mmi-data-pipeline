@@ -84,6 +84,7 @@ export function BrandSites({ cfg }: { cfg: TitleRulesConfig }) {
 function BrandDrawer({ cfg, brand, onBrand, onClose }: { cfg: TitleRulesConfig; brand: Brand; onBrand: (b: Brand) => void; onClose: () => void }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
   const [addHost, setAddHost] = useState("");
   const [addRole, setAddRole] = useState<SiteRole>("official");
   const [website, setWebsite] = useState(brand.website);
@@ -124,6 +125,20 @@ function BrandDrawer({ cfg, brand, onBrand, onClose }: { cfg: TitleRulesConfig; 
       setNotice({ text: done, kind: "ok" });
       return true;
     } catch (e) { setNotice({ text: msg(e), kind: "error" }); return false; } finally { setSaving(null); }
+  };
+
+  /** A brand-wide change (POST /brand-sites/{id}/{path}): the brand comes back, and the products are read again. */
+  const brandAction = async (key: string, path: string, body: Record<string, unknown>, done: (d: { done?: number; left?: number; marked?: number }) => string, confirm = false) => {
+    if (confirm && armed !== key) { setArmed(key); return; }
+    setArmed(null);
+    setSaving(key);
+    setNotice(null);
+    try {
+      const d = await rest<{ brand: Brand; done?: number; left?: number; marked?: number }>(cfg, "POST", `brand-sites/${brand.id}${path}`, body);
+      onBrand(d.brand);
+      setNotice({ text: done(d), kind: "ok" });
+      void loadProducts(group, page);
+    } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setSaving(null); }
   };
 
   const find = async () => {
@@ -176,10 +191,28 @@ function BrandDrawer({ cfg, brand, onBrand, onClose }: { cfg: TitleRulesConfig; 
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-bs-notice"><p>{notice.text}</p></div>}
 
       <h5>1. Where the maker publishes</h5>
+      {(brand.moves ?? []).map((mv) => (
+        <div key={`${mv.from} ${mv.to}`} className="notice notice-warning inline mmi-wb-bs-move" data-move={mv.from}>
+          <p>{mv.n} products' pages on {mv.from} now redirect to {mv.to}.{" "}
+            <button type="button" className="button button-small" disabled={saving !== null} title={`Each takes its new address on ${mv.to}, approved and read; ${mv.to} is saved as the maker's site`}
+              onClick={() => void brandAction(`move:${mv.from}`, "/move", { from: mv.from, to: mv.to }, (d) => `${d.done ?? 0} page${d.done === 1 ? "" : "s"} moved to ${mv.to}; reading them.`)}>Move them to {mv.to}</button>
+          </p>
+        </div>
+      ))}
+      {brand.bundles_none > 0 && (
+        <div className="notice notice-info inline mmi-wb-bs-bundles">
+          <p>{brand.bundles_none} bundle{brand.bundles_none === 1 ? " has" : "s have"} no page on the maker's site. A bundle sold here takes its content from its products.{" "}
+            <button type="button" id="mmi-wb-bs-bundles-none" className={`button button-small mmi-wb-mp-danger${armed === "bundles" ? " is-armed" : ""}`} disabled={saving !== null}
+              onClick={() => void brandAction("bundles", "/bundles-none", {}, (d) => `${d.done ?? 0} bundle${d.done === 1 ? "" : "s"} marked: the maker doesn't publish them.`, true)}>
+              {armed === "bundles" ? "Click again to mark them" : "Maker doesn't publish them"}
+            </button>
+          </p>
+        </div>
+      )}
       <table className="widefat striped mmi-wb-bs-sites" id="mmi-wb-bs-sites">
-        <thead><tr><th>Site</th><th>Products linking there</th><th>Pages read</th><th>What it is</th></tr></thead>
+        <thead><tr><th>Site</th><th>Products linking there</th><th>Pages read</th><th>What it is</th><th><span className="screen-reader-text">Actions</span></th></tr></thead>
         <tbody>
-          {!brand.sites.length && <tr><td colSpan={4} className="mmi-wb-empty-cell">No site yet: add the maker's site below.</td></tr>}
+          {!brand.sites.length && <tr><td colSpan={5} className="mmi-wb-empty-cell">No site yet: add the maker's site below.</td></tr>}
           {brand.sites.map((s) => (
             <tr key={s.host} data-host={s.host}>
               <td><a href={`https://${s.host}`} target="_blank" rel="noreferrer">{s.host}</a>{s.why && <p className="description">{s.why}</p>}</td>
@@ -190,6 +223,23 @@ function BrandDrawer({ cfg, brand, onBrand, onClose }: { cfg: TitleRulesConfig; 
                   onChange={(e) => void save(`role:${s.host}`, rolesBody(s.host, e.target.value as SiteRole), `${s.host}: ${roleLabel(e.target.value as SiteRole)}.`)}>
                   {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
+              </td>
+              <td className="mmi-wb-bs-site-actions">
+                {!isMaker(s) && s.better > 0 && (
+                  <button type="button" className="button button-small button-primary" disabled={saving !== null} data-site-action="to-own"
+                    title={`The ${s.better} products here with a page proposed on the maker's own site take it, approved and read`}
+                    onClick={() => void brandAction(`own:${s.host}`, "/to-own", { from: s.host }, (d) => `${d.done ?? 0} product${d.done === 1 ? "" : "s"} moved to the maker's own pages; reading them.`)}>
+                    Use the maker's pages ({s.better})
+                  </button>
+                )}
+                {!isMaker(s) && (s.n === 0 || s.bundles > 0) && (
+                  <button type="button" className={`button button-small mmi-wb-mp-danger${armed === `rm:${s.host}` ? " is-armed" : ""}`} disabled={saving !== null} data-site-action="remove"
+                    title={s.bundles ? "Its bundles are marked as having no maker page first" : "Take it off this brand's list"}
+                    onClick={() => void brandAction(`rm:${s.host}`, "", { remove: s.host, bundles_none: s.bundles > 0 },
+                      (d) => (d.left ? `${d.marked ?? 0} bundles marked; ${d.left} products still link to ${s.host}: give them other pages first.` : `${s.host} taken off the list.`), true)}>
+                    {armed === `rm:${s.host}` ? "Click again to remove" : "Remove"}
+                  </button>
+                )}
               </td>
             </tr>
           ))}

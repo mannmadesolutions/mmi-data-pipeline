@@ -15,6 +15,8 @@ export interface BrandSite {
 export interface Brand {
   id: number; name: string; website: string; url: string; logo: string; products: number; open: number;
   failed_open: number; no_url: number; no_page: number; sites: BrandSite[]; gone: boolean; bundles: number; bundles_none: number;
+  /** A site whose product pages now redirect to another (two or more products). */
+  moves?: { from: string; to: string; n: number; role: string }[];
 }
 
 export const ROLES: { value: SiteRole; label: string }[] = [

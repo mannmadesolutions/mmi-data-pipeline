@@ -25,9 +25,11 @@ export class MakerPagesMock {
   ];
 
   brands = [
-    { id: 20, name: "Acme Audio", website: "https://acme.example", url: "https://acme.example", logo: "", products: 7, open: 2, failed_open: 1, no_url: 1, no_page: 0, gone: false, bundles: 0, bundles_none: 0,
+    { id: 20, name: "Acme Audio", website: "https://acme.example", url: "https://acme.example", logo: "", products: 7, open: 2, failed_open: 1, no_url: 1, no_page: 0, gone: false, bundles: 2, bundles_none: 2,
+      moves: [{ from: "acme.example", to: "acme-audio.example", n: 2, role: "" }],
       sites: [{ host: "acme.example", n: 5, read: 4, unread: 0, failed: 1, unverified: 0, better: 0, bundles: 0, open: 2, role: "official", why: "", saved: true, map: "", shared: 0 },
-        { host: "shop.example", n: 1, read: 1, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role: "", why: "", saved: false, map: "", shared: 0 }] },
+        { host: "shop.example", n: 1, read: 1, unread: 0, failed: 0, unverified: 0, better: 1, bundles: 0, open: 0, role: "", why: "", saved: false, map: "", shared: 0 },
+        { host: "old.example", n: 0, read: 0, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role: "reseller", why: "", saved: true, map: "", shared: 0 }] },
     { id: 21, name: "Example Sound", website: "", url: "", logo: "", products: 3, open: 0, failed_open: 0, no_url: 3, no_page: 0, gone: false, bundles: 0, bundles_none: 0,
       sites: [{ host: "resell.example", n: 3, read: 3, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role: "reseller", why: "", saved: true, map: "", shared: 0 }] },
     { id: 22, name: "Old Maker", website: "", url: "", logo: "", products: 2, open: 0, failed_open: 0, no_url: 0, no_page: 2, gone: true, bundles: 0, bundles_none: 0, sites: [] },
@@ -157,9 +159,13 @@ export class MakerPagesMock {
         return { data: { done, errors: {}, queue: null } };
       }
     }
-    const bs = path.match(/^brand-sites\/(\d+)(?:\/(products|pages))?$/);
+    const bs = path.match(/^brand-sites\/(\d+)(?:\/(products|pages|move|to-own|bundles-none))?$/);
     if (bs) {
-      const b = this.brands.find((x) => x.id === Number(bs[1]))!;
+      const b = this.brands.find((x) => x.id === Number(bs[1]))! as (typeof this.brands)[number] & { moves?: { from: string; to: string; n: number; role: string }[] };
+      if (bs[2] === "move") { b.moves = []; return { data: { done: 2, brand: b } }; }
+      if (bs[2] === "to-own") { const s = b.sites.find((x) => x.host === body.from)!; const n = s.better; s.better = 0; return { data: { done: n, brand: b } }; }
+      if (bs[2] === "bundles-none") { const n = b.bundles_none; b.bundles_none = 0; return { data: { done: n, brand: b } }; }
+      if (!bs[2] && method === "POST" && body.remove) { b.sites = b.sites.filter((x) => x.host !== body.remove); return { data: { brand: b, find: null, marked: 0, left: 0 } }; }
       if (!bs[2] && method === "POST") {
         if (body.website !== undefined) b.website = String(body.website);
         if (body.gone !== undefined) b.gone = !!body.gone;
