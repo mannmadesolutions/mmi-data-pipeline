@@ -20,6 +20,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
+import { TitleRules } from "./TitleRules";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
 import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
@@ -501,6 +502,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
       <StandingRules rules={rules} busy={busy || ruleBusy !== null} editingId={keep && editing ? editing.id : ""} notice={ruleNotice}
         onOpen={openRule} onRun={runRule} onToggle={toggleRule} onMove={moveRule} onDelete={deleteRule} />
 
+      {cfg.titleRules ? <TitleRules cfg={cfg.titleRules} /> : null}
       <CatalogUpkeep onRunFinished={loadRules} />
 
       <RecentChanges jobs={jobs} busy={runner.running !== null} onUndo={onUndo} onResume={onResume} />

@@ -1013,7 +1013,7 @@ class MMI_Pipeline_Admin {
         foreach ( \MannMade\DataPipeline\Workbench\Health_Checks::all() as $id => $check ) {
             $checks[] = [ 'id' => (string) $id, 'label' => (string) $check['label'] ];
         }
-        return [
+        $config = [
             'suppliers'        => $suppliers,
             'statuses'         => [ 'publish' => 'Published', 'draft' => 'Draft', 'pending' => 'Pending', 'private' => 'Private' ],
             'stock'            => [ 'instock' => 'In stock', 'outofstock' => 'Out of stock', 'onbackorder' => 'Backorder' ],
@@ -1028,6 +1028,15 @@ class MMI_Pipeline_Admin {
             'reservedMetaKeys' => \MannMade\DataPipeline\Custom_Rule_Actions::RESERVED_META_KEYS,
             'maxMetaColumns'   => \MannMade\DataPipeline\Workbench\Product_Workbench::MAX_META_COLUMNS,
         ];
+        // Title rules (Product Data): shown where the title rule routes (mmpt/v1) are registered; the plugin that
+        // registers them answers the filter. Site-relative URLs; the REST nonce is fetched by the page when needed.
+        if ( apply_filters( 'mmi_pipeline_title_rules_screen', false ) ) {
+            $config['titleRules'] = [
+                'rest'     => wp_make_link_relative( rest_url( 'mmpt/v1/' ) ),
+                'nonceUrl' => wp_make_link_relative( admin_url( 'admin-ajax.php?action=rest-nonce' ) ),
+            ];
+        }
+        return $config;
     }
 
     private static function enqueue_style( string $handle, string $relative_path, array $deps ): void {

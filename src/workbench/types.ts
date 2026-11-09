@@ -2,6 +2,7 @@
  * Shapes of the Workbench AJAX responses (includes/controllers/ajax/WorkbenchController.php,
  * includes/workbench/class-product-workbench.php). Keep in step with those.
  */
+import type { TitleRulesConfig } from "./titleRulesApi";
 
 export type ProductStatus = "publish" | "draft" | "pending" | "private" | string;
 export type StockStatus = "instock" | "outofstock" | "onbackorder" | string;
@@ -131,6 +132,8 @@ export interface WorkbenchConfig {
   /** WooCommerce's own meta keys (lowercase): shown as columns, never edited as meta. */
   reservedMetaKeys: string[];
   maxMetaColumns: number;
+  /** Title rules section: present where the title rule routes are registered. */
+  titleRules?: TitleRulesConfig;
 }
 
 /** The shared action picker's current choice, read from its markup. */

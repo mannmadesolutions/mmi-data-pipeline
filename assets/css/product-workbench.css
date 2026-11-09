@@ -785,3 +785,44 @@ td.mmi-wb-col-thumb img,
 .mmi-wb-island {
     display: contents;
 }
+
+/* ── Title rules (src/workbench/TitleRules.tsx) ─────────────────────── */
+.mmi-wb-tr-form {
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 0 0 12px;
+    background: #fff;
+}
+.mmi-wb-tr-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.mmi-wb-tr-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.mmi-wb-tr-grow {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+.mmi-wb-tr-grow input[type="text"] {
+    width: 100%;
+}
+.mmi-wb-tr-check {
+    flex-direction: row;
+    align-items: center;
+    min-height: 30px;
+}
+#mmi-wb-tr-table th {
+    white-space: nowrap;
+}
+.mmi-wb-tr-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}

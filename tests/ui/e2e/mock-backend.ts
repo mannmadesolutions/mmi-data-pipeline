@@ -4,6 +4,7 @@
  * (WorkbenchController.php). Every request is recorded for assertions.
  */
 import type { Page, Route } from "@playwright/test";
+import { TitleRulesMock } from "./title-rules-mock";
 
 export interface Product {
   id: number; title: string; sku: string; status: string; stock: string;
@@ -62,6 +63,8 @@ export class MockBackend {
 
   async attach(page: Page): Promise<void> {
     await page.route("**/wp-admin/admin-ajax.php", (route) => this.handle(route));
+    // The Title rules section's REST routes (a spec that attaches its own TitleRulesMock afterwards overrides these).
+    await new TitleRulesMock().attach(page);
   }
 
   callsTo(action: string) { return this.calls.filter((c) => c.action === action); }
