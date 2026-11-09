@@ -155,6 +155,16 @@ class MMI_Product_Content_Registry {
             'sources' => [ [ '_mmi_version', 'text' ] ],
             'store'   => [ '_mmi_version', 'text' ],
         ],
+        // The maker's own page for this product, which Product Data reads. A registry
+        // concept since Product Data migration phase 4 (2026-11-09): other plugins
+        // (feeds, schema, upgrade matrix) read it here instead of the meta key.
+        'vendor_product_url'   => [
+            'label'   => 'Maker page',
+            'group'   => 'notes',
+            'type'    => 'text',
+            'sources' => [ [ 'vendor_product_url', 'text' ] ],
+            'store'   => [ 'vendor_product_url', 'text' ],
+        ],
         'disclaimer'           => [
             'label'   => 'Disclaimer',
             'group'   => 'notes',
@@ -570,9 +580,14 @@ class MMI_Product_Content_Registry {
      * wp_unslash() on its input, which turns a JSON "–" into "u2013".
      * That is the root cause of the escape damage found in `_mmi_top_features`.
      *
+     * With $source (a writer named to MMI_Pipeline_Write::register_source()), the
+     * write goes through the pipeline's write gateway: it shows in the Product
+     * Workbench's Recent changes with Undo and fires mmi_pipeline_field_written.
+     * The caller has already decided (locks are the caller's business, as before).
+     *
      * @return bool True when the stored value changed.
      */
-    public static function store( int $product_id, string $concept, $value ): bool {
+    public static function store( int $product_id, string $concept, $value, string $source = '' ): bool {
         [ $key, $shape ] = self::CONCEPTS[ $concept ]['store'] ?? [ '', '' ];
         if ( $key === '' || $product_id <= 0 ) {
             return false;
@@ -585,6 +600,12 @@ class MMI_Product_Content_Registry {
 
         $current = get_post_meta( $product_id, $key, true );
         self::forget( $product_id );
+
+        if ( $source !== '' && class_exists( 'MMI_Pipeline_Write' ) ) {
+            $r = MMI_Pipeline_Write::field( $product_id, $key, $encoded === '' ? null : $encoded, $source, MMI_Pipeline_Write::MODE_FORCE );
+            self::forget( $product_id );
+            return $r['result'] === 'written';
+        }
 
         if ( $encoded === '' ) {
             if ( metadata_exists( 'post', $product_id, $key ) ) {
@@ -662,12 +683,12 @@ class MMI_Product_Content_Registry {
      *
      * @return string[] The platforms that were added.
      */
-    public static function merge_platforms( int $product_id, array $platforms ): array {
+    public static function merge_platforms( int $product_id, array $platforms, string $source = '' ): array {
         $current = (array) self::canonical_value( $product_id, 'platforms' );
         $merged  = self::normalize_for_storage( 'platforms', array_merge( $current, $platforms ) );
         $added   = array_values( array_diff( $merged, self::normalize_for_storage( 'platforms', $current ) ) );
         if ( $added ) {
-            self::store( $product_id, 'platforms', $merged );
+            self::store( $product_id, 'platforms', $merged, $source );
         }
         return $added;
     }
