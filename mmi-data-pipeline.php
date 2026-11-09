@@ -162,6 +162,18 @@ add_action( 'plugins_loaded', function () {
     }
 } );
 
+// The write gateway (MMI_Pipeline_Write) and Field Locks reading. Outside the
+// license gate: other plugins write product fields through the gateway, and a
+// lapsed license must not let them stop respecting locks (a store can have
+// thousands of locked products) or stop keeping history. Class files only: the lock metabox,
+// bulk actions and the Workbench screens stay inside the gate.
+add_action( 'plugins_loaded', function () {
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-field-mapping-defaults.php';
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-field-locks.php';
+    require_once MMI_PIPELINE_PATH . 'includes/workbench/class-workbench-change-log.php';
+    require_once MMI_PIPELINE_PATH . 'includes/class-pipeline-write.php';
+}, 5 );
+
 // Duplicate listings point search engines at their main listing (mmi-seo's
 // mmi_seo_canonical filter). Outside the license gate: a lapsed license must
 // not turn hidden copies back into competing pages.

@@ -23,11 +23,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Workbench_Change_Log {
 
-    const SCHEMA_VERSION     = 1;
+    const SCHEMA_VERSION     = 2; // 2: `field` column for MMI_Pipeline_Write rows
     const SCHEMA_SETTING     = 'mmi_workbench_schema_version';
     const JOBS_SETTING       = 'mmi_workbench_jobs';
     const JOB_IDS_PREFIX     = 'mmi_workbench_job_ids_';
     const MAX_JOBS           = 30;
+    /** MMI_Pipeline_Write jobs (kind 'write': one per writer per day) age out on their own count, so they never push out a person's Applies. */
+    const MAX_WRITE_JOBS     = 90;
 
     /** Change-row states. */
     const ROW_APPLIED  = 0;
@@ -51,11 +53,13 @@ final class Workbench_Change_Log {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             job_id VARCHAR(40) NOT NULL,
             product_id BIGINT UNSIGNED NOT NULL,
+            field VARCHAR(191) NOT NULL DEFAULT '',
             before_state LONGTEXT NOT NULL,
             after_state LONGTEXT NOT NULL,
             state TINYINT UNSIGNED NOT NULL DEFAULT 0,
             PRIMARY KEY  (id),
-            KEY job_row (job_id, id)
+            KEY job_row (job_id, id),
+            KEY job_product (job_id, product_id)
         ) " . $wpdb->get_charset_collate() . ';' );
 
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', self::table() ) );
@@ -80,10 +84,15 @@ final class Workbench_Change_Log {
         $jobs = self::jobs();
         $jobs[ $job['id'] ] = $job;
         uasort( $jobs, static fn( $a, $b ) => strcmp( $b['created_at'], $a['created_at'] ) );
-        // Oldest jobs age out, with their product lists and change rows.
-        foreach ( array_slice( array_keys( $jobs ), self::MAX_JOBS ) as $old ) {
-            self::purge_job( $old );
-            unset( $jobs[ $old ] );
+        // Oldest jobs age out, with their product lists and change rows; a
+        // person's Applies and the writers' daily jobs each keep their own count.
+        $kept = [ 'apply' => 0, 'write' => 0 ];
+        foreach ( $jobs as $id => $j ) {
+            $kind = ( $j['kind'] ?? '' ) === 'write' ? 'write' : 'apply';
+            if ( ++$kept[ $kind ] > ( $kind === 'write' ? self::MAX_WRITE_JOBS : self::MAX_JOBS ) ) {
+                self::purge_job( (string) $id );
+                unset( $jobs[ $id ] );
+            }
         }
         MMI_DB::set_setting( self::JOBS_SETTING, $jobs );
     }
@@ -106,7 +115,7 @@ final class Workbench_Change_Log {
 
     /* ── Change rows ───────────────────────────────────────────────────── */
 
-    /** @param list<array{product_id:int,before:array,after:array}> $changes */
+    /** @param list<array{product_id:int,before:array,after:array,field?:string}> $changes */
     public static function record( string $job_id, array $changes ): void {
         if ( empty( $changes ) ) {
             return;
@@ -115,14 +124,39 @@ final class Workbench_Change_Log {
         $values = [];
         $args   = [];
         foreach ( $changes as $c ) {
-            $values[] = '(%s, %d, %s, %s, %d)';
-            array_push( $args, $job_id, (int) $c['product_id'], wp_json_encode( $c['before'] ), wp_json_encode( $c['after'] ), self::ROW_APPLIED );
+            $values[] = '(%s, %d, %s, %s, %s, %d)';
+            array_push( $args, $job_id, (int) $c['product_id'], (string) ( $c['field'] ?? '' ), wp_json_encode( $c['before'] ), wp_json_encode( $c['after'] ), self::ROW_APPLIED );
         }
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders built above.
         $wpdb->query( $wpdb->prepare(
-            'INSERT INTO ' . self::table() . ' (job_id, product_id, before_state, after_state, state) VALUES ' . implode( ',', $values ),
+            'INSERT INTO ' . self::table() . ' (job_id, product_id, field, before_state, after_state, state) VALUES ' . implode( ',', $values ),
             ...$args
         ) );
+    }
+
+    /** A job's still-applied row for one product and field (MMI_Pipeline_Write), or null. */
+    public static function find_row( string $job_id, int $product_id, string $field ): ?array {
+        global $wpdb;
+        $r = $wpdb->get_row( $wpdb->prepare(
+            'SELECT id, before_state FROM ' . self::table() . ' WHERE job_id = %s AND product_id = %d AND field = %s AND state = %d ORDER BY id DESC LIMIT 1',
+            $job_id, $product_id, $field, self::ROW_APPLIED
+        ), ARRAY_A );
+        return $r ? [ 'id' => (int) $r['id'], 'before' => (array) json_decode( $r['before_state'], true ) ] : null;
+    }
+
+    public static function update_after( int $row_id, array $after ): void {
+        global $wpdb;
+        $wpdb->update( self::table(), [ 'after_state' => wp_json_encode( $after ) ], [ 'id' => $row_id ], [ '%s' ], [ '%d' ] );
+    }
+
+    public static function delete_row( int $row_id ): void {
+        global $wpdb;
+        $wpdb->delete( self::table(), [ 'id' => $row_id ], [ '%d' ] );
+    }
+
+    public static function count_rows( string $job_id ): int {
+        global $wpdb;
+        return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::table() . ' WHERE job_id = %s', $job_id ) );
     }
 
     /**
@@ -154,7 +188,7 @@ final class Workbench_Change_Log {
     public static function sample( string $job_id, int $limit = 20 ): array {
         global $wpdb;
         $rows = $wpdb->get_results( $wpdb->prepare(
-            'SELECT product_id, before_state, after_state, state FROM ' . self::table() . '
+            'SELECT product_id, field, before_state, after_state, state FROM ' . self::table() . '
              WHERE job_id = %s ORDER BY id ASC LIMIT %d',
             $job_id, $limit
         ), ARRAY_A );

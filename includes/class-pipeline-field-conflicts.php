@@ -100,6 +100,11 @@ class MMI_Pipeline_Field_Conflicts {
                     $messages[] = sprintf( 'Catalog Maintenance rule “%s” (%s) also writes this field for %s.', $r['rule'], $r['action'], $w['supplier'] );
                 }
             }
+            foreach ( self::gateway_writers() as $g ) {
+                if ( ! $g['locks'] && in_array( self::lock_name( $w['key'] ), $g['keys'], true ) ) {
+                    $messages[] = sprintf( '%s also writes this field and doesn’t lock it, so each run may undo the other.', $g['label'] );
+                }
+            }
             foreach ( $writers as $other ) {
                 if ( $other['profile'] !== $profile_id && $other['key'] === $w['key']
                     && $other['supplier'] === $w['supplier'] && $other['value'] !== $w['value'] ) {
@@ -144,6 +149,34 @@ class MMI_Pipeline_Field_Conflicts {
     }
 
     /* ── Writers ─────────────────────────────────────────────────────────── */
+
+    /**
+     * Writers that go through the write gateway (MMI_Pipeline_Write::register_source()),
+     * e.g. a site's own title or description tools. One that locks what it writes is
+     * no conflict for an import: the import skips locked fields.
+     *
+     * @return list<array{source:string, label:string, keys:string[], locks:bool}>
+     */
+    public static function gateway_writers(): array {
+        if ( ! class_exists( 'MMI_Pipeline_Write' ) ) {
+            return [];
+        }
+        $out = [];
+        foreach ( MMI_Pipeline_Write::sources() as $source => $info ) {
+            $out[] = [
+                'source' => (string) $source,
+                'label'  => (string) $info['label'],
+                'keys'   => array_values( array_unique( array_map( [ __CLASS__, 'lock_name' ], array_map( [ 'MMI_Pipeline_Write', 'lock_key' ], (array) $info['fields'] ) ) ) ),
+                'locks'  => (bool) $info['locks'],
+            ];
+        }
+        return $out;
+    }
+
+    /** A field's name as locks store it, so a mapping key and a gateway field compare. */
+    private static function lock_name( string $key ): string {
+        return class_exists( 'MMI_Pipeline_Field_Locks' ) ? MMI_Pipeline_Field_Locks::canonical( $key ) : $key;
+    }
 
     /**
      * One row per (profile, field, supplier) an update-capable import profile writes.

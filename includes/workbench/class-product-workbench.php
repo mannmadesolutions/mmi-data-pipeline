@@ -990,10 +990,17 @@ final class Product_Workbench {
                 }
             }
             $rows = Workbench_Change_Log::rows_to_undo( $job_id, (int) $job['undo_cursor'], self::UNDO_BATCH_SIZE );
+            $by_field = $job['action'] === \MMI_Pipeline_Write::ACTION; // a writer's job: each row names its own field
             foreach ( $rows as $row ) {
-                $current = self::state( $row['product_id'], $job['action'], $job['params'] );
+                $current = $by_field
+                    ? \MMI_Pipeline_Write::read( $row['product_id'], (string) ( $row['after']['field'] ?? '' ) )
+                    : self::state( $row['product_id'], $job['action'], $job['params'] );
                 if ( $current == $row['after'] ) { // phpcs:ignore Universal.Operators.StrictComparisons -- array value equality.
-                    self::restore( $row['product_id'], $job['action'], $job['params'], $row['before'] );
+                    if ( $by_field ) {
+                        \MMI_Pipeline_Write::restore( $row['product_id'], $row['before'] );
+                    } else {
+                        self::restore( $row['product_id'], $job['action'], $job['params'], $row['before'] );
+                    }
                     Workbench_Change_Log::mark( $row['id'], Workbench_Change_Log::ROW_UNDONE );
                     $job['undone']++;
                 } else {
