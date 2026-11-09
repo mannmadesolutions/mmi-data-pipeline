@@ -953,3 +953,86 @@ td.mmi-wb-col-thumb img,
     width: 16px;
     height: 16px;
 }
+
+/* ── Description and picture proposals (src/workbench/EnrichProposals.tsx) ── */
+#mmi-wb-en-table th {
+    white-space: nowrap;
+}
+.mmi-wb-en-value {
+    min-width: 420px;
+}
+.mmi-wb-en-now {
+    color: var(--mmi-wb-muted);
+    margin-bottom: 6px;
+}
+.mmi-wb-en-new {
+    max-height: 9em;
+    overflow-y: auto;
+    border-left: 3px solid var(--mmi-wb-accent);
+    padding-left: 8px;
+}
+.mmi-wb-en-pics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.mmi-wb-en-pic {
+    position: relative;
+    width: 96px;
+}
+.mmi-wb-en-pic-img {
+    display: block;
+    width: 96px;
+    height: 96px;
+    padding: 0;
+    border: 2px solid var(--mmi-wb-border);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    overflow: hidden;
+}
+.mmi-wb-en-pic-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.mmi-wb-en-pic.is-out .mmi-wb-en-pic-img {
+    opacity: 0.45;
+}
+.mmi-wb-en-pic.is-gallery .mmi-wb-en-pic-img {
+    border-color: var(--mmi-wb-accent);
+}
+.mmi-wb-en-pic.is-featured .mmi-wb-en-pic-img {
+    border-color: var(--mmi-wb-accent);
+    box-shadow: 0 0 0 2px var(--mmi-wb-accent-bg);
+}
+.mmi-wb-en-pic-badge,
+.mmi-wb-en-pic-own,
+.mmi-wb-en-pic-low {
+    position: absolute;
+    left: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0 4px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.9);
+}
+.mmi-wb-en-pic-badge {
+    top: 4px;
+    font-weight: 600;
+    color: var(--mmi-wb-accent);
+}
+.mmi-wb-en-pic-own {
+    bottom: 4px;
+}
+.mmi-wb-en-pic-low {
+    bottom: 4px;
+    left: auto;
+    right: 4px;
+    color: var(--mmi-wb-danger);
+}
+.mmi-wb-en-star {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+}

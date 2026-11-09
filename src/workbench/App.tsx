@@ -20,6 +20,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
+import { EnrichProposals } from "./EnrichProposals";
 import { TitleProposals } from "./TitleProposals";
 import { TitleRules } from "./TitleRules";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
@@ -504,6 +505,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
         onOpen={openRule} onRun={runRule} onToggle={toggleRule} onMove={moveRule} onDelete={deleteRule} />
 
       {cfg.titleRules ? <TitleProposals cfg={cfg.titleRules} /> : null}
+      {cfg.titleRules ? <EnrichProposals cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <TitleRules cfg={cfg.titleRules} /> : null}
       <CatalogUpkeep onRunFinished={loadRules} />
 

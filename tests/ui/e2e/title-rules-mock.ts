@@ -46,6 +46,20 @@ export class TitleRulesMock {
     };
   });
   applyState = { phase: "idle", enabled: true, queue: 3, applied_today: 0, batch_size: 25, next_at: null as number | null, now: 1000, run: null as unknown };
+  enrich = [
+    ...Array.from({ length: 8 }, (_, i) => ({
+      id: 3001 + i, kind: "content", status: i < 6 ? "proposed" : i === 6 ? "accepted" : "applied", source: i % 2 ? "web_assets" : "vendor_page",
+      source_url: i % 2 ? "" : "https://maker.example/p", title: `Acme Synth ${i + 1}`, current: i === 0 ? "" : "Old short text.",
+      proposed: `A full description of Acme Synth ${i + 1}.`, chars: `A full description of Acme Synth ${i + 1}.`.length, images: [] as string[], own: [] as { token: string; url: string }[], chosen: [] as string[],
+      waiting: false, low_res: [] as string[], edit_url: `post.php?post=${3001 + i}&action=edit`, view_url: "#",
+    })),
+    ...Array.from({ length: 3 }, (_, i) => ({
+      id: 4001 + i, kind: "image", status: "proposed", source: "vendor_page", source_url: "https://maker.example/p", title: `Acme Pad ${i + 1}`,
+      current: "", proposed: "", chars: 0, images: ["/wp-includes/images/w-logo-blue.png", "/wp-includes/images/wpicons.png"],
+      own: i === 0 ? [{ token: "att:77", url: "/wp-includes/images/arrow-pointer-blue.png" }] : [], chosen: [] as string[],
+      waiting: false, low_res: i === 1 ? ["/wp-includes/images/wpicons.png"] : [], edit_url: "#", view_url: "#",
+    })),
+  ];
   constructor(private o: { staleOnce?: boolean; basic?: boolean } = {}) {}
 
   private openOf(s: string) { return ["proposed", "stale", "error"].includes(s); }
@@ -116,6 +130,13 @@ export class TitleRulesMock {
     if (this.o.staleOnce && req.headers()["x-wp-nonce"] === "rn-1") {
       return this.json(route, { code: "rest_cookie_invalid_nonce", message: "Cookie check failed" }, 403);
     }
+    const e = path.match(/^enrich\/(\d+)\/(content|image)\/(apply|revert|choose)$/);
+    if (e) {
+      const row = this.enrich.find((r) => r.id === Number(e[1]) && r.kind === e[2])!;
+      if (e[3] === "choose") { row.chosen = (body.images as string[]).filter((t) => [...row.images, ...row.own.map((o) => o.token)].includes(t)); return this.json(route, { chosen: row.chosen }); }
+      if (e[3] === "apply") { if (row.kind === "image" && !row.chosen.length) return this.json(route, { result: "error", message: "Pick the pictures for this product first." }); row.status = "applied"; return this.json(route, { result: "applied", message: "" }); }
+      row.status = "reverted"; return this.json(route, { result: "reverted", message: "" });
+    }
     const m = path.match(/^proposals\/(\d+)\/(suggest-rules|edit|apply|revert|categories|brands)$/);
     if (m) {
       const row = this.proposals.find((r) => r.id === Number(m[1]))!;
@@ -159,6 +180,25 @@ export class TitleRulesMock {
         let n = 0;
         for (const r of this.proposals) if ((body.ids as number[]).includes(r.id) && r.status !== "applied") { r.status = r.status === "edited" && body.action === "accept" ? "edited" : to!; if (body.action === "reset") r.edited = null; n++; }
         this.applyState.queue = this.proposals.filter((r) => ["accepted", "edited"].includes(r.status)).length;
+        return this.json(route, { updated: n });
+      }
+      case "enrich": {
+        const u = new URL(req.url());
+        const kind = u.searchParams.get("kind") ?? "content";
+        const status = u.searchParams.get("status") ?? "proposed";
+        const source = u.searchParams.get("source") ?? "";
+        const rows = this.enrich.filter((r) => r.kind === kind && (status === "all" || r.status === status) && (!source || r.source === source));
+        return this.json(route, { rows, total: rows.length, pages: 1 });
+      }
+      case "enrich/summary": {
+        const counts: Record<string, Record<string, number>> = {};
+        for (const r of this.enrich) { const k = `${r.kind}:${r.source}`; counts[k] = counts[k] ?? {}; counts[k]![r.status] = (counts[k]![r.status] ?? 0) + 1; }
+        return this.json(route, { counts, rules: { "content:vendor_page": { label: "Description from the maker's page", approved: true } } });
+      }
+      case "enrich/decide": {
+        const to = { accept: "accepted", reject: "rejected", reset: "proposed" }[String(body.action)]!;
+        let n = 0;
+        for (const r of this.enrich) if (r.kind === body.kind && (body.ids as number[]).includes(r.id) && r.status !== "applied") { r.status = to; n++; }
         return this.json(route, { updated: n });
       }
       case "proposals/bulk-terms": {
