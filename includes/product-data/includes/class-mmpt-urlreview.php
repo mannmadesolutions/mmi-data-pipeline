@@ -42,7 +42,7 @@ final class UrlReview {
 	const STREAMED = 50;                  // React streamed parts put in place per stored copy shown (streamed())
 	const NEARLY  = 0.34; // a title missing at most this share of the name's words still names it (a descriptor like "Compressor")
 	const CARD    = 50;   // SharedPages::covers() of a card's name for it to name the product (as Find pages' card matches)
-	const SURE    = 85;   // a rating this or more needs no person: an info or home address isn't flagged (OnePage::pages())
+	const SURE    = 85;   // a rating this or more needs no person: an info or home address isn't flagged (PageList::pages())
 	const FOLLOW  = 75;   // a same-site redirect whose page rates this or more is followed without a click (Scraper::follow_move(); owner 2026-10-28: every bad redirect then open rated 65 or less)
 	// A proposal's confidence: the start plus its notes' points, at most max (a person's choice is the only certainty).
 	// moved: our address redirecting there, in full only when the page or its address names the product (a redirect to

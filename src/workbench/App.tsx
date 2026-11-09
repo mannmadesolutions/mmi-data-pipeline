@@ -21,6 +21,7 @@ import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
 import { EnrichProposals } from "./EnrichProposals";
+import { MakerPages } from "./MakerPages";
 import { TitleProposals } from "./TitleProposals";
 import { TitleRules } from "./TitleRules";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
@@ -506,6 +507,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
       {cfg.titleRules ? <TitleProposals cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <EnrichProposals cfg={cfg.titleRules} /> : null}
+      {cfg.titleRules ? <MakerPages cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <TitleRules cfg={cfg.titleRules} /> : null}
       <CatalogUpkeep onRunFinished={loadRules} />
 

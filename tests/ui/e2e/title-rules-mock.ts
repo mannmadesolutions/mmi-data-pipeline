@@ -4,6 +4,7 @@
  * are recorded for assertions.
  */
 import type { Page, Route } from "@playwright/test";
+import { MakerPagesMock } from "./maker-pages-mock";
 
 interface Rule { id: string; kind: string; from: string; to: string; brand: string; by: string; at: string; example: number; case?: string; categories?: number[]; suppliers?: string[] }
 
@@ -19,6 +20,7 @@ function label(r: Rule): string {
 }
 
 export class TitleRulesMock {
+  makerPages = new MakerPagesMock();
   rules: Rule[] = [
     { id: "r1", kind: "replace", from: "Sub", to: "Subscription", brand: "Acme Audio", by: "Owner", at: "2026-10-01 10:00:00", example: 1001 },
     { id: "r2", kind: "remove", from: "Promo", to: "", brand: "", by: "Owner", at: "2026-10-02 10:00:00", example: 1002, suppliers: ["xchange"] },
@@ -256,6 +258,8 @@ export class TitleRulesMock {
         return this.json(route, { rules: this.list() });
       }
     }
+    const mp = this.makerPages.handle(req.method(), new URL(req.url()), path, body);
+    if (mp) return this.json(route, mp.data, mp.status ?? 200);
     return this.json(route, { code: "rest_no_route", message: "No route" }, 404);
   }
 }

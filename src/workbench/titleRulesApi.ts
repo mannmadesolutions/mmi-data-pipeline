@@ -215,6 +215,16 @@ export async function rest<T>(cfg: TitleRulesConfig, method: "GET" | "POST", pat
   return json;
 }
 
+/**
+ * The address of a page's stored copy (Product Data's admin-ajax `mmpt_url_page`, which takes the REST nonce):
+ * the page proposed for a product, or the one it has now. admin-ajax is beside the rest-nonce action's URL.
+ */
+export async function storedPageUrl(cfg: TitleRulesConfig, id: number, which: "proposed" | "current"): Promise<string> {
+  const n = await restNonce(cfg);
+  const ajax = cfg.nonceUrl.split("?")[0];
+  return `${ajax}?${new URLSearchParams({ action: "mmpt_url_page", id: String(id), which, _wpnonce: n }).toString()}`;
+}
+
 /** Forget the cached nonce (tests). */
 export function resetNonce(): void {
   nonce = "";
