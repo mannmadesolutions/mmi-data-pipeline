@@ -35,6 +35,22 @@ define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
 // class names.
 require_once MMI_PIPELINE_PATH . 'includes/mmi-shared/bootstrap.php';
 
+// Product Data module (moved from a site plugin, migration phase 5b): MannMade\DataPipeline\ProductData\X
+// → includes/product-data/includes/class-mmpt-x.php. Class files only; nothing registers its hooks yet
+// unless a site's own code hands its Product Data to it (option mmi_product_data_host = pipeline).
+spl_autoload_register(
+    static function ( $class ) {
+        $prefix = 'MannMade\\DataPipeline\\ProductData\\';
+        if ( strpos( $class, $prefix ) !== 0 ) {
+            return;
+        }
+        $file = MMI_PIPELINE_PATH . 'includes/product-data/includes/class-mmpt-' . strtolower( str_replace( '_', '-', substr( $class, strlen( $prefix ) ) ) ) . '.php';
+        if ( is_readable( $file ) ) {
+            require_once $file;
+        }
+    }
+);
+
 // Action Scheduler priority (lower number = claimed first — see
 // ActionScheduler_DBStore::claim_actions()'s "ORDER BY priority ASC, ...").
 // Profile import/export batches are user-triggered and covered by this
