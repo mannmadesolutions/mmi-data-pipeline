@@ -1145,6 +1145,30 @@ class VendorPage {
 	 * heading that starts a non-description part.
 	 */
 	/**
+	 * An import's features (filter mmi_pipeline_import_value): cleaned as FeedFill cleaned them, of maker voice,
+	 * calls to action and shop text, so the pipeline's import can take over FeedFill's job (Product Data
+	 * migration phase 3b). Other concepts pass through unchanged.
+	 *
+	 * @param mixed $value The import's value: a JSON list or a list.
+	 * @return mixed
+	 */
+	public static function clean_import_value( $value, string $concept, int $product_id = 0 ) {
+		if ( $concept !== 'features' ) {
+			return $value;
+		}
+		$list = is_string( $value ) ? json_decode( $value, true ) : $value;
+		if ( ! is_array( $list ) ) {
+			return $value;
+		}
+		$items = array_values( array_filter( array_map( static fn( $f ) => is_string( $f ) ? trim( $f ) : '', $list ), 'strlen' ) );
+		if ( ! $items ) {
+			return $value;
+		}
+		$clean = array_values( array_column( self::clean_feed( array_map( static fn( $f ) => [ 'type' => 'paragraph', 'text' => $f ], $items ) ), 'text' ) );
+		return is_string( $value ) ? wp_json_encode( $clean, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : $clean;
+	}
+
+	/**
 	 * A distributor's description blocks, cleaned like a maker page's: no first-person maker voice, calls to
 	 * action or shop chrome. Feed text has no page chrome, so when the cleaner names nothing it removed, its
 	 * silent page heuristics don't get to drop the text (Plugivery 4542's whole description went that way).

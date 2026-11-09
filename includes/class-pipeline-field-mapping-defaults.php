@@ -380,9 +380,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             'label'    => 'Mac System Requirements',
             'source'   => [
                 'xchange'  => 'requirements.mac',
+                'plugivery' => 'requirements.mac', // derived by the Plugivery updater from compats/videos (phase 3b)
             ],
             'file'      => [
                 'xchange' => 'xchange-web-assets.json',
+                'plugivery' => 'plugivery-products.json',
             ],
             'transform' => 'to_json',
             'type'     => 'json',
@@ -393,9 +395,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             'label'    => 'Windows System Requirements',
             'source'   => [
                 'xchange'  => 'requirements.windows',
+                'plugivery' => 'requirements.windows', // derived by the Plugivery updater from compats/videos (phase 3b)
             ],
             'file'      => [
                 'xchange' => 'xchange-web-assets.json',
+                'plugivery' => 'plugivery-products.json',
             ],
             'transform' => 'to_json',
             'type'     => 'json',
@@ -406,9 +410,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             'label'    => 'Linux System Requirements',
             'source'   => [
                 'xchange'  => 'requirements.linux',
+                'plugivery' => 'requirements.linux', // derived by the Plugivery updater from compats/videos (phase 3b)
             ],
             'file'      => [
                 'xchange' => 'xchange-web-assets.json',
+                'plugivery' => 'plugivery-products.json',
             ],
             'transform' => 'to_json',
             'type'     => 'json',
@@ -419,9 +425,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             'label'    => 'YouTube Video URLs',
             'source'   => [
                 'xchange'  => 'videos',
+                'plugivery' => 'video_urls', // derived by the Plugivery updater from compats/videos (phase 3b)
             ],
             'file'      => [
                 'xchange' => 'xchange-web-assets.json',
+                'plugivery' => 'plugivery-products.json',
             ],
             'transform' => 'to_json',
             'type'     => 'json',
@@ -472,9 +480,11 @@ class MMI_Pipeline_Field_Mapping_Defaults {
             'label'    => 'Supported Platforms',
             'source'   => [
                 'xchange'  => 'platforms',
+                'plugivery' => 'platforms', // derived by the Plugivery updater from compats/videos (phase 3b)
             ],
             'file'      => [
                 'xchange' => 'xchange-web-assets.json',
+                'plugivery' => 'plugivery-products.json',
             ],
             'transform' => 'to_json',
             'type'     => 'json',

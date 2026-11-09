@@ -716,9 +716,6 @@ class MMI_Product_Content_Registry {
      * @return mixed
      */
     public static function import_value( int $product_id, string $field, $value ) {
-        if ( $product_id <= 0 ) {
-            return $value;
-        }
         $concept = '';
         foreach ( self::CONCEPTS as $name => $def ) {
             if ( ( $def['store'][0] ?? '' ) === $field ) {
@@ -727,6 +724,19 @@ class MMI_Product_Content_Registry {
             }
         }
         if ( $concept === '' ) {
+            return $value;
+        }
+        /**
+         * An import's value for a registry concept, before it is merged with what the product has
+         * (new products too: $product_id 0). A store's own cleaning attaches here, e.g. features cleaned
+         * of maker voice and shop text (Product Data: VendorPage::clean_import_value()).
+         *
+         * @param mixed  $value      The import's value (usually a JSON string).
+         * @param string $concept    Registry concept ('features', 'videos', 'requirements_mac', ...).
+         * @param int    $product_id 0 for a product the import is creating.
+         */
+        $value = apply_filters( 'mmi_pipeline_import_value', $value, $concept, $product_id );
+        if ( $product_id <= 0 ) {
             return $value;
         }
         $shape    = self::CONCEPTS[ $concept ]['store'][1];

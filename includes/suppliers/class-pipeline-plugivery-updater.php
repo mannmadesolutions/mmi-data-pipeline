@@ -98,6 +98,12 @@ class MMI_Pipeline_Plugivery_Updater {
     // detail cache.
     const FEED_DETAIL_FIELDS = ['name', 'desc', 'url', 'brand_id', 'brand_name', 'cat_id', 'cat_name', 'compats', 'videos'];
 
+    /** Plugivery's plugin formats -> the content registry's plugin keys. */
+    const REGISTRY_FORMATS = ['au' => 'au', 'vst' => 'vst-2', 'vst3' => 'vst-3', 'aax' => 'aax', 'aaxd' => 'aax', 'rtas' => 'rtas', 'application' => 'standalone'];
+
+    /** Plugivery's platforms -> the content registry's. */
+    const REGISTRY_PLATFORMS = ['mac' => 'mac', 'pc' => 'windows', 'linux' => 'linux'];
+
     /** @var string */
     protected $token;
     /** @var string Catalog endpoint, always ".../catalog/" */
@@ -529,6 +535,51 @@ class MMI_Pipeline_Plugivery_Updater {
         return $stale;
     }
 
+    /**
+     * Flat fields Field Mapping can read from a record's compatibility list and videos (nested lists it
+     * doesn't offer): `platforms` (["mac","windows"]), `requirements.{mac,windows,linux}` ({plugins: [...]},
+     * keyed by OS like XChange's web assets, so the same dot paths map them) and `video_urls`. The same
+     * readings FeedFill made, so the import can take over its job (Product Data migration phase 3b).
+     *
+     * @return array{platforms: string[], requirements: array<string,array{plugins:string[]}>, video_urls: string[]}
+     */
+    public static function derived_fields(array $record): array
+    {
+        $platforms = [];
+        $formats   = [];
+        foreach ((array) ($record['compats'] ?? []) as $c) {
+            $os = self::REGISTRY_PLATFORMS[strtolower((string) ($c['platform'] ?? ''))] ?? '';
+            if ($os === '') {
+                continue;
+            }
+            $platforms[$os] = true;
+            $fmt = self::REGISTRY_FORMATS[strtolower((string) ($c['format'] ?? ''))] ?? '';
+            if ($fmt !== '') {
+                $formats[$os][$fmt] = true;
+            }
+        }
+        $requirements = [];
+        foreach ($formats as $os => $set) {
+            $requirements[$os] = ['plugins' => array_keys($set)];
+        }
+        $videos = array_values(array_unique(array_filter(
+            array_map(static fn($v) => is_array($v) ? (string) ($v['url'] ?? '') : '', (array) ($record['videos'] ?? [])),
+            static fn($u) => (bool) preg_match('#^https?://#i', $u)
+        )));
+        return ['platforms' => array_keys($platforms), 'requirements' => $requirements, 'video_urls' => $videos];
+    }
+
+    /** Rewrite the import feed from the cached list and details: no API reads (after a change to what the feed carries). */
+    public function rebuild_feed(): int
+    {
+        $list = $this->read_list();
+        if (!$list) {
+            return 0;
+        }
+        $this->write_feed($list, $this->read_details());
+        return count($list);
+    }
+
     /** The import feed: every currently-listed product, list pricing + non-image detail fields. */
     protected function write_feed(array $listRows, array $details): void
     {
@@ -542,7 +593,7 @@ class MMI_Pipeline_Plugivery_Updater {
                 }
             }
             $record['detail_fetched_at'] = $detail['detail_fetched_at'] ?? null;
-            $feed[] = $record;
+            $feed[] = $record + self::derived_fields($record);
         }
         $this->save_json($feed, self::FEED_FILE, $this->jsonDir);
     }
@@ -567,6 +618,13 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI')) {
         'synopsis'  => [
             ['type' => 'assoc', 'name' => 'details', 'optional' => true, 'description' => 'Also fetch up to this many stale product details inline (1 read each)'],
         ],
+    ]);
+
+    \WP_CLI::add_command('mmi plugivery-rebuild-feed', function () {
+        $n = (new MMI_Pipeline_Plugivery_Updater())->rebuild_feed();
+        $n ? \WP_CLI::success(sprintf('Feed rewritten from the cached list and details: %d products (no API reads).', $n)) : \WP_CLI::error('No cached list to rebuild from.');
+    }, [
+        'shortdesc' => 'Rewrite plugivery-products.json from the cached list and details (makes no API calls)',
     ]);
 
     \WP_CLI::add_command('mmi plugivery-status', function () {
