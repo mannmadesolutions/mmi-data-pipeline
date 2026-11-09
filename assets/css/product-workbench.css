@@ -818,11 +818,30 @@ td.mmi-wb-col-thumb img,
     align-items: center;
     min-height: 30px;
 }
-#mmi-wb-tr-table th {
+#mmi-wb-tr-table th,
+#mmi-wb-tr-builtin th {
     white-space: nowrap;
 }
 .mmi-wb-tr-buttons {
     display: flex;
     gap: 8px;
     margin-top: 10px;
+}
+.mmi-wb-tr-sub {
+    margin: 18px 0 4px;
+    font-size: 14px;
+}
+.mmi-wb-tr-desc {
+    margin: 0 0 8px;
+}
+.mmi-wb-tr-about {
+    font-weight: 400;
+    color: var(--mmi-wb-muted);
+    margin-top: 2px;
+}
+.mmi-wb-tr-wordlist {
+    margin-bottom: 10px;
+}
+.mmi-wb-tr-wordlist textarea {
+    width: 100%;
 }

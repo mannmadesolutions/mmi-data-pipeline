@@ -67,6 +67,49 @@ export interface RulePreview {
 
 export interface TermOption { id: number; name: string; path: string; depth: number }
 
+/** A rule of the attached rule pack (or the store's own rules, "custom"), as GET summary lists them. */
+export interface BuiltinRule {
+  id: string;
+  label: string;
+  description: string;
+  /** In use: it takes part in proposals. */
+  enabled: boolean;
+  always_on: boolean;
+  /** May auto-apply. */
+  approved: boolean;
+  /** Open proposals that use it. */
+  count: number;
+}
+
+/** The Basic pack's word lists (store data). */
+export interface TitleWords {
+  keep_caps: string[];
+  small_words: string[];
+  minor_words: string[];
+  lowercase_small: string[];
+  lowercase_styled: Record<string, string[]>;
+}
+
+export const WORD_LISTS: { key: Exclude<keyof TitleWords, "lowercase_styled">; label: string; hint: string }[] = [
+  { key: "keep_caps", label: "Kept in capitals", hint: "Words of four or more letters that stay in capitals when a title is de-shouted (MIDI, HDMI)." },
+  { key: "small_words", label: "Short words, not acronyms", hint: "Two- and three-letter words in capitals that are words and get title case (THE, BOX); other short ones stay in capitals." },
+  { key: "minor_words", label: "Lowercase mid-title (de-shouting)", hint: "Words lowercased in the middle of a de-shouted title (of, and, the)." },
+  { key: "lowercase_small", label: "Lowercase mid-title (capitalizing)", hint: "Words Capitalize words leaves lowercase unless they open the title (of, and, x)." },
+];
+
+/** The summary's rules, in the pack's order. */
+export function builtinRules(rules: Record<string, Omit<BuiltinRule, "id">>): BuiltinRule[] {
+  return Object.entries(rules).map(([id, r]) => ({
+    id, label: r.label, description: r.description, enabled: !!r.enabled, always_on: !!r.always_on, approved: !!r.approved, count: Number(r.count) || 0,
+  }));
+}
+
+/** A word list as one editable line, and back. */
+export const wordsToText = (list: string[]): string => list.join(", ");
+export function textToWords(s: string): string[] {
+  return [...new Set(s.split(/[,\n]/).map((w) => w.trim()).filter(Boolean))];
+}
+
 export const EMPTY_DRAFT: RuleDraft = { kind: "replace", from: "", to: "", brand: "", anyCase: false, categories: [], suppliers: [] };
 
 /** A saved rule as a form draft. */

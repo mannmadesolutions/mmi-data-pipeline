@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ApiError } from "./api";
 import {
-  categoryOptions, draftReady, draftToBody, EMPTY_DRAFT, KINDS, moved, previewSummary, rest, ruleToDraft, unstableNote,
-  type OwnRule, type RuleDraft, type RulePreview, type TermOption, type TitleRulesConfig,
+  builtinRules, categoryOptions, draftReady, draftToBody, EMPTY_DRAFT, KINDS, moved, previewSummary, rest, ruleToDraft, textToWords, unstableNote, WORD_LISTS, wordsToText,
+  type BuiltinRule, type OwnRule, type RuleDraft, type RulePreview, type TermOption, type TitleRulesConfig, type TitleWords,
 } from "./titleRulesApi";
 import { BusyButton, Dashicon, MultiSelect, Section } from "./ui";
 
@@ -61,12 +61,21 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
   const [busy, setBusy] = useState<"save" | "row" | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "position", dir: "asc" });
   const seq = useRef(0);
+  const [builtin, setBuiltin] = useState<BuiltinRule[] | null>(null);
+  const [ruleBusy, setRuleBusy] = useState("");
+  const [bSort, setBSort] = useState<{ key: "pack" | "label" | "count"; dir: "asc" | "desc" }>({ key: "pack", dir: "asc" });
+  const [words, setWords] = useState<Record<string, string> | null>(null);
+  const [wordsBusy, setWordsBusy] = useState(false);
 
   const fail = useCallback((e: unknown) => setNotice({ text: e instanceof ApiError ? e.message : String(e), kind: "error" }), []);
 
   useEffect(() => {
     rest<ListReply>(cfg, "GET", "custom-rules").then((d) => setRules(d.rules)).catch((e) => { setRules([]); fail(e); });
-    rest<{ pack: string }>(cfg, "GET", "title-words").then((d) => setPack(d.pack)).catch(() => {});
+    rest<{ pack: string; in_use: boolean; words: TitleWords }>(cfg, "GET", "title-words").then((d) => {
+      setPack(d.pack);
+      if (d.in_use) setWords(Object.fromEntries(WORD_LISTS.map((w) => [w.key, wordsToText(d.words[w.key] ?? [])])));
+    }).catch(() => {});
+    rest<{ rules: Record<string, Omit<BuiltinRule, "id">> }>(cfg, "GET", "summary").then((d) => setBuiltin(builtinRules(d.rules))).catch(() => setBuiltin([]));
     rest<{ brands: TermOption[] }>(cfg, "GET", "brands").then((d) => setBrands(d.brands)).catch(() => {});
     rest<{ categories: TermOption[] }>(cfg, "GET", "categories").then((d) => setCats(d.categories)).catch(() => {});
     rest<{ suppliers: Record<string, number> }>(cfg, "GET", "suppliers").then((d) => setSuppliers(d.suppliers)).catch(() => {});
@@ -135,6 +144,41 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
     } catch (e) { fail(e); } finally { setBusy(null); }
   };
 
+  // A built-in rule's switches. In use recomposes every proposal on the server before it answers (a few seconds).
+  const switchRule = async (r: BuiltinRule, field: "enabled" | "approved", on: boolean) => {
+    setRuleBusy(r.id);
+    setNotice(null);
+    // The switch moves at once (In use takes a few seconds on the server); a refusal puts it back.
+    setBuiltin((list) => list && list.map((x) => (x.id === r.id ? { ...x, [field]: on } : x)));
+    try {
+      const d = await rest<{ rules: Record<string, Omit<BuiltinRule, "id">>; recompose?: { changed?: number; new?: number; removed?: number } }>(cfg, "POST", "rules", { rule: r.id, [field]: on });
+      setBuiltin(builtinRules(d.rules));
+      if (field === "enabled") {
+        const n = (d.recompose?.changed ?? 0) + (d.recompose?.new ?? 0) + (d.recompose?.removed ?? 0);
+        setNotice({ text: `${r.label} ${on ? "is in use again" : "is switched off"}. Proposals were recomposed${n ? `: ${n} changed` : ""}.`, kind: "ok" });
+      } else {
+        setNotice({ text: on ? `${r.label} may auto-apply.` : `${r.label} no longer auto-applies.`, kind: "ok" });
+      }
+    } catch (e) {
+      setBuiltin((list) => list && list.map((x) => (x.id === r.id ? { ...x, [field]: !on } : x)));
+      fail(e);
+    } finally { setRuleBusy(""); }
+  };
+
+  const saveWords = async () => {
+    if (!words) return;
+    setWordsBusy(true);
+    try {
+      const d = await rest<{ words: TitleWords }>(cfg, "POST", "title-words", Object.fromEntries(WORD_LISTS.map((w) => [w.key, textToWords(words[w.key] ?? "")])));
+      setWords(Object.fromEntries(WORD_LISTS.map((w) => [w.key, wordsToText(d.words[w.key] ?? [])])));
+      setNotice({ text: "Word lists saved. Proposals follow in the next run, within minutes.", kind: "ok" });
+    } catch (e) { fail(e); } finally { setWordsBusy(false); }
+  };
+
+  const bSortBy = (key: "pack" | "label" | "count") => setBSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
+  const bRows = builtin ? (bSort.key === "pack" ? (bSort.dir === "asc" ? builtin : [...builtin].reverse())
+    : [...builtin].sort((a, b) => (bSort.key === "count" ? a.count - b.count : a.label.localeCompare(b.label)) * (bSort.dir === "desc" ? -1 : 1))) : [];
+
   const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
   const onKey = (e: KeyboardEvent, key: SortKey) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); } };
   const rows = rules ? sortRules(rules, sort.key, sort.dir) : [];
@@ -155,6 +199,70 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
         <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-tr-notice"><p>{notice.text}</p></div>
       )}
 
+      <h4 className="mmi-wb-tr-sub">Built-in rules{pack ? `: ${pack}` : ""}</h4>
+      <p className="description mmi-wb-tr-desc">In use: the rule takes part in proposals (switching it recomposes them now). May auto-apply: a proposal made only of rules that may auto-apply is written without review when automatic writing is on.</p>
+      <div className="mmi-table-scroll-wrapper">
+        <table className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-tr-builtin">
+          <thead>
+            <tr>
+              {([["pack", "#"], ["label", "Rule"], ["count", "Proposals"]] as const).map(([key, text]) => (
+                <th key={key} data-col={key} tabIndex={0}
+                  className={`mmi-wb-job-sortable${bSort.key === key ? " is-active" : ""}${bSort.key === key && bSort.dir === "desc" ? " is-desc" : ""}`}
+                  aria-sort={bSort.key === key ? (bSort.dir === "desc" ? "descending" : "ascending") : "none"}
+                  onClick={() => bSortBy(key)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); bSortBy(key); } }}>
+                  {text} <span className="sort-icon" />
+                </th>
+              ))}
+              <th>In use</th>
+              <th>May auto-apply</th>
+            </tr>
+          </thead>
+          <tbody id="mmi-wb-tr-builtin-rows">
+            {!builtin && <tr><td colSpan={5} className="mmi-wb-empty-cell">Loading…</td></tr>}
+            {bRows.map((r) => (
+              <tr key={r.id} data-rule={r.id} className={r.enabled ? undefined : "mmi-wb-rule-off"}>
+                <td className="mmi-wb-rule-pos">{(builtin ?? []).indexOf(r) + 1}</td>
+                <td className="mmi-wb-rule-name"><strong>{r.label}</strong><div className="mmi-wb-tr-about">{r.description}</div></td>
+                <td>{r.count}</td>
+                <td>
+                  <label className="mmi-toggle-switch" title={r.always_on ? "Always on: the rules need it" : r.enabled ? "In use" : "Switched off"}>
+                    <input type="checkbox" checked={r.enabled} disabled={r.always_on || ruleBusy !== ""} aria-label={`${r.label} in use`}
+                      onChange={(e) => switchRule(r, "enabled", e.target.checked)} />
+                    <span className="mmi-toggle-slider" />
+                  </label>
+                  {ruleBusy === r.id && <span className="mmi-loading" aria-hidden="true" />}
+                </td>
+                <td>
+                  <label className="mmi-toggle-switch" title={r.approved ? "May auto-apply" : "Needs review"}>
+                    <input type="checkbox" checked={r.approved} disabled={ruleBusy !== ""} aria-label={`${r.label} may auto-apply`}
+                      onChange={(e) => switchRule(r, "approved", e.target.checked)} />
+                    <span className="mmi-toggle-slider" />
+                  </label>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {words && (
+        <div className="mmi-wb-tr-words" id="mmi-wb-tr-words">
+          <h4 className="mmi-wb-tr-sub">Word lists</h4>
+          <p className="description mmi-wb-tr-desc">What the built-in rules treat as acronyms and small words. Separate words with commas.</p>
+          {WORD_LISTS.map((w) => (
+            <label key={w.key} className="mmi-wb-tr-field mmi-wb-tr-wordlist">
+              <span className="mmi-wb-label">{w.label}</span>
+              <textarea id={`mmi-wb-tr-w-${w.key}`} rows={2} value={words[w.key] ?? ""} onChange={(e) => setWords({ ...words, [w.key]: e.target.value })} />
+              <span className="description">{w.hint}</span>
+            </label>
+          ))}
+          <div className="mmi-wb-tr-buttons">
+            <BusyButton id="mmi-wb-tr-words-save" className="button" busy={wordsBusy} icon="saved" label="Save word lists" busyLabel="Saving…" onClick={saveWords} />
+          </div>
+        </div>
+      )}
+
+      <h4 className="mmi-wb-tr-sub">Your rules</h4>
       {editing !== null && (
         <div className="mmi-wb-tr-form" id="mmi-wb-tr-form">
           <div className="mmi-wb-tr-fields">

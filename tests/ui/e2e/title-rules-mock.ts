@@ -25,7 +25,13 @@ export class TitleRulesMock {
   ];
   calls: { method: string; path: string; body: Record<string, unknown> }[] = [];
   nonceCalls = 0;
-  constructor(private o: { staleOnce?: boolean } = {}) {}
+  builtin: Record<string, { label: string; description: string; enabled: boolean; always_on: boolean; approved: boolean; count: number }> = {
+    tidy: { label: "Tidy punctuation", description: "Collapses double spaces.", enabled: true, always_on: true, approved: true, count: 3 },
+    deshout: { label: "Fix ALL CAPS", description: "Title-cases a title written in capitals.", enabled: true, always_on: false, approved: false, count: 2 },
+    custom: { label: "Your rules", description: "Word changes you save.", enabled: true, always_on: false, approved: true, count: 1 },
+  };
+  words: Record<string, string[]> = { keep_caps: ["MIDI", "HDMI"], small_words: ["the", "box"], minor_words: ["of", "and"], lowercase_small: ["of", "x"] };
+  constructor(private o: { staleOnce?: boolean; basic?: boolean } = {}) {}
 
   async attach(page: Page): Promise<void> {
     await page.route("**/wp-admin/admin-ajax.php?action=rest-nonce", (route) => { this.nonceCalls++; return route.fulfill({ body: `rn-${this.nonceCalls}` }); });
@@ -78,7 +84,24 @@ export class TitleRulesMock {
     }
     switch (path) {
       case "custom-rules": return this.json(route, { rules: this.list() });
-      case "title-words": return this.json(route, { pack: "House style", in_use: false, words: {} });
+      case "title-words":
+        if (req.method() === "POST") {
+          for (const k of Object.keys(this.words)) if (Array.isArray(body[k])) this.words[k] = (body[k] as string[]).map((w) => (k === "keep_caps" ? w.toUpperCase() : w.toLowerCase()));
+          return this.json(route, { words: { ...this.words, lowercase_styled: {} } });
+        }
+        return this.json(route, { pack: this.o.basic ? "Basic" : "House style", in_use: !!this.o.basic, words: { ...this.words, lowercase_styled: {} } });
+      case "summary": return this.json(route, { rules: this.builtin, by_status: {} });
+      case "rules": {
+        const r = this.builtin[String(body.rule)];
+        if (!r) return this.json(route, { code: "mmpt_bad", message: "Unknown rule." }, 400);
+        if ("enabled" in body) {
+          if (r.always_on) return this.json(route, { code: "mmpt_bad", message: "This rule is always on." }, 400);
+          r.enabled = !!body.enabled;
+          return this.json(route, { rules: this.builtin, recompose: { changed: 2, new: 0, removed: 0 } });
+        }
+        r.approved = !!body.approved;
+        return this.json(route, { rules: this.builtin });
+      }
       case "brands": return this.json(route, { brands: [{ id: 20, name: "Acme Audio", path: "Acme Audio", depth: 0 }, { id: 21, name: "Example Sound", path: "Example Sound", depth: 0 }] });
       case "categories": return this.json(route, { categories: CATS });
       case "suppliers": return this.json(route, { suppliers: { xchange: 40, skuport: 12 } });

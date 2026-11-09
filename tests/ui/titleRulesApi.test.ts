@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  categoryOptions, draftReady, draftToBody, EMPTY_DRAFT, moved, previewSummary, resetNonce, rest, ruleToDraft, unstableNote, type OwnRule,
+  builtinRules, categoryOptions, draftReady, draftToBody, EMPTY_DRAFT, moved, previewSummary, resetNonce, rest, ruleToDraft, textToWords, unstableNote, wordsToText, type OwnRule,
 } from "../../src/workbench/titleRulesApi";
 
 const rule = (o: Partial<OwnRule>): OwnRule => ({
@@ -89,5 +89,16 @@ describe("title rule REST client", () => {
   it("says the session ended when no nonce can be had", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("0")));
     await expect(rest(cfg, "GET", "custom-rules")).rejects.toMatchObject({ kind: "auth" });
+  });
+});
+
+describe("built-in rules and word lists", () => {
+  it("lists the summary's rules in the pack's order", () => {
+    expect(builtinRules({ b: { label: "B", description: "", enabled: true, always_on: false, approved: false, count: 2 }, a: { label: "A", description: "", enabled: false, always_on: true, approved: true, count: 0 } })
+      .map((r) => [r.id, r.enabled, r.count])).toEqual([["b", true, 2], ["a", false, 0]]);
+  });
+  it("reads a word list from commas or lines, once each, and writes it back", () => {
+    expect(textToWords(" MIDI, HDMI,\nDSP , MIDI,, ")).toEqual(["MIDI", "HDMI", "DSP"]);
+    expect(wordsToText(["of", "x"])).toBe("of, x");
   });
 });

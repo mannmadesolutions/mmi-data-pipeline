@@ -7,7 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page, o: { staleOnce?: boolean } = {}) {
+async function open(page: Page, o: { staleOnce?: boolean; basic?: boolean } = {}) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -120,4 +120,33 @@ test("an expired REST nonce is fetched again and the call resent, unseen", async
   expect(rules.nonceCalls).toBeGreaterThanOrEqual(2);
   await expect(page.locator("#mmi-wb-tr-notice")).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("built-in rules switch in place: In use recomposes, May auto-apply approves", async ({ page }) => {
+  const { rules, errors } = await open(page);
+  const rows = page.locator("#mmi-wb-tr-builtin-rows tr[data-rule]");
+  await expect(rows).toHaveCount(3);
+  await expect(page.locator('#mmi-wb-tr-builtin-rows tr[data-rule="tidy"]').getByRole("checkbox", { name: "Tidy punctuation in use" })).toBeDisabled();
+  const caps = page.locator('#mmi-wb-tr-builtin-rows tr[data-rule="deshout"]');
+  await expect(caps).toContainText("2");
+  await caps.getByRole("checkbox", { name: "Fix ALL CAPS in use" }).uncheck();
+  await expect(page.locator("#mmi-wb-tr-notice")).toHaveText("Fix ALL CAPS is switched off. Proposals were recomposed: 2 changed.");
+  await expect(caps).toHaveClass(/mmi-wb-rule-off/);
+  expect(rules.callsTo("rules")[0]!.body).toEqual({ rule: "deshout", enabled: false });
+  await caps.getByRole("checkbox", { name: "Fix ALL CAPS may auto-apply" }).check();
+  await expect(page.locator("#mmi-wb-tr-notice")).toHaveText("Fix ALL CAPS may auto-apply.");
+  expect(rules.callsTo("rules")[1]!.body).toEqual({ rule: "deshout", approved: true });
+  await expect(page.locator("#mmi-wb-tr-words")).toHaveCount(0); // the house style doesn't read the word lists
+  expect(errors).toEqual([]);
+});
+
+test("with the Basic rules, the word lists show and save as lists", async ({ page }) => {
+  const { rules } = await open(page, { basic: true });
+  await expect(page.locator("#mmi-wb-title-rules h4").first()).toHaveText("Built-in rules: Basic");
+  await expect(page.locator("#mmi-wb-tr-w-keep_caps")).toHaveValue("MIDI, HDMI");
+  await page.locator("#mmi-wb-tr-w-keep_caps").fill("MIDI, HDMI,\nDSP, MIDI");
+  await page.locator("#mmi-wb-tr-words-save").click();
+  await expect(page.locator("#mmi-wb-tr-notice")).toContainText("Word lists saved.");
+  expect(rules.callsTo("title-words").find((c) => c.method === "POST")!.body).toMatchObject({ keep_caps: ["MIDI", "HDMI", "DSP"] });
+  await expect(page.locator("#mmi-wb-tr-w-keep_caps")).toHaveValue("MIDI, HDMI, DSP");
 });
