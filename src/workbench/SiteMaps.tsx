@@ -6,6 +6,7 @@
  * maker's live page in the Chrome extension.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { landing } from "./landing";
 import {
   adds, CELL_ACTION_LABEL, cellActions, CODES, FIELDS, fillDone, fillLabel, fillRows, gainOf, gainProducts, idsWith, LEGEND, SITE_VIEWS, siteViewCount, sitesIn, STATUS,
   PART_LABEL, proposalHosts, type CellAction, type FillRunRow, type Proposal, type Gaps, type TextSkips, type MapsReply, type Reading, type SiteRow, type SiteView,
@@ -22,7 +23,7 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
   const [reply, setReply] = useState<MapsReply | null>(null);
   const [view, setView] = useState<SiteView>("gain");
   const [q, setQ] = useState("");
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() => landing().site || null); // a link can open a site (wb_site)
   const [notice, setNotice] = useState<Notice | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const loadProposals = useCallback(() => { rest<{ rows: Proposal[] }>(cfg, "GET", "map-proposals").then((d) => setProposals(d.rows)).catch(() => {}); }, [cfg]);

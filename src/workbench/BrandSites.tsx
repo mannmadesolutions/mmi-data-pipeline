@@ -6,6 +6,7 @@
  * reads every maker site's own product list and ticks the sure matches, saved together.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { landing } from "./landing";
 import {
   bestMatches, BRAND_VIEWS, brandsIn, drawerRow, brandViewCount, hostOf, isMaker, makerHosts, PRODUCT_GROUPS, ROLES, rolesBody, roleLabel, ticks, toDo,
   type Brand, type BrandView, type Match, type ProductGroup, type ProductsReply, type SitePages, type SiteRole,
@@ -22,7 +23,7 @@ export function BrandSites({ cfg }: { cfg: TitleRulesConfig }) {
   const [brands, setBrands] = useState<Brand[] | null>(null);
   const [view, setView] = useState<BrandView>("work");
   const [q, setQ] = useState("");
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(() => landing().brand || null); // a link can open a brand (wb_brand)
   const [notice, setNotice] = useState<Notice | null>(null);
   useEffect(() => {
     rest<{ brands: Brand[] }>(cfg, "GET", "brand-sites").then((d) => setBrands(d.brands)).catch((e) => { setBrands([]); setNotice({ text: msg(e), kind: "error" }); });

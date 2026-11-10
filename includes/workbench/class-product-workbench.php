@@ -141,6 +141,10 @@ final class Product_Workbench {
             'conditions'  => $quick,
         ], $filter['statuses'] );
 
+        // A product ID finds that product too (links from other screens land here with one, wb_q).
+        if ( ctype_digit( $filter['q'] ) && in_array( (int) $filter['q'], array_map( 'intval', $ids ), true ) ) {
+            $quick_ids[] = (int) $filter['q'];
+        }
         return array_values( array_intersect( $ids, $quick_ids ) );
     }
 

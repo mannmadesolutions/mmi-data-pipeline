@@ -30,6 +30,7 @@ import { ProductDataRuns } from "./WritingSettings";
 import { LeftAlone } from "./LeftAlone";
 import { ProductPictures } from "./ProductPictures";
 import { SitePanels } from "./SitePanels";
+import { landing, scrollToLanding } from "./landing";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
 import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
@@ -56,7 +57,7 @@ function storeColumns(cols: string[]): void {
 export function App({ cfg }: { cfg: WorkbenchConfig }) {
   /* ── Inputs ───────────────────────────────────────────────────────────── */
 
-  const [quick, setQuick] = useState<QuickFilters>(EMPTY_QUICK);
+  const [quick, setQuick] = useState<QuickFilters>(() => (landing().q ? { ...EMPTY_QUICK, q: landing().q } : EMPTY_QUICK)); // a link can start the search (wb_q)
   const [cond, setCond] = useState<ConditionsState>(() => bridge.readConditions());
   const [action, setAction] = useState<ActionChoice>(() => bridge.readAction());
   const [switches, setSwitches] = useState({ skip: false, add: false });
@@ -151,6 +152,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
   // Force In/Out of Stock is offered only for Keep applying; a check is for one search + change.
   useEffect(() => { bridge.allowActions(cfg.stockActions, keep); }, [keep, cfg.stockActions]);
+  useEffect(() => scrollToLanding(), []); // a link's section (wb_sec), once it is drawn
   const actionKey = `${action.action}|${JSON.stringify(action.params)}`;
   useEffect(() => { setCheck(null); }, [key, actionKey]);
 

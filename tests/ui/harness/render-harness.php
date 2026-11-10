@@ -21,6 +21,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 $admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
 wp_set_current_user( (int) ( $admins[0] ?? 0 ) );
+// The tests are the pipeline's own: a store's panels (mmi_pipeline_product_data_panels) call routes the mocks don't know.
+remove_all_filters( 'mmi_pipeline_product_data_panels' );
 
 require_once ABSPATH . 'wp-admin/includes/class-wp-screen.php';
 require_once ABSPATH . 'wp-admin/includes/screen.php';
