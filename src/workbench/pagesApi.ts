@@ -206,3 +206,9 @@ export interface Evidence {
 }
 
 export const NOTE_ICON: Record<string, string> = { good: "yes-alt", bad: "warning", info: "info-outline" };
+
+/** What a queue request did, by mode (POST /pages/queue). */
+export function queuedText(mode: "read" | "scrape" | "pictures", n: number): string {
+  const what = { read: "queued to read again", scrape: "queued to scrape again", pictures: "queued for new pictures" }[mode];
+  return `${n} product${n === 1 ? "" : "s"} ${what}.${mode === "pictures" ? " Product pictures shows how it goes." : ""}`;
+}

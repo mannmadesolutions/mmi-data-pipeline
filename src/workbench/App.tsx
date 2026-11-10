@@ -28,6 +28,7 @@ import { TitleProposals } from "./TitleProposals";
 import { TitleRules } from "./TitleRules";
 import { ProductDataRuns } from "./WritingSettings";
 import { LeftAlone } from "./LeftAlone";
+import { ProductPictures } from "./ProductPictures";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
 import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
@@ -512,6 +513,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
       {cfg.titleRules ? <TitleProposals cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <EnrichProposals cfg={cfg.titleRules} /> : null}
+      {cfg.titleRules ? <ProductPictures cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <MakerPages cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <BrandSites cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <SiteMaps cfg={cfg.titleRules} /> : null}

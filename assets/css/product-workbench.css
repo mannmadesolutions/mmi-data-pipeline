@@ -1504,3 +1504,47 @@ tr.mmi-wb-mp-gone .notice {
 .mmi-wb-la-add input[type="search"] {
     width: 200px;
 }
+
+/* ── Product pictures (src/workbench/ProductPictures.tsx) ── */
+.mmi-wb-px-status .mmi-loading {
+    vertical-align: middle;
+}
+.mmi-wb-num {
+    text-align: right;
+    white-space: nowrap;
+}
+.mmi-wb-px-groups {
+    margin-bottom: 6px;
+}
+.mmi-wb-px-total th,
+.mmi-wb-px-total td {
+    font-weight: 600;
+}
+.mmi-wb-px-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+.mmi-wb-px-page {
+    margin-left: 6px;
+    text-decoration: none;
+}
+.mmi-wb-px-groupwrap {
+    overflow-x: auto;
+}
+.mmi-wb-px-when {
+    white-space: nowrap;
+}
+.mmi-wb-px-folders {
+    margin: 0 0 12px;
+}
+.mmi-wb-px-folders summary {
+    cursor: pointer;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-px-folders ul {
+    margin: 4px 0 0 18px;
+    list-style: disc;
+}

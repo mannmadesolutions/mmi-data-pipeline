@@ -103,7 +103,7 @@ test("bulk: Use proposed URL never replaces a verified page; Read again queues t
   await expect(page.locator("#mmi-wb-mp-rows tr[data-id]")).toHaveCount(4);
   await row(page, 4003).getByRole("checkbox").check();
   await page.locator("#mmi-wb-mp-read-ticked").click();
-  await expect(page.locator("#mmi-wb-mp-notice")).toHaveText("1 page queued to read again.");
+  await expect(page.locator("#mmi-wb-mp-notice")).toHaveText("1 product queued to read again.");
   expect(api.callsTo("pages/queue")[0]!.body).toEqual({ ids: [4003], mode: "read" });
 });
 

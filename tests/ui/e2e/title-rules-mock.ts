@@ -54,6 +54,13 @@ export class TitleRulesMock {
   /** Exclusions: brand 30 is the store's own (fixed). */
   leftBrands = [30, 31];
   leftProducts = [2005];
+  /** The picture runner: its ledger and whether products wait. */
+  pxWaiting = 0;
+  pxRows = Array.from({ length: 60 }, (_, i) => ({
+    product_id: String(5001 + i), title: `Acme Pad ${i + 1}`, status: i === 59 ? "error" : "applied", mode: i < 50 ? "vendor" : "in_place",
+    reason: i < 50 ? "" : i === 59 ? "vendor_failed" : "page_no_pictures", reason_label: i < 50 ? "" : i === 59 ? "Vendor pictures could not be downloaded" : "The vendor page has no pictures",
+    source_url: "https://maker.example/p", pics_before: "1", pics_after: "3", bytes_before: "2048000", bytes_after: "512000", note: "", run_at: `2026-11-10 0${i % 10}:00:00`, thumb: "",
+  }));
   enrichRules: Record<string, { label: string; approved: boolean; retired?: boolean }> = {
     "content:vendor_page": { label: "Description from the maker's page", approved: true },
     "content:web_assets": { label: "Description from the feed", approved: false },
@@ -115,6 +122,16 @@ export class TitleRulesMock {
       products: this.leftProducts.map((id) => ({ id, title: this.proposals.find((p) => p.id === id)!.proposed, sku: `SKU-${id}` })),
       excluded: this.leftCount(), not_sold: { count: 1484 },
       all_brands: Object.entries(this.brandNames).map(([id, [name]]) => ({ id: Number(id), name })),
+    };
+  }
+
+  pxSummary() {
+    const g = (status: string, mode: string, reason: string, reason_label: string, n: number) => ({ status, mode, reason, reason_label, n, pics_before: n, pics_after: n * 3, bytes_before: n * 2048000, bytes_after: n * 512000 });
+    return {
+      groups: [g("applied", "in_place", "page_no_pictures", "The vendor page has no pictures", 9), g("error", "vendor", "vendor_failed", "Vendor pictures could not be downloaded", 1), g("applied", "vendor", "", "", 50)],
+      running: this.pxWaiting > 0, done_today: 12, cap: 300, waiting: this.pxWaiting, activity: { manual: false, busy: false, reasons: [] },
+      pass: { started_at: "2026-11-10 03:03:20", done_at: this.pxWaiting ? "" : "2026-11-10 03:20:00" }, state: { note: "", last_run: { vendor: 3, in_place: 1, skipped: 0, error: 0 } },
+      release: { kept: { n: 42, bytes: 81314529 }, quarantined: { n: 2377, bytes: 1531109953 } }, folders: [],
     };
   }
 
@@ -204,6 +221,12 @@ export class TitleRulesMock {
       row.current = row.original ?? row.current; row.status = "reverted";
       return this.json(route, { result: "reverted", message: row.current });
     }
+    const px = /^pictures\/(\d+)\/revert$/.exec(path);
+    if (px) {
+      const r = this.pxRows.find((x) => x.product_id === px[1]);
+      if (r) r.status = "reverted";
+      return this.json(route, { message: "Old pictures restored (3 → 1)." });
+    }
     switch (path) {
       case "custom-rules": return this.json(route, { rules: this.list() });
       case "title-words":
@@ -244,6 +267,15 @@ export class TitleRulesMock {
         return this.json(route, { rows, total: rows.length, pages: 1 });
       }
       case "enrich/summary": return this.json(route, this.enrichSummary());
+      case "pictures": return this.json(route, this.pxSummary());
+      case "pictures/rows": {
+        const u = new URL(req.url());
+        const show = u.searchParams.get("show") ?? "";
+        const rows = this.pxRows.filter((r) => !show || (r.status === "applied" ? r.mode : r.status) === show);
+        const p = Number(u.searchParams.get("page")) || 1;
+        return this.json(route, { rows: rows.slice((p - 1) * 50, p * 50), total: rows.length, per_page: 50 });
+      }
+      case "pictures/stop": { const removed = this.pxWaiting; this.pxWaiting = 0; return this.json(route, { removed, summary: this.pxSummary() }); }
       case "exclusions": {
         if (req.method() === "POST") {
           const unknown: string[] = [];

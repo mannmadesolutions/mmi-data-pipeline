@@ -9,9 +9,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  bulkUseText, CONF_BANDS, CONFIRM, EMPTY_PAGES, groupCount, PAGE_GROUPS, pagesQuery, rowQuery, WAITING,
+  bulkUseText, CONF_BANDS, CONFIRM, EMPTY_PAGES, groupCount, PAGE_GROUPS, pagesQuery, queuedText, rowQuery, WAITING,
   type PageFilter, type PageListReply, type PageRow,
 } from "./pagesApi";
+import { QUEUED_EVENT } from "./ProductPictures";
 import { msg, usePageRows, type Notice } from "./pageRows";
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { Section } from "./ui";
@@ -69,7 +70,7 @@ export function MakerPages({ cfg }: { cfg: TitleRulesConfig }) {
   };
   const { state, busy, setBusy, armed, setArmed, reset, cells } = usePageRows(cfg, refetch, () => void recount());
 
-  const bulk = async (a: "use" | "reject" | "none" | "read") => {
+  const bulk = async (a: "use" | "reject" | "none" | "read" | "scrape" | "pictures") => {
     const live = rows.filter((r) => selected.includes(r.id) && !state[r.id]?.gone);
     const ids = (a === "use" || a === "reject" ? live.filter((r) => r.status === "candidate" && r.proposed) : live).map((r) => r.id);
     if (!ids.length) return;
@@ -85,8 +86,9 @@ export function MakerPages({ cfg }: { cfg: TitleRulesConfig }) {
         const d = await rest<{ done: number[]; kept: number[] }>(cfg, "POST", "urls/none-many", { ids });
         setNotice({ text: `${d.done.length} marked: the maker doesn't publish them.${d.kept.length ? ` ${d.kept.length} kept: their verified page reads fine, so take it away one row at a time.` : ""}`, kind: "ok" });
       } else {
-        const d = await rest<{ queued: number }>(cfg, "POST", "pages/queue", { ids, mode: "read" });
-        setNotice({ text: `${d.queued} page${d.queued === 1 ? "" : "s"} queued to read again.`, kind: "ok" });
+        const d = await rest<{ queued: number; pictures?: unknown }>(cfg, "POST", "pages/queue", { ids, mode: a });
+        setNotice({ text: queuedText(a, d.queued), kind: "ok" });
+        if (a === "pictures") window.dispatchEvent(new CustomEvent(QUEUED_EVENT, { detail: d.pictures ?? null })); // Product pictures follows
       }
       setSelected([]);
       void load(filter);
@@ -144,7 +146,9 @@ export function MakerPages({ cfg }: { cfg: TitleRulesConfig }) {
             <span className="mmi-wb-selected">{selected.length} ticked</span>
             <button type="button" className="button button-small button-primary" id="mmi-wb-mp-use-ticked" disabled={busy !== null || !tickedOpen} title="Approve the proposed pages of the ticked products (a verified page is never replaced in bulk)" onClick={() => bulk("use")}>Use proposed URL ({tickedOpen})</button>
             <button type="button" className="button button-small" id="mmi-wb-mp-reject-ticked" disabled={busy !== null || !tickedOpen} onClick={() => bulk("reject")}>Not this page ({tickedOpen})</button>
-            <button type="button" className="button button-small" id="mmi-wb-mp-read-ticked" disabled={busy !== null} onClick={() => bulk("read")}>Read again</button>
+            <button type="button" className="button button-small" id="mmi-wb-mp-read-ticked" disabled={busy !== null} title="Read each product's current page again, the page only (queued)" onClick={() => bulk("read")}>Read again</button>
+            <button type="button" className="button button-small" id="mmi-wb-mp-scrape-ticked" disabled={busy !== null} title="Read each product's current page again and update its description and pictures (queued)" onClick={() => bulk("scrape")}>Scrape again</button>
+            <button type="button" className="button button-small" id="mmi-wb-mp-pictures-ticked" disabled={busy !== null} title="Replace each product's pictures from its maker page, or re-save its own (queued; Product pictures shows how it went)" onClick={() => bulk("pictures")}>Pictures</button>
             <button type="button" className={`button button-small mmi-wb-mp-danger${armed?.id === "bulk" ? " is-armed" : ""}`} id="mmi-wb-mp-none-ticked" disabled={busy !== null} onClick={() => bulk("none")}>
               {armed?.id === "bulk" ? CONFIRM.none : "Maker doesn't publish them"}
             </button>

@@ -185,7 +185,7 @@ export class MakerPagesMock {
         }
         return { data: { rows } };
       }
-      case "pages/queue": return { data: { queued: (body.ids as number[]).length, started: true, status: {}, states: {} } };
+      case "pages/queue": return { data: { queued: (body.ids as number[]).length, started: true, status: {}, states: {}, ...(body.mode === "pictures" ? { pictures: null } : {}) } };
       case "brand-sites": return { data: { brands: this.brands, shared: {}, find: {} } };
       case "map-proposals": return { data: { rows: this.proposals } };
       case "map-proposals/site": { const mine = this.proposals.filter((x) => x.host === body.host && x.status === "proposed"); mine.forEach((x) => { x.status = "approved"; }); return { data: { approved: mine.length, failed: [], rows: [] } }; }
