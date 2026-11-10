@@ -385,3 +385,24 @@ test("the new changes show their settings: replace in title, set meta", async ({
   await expect(page.locator(".mmi-crp-meta-value")).toBeHidden();
   await expect(page.locator('#mmi-wb-action option[value="set_status_private"]')).toHaveCount(1);
 });
+
+test("Product Data's columns: the maker page, content and decisions waiting, asked for only when shown", async ({ page }) => {
+  await page.route("**/mmi-data-pipeline/build/workbench.js*", (r) => r.fulfill({ path: "build/workbench.js", contentType: "text/javascript" })); // the workspace's fresh build
+  const { backend } = await open(page);
+  await page.locator("#mmi-wb-columns-ms .mmi-ms-trigger").click();
+  const menu = page.locator("#mmi-wb-columns-ms");
+  await expect(menu.getByLabel("Maker page")).toBeVisible();
+  await expect(menu.getByLabel("Content")).toBeVisible();
+  await expect(menu.getByLabel("Waiting on you")).toBeVisible();
+  await menu.getByLabel("Maker page").check();
+  await expect(page.locator("#mmi-wb-table thead th[data-col=\"x:pd_page\"]")).toHaveText(/Maker page/);
+  await expect(page.locator("#mmi-wb-rows .mmi-wb-x-value").first()).toBeVisible();
+  const last = backend.callsTo("mmi_workbench_search").at(-1)!;
+  expect(last.body.getAll("meta_cols[]")).toContain("x:pd_page");
+  await expect(page.locator("#mmi-wb-rows .mmi-wb-x-value", { hasText: "No page" }).first()).toHaveAttribute("title", "No maker page yet");
+  await page.locator("#mmi-wb-columns-ms .mmi-ms-trigger").click(); // closes the menu
+  await page.locator("#mmi-wb-table thead th[data-col=\"x:pd_page\"]").click();
+  await expect(page.locator("#mmi-wb-rows tr[data-id] .mmi-wb-x-value").first()).toHaveText("No page");
+  await page.locator("#mmi-wb-table thead th[data-col=\"x:pd_page\"]").click();
+  await expect(page.locator("#mmi-wb-rows tr[data-id] .mmi-wb-x-value").first()).toHaveText("Read");
+});

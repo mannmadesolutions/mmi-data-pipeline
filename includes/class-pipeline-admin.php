@@ -1027,6 +1027,11 @@ class MMI_Pipeline_Admin {
             'stockActions'     => \MannMade\DataPipeline\Stock_Override_Resolver::VALID_OVERRIDES,
             'reservedMetaKeys' => \MannMade\DataPipeline\Custom_Rule_Actions::RESERVED_META_KEYS,
             'maxMetaColumns'   => \MannMade\DataPipeline\Workbench\Product_Workbench::MAX_META_COLUMNS,
+            /**
+             * Optional columns a module adds to the results table's Columns menu (key → label); their values come
+             * from mmi_pipeline_workbench_column_values. Product Data offers its maker page, content and decisions.
+             */
+            'extraColumns'     => (object) array_map( 'strval', (array) apply_filters( 'mmi_pipeline_workbench_columns', [] ) ),
         ];
         // Title rules (Product Data): shown where the title rule routes (mmpt/v1) are registered; the plugin that
         // registers them answers the filter. Site-relative URLs; the REST nonce is fetched by the page when needed.

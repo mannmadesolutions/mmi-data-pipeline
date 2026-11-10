@@ -60,6 +60,8 @@ export interface ProductRow {
   thumb: string;
   edit_url: string;
   view_url: string;
+  /** Values of the modules' columns asked for: key → [text, tone, title]. */
+  extra?: Record<string, [string, string, string]>;
 }
 
 export interface Facet { id: number; name: string; count: number }
@@ -132,6 +134,8 @@ export interface WorkbenchConfig {
   /** WooCommerce's own meta keys (lowercase): shown as columns, never edited as meta. */
   reservedMetaKeys: string[];
   maxMetaColumns: number;
+  /** Columns a module adds to the Columns menu (key → label), shown as "x:{key}" (mmi_pipeline_workbench_columns). */
+  extraColumns?: Record<string, string>;
   /** Title rules section: present where the title rule routes are registered. */
   titleRules?: TitleRulesConfig;
 }

@@ -221,6 +221,7 @@ button.mmi-health-chip:focus-visible {
 .mmi-wb-col-type     { width: 6%; }
 .mmi-wb-col-modified { width: 9%; }
 .mmi-wb-col-meta     { width: 10%; }
+.mmi-wb-col-x        { width: 10%; } /* a module's column (Product Data: maker page, content, waiting) */
 
 /* Featured image, or an empty square where there is none. */
 td.mmi-wb-col-thumb img,
@@ -1426,4 +1427,9 @@ tr.mmi-wb-mp-gone .notice {
     object-fit: contain;
     margin-left: 4px;
     vertical-align: middle;
+}
+
+/* ── Modules' columns in the results table (Product Data: maker page, content, waiting) ── */
+.mmi-wb-x-value {
+    white-space: normal;
 }

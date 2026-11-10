@@ -68,7 +68,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const [message, setMessage] = useState<Message>({ text: "", kind: "" });
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [columns, setColumnsState] = useState<string[]>(storedColumns);
-  const metaCols = useMemo(() => columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), [columns]);
+  const metaCols = useMemo(() => [...columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), ...columns.filter((c) => c.startsWith("x:"))], [columns]);
 
   /* ── Standing rules: Keep applying, the rule being edited, the list ───── */
 
@@ -217,7 +217,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
   /** Show or hide optional columns; a new meta column needs its values, so the page is fetched again. */
   const setColumns = (next: string[]) => {
-    const metaChanged = next.filter((c) => c.startsWith("meta:")).join("|") !== columns.filter((c) => c.startsWith("meta:")).join("|");
+    const fetched = (cs: string[]) => cs.filter((c) => c.startsWith("meta:") || c.startsWith("x:")).join("|"); // columns whose values come from the server
+    const metaChanged = fetched(next) !== fetched(columns);
     setColumnsState(next);
     storeColumns(next);
     if (metaChanged) window.setTimeout(() => search.refetch(), 0); // after the new metaCols reach the search
@@ -488,7 +489,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
             {view.result && view.result.facets.length > 0 && (
               <CategoryMenu facets={view.result.facets} active={activeFacets} onPick={onFacet} />
             )}
-            <ColumnsMenu columns={columns} max={cfg.maxMetaColumns} onChange={setColumns} />
+            <ColumnsMenu columns={columns} max={cfg.maxMetaColumns} extra={cfg.extraColumns ?? {}} onChange={setColumns} />
             <label className="mmi-pagination-size-label mmi-wb-per-page">Per page:{" "}
               <select className="mmi-pagination-size" id="mmi-wb-per-page" value={view.perPage}
                 onChange={(e) => search.refetch({ perPage: Number(e.target.value) || cfg.defaultPerPage, page: 1 })}>
@@ -497,7 +498,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
             </label>
           </div>
           <ResultsTable result={view.result} sort={view.sort} dir={view.dir} loading={view.loading} selection={selection}
-            columns={columns} reservedMeta={cfg.reservedMetaKeys} lockLabels={cfg.lockLabels}
+            columns={columns} reservedMeta={cfg.reservedMetaKeys} lockLabels={cfg.lockLabels} extraLabels={cfg.extraColumns ?? {}}
             onSort={search.sortBy} onToggle={(ids, on) => setSelection((s) => toggleRows(s, ids, on))} onHealthChip={onHealthChip}
             onRowSaved={(row) => { search.replaceRow(row); loadJobs(); }} />
           {view.result && <Pager pages={view.result.pages} current={view.page} onPage={(p) => search.refetch({ page: p })} />}
@@ -569,11 +570,12 @@ function SaveSearch({ matchLogic }: { matchLogic: string }) {
  * The Columns menu: optional columns to show, plus any meta key as a column
  * ("Add a meta key…"). Unticking a meta key removes it.
  */
-function ColumnsMenu({ columns, max, onChange }: { columns: string[]; max: number; onChange: (next: string[]) => void }) {
+function ColumnsMenu({ columns, max, extra, onChange }: { columns: string[]; max: number; extra: Record<string, string>; onChange: (next: string[]) => void }) {
   const [key, setKey] = useState("");
   const [note, setNote] = useState("");
   const metas = columns.filter((c) => c.startsWith("meta:"));
   const options: Record<string, string> = { ...OPTIONAL_COLUMNS };
+  Object.entries(extra).forEach(([k, label]) => { options[`x:${k}`] = label; });
   metas.forEach((c) => { options[c] = `Meta: ${c.slice(5)}`; });
   const add = () => {
     const k = key.trim();

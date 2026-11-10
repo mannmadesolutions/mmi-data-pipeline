@@ -253,7 +253,11 @@ export class MockBackend {
   private row(p: Product, metaCols: string[] = []) {
     return {
       ...p, price: p.regular, regular: p.regular, sale: "", stock_qty: p.id % 2 ? "5" : null, type: "simple", modified: "2026-10-30 12:00:00",
-      meta: Object.fromEntries(metaCols.map((k) => [k, p.meta[k] ?? null])), supplier: "all", thumb: "", edit_url: "#edit", view_url: "#view",
+      meta: Object.fromEntries(metaCols.filter((k) => !k.startsWith("x:")).map((k) => [k, p.meta[k] ?? null])),
+      // Modules' columns ("x:{key}", Product Data's): only those asked for.
+      extra: Object.fromEntries(metaCols.filter((k) => k.startsWith("x:")).map((k) => [k.slice(2), k === "x:pd_page"
+        ? (p.id % 2 ? ["Read", "success", "https://maker.example/p"] : ["No page", "warning", "No maker page yet"])
+        : k === "x:pd_content" ? ["No features", "warning", "Features: No features"] : ["Title", "info", ""]])), supplier: "all", thumb: "", edit_url: "#edit", view_url: "#view",
     };
   }
 

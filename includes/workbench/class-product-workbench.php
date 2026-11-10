@@ -358,6 +358,10 @@ final class Product_Workbench {
         }
         _prime_post_caches( array_values( array_filter( $thumbs ) ), false, true );
 
+        // "x:{key}": a module's column (mmi_pipeline_workbench_columns), filled below; the rest are meta keys.
+        $extra_cols = array_values( array_filter( $meta_cols, static fn( $k ) => str_starts_with( (string) $k, 'x:' ) ) );
+        $meta_cols  = array_values( array_diff( $meta_cols, $extra_cols ) );
+
         $failures  = Health_Checks::failures( $ids );
         $brand_tax = taxonomy_exists( 'product_brand' ) ? 'product_brand' : '';
         $locks     = class_exists( 'MMI_Pipeline_Field_Locks' );
@@ -391,6 +395,21 @@ final class Product_Workbench {
                 'view_url'   => get_permalink( $id ),
             ];
         }
+        if ( $extra_cols && $rows ) {
+            /**
+             * Values for a module's optional columns in the results table, for the rows on screen only and only the
+             * columns a person chose (a column may be slow to work out). A value is [ text, tone, title ]: tone is a
+             * badge colour (success, info, warning, error or '').
+             *
+             * @param array<int,array<string,array>> $values id → column key → value
+             * @param int[]                          $ids    the rows on screen
+             * @param string[]                       $keys   the columns asked for (without "x:")
+             */
+            $values = (array) apply_filters( 'mmi_pipeline_workbench_column_values', [], array_column( $rows, 'id' ), array_map( static fn( $k ) => substr( $k, 2 ), $extra_cols ) );
+            foreach ( $rows as $i => $r ) {
+                $rows[ $i ]['extra'] = (object) ( $values[ $r['id'] ] ?? [] );
+            }
+        }
         return $rows;
     }
 
@@ -413,8 +432,9 @@ final class Product_Workbench {
 
     /** @return string[] Distinct, cleaned meta keys, at most MAX_META_COLUMNS. */
     public static function sanitize_meta_columns( array $keys ): array {
-        $keys = array_filter( array_map( [ Stock_Override_Resolver::class, 'sanitize_field_name' ], $keys ) );
-        return array_slice( array_values( array_unique( $keys ) ), 0, self::MAX_META_COLUMNS );
+        $keys  = array_values( array_unique( array_filter( array_map( [ Stock_Override_Resolver::class, 'sanitize_field_name' ], $keys ) ) ) );
+        $extra = array_values( array_filter( $keys, static fn( $k ) => str_starts_with( $k, 'x:' ) ) ); // modules' columns: not meta keys, not in the cap
+        return array_merge( array_slice( array_values( array_diff( $keys, $extra ) ), 0, self::MAX_META_COLUMNS ), array_slice( $extra, 0, 20 ) );
     }
 
     /** @return list<array{id:int,name:string}> */

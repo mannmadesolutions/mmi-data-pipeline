@@ -41,8 +41,10 @@ const COLUMNS: Column[] = [
 ];
 
 /** The columns shown, with the chosen optional ones in place. */
-function visibleColumns(optional: string[]): Column[] {
-  const extra: Column[] = optional.map((c) => c.startsWith("meta:")
+function visibleColumns(optional: string[], extraLabels: Record<string, string> = {}): Column[] {
+  const extra: Column[] = optional.map((c) => c.startsWith("x:")
+    ? { col: c, label: extraLabels[c.slice(2)] ?? c.slice(2), className: "mmi-wb-col-x", title: "Sorts this page" }
+    : c.startsWith("meta:")
     ? { col: c, label: c.slice(5), className: "mmi-wb-col-meta", title: `Custom field ${c.slice(5)}` }
     : { col: c, label: OPTIONAL_COLUMNS[c] ?? c, className: `mmi-wb-col-${c}` });
   const at = COLUMNS.findIndex((c) => c.col === OPTIONAL_AFTER) + 1;
@@ -220,7 +222,7 @@ function TermCell({ row, taxonomy, onEdit }: { row: ProductRow; taxonomy: Editab
   );
 }
 
-export function ResultsTable({ result, sort, dir, loading, selection, columns, reservedMeta, lockLabels, onSort, onToggle, onHealthChip, onRowSaved }: {
+export function ResultsTable({ result, sort, dir, loading, selection, columns, reservedMeta, lockLabels, extraLabels = {}, onSort, onToggle, onHealthChip, onRowSaved }: {
   result: SearchResult | null;
   sort: string;
   dir: SortDir;
@@ -231,6 +233,8 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
   /** WooCommerce's own meta keys: shown, never edited as meta. */
   reservedMeta: string[];
   lockLabels: Record<string, string>;
+  /** Labels of the modules' columns ("x:{key}"). */
+  extraLabels?: Record<string, string>;
   onSort: (col: string) => void;
   onToggle: (ids: number[], on: boolean) => void;
   onHealthChip: (checkId: string) => void;
@@ -239,11 +243,24 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
   const table = useRef<HTMLTableElement>(null);
   const [editing, setEditing] = useState<{ id: number; taxonomy: EditableTaxonomy } | null>(null);
   const [cell, setCell] = useState<{ id: number; field: string } | null>(null);
-  const cols = useMemo(() => visibleColumns(columns), [columns]);
-  const metaCols = useMemo(() => columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), [columns]);
+  const cols = useMemo(() => visibleColumns(columns, extraLabels), [columns, extraLabels]);
+  // Sent with every row refresh: meta keys by name, modules' columns as "x:{key}".
+  const metaCols = useMemo(() => [...columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), ...columns.filter((c) => c.startsWith("x:"))], [columns]);
+  /** A module's column sorts the page shown (its values are worked out for the rows on screen only). */
+  const [xSort, setXSort] = useState<{ col: string; dir: SortDir } | null>(null);
   const colspan = cols.length + 1;
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
-  const rows = result?.rows ?? [];
+  const rows = useMemo(() => {
+    const all = result?.rows ?? [];
+    if (!xSort) return all;
+    const key = xSort.col.slice(2);
+    return [...all].sort((a, b) => String(a.extra?.[key]?.[0] ?? "").localeCompare(String(b.extra?.[key]?.[0] ?? "")) * (xSort.dir === "desc" ? -1 : 1));
+  }, [result, xSort]);
+  const sortCol = (col: string) => {
+    if (col.startsWith("x:")) { setXSort((s) => ({ col, dir: s?.col === col && s.dir === "asc" ? "desc" : "asc" })); return; }
+    setXSort(null);
+    onSort(col);
+  };
   const pageIds = useMemo(() => rows.map((r) => r.id), [rows]);
   const pageAll = pageIds.length > 0 && pageIds.every((id) => isSelected(selection, id));
 
@@ -270,7 +287,7 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
   useEffect(() => { setEditing(null); setCell(null); }, [result]);
 
   const sortKey = (e: KeyboardEvent, col: string) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSort(col); }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortCol(col); }
   };
   const edit = (id: number, taxonomy: EditableTaxonomy) =>
     setEditing((cur) => (cur?.id === id && cur.taxonomy === taxonomy ? null : { id, taxonomy }));
@@ -290,6 +307,10 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
         editing={cell?.id === r.id && cell.field === field} onEdit={() => setCell({ id: r.id, field })}
         onClose={() => setCell(null)} onSaved={(row) => cellSaved(row, label)} />
     );
+    if (c.col.startsWith("x:")) {
+      const v = r.extra?.[c.col.slice(2)];
+      return v ? <span className={`mmi-badge ${v[1]} inline mmi-wb-x-value`} title={v[2] || undefined}>{v[0]}</span> : none;
+    }
     if (c.col.startsWith("meta:")) {
       const key = c.col.slice(5);
       const value = r.meta[key] ?? null;
@@ -317,9 +338,9 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
             </td>
             {cols.map((c) => c.col ? (
               <th key={c.col} data-col={c.col} data-resize-col={c.col} title={c.title} tabIndex={0}
-                className={`${c.className} mmi-wb-sortable${sort === c.col ? " is-active" : ""}${sort === c.col && dir === "desc" ? " is-desc" : ""}`}
-                aria-sort={sort === c.col ? (dir === "desc" ? "descending" : "ascending") : "none"}
-                onClick={() => onSort(c.col)} onKeyDown={(e) => sortKey(e, c.col)}>
+                className={`${c.className} mmi-wb-sortable${(xSort ? xSort.col : sort) === c.col ? " is-active" : ""}${(xSort ? xSort.col === c.col && xSort.dir === "desc" : sort === c.col && dir === "desc") ? " is-desc" : ""}`}
+                aria-sort={(xSort ? xSort.col : sort) === c.col ? ((xSort ? xSort.dir : dir) === "desc" ? "descending" : "ascending") : "none"}
+                onClick={() => sortCol(c.col)} onKeyDown={(e) => sortKey(e, c.col)}>
                 {c.label} <span className="sort-icon" />
               </th>
             ) : (
@@ -353,7 +374,7 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
                   <span className={`mmi-badge ${r.status === "publish" ? "success" : "warning"} inline`}>{STATUS_LABELS[r.status] ?? r.status}</span>
                 </td>
                 <td className="mmi-wb-col-stock">{STOCK_LABELS[r.stock] ?? r.stock}</td>
-                {cols.filter((c) => c.className === "mmi-wb-col-meta" || OPTIONAL_COLUMNS[c.col]).map((c) => (
+                {cols.filter((c) => c.className === "mmi-wb-col-meta" || c.className === "mmi-wb-col-x" || OPTIONAL_COLUMNS[c.col]).map((c) => (
                   <td key={c.col} className={c.className}>{optionalCell(r, c)}</td>
                 ))}
                 <td className="mmi-wb-col-supplier">{r.supplier === "all" ? <span className="mmi-wb-none">—</span> : r.supplier}</td>
