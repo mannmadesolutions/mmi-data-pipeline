@@ -3,11 +3,14 @@
  * Feed first (owner 2026-10-29): "Product data sources contain the assets we're looking for most of the time.
  * We should start the product data journey there and utilize the scraping platform when it is needed only after."
  *
- * A product's distributor record (Plugivery's catalog detail, XChange's web assets and feed) fills what the
- * product lacks: features, videos, system requirements and plugin formats, platforms and licensing, here;
- * a thin description through Enrichment (compose_feed() first); first pictures through the picture runner
- * (Pictures::feed_pictures() first). Only empty fields and products with no picture: nothing is replaced, and
- * field locks are kept. Each filled field is recorded in `_mmi_feed_filled` with its source.
+ * A product's distributor record (Plugivery's catalog detail, XChange's web assets) gives a thin description
+ * through Enrichment (compose_feed() first) and first pictures through the picture runner
+ * (Pictures::feed_pictures() first). Each is recorded in `_mmi_feed_filled` with its source.
+ *
+ * Features, videos, system requirements and plugin formats, platforms and licensing are no longer filled
+ * here (owner 2026-11-09, Product Data migration phase 3b): mmi-data-pipeline's Web Assets import profile
+ * fills them, XChange then Plugivery, "Only fill when empty", with features cleaned the same way
+ * (VendorPage::clean_import_value()). Drafts included.
  *
  * New products are filled within minutes of the import that made them (woocommerce_new_product → one WP-Cron
  * event → run_queue(); the 30-minute `wp mmpt heartbeat` catches any it missed). `wp mmpt feed_fill` covers
@@ -28,10 +31,6 @@ final class FeedFill {
 	const NEW_DAYS = 7;                   // run_queue() looks at products made this recently
 	const BATCH    = 100;
 
-	/** Plugivery's formats → the registry's plugin keys. */
-	const PLUGIVERY_FORMATS = [ 'au' => 'au', 'vst' => 'vst-2', 'vst3' => 'vst-3', 'aax' => 'aax', 'aaxd' => 'aax', 'rtas' => 'rtas', 'application' => 'standalone' ];
-	/** Plugivery's platforms → the registry's. */
-	const PLUGIVERY_PLATFORMS = [ 'mac' => 'mac', 'pc' => 'windows', 'linux' => 'linux' ];
 
 	public static function register_hooks(): void {
 		add_action( 'woocommerce_new_product', [ __CLASS__, 'noted' ], 20 );
@@ -92,21 +91,7 @@ final class FeedFill {
 		}
 		$rec = self::record( $id );
 		$out = [];
-		foreach ( self::fields( $rec ) as $concept => [ $source, $value ] ) {
-			$key = \MMI_Product_Content_Registry::canonical_key( $concept );
-			if ( \MMI_Product_Content_Registry::count( $id, $concept ) > 0 || ( class_exists( '\MMI_Pipeline_Field_Locks' ) && \MMI_Pipeline_Field_Locks::is_locked( $id, $key ) ) ) {
-				continue;
-			}
-			if ( $dry || \MMI_Product_Content_Registry::store( $id, $concept, $value, 'product-feed-fill' ) ) {
-				$out[ $concept ] = $source;
-			}
-		}
 		if ( ! $dry ) {
-			$platforms = self::platforms( $rec );
-			$locked    = class_exists( '\MMI_Pipeline_Field_Locks' ) && \MMI_Pipeline_Field_Locks::is_locked( $id, \MMI_Product_Content_Registry::canonical_key( 'platforms' ) );
-			if ( $platforms && ! $locked && \MMI_Product_Content_Registry::merge_platforms( $id, $platforms[1], 'product-feed-fill' ) ) {
-				$out['platforms'] = $platforms[0];
-			}
 			\MMI_Product_Content_Registry::sync_platforms( $id );
 		}
 
@@ -164,79 +149,6 @@ final class FeedFill {
 			$rec['desc'] = 'web_assets';
 		}
 		return $rec;
-	}
-
-	/** @return array<string,array{0:string,1:mixed}> registry concept => [ source, value ] */
-	private static function fields( array $rec ): array {
-		$out = [];
-		$pv  = $rec['plugivery'];
-		$wa  = $rec['web_assets'];
-
-		if ( $wa && array_filter( (array) ( $wa['features'] ?? [] ) ) ) {
-			$items = array_column( VendorPage::clean_feed( array_map( static fn( $f ) => [ 'type' => 'paragraph', 'text' => trim( (string) $f ) ], array_filter( (array) $wa['features'], 'is_string' ) ) ), 'text' );
-			if ( $items ) {
-				$out['features'] = [ 'web_assets', $items ];
-			}
-		}
-
-		$videos = [];
-		$vsrc   = '';
-		if ( $wa && ! empty( $wa['videos'] ) ) {
-			$videos = array_merge( [ (string) ( $wa['videos']['main'] ?? '' ) ], (array) ( $wa['videos']['extras'] ?? [] ) );
-			$vsrc   = 'web_assets';
-		}
-		if ( ! array_filter( $videos ) && ! empty( $rec['xchange']['youtube'] ) ) {
-			$videos = [ (string) $rec['xchange']['youtube'] ];
-			$vsrc   = 'xchange';
-		}
-		if ( ! array_filter( $videos ) && $pv && ! empty( $pv['videos'] ) ) {
-			$videos = array_column( (array) $pv['videos'], 'url' );
-			$vsrc   = 'plugivery';
-		}
-		$videos = array_values( array_unique( array_filter( array_map( 'strval', $videos ), static fn( $u ) => preg_match( '#^https?://#i', $u ) ) ) );
-		if ( $videos ) {
-			$out['videos'] = [ $vsrc, $videos ];
-		}
-
-		// System requirements per OS: XChange's web assets give the text; Plugivery's compatibility list the plugin formats.
-		$formats = [];
-		foreach ( (array) ( $pv['compats'] ?? [] ) as $c ) {
-			$os  = self::PLUGIVERY_PLATFORMS[ strtolower( (string) ( $c['platform'] ?? '' ) ) ] ?? '';
-			$fmt = self::PLUGIVERY_FORMATS[ strtolower( (string) ( $c['format'] ?? '' ) ) ] ?? '';
-			if ( $os !== '' && $fmt !== '' ) {
-				$formats[ $os ][ $fmt ] = true;
-			}
-		}
-		foreach ( [ 'mac' => 'requirements_mac', 'windows' => 'requirements_windows', 'linux' => 'requirements_linux' ] as $os => $concept ) {
-			$req = (array) ( $wa['requirements'][ $os ] ?? [] );
-			$req = array_filter( array_intersect_key( $req, array_flip( array_merge( \MMI_Product_Content_Registry::REQUIREMENT_TEXT_FIELDS, [ 'ram', 'disk' ] ) ) ), static fn( $v ) => is_scalar( $v ) && trim( (string) $v ) !== '' && (string) $v !== '0' );
-			if ( $req ) {
-				$out[ $concept ] = [ 'web_assets', $req + ( isset( $formats[ $os ] ) ? [ 'plugins' => array_keys( $formats[ $os ] ) ] : [] ) ];
-			} elseif ( isset( $formats[ $os ] ) ) {
-				$out[ $concept ] = [ 'plugivery', [ 'plugins' => array_keys( $formats[ $os ] ) ] ];
-			}
-		}
-
-		if ( $wa && ! empty( $wa['licensing']['methods'] ) ) {
-			$out['licensing'] = [ 'web_assets', (array) $wa['licensing'] ];
-		}
-		return $out;
-	}
-
-	/** [ source, platforms ] the feed lists, or null. */
-	private static function platforms( array $rec ): ?array {
-		$from_pv = [];
-		foreach ( (array) ( $rec['plugivery']['compats'] ?? [] ) as $c ) {
-			$os = self::PLUGIVERY_PLATFORMS[ strtolower( (string) ( $c['platform'] ?? '' ) ) ] ?? '';
-			if ( $os !== '' ) {
-				$from_pv[ $os ] = true;
-			}
-		}
-		if ( $from_pv ) {
-			return [ 'plugivery', array_keys( $from_pv ) ];
-		}
-		$from_wa = array_map( 'strval', (array) ( $rec['web_assets']['platforms'] ?? [] ) );
-		return $from_wa ? [ 'web_assets', $from_wa ] : null;
 	}
 
 	/**

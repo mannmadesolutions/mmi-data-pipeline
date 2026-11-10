@@ -113,6 +113,9 @@ class Product_CRUD_Manager {
                 continue;
             }
             $old_value = $this->get_product_field( $product, (string) $field );
+            if ( $old_value !== null && self::blank( $old_value ) && self::blank( $new_value ) ) {
+                continue; // nothing stored and nothing to write: not a change
+            }
             if ( $old_value === null ) {
                 // Field not comparable via get_product_field() (e.g. an array-valued
                 // category list) — fall back to assuming it may have changed rather
@@ -223,8 +226,23 @@ class Product_CRUD_Manager {
                 return null;
 
             default:
-                return (string) $product->get_meta( $field );
+                // Content meta can be stored as an array (videos, licensing, platforms): compare it as JSON, and an
+                // empty one as empty. Cast to a string it read "Array" and never matched, so every import re-saved
+                // the product (2026-11-10: 9 of 25 Plugivery products per Web Assets run, empty video lists).
+                $value = $product->get_meta( $field );
+                if ( is_array( $value ) ) {
+                    return $value ? (string) wp_json_encode( $value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : '';
+                }
+                return (string) $value;
         }
+    }
+
+    /** Nothing in it: null, '', an empty list or object, as JSON or as an array. */
+    private static function blank( $value ): bool {
+        if ( is_array( $value ) ) {
+            return ! array_filter( $value, static fn( $x ) => ! self::blank( $x ) );
+        }
+        return $value === null || in_array( trim( (string) $value ), [ '', '[]', '{}', 'null' ], true );
     }
 
     /**
