@@ -48,10 +48,11 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 
 **Graphic assets:**
 - Icon 128×128: `browser-extension/icons/128.png`.
-- Screenshots, 1280×800: `customer-site.sh` takes them on the test store with `MMI_SHOTS=<folder>` (the panel on a
-  maker's page, the live mapper with a pick, Recent changes). They show a maker's real page; check you're content to
-  publish that before uploading.
-- Small promo tile, 440×280: not made yet.
+- Screenshots (1280×800) and the small promo tile (440×280): **not decided yet; the owner decides at the end.** No real
+  maker or vendor appears in them (owner, 2026-11-10): either a made-up maker's page built for the purpose, or no web
+  page at all, showing the extension's panel and the plugin's admin screens instead. `customer-site.sh` can take
+  1280×800 shots with `MMI_SHOTS=<folder>`, but it runs on a real maker's stored page, so its shots aren't for the
+  listing.
 
 ## Privacy practices tab
 
@@ -82,17 +83,20 @@ connected, and that store answers with data, not code.
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-**Privacy policy URL:** the publisher's privacy policy, once it has the section below.
+**Privacy policy URL:** the publisher's privacy policy page, at its “MMI Product Data browser extension” section
+(`#mmi-product-data-extension`, published 2026-11-10 with the wording below).
 
-### Section for the publisher's privacy policy
+### The publisher's privacy policy section (as published)
 
-> **MMI Product Data (Chrome extension).** The extension sends data only to the WooCommerce store its user connects
-> it to, and never to us or anyone else. When the user opens its panel on a web page, it sends that page's address
-> and content to their store, so the store can show and save what the page holds for its products; the store keeps
-> what the user commits or stores. To connect, the user's store issues a key that the extension keeps in the
-> browser's extension storage and sends only to that store; disconnecting, or removing the extension, deletes it. The
-> extension has no analytics, tracking or advertising, and we receive nothing from it. What a store does with the data
-> is that store's own privacy policy.
+> **MMI Product Data browser extension.** MMI Product Data is our Chrome extension for stores that use our MMI Data
+> Pipeline plugin. It sends data only to the WooCommerce store its user connects it to, and never to us or anyone else.
+>
+> - **What it sends to that store:** when you open its panel on a web page, the page’s address and content, so your
+>   store can show and save what the page holds for your products. Your store keeps what you commit or store.
+> - **Your connection key:** to connect, your store issues a key that the extension keeps in your browser’s extension
+>   storage and sends only to that store. Disconnecting, or removing the extension, deletes it.
+> - **Nothing else:** the extension has no analytics, tracking or advertising, and we receive nothing from it. What a
+>   store does with the data is covered by that store’s own privacy policy.
 
 ## Distribution tab
 
