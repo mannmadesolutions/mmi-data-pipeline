@@ -51,6 +51,9 @@ export class TitleRulesMock {
   /** Store::apply_settings(), and Enrichment's settings and sources (Writing settings). */
   applySettings = { enabled: false, auto: false, batch_size: 25, min_confidence: 85 };
   enrichSettings = { enabled: false };
+  /** Exclusions: brand 30 is the store's own (fixed). */
+  leftBrands = [30, 31];
+  leftProducts = [2005];
   enrichRules: Record<string, { label: string; approved: boolean; retired?: boolean }> = {
     "content:vendor_page": { label: "Description from the maker's page", approved: true },
     "content:web_assets": { label: "Description from the feed", approved: false },
@@ -101,6 +104,17 @@ export class TitleRulesMock {
       app_state: { status: "complete", completed_at: "2026-11-10 00:15:07", day: "2026-11-10", applied_today: 3, applied_total: 7142, failed_total: 0, last_error: null },
       desc: { status: { candidate: 12, needs_ai: 2 }, fetch: { http_403: 4 } }, fetch: { status: "complete", completed_at: "2026-11-10 03:30:00", totals: { read: 40 } },
       urls: { auto: 1, review: 2, approved: 3, last_run: "2026-11-10 03:30" }, picker: { last_run: "", totals: { picked: 0, none: 0 } },
+    };
+  }
+
+  private brandNames: Record<number, [string, number]> = { 30: ["Our Store", 12], 31: ["Prism Example", 38], 20: ["Acme Audio", 15], 21: ["Example Sound", 15] };
+  leftCount() { return this.leftBrands.reduce((n, b) => n + this.brandNames[b]![1], 0) + this.leftProducts.length; }
+  leftSummary() {
+    return {
+      brands: this.leftBrands.map((id) => ({ id, name: this.brandNames[id]![0], count: this.brandNames[id]![1], fixed: id === 30 })),
+      products: this.leftProducts.map((id) => ({ id, title: this.proposals.find((p) => p.id === id)!.proposed, sku: `SKU-${id}` })),
+      excluded: this.leftCount(), not_sold: { count: 1484 },
+      all_brands: Object.entries(this.brandNames).map(([id, [name]]) => ({ id: Number(id), name })),
     };
   }
 
@@ -230,6 +244,19 @@ export class TitleRulesMock {
         return this.json(route, { rows, total: rows.length, pages: 1 });
       }
       case "enrich/summary": return this.json(route, this.enrichSummary());
+      case "exclusions": {
+        if (req.method() === "POST") {
+          const unknown: string[] = [];
+          const ids: number[] = [];
+          for (const x of (body.products as (number | string)[]) ?? []) { const n = Number(x); if (n >= 2001 && n <= 2030) ids.push(n); else { const r = this.proposals.find((p) => p.sku === x); if (r) ids.push(r.id); else unknown.push(String(x)); } }
+          const before = this.leftCount();
+          this.leftBrands = [30, ...((body.brands as number[]) ?? []).filter((b) => b !== 30)];
+          this.leftProducts = ids;
+          const now = this.leftCount();
+          return this.json(route, { brands: this.leftBrands, products: ids, excluded: now, removed: Math.max(0, now - before), restored: Math.max(0, before - now), unknown, summary: this.leftSummary() });
+        }
+        return this.json(route, this.leftSummary());
+      }
       case "enrich/decide": {
         const to = { accept: "accepted", reject: "rejected", reset: "proposed" }[String(body.action)]!;
         let n = 0;

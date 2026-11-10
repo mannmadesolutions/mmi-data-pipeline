@@ -1492,3 +1492,15 @@ tr.mmi-wb-mp-gone .notice {
     width: 220px;
     font-weight: 600;
 }
+
+/* ── Left alone by Product Data (src/workbench/LeftAlone.tsx) ── */
+.mmi-wb-la-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mmi-wb-gap) 8px;
+    margin-bottom: 8px;
+}
+.mmi-wb-la-add input[type="search"] {
+    width: 200px;
+}
