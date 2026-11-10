@@ -710,8 +710,8 @@ final class ProductPreview {
 				'part'    => $part,
 				'label'   => $on['label'],
 				'missing' => isset( self::ON_PAGE[ $part ] )
-					? sprintf( /* translators: %s: part */ __( '%s: not shown on this product’s page', 'mmi-admin' ), $on['label'] )
-					: sprintf( /* translators: %s: part */ __( '%s: the product page doesn’t show this part', 'mmi-admin' ), $on['label'] ),
+					? sprintf( /* translators: %s: part */ __( '%s: not shown on this product’s page', 'mmi-data-pipeline' ), $on['label'] )
+					: sprintf( /* translators: %s: part */ __( '%s: the product page doesn’t show this part', 'mmi-data-pipeline' ), $on['label'] ),
 			]
 		);
 	}
@@ -753,7 +753,7 @@ final class ProductPreview {
 			}
 		}
 		wp_enqueue_style( 'mmpt-preview', PageEvents::asset_url( 'css/preview.css' ), [], PageEvents::asset_ver( 'css/preview.css' ) );
-		$label = sprintf( /* translators: %s: vendor site */ __( 'Preview with the %s map: nothing is saved', 'mmi-admin' ), $plan['page']['status'] === 'ok' ? VendorMaps::host( (string) $plan['url'] ) : '' );
+		$label = sprintf( /* translators: %s: vendor site */ __( 'Preview with the %s map: nothing is saved', 'mmi-data-pipeline' ), $plan['page']['status'] === 'ok' ? VendorMaps::host( (string) $plan['url'] ) : '' );
 		add_action( 'wp_body_open', static function () use ( $label ) {
 			echo '<div class="mmpt-preview-label" role="status">' . esc_html( $label ) . '</div>';
 		} );

@@ -153,11 +153,11 @@ class Applier {
 	public static function start_run(): array {
 		$s = Store::apply_settings();
 		if ( ! $s['enabled'] ) {
-			return [ 'error' => __( 'Writing titles to products is off. Turn it on in the Applying tab first.', 'mmi-admin' ) ] + self::status();
+			return [ 'error' => __( 'Writing titles to products is off. Turn it on in the Applying tab first.', 'mmi-data-pipeline' ) ] + self::status();
 		}
 		$queue = self::queue_count();
 		if ( $queue === 0 ) {
-			return [ 'error' => __( 'There are no accepted or edited titles waiting to be written.', 'mmi-admin' ) ] + self::status();
+			return [ 'error' => __( 'There are no accepted or edited titles waiting to be written.', 'mmi-data-pipeline' ) ] + self::status();
 		}
 		Store::set_state(
 			Store::APPLY_STATE,

@@ -112,7 +112,7 @@ class CustomRules {
 		$from   = $squash( $in['from'] ?? '' );
 		$to     = $squash( $in['to'] ?? '' );
 		if ( ! in_array( $kind, self::KINDS, true ) ) {
-			return new \WP_Error( 'mmpt_rule_kind', __( 'Choose what the rule does: replace words, remove them, add words after them, move them into the parentheses, or a pattern.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_kind', __( 'Choose what the rule does: replace words, remove them, add words after them, move them into the parentheses, or a pattern.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		$extra = self::normalize_options( $in );
 		if ( is_wp_error( $extra ) ) {
@@ -128,7 +128,7 @@ class CustomRules {
 		}
 		if ( $from === '' || mb_strlen( $from ) > self::MAX_PHRASE ) {
 			/* translators: %d: maximum characters */
-			return new \WP_Error( 'mmpt_rule_from', sprintf( __( 'Type the words the rule looks for (up to %d characters).', 'mmi-admin' ), self::MAX_PHRASE ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_from', sprintf( __( 'Type the words the rule looks for (up to %d characters).', 'mmi-data-pipeline' ), self::MAX_PHRASE ), [ 'status' => 400 ] );
 		}
 		if ( $kind === 'remove' ) {
 			$to = '';
@@ -136,14 +136,14 @@ class CustomRules {
 			return new \WP_Error(
 				'mmpt_rule_to',
 				/* translators: %d: maximum characters */
-				sprintf( $kind === 'insert' ? __( 'Type the words to add (up to %d characters).', 'mmi-admin' ) : __( 'Type what replaces the words (up to %d characters).', 'mmi-admin' ), self::MAX_PHRASE ),
+				sprintf( $kind === 'insert' ? __( 'Type the words to add (up to %d characters).', 'mmi-data-pipeline' ) : __( 'Type what replaces the words (up to %d characters).', 'mmi-data-pipeline' ), self::MAX_PHRASE ),
 				[ 'status' => 400 ]
 			);
 		} elseif ( $kind === 'insert' ) {
 			$to = $from . ' ' . $to; // stored as the phrase after the change, like an insert learned from an edit
 		}
 		if ( $kind === 'replace' && $to === $from ) {
-			return new \WP_Error( 'mmpt_rule_same', __( 'The rule would change nothing: the new words are the same as the old.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_same', __( 'The rule would change nothing: the new words are the same as the old.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		$brand = self::normalize_brand( $in );
 		return is_wp_error( $brand ) ? $brand : [ 'kind' => $kind, 'from' => $from, 'to' => $to, 'brand' => $brand ] + $extra;
@@ -160,7 +160,7 @@ class CustomRules {
 			}
 			if ( ! $term ) {
 				/* translators: %s: brand name */
-				return new \WP_Error( 'mmpt_rule_brand', sprintf( __( 'No brand is called "%s".', 'mmi-admin' ), (string) $in['brand'] ), [ 'status' => 400 ] );
+				return new \WP_Error( 'mmpt_rule_brand', sprintf( __( 'No brand is called "%s".', 'mmi-data-pipeline' ), (string) $in['brand'] ), [ 'status' => 400 ] );
 			}
 		}
 		if ( $term && ! is_wp_error( $term ) ) {
@@ -186,7 +186,7 @@ class CustomRules {
 			$t = get_term( $c, 'product_cat' );
 			if ( ! $t || is_wp_error( $t ) ) {
 				/* translators: %d: category id */
-				return new \WP_Error( 'mmpt_rule_category', sprintf( __( 'There is no product category %d.', 'mmi-admin' ), $c ), [ 'status' => 400 ] );
+				return new \WP_Error( 'mmpt_rule_category', sprintf( __( 'There is no product category %d.', 'mmi-data-pipeline' ), $c ), [ 'status' => 400 ] );
 			}
 		}
 		if ( $cats ) {
@@ -198,7 +198,7 @@ class CustomRules {
 			foreach ( $sups as $v ) {
 				if ( ! in_array( $v, $known, true ) ) {
 					/* translators: %s: supplier source */
-					return new \WP_Error( 'mmpt_rule_supplier', sprintf( __( 'No product was imported from "%s".', 'mmi-admin' ), $v ), [ 'status' => 400 ] );
+					return new \WP_Error( 'mmpt_rule_supplier', sprintf( __( 'No product was imported from "%s".', 'mmi-data-pipeline' ), $v ), [ 'status' => 400 ] );
 				}
 			}
 			$out['suppliers'] = $sups;
@@ -212,18 +212,18 @@ class CustomRules {
 		$to = trim( (string) preg_replace( '/\s+/u', ' ', $to ) );
 		if ( $rx === '' || mb_strlen( $rx ) > self::MAX_PATTERN ) {
 			/* translators: %d: maximum characters */
-			return new \WP_Error( 'mmpt_rule_pattern', sprintf( __( 'Type the pattern (a regular expression, up to %d characters).', 'mmi-admin' ), self::MAX_PATTERN ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_pattern', sprintf( __( 'Type the pattern (a regular expression, up to %d characters).', 'mmi-data-pipeline' ), self::MAX_PATTERN ), [ 'status' => 400 ] );
 		}
 		if ( mb_strlen( $to ) > self::MAX_PHRASE ) {
 			/* translators: %d: maximum characters */
-			return new \WP_Error( 'mmpt_rule_to', sprintf( __( 'The replacement can be up to %d characters.', 'mmi-admin' ), self::MAX_PHRASE ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_to', sprintf( __( 'The replacement can be up to %d characters.', 'mmi-data-pipeline' ), self::MAX_PHRASE ), [ 'status' => 400 ] );
 		}
 		$rule = [ 'kind' => 'pattern', 'from' => $rx, 'to' => $to ] + $extra;
 		error_clear_last();
 		if ( @preg_match( self::user_pattern( $rule ), '' ) === false ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors -- reported to the person instead
 			$why = error_get_last()['message'] ?? preg_last_error_msg(); // a compile error is a warning ("Compilation failed: … at offset 9"), not preg_last_error()
 			/* translators: %s: the regular expression engine's message */
-			return new \WP_Error( 'mmpt_rule_pattern', sprintf( __( 'That pattern is not a valid regular expression (%s).', 'mmi-admin' ), preg_replace( '/^preg_match\(\):\s*/', '', (string) $why ) ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_pattern', sprintf( __( 'That pattern is not a valid regular expression (%s).', 'mmi-data-pipeline' ), preg_replace( '/^preg_match\(\):\s*/', '', (string) $why ) ), [ 'status' => 400 ] );
 		}
 		return [ 'from' => $rx, 'to' => $to ];
 	}
@@ -231,7 +231,7 @@ class CustomRules {
 	/** Move-into-the-parentheses: `from` is looked for in the name; `to` is how the parentheses say it (default: as found). */
 	private static function normalize_qualifier( string $from, string $to ) {
 		if ( $from === '' || mb_strlen( $from ) > self::MAX_PHRASE || mb_strlen( $to ) > self::MAX_PHRASE || strpbrk( $from . $to, '(),' ) !== false ) {
-			return new \WP_Error( 'mmpt_rule_from', __( 'Type the words to move into the parentheses (no parentheses or commas in them).', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_from', __( 'Type the words to move into the parentheses (no parentheses or commas in them).', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		return [ 'from' => $from, 'to' => $to !== '' ? $to : $from ];
 	}
@@ -356,7 +356,7 @@ class CustomRules {
 		$rules = array_values( array_filter( self::all(), static fn( $r ) => ! ( $r['from'] === $rule['from'] && strtolower( $r['brand'] ) === strtolower( $rule['brand'] ) ) ) );
 		if ( count( $rules ) >= self::MAX_RULES ) {
 			/* translators: %d: maximum number of rules */
-			return new \WP_Error( 'mmpt_rule_max', sprintf( __( 'There are already %d rules. Remove one first.', 'mmi-admin' ), self::MAX_RULES ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_rule_max', sprintf( __( 'There are already %d rules. Remove one first.', 'mmi-data-pipeline' ), self::MAX_RULES ), [ 'status' => 400 ] );
 		}
 		$saved   = self::stored( substr( md5( wp_json_encode( $rule ) . microtime() ), 0, 10 ), $rule );
 		$rules[] = $saved;
@@ -385,7 +385,7 @@ class CustomRules {
 				return [ 'before' => $r, 'after' => $rules[ $i ] ];
 			}
 		}
-		return new \WP_Error( 'mmpt_bad', __( 'That rule no longer exists.', 'mmi-admin' ), [ 'status' => 404 ] );
+		return new \WP_Error( 'mmpt_bad', __( 'That rule no longer exists.', 'mmi-data-pipeline' ), [ 'status' => 404 ] );
 	}
 
 	/** A rule in its stored shape (the shape save_from_edit() writes). */

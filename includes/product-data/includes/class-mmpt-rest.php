@@ -127,7 +127,7 @@ class Rest {
 						$wpdb->get_col( $wpdb->prepare( "SELECT product_id FROM {$t} WHERE detail LIKE %s", '%' . $wpdb->esc_like( $rule_id ) . '%' ) )
 					);
 					if ( ! CustomRules::delete( $rule_id ) ) {
-						return new \WP_Error( 'mmpt_bad', __( 'That rule no longer exists.', 'mmi-admin' ), [ 'status' => 404 ] );
+						return new \WP_Error( 'mmpt_bad', __( 'That rule no longer exists.', 'mmi-data-pipeline' ), [ 'status' => 404 ] );
 					}
 					$recomposed = $using ? Generator::recompose_now( $using ) : null;
 					Generator::dispatch(); // a full run still refreshes duplicates and advisories
@@ -306,7 +306,7 @@ class Rest {
 		$action = sanitize_key( (string) $r->get_param( 'action' ) );
 		$ids    = array_slice( array_filter( array_map( 'absint', (array) $r->get_param( 'ids' ) ) ), 0, 500 );
 		if ( ! isset( self::DECISIONS[ $action ] ) || ! $ids ) {
-			return new \WP_Error( 'mmpt_bad', __( 'Invalid decision.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Invalid decision.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		global $wpdb;
 		$in = implode( ',', $ids );
@@ -336,10 +336,10 @@ class Rest {
 		$title = self::clean_title( $r->get_param( 'title' ) );
 		$row   = Store::get( $id );
 		if ( ! $row || in_array( $row['status'], [ 'applied', 'reverted' ], true ) ) {
-			return new \WP_Error( 'mmpt_bad', __( 'This title can no longer be edited here.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'This title can no longer be edited here.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		if ( $title === '' || mb_strlen( $title ) > 250 ) {
-			return new \WP_Error( 'mmpt_bad', __( 'Enter a title of 1–250 characters.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Enter a title of 1–250 characters.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		Store::update( $id, [ 'status' => 'edited', 'edited_title' => $title, 'reviewed_by' => get_current_user_id(), 'reviewed_at' => current_time( 'mysql' ) ] );
 		Applier::dispatch(); // written right away, throttled
@@ -379,7 +379,7 @@ class Rest {
 		$id  = (int) $r['id'];
 		$ids = self::term_ids( $r );
 		if ( get_post_type( $id ) !== 'product' ) {
-			return new \WP_Error( 'mmpt_bad', __( 'Unknown product.', 'mmi-admin' ), [ 'status' => 404 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Unknown product.', 'mmi-data-pipeline' ), [ 'status' => 404 ] );
 		}
 		$bad = self::check_terms( $taxonomy, $ids, false );
 		if ( $bad ) {
@@ -434,7 +434,7 @@ class Rest {
 	public static function rule( \WP_REST_Request $r ) {
 		$id = sanitize_key( (string) $r->get_param( 'rule' ) );
 		if ( ! isset( TitleRules::pack()->all_rules()[ $id ] ) ) { // the attached pack's rules (house style here, Basic elsewhere) and the store's own
-			return new \WP_Error( 'mmpt_bad', __( 'Unknown rule.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Unknown rule.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		if ( $r->has_param( 'enabled' ) ) {
 			// "In use": every proposal is recomposed now, in this request (the whole
@@ -442,7 +442,7 @@ class Rest {
 			// the change at once, not after the next daily generation.
 			$enabled = rest_sanitize_boolean( $r->get_param( 'enabled' ) );
 			if ( ! Store::set_rule_enabled( $id, $enabled ) ) {
-				return new \WP_Error( 'mmpt_bad', __( 'This rule is always on.', 'mmi-admin' ), [ 'status' => 400 ] );
+				return new \WP_Error( 'mmpt_bad', __( 'This rule is always on.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 			}
 			@set_time_limit( 120 );
 			$stats = Generator::run( $enabled ? null : $id );
@@ -526,7 +526,7 @@ class Rest {
 		$kind   = sanitize_key( (string) $r->get_param( 'kind' ) );
 		$ids    = array_slice( array_filter( array_map( 'absint', (array) $r->get_param( 'ids' ) ) ), 0, 500 );
 		if ( ! isset( $map[ $action ] ) || ! in_array( $kind, Enrichment::KINDS, true ) || ! $ids ) {
-			return new \WP_Error( 'mmpt_bad', __( 'Invalid decision.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Invalid decision.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		$n = $wpdb->query( $wpdb->prepare( 'UPDATE ' . Enrichment::table() . ' SET status = %s, reviewed_by = %d, reviewed_at = %s WHERE kind = %s AND product_id IN (' . implode( ',', $ids ) . ") AND status IN ('proposed','accepted','rejected','stale','error')", $map[ $action ], get_current_user_id(), current_time( 'mysql' ), $kind ) );
 		if ( $n && $action === 'accept' ) {
@@ -546,10 +546,10 @@ class Rest {
 		$products = array_slice( array_values( array_unique( array_filter( array_map( 'absint', (array) $r->get_param( 'products' ) ) ) ) ), 0, 200 );
 		$ids      = self::term_ids( $r );
 		if ( ! $taxonomy ) {
-			return new \WP_Error( 'mmpt_bad', __( 'Unknown term type.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Unknown term type.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		if ( ! $products ) {
-			return new \WP_Error( 'mmpt_bad', __( 'Select at least one product.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'Select at least one product.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		$bad = self::check_terms( $taxonomy, $ids, $append );
 		if ( $bad ) {
@@ -558,7 +558,7 @@ class Rest {
 		$changed = [];
 		$errors  = [];
 		foreach ( $products as $id ) {
-			$set = get_post_type( $id ) === 'product' ? self::write_terms( $id, $taxonomy, $ids, $append ) : new \WP_Error( 'mmpt_bad', __( 'Unknown product.', 'mmi-admin' ) );
+			$set = get_post_type( $id ) === 'product' ? self::write_terms( $id, $taxonomy, $ids, $append ) : new \WP_Error( 'mmpt_bad', __( 'Unknown product.', 'mmi-data-pipeline' ) );
 			if ( is_wp_error( $set ) ) {
 				$errors[ $id ] = $set->get_error_message();
 				continue;
@@ -597,14 +597,14 @@ class Rest {
 	/** Why these terms can't be saved, or null. Adding nothing is pointless; a category is always required. */
 	private static function check_terms( string $taxonomy, array $ids, bool $append ): ?\WP_Error {
 		if ( ! taxonomy_exists( $taxonomy ) ) {
-			return new \WP_Error( 'mmpt_bad', __( 'That taxonomy is not registered.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', __( 'That taxonomy is not registered.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		if ( ! $ids && ( $taxonomy === 'product_cat' || $append ) ) {
-			return new \WP_Error( 'mmpt_bad', $taxonomy === 'product_cat' ? __( 'Choose at least one category.', 'mmi-admin' ) : __( 'Choose at least one brand to add.', 'mmi-admin' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'mmpt_bad', $taxonomy === 'product_cat' ? __( 'Choose at least one category.', 'mmi-data-pipeline' ) : __( 'Choose at least one brand to add.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
 		foreach ( $ids as $term_id ) {
 			if ( ! term_exists( $term_id, $taxonomy ) ) {
-				return new \WP_Error( 'mmpt_bad', $taxonomy === 'product_cat' ? __( 'One of those categories no longer exists.', 'mmi-admin' ) : __( 'One of those brands no longer exists.', 'mmi-admin' ), [ 'status' => 400 ] );
+				return new \WP_Error( 'mmpt_bad', $taxonomy === 'product_cat' ? __( 'One of those categories no longer exists.', 'mmi-data-pipeline' ) : __( 'One of those brands no longer exists.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 			}
 		}
 		return null;

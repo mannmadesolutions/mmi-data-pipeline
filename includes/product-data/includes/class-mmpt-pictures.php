@@ -1190,7 +1190,7 @@ class Pictures {
 			[
 				'new_ids'    => wp_json_encode( array_values( array_unique( array_merge( array_map( 'intval', (array) json_decode( (string) $row['new_ids'], true ) ), $add ) ) ) ),
 				'pics_after' => count( $all ),
-				'note'       => mb_substr( trim( 'Restored ' . count( $add ) . ' dropped ' . _n( 'picture', 'pictures', count( $add ), 'mmi-admin' ) . ' (2026-10-18 catch-up). ' . (string) $row['note'] ), 0, 255 ),
+				'note'       => mb_substr( trim( 'Restored ' . count( $add ) . ' dropped ' . _n( 'picture', 'pictures', count( $add ), 'mmi-data-pipeline' ) . ' (2026-10-18 catch-up). ' . (string) $row['note'] ), 0, 255 ),
 				'decisions'  => wp_json_encode( $dec, JSON_UNESCAPED_SLASHES ),
 			],
 			[ 'product_id' => $id ]

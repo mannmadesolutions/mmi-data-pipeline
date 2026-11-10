@@ -689,8 +689,8 @@ class PictureMatch {
 		$parts = array_filter(
 			[
 				$c['new'] ? $c['new'] . ' new' : '',
-				$c['sharper'] ? $c['sharper'] . ' sharper ' . _n( 'copy', 'copies', $c['sharper'], 'mmi-admin' ) : '',
-				$c['duplicate'] ? $c['duplicate'] . ' ' . _n( 'duplicate', 'duplicates', $c['duplicate'], 'mmi-admin' ) . ' removed' : '',
+				$c['sharper'] ? $c['sharper'] . ' sharper ' . _n( 'copy', 'copies', $c['sharper'], 'mmi-data-pipeline' ) : '',
+				$c['duplicate'] ? $c['duplicate'] . ' ' . _n( 'duplicate', 'duplicates', $c['duplicate'], 'mmi-data-pipeline' ) . ' removed' : '',
 				$c['kept'] + $c['unreadable'] ? ( $c['kept'] + $c['unreadable'] ) . ' kept' : '',
 				$c['vetoed'] ? $c['vetoed'] . ' vetoed by a person' : '',
 				! empty( $m['featured'] ) ? 'featured chosen by a person' : '',

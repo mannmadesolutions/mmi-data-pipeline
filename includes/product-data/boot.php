@@ -4,9 +4,8 @@
  * it with this plugin alone. Loaded inside the license gate: on a lapse nothing new is read or proposed, and stored
  * data keeps showing (the registry and field-lock reading load outside the gate).
  *
- * A store's own plugin can carry its own copy of the module and say which runs (the host switch,
- * `mmpt_product_data_host()`: 'pipeline' or 'admin'). This file boots the module unless that switch says another
- * plugin runs it; that plugin then registers everything itself, and here nothing does.
+ * This plugin is the module's only home (migration phase 9c, 2026-11-10: mmi-admin's copy and the host switch
+ * between them are gone). A store's own plugin adds its parts through the module's filters and actions.
  *
  * @package MannMade\DataPipeline\ProductData
  */
@@ -18,16 +17,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * This boot is here and registers the module at `plugins_loaded` 20. A store's own copy of the module stands down
- * only when it sees this (2: registers at once when loaded during `plugins_loaded`; 2026-11-10, the first version's
+ * This boot is here and registers the module at `plugins_loaded` 20; a store's own plugin registers its parts only
+ * when it sees this (2: registers at once when loaded during `plugins_loaded`; 2026-11-10, the first version's
  * priority-20 callback was added while priority 20 ran and so never ran).
  */
 const BOOT = 2;
-
-/** Whether this plugin runs Product Data: no other copy is installed, or the host switch hands it here. */
-function hosts(): bool {
-	return ! function_exists( 'mmpt_product_data_host' ) || mmpt_product_data_host() === 'pipeline';
-}
 
 /** WooCommerce and the shared library are there (the module's two needs). */
 function can_boot(): bool {
@@ -42,10 +36,10 @@ const HOOKED = [
 	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class,
 ];
 
-/** The module's tables, hooks, review API and CLI (only where this plugin runs it). */
+/** The module's tables, hooks, review API and CLI. */
 function boot(): void {
 	static $done = false;
-	if ( $done || ! can_boot() || ! hosts() ) {
+	if ( $done || ! can_boot() ) {
 		return;
 	}
 	$done = true;
@@ -74,7 +68,7 @@ if ( doing_action( 'plugins_loaded' ) || did_action( 'plugins_loaded' ) ) {
 add_action(
 	'init',
 	static function () {
-		if ( ! can_boot() || ! hosts() ) {
+		if ( ! can_boot() ) {
 			return;
 		}
 		Generator::schedule_daily();
