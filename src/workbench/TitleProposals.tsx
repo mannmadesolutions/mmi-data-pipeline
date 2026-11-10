@@ -14,6 +14,7 @@ import {
 } from "./proposalsApi";
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, Section } from "./ui";
+import { TitleWriting } from "./WritingSettings";
 
 const COLS: { key: QueueSort; label: string }[] = [
   { key: "id", label: "ID" },
@@ -294,13 +295,14 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
           <button type="button" className="button button-small" id="mmi-wb-pr-stop" disabled={applyBusy} onClick={() => runWriter(true)}>Stop</button>
         )}
       </div>
+      <TitleWriting cfg={cfg} onChange={refresh} onShowAuto={() => setFilter((f) => ({ ...f, status: "auto", page: 1 }))} />
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-pr-notice"><p>{notice.text}</p></div>}
 
       <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="Show">
         {STATUS_VIEWS.map((v) => (
           <button key={v.value} type="button" className={`mmi-pill${filter.status === v.value ? " active" : ""}`} aria-pressed={filter.status === v.value}
             data-view={v.value} onClick={() => setFilter((f) => ({ ...f, status: v.value, page: 1 }))}>
-            {v.label} <span className="mmi-pill-count">{summary ? viewCount(summary.by_status, v.value) : "…"}</span>
+            {v.label} <span className="mmi-pill-count">{summary ? (v.value === "auto" ? summary.auto ?? 0 : viewCount(summary.by_status, v.value)) : "…"}</span>
           </button>
         ))}
       </div>

@@ -15,6 +15,7 @@ import {
 } from "./enrichApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
 import { Dashicon, Section } from "./ui";
+import { EnrichWriting } from "./WritingSettings";
 
 type SortKey = "id" | "title" | "source" | "status";
 const COLS: { key: SortKey; label: string }[] = [
@@ -161,6 +162,7 @@ export function EnrichProposals({ cfg }: { cfg: TitleRulesConfig }) {
   return (
     <Section id="mmi-wb-enrich" icon="format-image" title="Description and picture proposals"
       desc="Descriptions read from a maker's page or a supplier, and pictures for products that have few or none. Accept to have them written, or pick the pictures first; written values can be put back">
+      <EnrichWriting cfg={cfg} onChange={refresh} />
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-en-notice"><p>{notice.text}</p></div>}
       <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="What">
         {(["content", "image"] as const).map((k) => (

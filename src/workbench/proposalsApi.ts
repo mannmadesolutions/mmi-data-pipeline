@@ -51,6 +51,8 @@ export interface ProposalPage { rows: ProposalRow[]; total: number; pages: numbe
 
 export interface QueueSummary {
   by_status: Record<string, number>;
+  /** Unreviewed proposals that pass every auto-apply gate (status=auto lists them). */
+  auto?: number;
   rules: Record<string, { label: string }>;
   brands: string[];
 }
@@ -86,6 +88,7 @@ export const EMPTY_FILTER: QueueFilter = { status: "open", q: "", brand: "", rul
 /** The status pills: query value → label, and which stored statuses each counts. */
 export const STATUS_VIEWS: { value: string; label: string; counts: ProposalStatus[] }[] = [
   { value: "open", label: "To review", counts: ["proposed", "stale", "error"] },
+  { value: "auto", label: "Would auto-apply", counts: [] }, // counted by Store::summary()'s auto, not by status
   { value: "queued", label: "Waiting to be written", counts: ["accepted", "edited"] },
   { value: "applied", label: "Written", counts: ["applied"] },
   { value: "rejected", label: "Rejected", counts: ["rejected"] },

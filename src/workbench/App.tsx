@@ -26,6 +26,7 @@ import { BrandSites } from "./BrandSites";
 import { SiteMaps } from "./SiteMaps";
 import { TitleProposals } from "./TitleProposals";
 import { TitleRules } from "./TitleRules";
+import { ProductDataRuns } from "./WritingSettings";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
 import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
@@ -514,6 +515,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
       {cfg.titleRules ? <BrandSites cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <SiteMaps cfg={cfg.titleRules} /> : null}
       {cfg.titleRules ? <TitleRules cfg={cfg.titleRules} /> : null}
+      {cfg.titleRules ? <ProductDataRuns cfg={cfg.titleRules} /> : null}
       <CatalogUpkeep onRunFinished={loadRules} />
 
       <RecentChanges jobs={jobs} busy={runner.running !== null} onUndo={onUndo} onResume={onResume} />
