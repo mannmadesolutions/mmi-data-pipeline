@@ -36,8 +36,8 @@ define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
 require_once MMI_PIPELINE_PATH . 'includes/mmi-shared/bootstrap.php';
 
 // Product Data module (moved from a site plugin, migration phase 5b): MannMade\DataPipeline\ProductData\X
-// → includes/product-data/includes/class-mmpt-x.php. Class files only; nothing registers its hooks yet
-// unless a site's own code hands its Product Data to it (option mmi_product_data_host = pipeline).
+// → includes/product-data/includes/class-mmpt-x.php. Its hooks register in includes/product-data/boot.php
+// (inside the license gate), unless a store's own copy of the module runs instead (the host switch).
 spl_autoload_register(
     static function ( $class ) {
         $prefix = 'MannMade\\DataPipeline\\ProductData\\';
@@ -296,6 +296,9 @@ add_action( 'plugins_loaded', function () {
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-standing-rules.php';
     require_once MMI_PIPELINE_PATH . 'includes/workbench/class-rule-efficacy.php';
     \MannMade\DataPipeline\Workbench\Rule_Efficacy::register();
+
+    // Product Data (migration phase 9): its tables, hooks, review API, WP-CLI and daily jobs, inside the gate.
+    require_once MMI_PIPELINE_PATH . 'includes/product-data/boot.php';
 
     // Catalog run state + phase runner — the single execution path shared by
     // the "Update Store Catalog" button, the scheduled cron/Action Scheduler

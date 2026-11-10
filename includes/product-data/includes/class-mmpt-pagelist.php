@@ -207,6 +207,18 @@ class PageList {
 	/* ── Scope ─────────────────────────────────────────────────────────── */
 
 	/**
+	 * A request's scope (brand, site, search) for another route's list: null when it names none (every product),
+	 * else the IDs (possibly none).
+	 * @return int[]|null
+	 */
+	public static function scope_of( \WP_REST_Request $r ): ?array {
+		$brand = absint( $r->get_param( 'brand' ) );
+		$site  = VendorMaps::host( sanitize_text_field( (string) $r->get_param( 'site' ) ) );
+		$q     = trim( sanitize_text_field( (string) $r->get_param( 'q' ) ) );
+		return $brand || $site !== '' || $q !== '' ? self::scope( $brand, $site, $q ) : null;
+	}
+
+	/**
 	 * The products in scope: of these WooCommerce statuses (published unless a caller asks for others), not
 	 * excluded, of the brand (0 = every brand), with their page on the site ('' = any), matching the search (an ID,
 	 * a SKU, or words of the title).
