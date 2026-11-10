@@ -102,6 +102,7 @@ class MMI_Dynamic_Product_Importer {
         'pricing_updated' => 0,
         'stock_updated' => 0,
         'promo_applied' => 0,
+        'sale_held' => 0,
     ];
 
     /**
@@ -526,7 +527,7 @@ class MMI_Dynamic_Product_Importer {
             $this->throttle->complete_process("product_import_{$this->supplier_name}", $this->stats);
         }
 
-        $this->log("Import complete: {$this->stats['created']} created, {$this->stats['updated']} updated, {$this->stats['unchanged']} unchanged, {$this->stats['skipped']} skipped, {$this->stats['errors']} errors, {$this->stats['promo_applied']} promos applied");
+        $this->log("Import complete: {$this->stats['created']} created, {$this->stats['updated']} updated, {$this->stats['unchanged']} unchanged, {$this->stats['skipped']} skipped, {$this->stats['errors']} errors, {$this->stats['promo_applied']} promos applied, {$this->stats['sale_held']} sale prices held below cost");
 
         return $this->get_results();
     }
@@ -629,6 +630,7 @@ class MMI_Dynamic_Product_Importer {
         if ($promo_data) {
             $product_data = $this->apply_promotion($product_data, $promo_data);
         }
+        $product_data = $this->hold_sale_below_cost( $product_data, $promo_data ?: null, (int) $product_id, (string) $primary_value );
 
         // Apply stock override (per-product meta or bulk rule) before CRUD.
         // Runs after promo so promotional pricing is preserved regardless.
@@ -1202,8 +1204,14 @@ class MMI_Dynamic_Product_Importer {
             $true_regular = \MMI_Pipeline_Field_Resolver::resolve_true_regular_price( $regular_price, $promo_data );
             if ( $true_regular !== null ) {
                 $regular_price = $true_regular;
-                $product_data['_regular_price'] = $true_regular;
-                $product_data['regular_price']  = $true_regular;
+                // Written only by a profile that maps the regular price for this
+                // supplier. Pricing doesn't map it for Xchange, yet wrote the
+                // promotion's map_price there, a write Field Conflicts couldn't
+                // see (changelog 2026-11-10.5).
+                if ( $this->get_promo_source_key( '_regular_price' ) !== null ) {
+                    $product_data['_regular_price'] = $true_regular;
+                    $product_data['regular_price']  = $true_regular;
+                }
             }
 
             // Only apply if promo price is lower than regular
@@ -1237,6 +1245,48 @@ class MMI_Dynamic_Product_Importer {
         return $product_data;
     }
     
+    /**
+     * Never write a sale price below our cost. The floor is the promotion's
+     * cost while one covers the product, else the cost this import maps, else
+     * the stored cost (MMI_Pipeline_Field_Resolver::sale_price_floor()). A
+     * sale price below it is left out with its dates, so the product keeps
+     * what it has, and the product is noted for the Product Workbench's
+     * "Sale below cost" check. Xchange 13388 (2026-11-10): street 79.00,
+     * promo cost 139.30 (changelog 2026-11-10.5).
+     */
+    protected function hold_sale_below_cost( array $product_data, ?array $promo_data, int $product_id, string $primary_value ): array {
+        $sale = $product_data['_sale_price'] ?? $product_data['sale_price'] ?? null;
+        $maps_sale = $this->get_promo_source_key( '_sale_price' ) !== null;
+        if ( $sale === null || $sale === '' ) {
+            if ( $maps_sale ) {
+                \MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            }
+            return $product_data;
+        }
+
+        $cost_key = \MMI_Pipeline_Field_Resolver::cost_meta_key();
+        $floor    = \MMI_Pipeline_Field_Resolver::sale_price_floor( $this->supplier_name, $promo_data, $product_id, $product_data[ $cost_key ] ?? null );
+        if ( ! \MMI_Pipeline_Field_Resolver::is_below_floor( $sale, $floor ) ) {
+            \MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            return $product_data;
+        }
+
+        unset(
+            $product_data['_sale_price'], $product_data['sale_price'],
+            $product_data['_sale_price_dates_from'], $product_data['_sale_price_dates_to'],
+            $product_data['date_on_sale_from'], $product_data['date_on_sale_to']
+        );
+        \MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, [
+            'sale'     => round( (float) $sale, 2 ),
+            'floor'    => round( (float) $floor, 2 ),
+            'profile'  => (string) $this->profile,
+            'supplier' => (string) $this->supplier_name,
+        ] );
+        $this->stats['sale_held']++;
+        $this->log( "Sale price held for {$primary_value}: {$sale} is below our cost {$floor}", 'warning' );
+        return $product_data;
+    }
+
     /**
      * Find product by primary key. Uses the current batch's pre-resolved map
      * ($resolved_product_ids, populated once per run() call for the standard
@@ -1583,7 +1633,11 @@ class MMI_Dynamic_Product_Importer {
             $price_key = $this->get_promo_source_key( '_sale_price' ); // mapped key only: never xchange's promo_price (dealer cost)
             if ( $promo && $price !== null && $price_key !== null ) {
                 $promo_price = $promo[ $price_key ] ?? null;
-                if ( $promo_price !== null && (float) $promo_price > 0 && (float) $promo_price < (float) $price ) {
+                $floor = \MMI_Pipeline_Field_Resolver::sale_price_floor( $this->supplier_name, $promo, (int) $variation->get_id() );
+                if ( \MMI_Pipeline_Field_Resolver::is_below_floor( $promo_price, $floor ) ) {
+                    $this->stats['sale_held']++;
+                    $this->log( "Sale price held for variation {$var_sku}: {$promo_price} is below our cost {$floor}", 'warning' );
+                } elseif ( $promo_price !== null && (float) $promo_price > 0 && (float) $promo_price < (float) $price ) {
                     $variation->set_sale_price( (string) $promo_price );
                 }
             }

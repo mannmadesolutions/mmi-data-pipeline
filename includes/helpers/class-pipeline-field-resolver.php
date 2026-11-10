@@ -695,7 +695,10 @@ class MMI_Pipeline_Field_Resolver {
             $promos = $data; // bare array (e.g. skuport-promos.json)
         }
 
-        $index = [];
+        // A SKU can be in more than one promotion (UA's Black Friday Part 1 and
+        // Part 2). Keeping only the last in the file let an ended or not-yet-
+        // started one win over the one running now (changelog 2026-11-10.5).
+        $candidates = [];
         foreach ( $promos as $promo ) {
             if ( ! is_array( $promo ) ) {
                 continue;
@@ -704,13 +707,158 @@ class MMI_Pipeline_Field_Resolver {
                 ? ( $promo[ $key_fields[ $supplier ] ] ?? null )
                 : ( $promo['sku'] ?? $promo['id'] ?? $promo['product_id'] ?? null );
             if ( $key !== null && $key !== '' ) {
-                $index[ (string) $key ] = isset( $keep_fields[ $supplier ] )
+                $candidates[ (string) $key ][] = isset( $keep_fields[ $supplier ] )
                     ? array_intersect_key( $promo, array_flip( $keep_fields[ $supplier ] ) )
                     : $promo;
             }
         }
 
+        $now   = time();
+        $index = [];
+        foreach ( $candidates as $key => $records ) {
+            $chosen = self::choose_promotion( $records, $now );
+            if ( $chosen !== null ) {
+                $index[ $key ] = $chosen;
+            }
+        }
+
         return [ 'index' => $index, 'namespace' => $namespace ];
+    }
+
+    /**
+     * Pick the promotion that applies to one SKU at $now: the one running now
+     * (the latest to start, when several overlap), else the next to start,
+     * else none. A promotion without a start date counts as started; one
+     * without an end date never ends.
+     *
+     * @param array<int,array> $records Every promotion record for the SKU.
+     * @param int              $now     UNIX time.
+     * @return array|null
+     */
+    public static function choose_promotion( array $records, int $now ): ?array {
+        $running = null;
+        $running_start = PHP_INT_MIN;
+        $next = null;
+        $next_start = PHP_INT_MAX;
+        foreach ( $records as $record ) {
+            [ $start, $end ] = self::promotion_window( $record );
+            $start_at = $start ?? PHP_INT_MIN;
+            if ( $start_at <= $now && ( $end === null || $now < $end ) ) {
+                if ( $running === null || $start_at >= $running_start ) {
+                    $running       = $record;
+                    $running_start = $start_at;
+                }
+            } elseif ( $start !== null && $start > $now && $start < $next_start ) {
+                $next       = $record;
+                $next_start = $start;
+            }
+        }
+        return $running ?? $next;
+    }
+
+    /**
+     * A promotion record's start and end as UNIX times (null when absent or
+     * unreadable). Xchange: start_date/end_date, UTC strings (its file says
+     * "timezone": "UTC"). SkuPort: promoStart/promoEnd, ISO 8601 with offset.
+     * Plugivery: start/end, UNIX times.
+     *
+     * @return array{0:?int,1:?int}
+     */
+    public static function promotion_window( array $record ): array {
+        $read = static function ( $value ): ?int {
+            if ( $value === null || $value === '' ) {
+                return null;
+            }
+            if ( is_numeric( $value ) ) {
+                return (int) $value;
+            }
+            try {
+                return ( new \DateTimeImmutable( (string) $value, new \DateTimeZone( 'UTC' ) ) )->getTimestamp();
+            } catch ( \Exception $e ) {
+                return null;
+            }
+        };
+        return [
+            $read( $record['start_date'] ?? $record['promoStart'] ?? $record['start'] ?? null ),
+            $read( $record['end_date'] ?? $record['promoEnd'] ?? $record['end'] ?? null ),
+        ];
+    }
+
+    /** Each supplier's promotion field that holds OUR cost while the promotion runs. */
+    public const PROMO_COST_KEYS = [
+        'xchange'   => 'promo_price',
+        'skuport'   => 'promoCost',
+        'plugivery' => 'promo_cost',
+    ];
+
+    /** Product meta naming a sale price an import held back because it was below our cost. */
+    public const SALE_HELD_META = '_mmi_sale_held';
+
+    /**
+     * The lowest sale price an import may write: our cost. While a promotion
+     * covers the product that is the promotion's cost; otherwise the cost the
+     * import brings, else the product's stored cost. Null when no cost is known.
+     *
+     * @param string     $supplier
+     * @param array|null $promo         The matched promotion record (raw), if any.
+     * @param int        $product_id    0 for a product not created yet.
+     * @param mixed      $incoming_cost The cost this import writes, if it maps one.
+     */
+    public static function sale_price_floor( string $supplier, ?array $promo, int $product_id, $incoming_cost = null ): ?float {
+        $key = self::PROMO_COST_KEYS[ $supplier ] ?? null;
+        if ( $promo && $key !== null && is_numeric( $promo[ $key ] ?? null ) && (float) $promo[ $key ] > 0 ) {
+            return (float) $promo[ $key ];
+        }
+        if ( is_numeric( $incoming_cost ) && (float) $incoming_cost > 0 ) {
+            return (float) $incoming_cost;
+        }
+        if ( $product_id > 0 ) {
+            $stored = get_post_meta( $product_id, self::cost_meta_key(), true );
+            if ( is_numeric( $stored ) && (float) $stored > 0 ) {
+                return (float) $stored;
+            }
+        }
+        return null;
+    }
+
+    /** The meta key the store keeps its cost of goods in. */
+    public static function cost_meta_key(): string {
+        return function_exists( 'mmi_get_cog_meta_key' ) ? mmi_get_cog_meta_key() : 'cog';
+    }
+
+    /**
+     * Whether $sale is below $floor, in cents. A sale price equal to cost is allowed.
+     *
+     * @param mixed $sale
+     */
+    public static function is_below_floor( $sale, ?float $floor ): bool {
+        return $floor !== null && is_numeric( $sale ) && (float) $sale > 0
+            && (int) round( (float) $sale * 100 ) < (int) round( $floor * 100 );
+    }
+
+    /**
+     * Note on the product that an import held back a sale price below cost
+     * ($hold), or that it no longer does (null). The Product Workbench's
+     * "Sale below cost" health check lists products carrying the note.
+     *
+     * @param array{sale:float,floor:float,profile:string,supplier:string}|null $hold
+     */
+    public static function record_sale_hold( int $product_id, ?array $hold ): void {
+        if ( $product_id <= 0 ) {
+            return;
+        }
+        $current = get_post_meta( $product_id, self::SALE_HELD_META, true );
+        if ( $hold === null ) {
+            if ( $current !== '' ) {
+                delete_post_meta( $product_id, self::SALE_HELD_META );
+            }
+            return;
+        }
+        $old = is_string( $current ) && $current !== '' ? json_decode( $current, true ) : null;
+        if ( is_array( $old ) && array_diff_key( $old, [ 'at' => 1 ] ) == $hold ) {
+            return; // same hold already noted
+        }
+        update_post_meta( $product_id, self::SALE_HELD_META, wp_json_encode( $hold + [ 'at' => gmdate( 'Y-m-d H:i:s' ) ] ) );
     }
 
     /**

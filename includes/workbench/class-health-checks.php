@@ -158,6 +158,14 @@ final class Health_Checks {
                 'match_logic' => 'all',
                 'conditions'  => [ $meta( '__post_status', 'in_list', 'draft|pending|private' ) ],
             ],
+            // An import left out a feed's sale price because it was below our
+            // cost (MMI_Pipeline_Field_Resolver::record_sale_hold()).
+            'sale_below_cost' => [
+                'label'       => 'Feed sale price below our cost (held back by imports)',
+                'chip'        => 'Sale below cost',
+                'match_logic' => 'all',
+                'conditions'  => [ $meta( '_mmi_sale_held', 'is_not_empty' ) ],
+            ],
         ];
 
         /**

@@ -234,8 +234,14 @@ class Product_Import_Worker {
         // Only ever non-empty for an existing product — see import_single_product().
         $locked = $options['locked_fields'] ?? [];
 
+        // A sale price below our cost is left out with its dates (changelog 2026-11-10.5).
+        $hold_sale = self::sale_below_cost( $product, (array) $data, (array) $mappings, $supplier, (string) ( $options['profile'] ?? '' ) );
+
         foreach ( $mappings as $field_name => $mapping ) {
             if ( MMI_Pipeline_Field_Locks::in_list( (string) $field_name, $locked ) ) {
+                continue;
+            }
+            if ( $hold_sale && in_array( $field_name, [ '_sale_price', 'sale_price', '_sale_price_dates_from', '_sale_price_dates_to' ], true ) ) {
                 continue;
             }
 
@@ -592,6 +598,47 @@ class Product_Import_Worker {
     /**
      * Read the current value of a product field (before overwrite) for diff tracking.
      */
+    /**
+     * Whether this row's mapped sale price is below our cost (the promotion's
+     * cost while one covers the product, else the stored cost), noting the
+     * result on the product either way when the profile maps a sale price.
+     * Same rule as MMI_Dynamic_Product_Importer::hold_sale_below_cost().
+     */
+    private static function sale_below_cost( $product, array $data, array $mappings, string $supplier, string $profile ): bool {
+        $mapping = $mappings['_sale_price'] ?? $mappings['sale_price'] ?? null;
+        if ( ! is_array( $mapping ) ) {
+            return false;
+        }
+        $enabled = $mapping['enabled'] ?? false;
+        if ( is_array( $enabled ) ? empty( $enabled[ $supplier ] ) : empty( $enabled ) ) {
+            return false;
+        }
+        $source = is_array( $mapping['source'] ?? null ) ? ( $mapping['source'][ $supplier ] ?? '' ) : (string) ( $mapping['source'] ?? '' );
+        if ( $source === '' ) {
+            return false;
+        }
+        $product_id = (int) $product->get_id();
+        $sale       = MMI_Pipeline_Field_Resolver::apply_transform( MMI_Pipeline_Field_Resolver::get_nested_value( $data, $source ), $mapping['transform'] ?? 'none' );
+        if ( $sale === null || $sale === '' ) {
+            MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            return false;
+        }
+        // Xchange's promotion is injected under "promotions"; SkuPort's and Plugivery's are merged flat.
+        $promo = is_array( $data['promotions'] ?? null ) ? $data['promotions'] : ( $supplier === 'xchange' ? null : $data );
+        $floor = MMI_Pipeline_Field_Resolver::sale_price_floor( $supplier, $promo, $product_id );
+        if ( ! MMI_Pipeline_Field_Resolver::is_below_floor( $sale, $floor ) ) {
+            MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            return false;
+        }
+        MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, [
+            'sale'     => round( (float) $sale, 2 ),
+            'floor'    => round( (float) $floor, 2 ),
+            'profile'  => $profile,
+            'supplier' => $supplier,
+        ] );
+        return true;
+    }
+
     public static function get_product_field( $product, string $field_name ): string {
         switch ( $field_name ) {
             case 'post_title':     return (string) $product->get_name();
@@ -716,10 +763,14 @@ class Product_Import_Worker {
      * values are semantically equal (save can be skipped).
      */
     public static function has_product_changes( $product, $data, $mappings, $options ): bool {
-        $supplier = $options['supplier'] ?? '';
-        $locked   = $options['locked_fields'] ?? [];
+        $supplier  = $options['supplier'] ?? '';
+        $locked    = $options['locked_fields'] ?? [];
+        $hold_sale = self::sale_below_cost( $product, (array) $data, (array) $mappings, $supplier, (string) ( $options['profile'] ?? '' ) );
         foreach ( $mappings as $field_name => $mapping ) {
             if ( MMI_Pipeline_Field_Locks::in_list( (string) $field_name, $locked ) ) {
+                continue;
+            }
+            if ( $hold_sale && in_array( $field_name, [ '_sale_price', 'sale_price', '_sale_price_dates_from', '_sale_price_dates_to' ], true ) ) {
                 continue;
             }
             // Respect enabled flag for constants and source fields alike

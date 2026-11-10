@@ -112,6 +112,26 @@ class Product_CRUD_Manager {
             if ( in_array( $field, self::NOOP_FIELDS, true ) ) {
                 continue;
             }
+            // Category ids resolved by the importer compare as a set against the
+            // product's own: equal ids, an empty list (never written) or category
+            // mapping switched off are no change. Treated as "assume changed",
+            // they re-saved every product a New Products pass let through
+            // (295 on 2026-11-10; changelog 2026-11-10.5).
+            if ( in_array( $field, [ 'product_cat', 'product_cat_ids' ], true ) && is_array( $new_value )
+                && count( array_filter( $new_value, 'is_int' ) ) === count( $new_value ) ) {
+                if ( ! $this->import_rules['category_mapping'] || ! $new_value ) {
+                    continue;
+                }
+                $want = array_values( array_unique( $new_value ) );
+                $have = array_map( 'intval', $product->get_category_ids() );
+                sort( $want );
+                sort( $have );
+                if ( $want === $have ) {
+                    continue;
+                }
+                $has_changes = true;
+                break;
+            }
             $old_value = $this->get_product_field( $product, (string) $field );
             if ( $old_value !== null && self::blank( $old_value ) && self::blank( $new_value ) ) {
                 continue; // nothing stored and nothing to write: not a change
@@ -177,13 +197,17 @@ class Product_CRUD_Manager {
             case '_sale_price':
                 return (string) $product->get_sale_price();
 
+            // As UNIX times, like the import's value. date() gave store time
+            // ("2026-11-04 02:00:00" Chicago), which values_are_equal() read
+            // as UTC, so 93 dated sales were re-saved every Pricing pass
+            // (changelog 2026-11-10.5).
             case '_sale_price_dates_from':
                 $ts = $product->get_date_on_sale_from();
-                return $ts ? $ts->date( 'Y-m-d H:i:s' ) : '';
+                return $ts ? (string) $ts->getTimestamp() : '';
 
             case '_sale_price_dates_to':
                 $ts = $product->get_date_on_sale_to();
-                return $ts ? $ts->date( 'Y-m-d H:i:s' ) : '';
+                return $ts ? (string) $ts->getTimestamp() : '';
 
             case 'stock_quantity':
             case '_stock':
