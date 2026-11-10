@@ -33,7 +33,7 @@ const HOOKED = [
 	Generator::class, Write::class, Applier::class, VendorFetcher::class, Picker::class, Descriptions::class, Enrichment::class,
 	Rest::class, UrlQueue::class, PageReview::class, MapProposals::class, Pictures::class, PictureChoices::class, FeedFill::class,
 	VendorMaps::class, BrandSites::class, SharedPages::class, UrlReview::class, PageList::class, WorkbenchColumns::class,
-	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class,
+	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class, ExtBridge::class, Capture::class,
 ];
 
 /** The module's tables, hooks, review API and CLI. */

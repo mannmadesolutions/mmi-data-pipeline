@@ -16,6 +16,8 @@ export interface TitleRulesConfig {
   rest: string;
   /** Site-relative admin-ajax URL of WordPress's rest-nonce action. */
   nonceUrl: string;
+  /** The Chrome extension page, where the extension is installed and connected (absent without it). */
+  extension?: string;
 }
 
 export type RuleKind = "replace" | "remove" | "insert" | "qualifier" | "pattern";

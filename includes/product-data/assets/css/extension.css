@@ -1,0 +1,7 @@
+/* The Chrome extension page (ExtBridge::render()). */
+.mmpt-ext-steps { margin-left: 18px; list-style: decimal; }
+.mmpt-ext-cmd { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 10px; }
+.mmpt-ext-cmd code { flex: 1; word-break: break-all; padding: 6px 8px; font-size: 12px; }
+.mmpt-ext-manual { margin-top: 10px; }
+.mmpt-ext-manual summary { cursor: pointer; font-weight: 600; }
+.mmpt-ext-page .mmi-process-section-description code { word-break: break-all; }

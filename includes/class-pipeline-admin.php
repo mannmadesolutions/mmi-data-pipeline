@@ -1050,6 +1050,9 @@ class MMI_Pipeline_Admin {
                 'rest'     => wp_make_link_relative( rest_url( 'mmpt/v1/' ) ),
                 'nonceUrl' => wp_make_link_relative( admin_url( 'admin-ajax.php?action=rest-nonce' ) ),
             ];
+            if ( class_exists( '\\MannMade\\DataPipeline\\ProductData\\ExtBridge', false ) && has_action( 'rest_api_init', [ \MannMade\DataPipeline\ProductData\ExtBridge::class, 'routes' ] ) ) {
+                $config['titleRules']['extension'] = wp_make_link_relative( admin_url( 'admin.php?page=' . \MannMade\DataPipeline\ProductData\ExtBridge::SLUG ) );
+            }
         }
         return $config;
     }

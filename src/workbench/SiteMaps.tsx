@@ -39,7 +39,8 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
 
   return (
     <Section id="mmi-wb-site-maps" icon="location-alt" title="Site maps"
-      desc="Where each maker site keeps pictures and text, what its pages would add to its products, and the Fill that writes it. Parts are picked on the maker's live page in the Chrome extension">
+      desc="Where each maker site keeps pictures and text, what its pages would add to its products, and the Fill that writes it. Parts are picked on the maker's live page in the Chrome extension"
+      actions={cfg.extension ? <a className="button" id="mmi-wb-sm-extension" href={cfg.extension}><Dashicon name="admin-plugins" /> Chrome extension</a> : undefined}>
       {notice && <div className="notice notice-error inline" role="status"><p>{notice.text}</p></div>}
       <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="Sites">
         {SITE_VIEWS.map((v) => (

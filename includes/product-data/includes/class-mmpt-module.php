@@ -45,6 +45,32 @@ final class Module {
 		self::log( 'error', $msg, $ctx );
 	}
 
+	/**
+	 * A place in the Product Workbench (its landing keys, src/workbench/landing.ts): q (a product ID or words), brand
+	 * (term ID), site (a maker host), bundle (a bundle's ID) and sec (data, titles, proposals, pictures, pages, sites,
+	 * maps, rules, left, writing, bundles, advisories, parts). Without sec, the section follows what was given.
+	 *
+	 * @param array<string,mixed> $args
+	 */
+	public static function workbench_url( array $args = [] ): string {
+		$get    = static fn( string $k ): string => isset( $args[ $k ] ) && is_scalar( $args[ $k ] ) && '0' !== (string) $args[ $k ] ? trim( (string) $args[ $k ] ) : '';
+		$q      = $get( 'q' );
+		$brand  = absint( $get( 'brand' ) );
+		$site   = $get( 'site' );
+		$bundle = absint( $get( 'bundle' ) );
+		$sec    = sanitize_key( $get( 'sec' ) );
+		if ( $sec === '' ) {
+			$sec = $bundle ? 'bundles' : ( $q !== '' ? 'data' : ( $site !== '' ? 'maps' : ( $brand ? 'sites' : '' ) ) );
+		}
+		$out = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'workbench' ];
+		foreach ( [ 'sec' => $sec, 'q' => $q, 'brand' => $brand ? (string) $brand : '', 'site' => $site, 'bundle' => $bundle ? (string) $bundle : '' ] as $k => $v ) {
+			if ( $v !== '' ) {
+				$out[ 'wb_' . $k ] = $v;
+			}
+		}
+		return add_query_arg( array_map( 'rawurlencode', $out ), admin_url( 'admin.php' ) );
+	}
+
 	private static function log( string $level, string $msg, array $ctx ): void {
 		if ( class_exists( 'MMI_Logger' ) ) {
 			\MMI_Logger::$level( '[ProductTitles] ' . $msg, $ctx, 'sync', 'ProductTitles' );
