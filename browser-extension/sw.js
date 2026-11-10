@@ -61,6 +61,7 @@ const MESSAGES = {
 	notConnected: 'This browser isn’t connected to your store yet.',
 	offline: 'The store didn’t answer. Check the connection and try again.',
 	failed: 'The store answered with an error (%s).',
+	noRoutes: 'Your store doesn’t answer MMI Product Data: it needs MMI Data Pipeline 3.0.1 or later, active, with Product Data in its license or trial.',
 	notThisSite: 'This page didn’t ask the extension to connect here. Click MMI Product Data in Chrome’s toolbar on this page, then connect again.',
 	noHost: 'Chrome hasn’t let the extension reach %h. Click MMI Product Data in Chrome’s toolbar on this page and allow it, then connect again.',
 	badPage: 'The panel can’t run on this page.',
@@ -243,6 +244,9 @@ async function api( route, body, token, at ) {
 		if ( res.status === 401 && ! token ) {
 			await forget();
 			data.connect = true;
+		}
+		if ( res.status === 404 && data.code === 'rest_no_route' ) {
+			data.message = MESSAGES.noRoutes; // an older plugin, or none: WordPress's own "no route" says nothing to a person
 		}
 		if ( ! res.ok && ! data.message ) {
 			data.message = MESSAGES.failed.replace( '%s', res.status );
@@ -496,12 +500,14 @@ chrome.runtime.onStartup.addListener( async () => {
  * picker is open on a page: their picks aren't saved yet, so the reload waits until they close.
  */
 const UPDATE = { alarm: 'folder', everyMin: 1, restoreMs: 5 * 60 * 1000 };
-chrome.alarms.create( UPDATE.alarm, { periodInMinutes: UPDATE.everyMin } );
-chrome.alarms.onAlarm.addListener( ( a ) => {
-	if ( a.name === UPDATE.alarm ) {
-		selfUpdate();
-	}
-} );
+if ( chrome.alarms ) { // a folder copy only: the Chrome Web Store's copy updates through the store and has no alarms
+	chrome.alarms.create( UPDATE.alarm, { periodInMinutes: UPDATE.everyMin } );
+	chrome.alarms.onAlarm.addListener( ( a ) => {
+		if ( a.name === UPDATE.alarm ) {
+			selfUpdate();
+		}
+	} );
+}
 
 /** A page where the live mapper or the picture picker is open. Tabs the extension can't reach don't count. */
 async function busy() {

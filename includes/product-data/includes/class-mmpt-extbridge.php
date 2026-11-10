@@ -1408,8 +1408,10 @@ class ExtBridge {
 	 */
 	private static function site_section( string $host, int &$poll = 0, bool $start = false ): array {
 		$list = Store::state( VendorCatalog::STATE . '_hosts' )[ $host ] ?? null;
+		global $wpdb;
 		$map  = VendorMaps::get( $host );
-		$key  = 'mmpt_ext_site2_' . md5( implode( '|', [ $host, SiteGaps::stamp( $host ), $list['at'] ?? '', (int) $start, $map['drafted_at'] ?? 'none', $map['gaps']['at'] ?? '' ] ) ); // a new map or a new grouping shows at once
+		$kept = $wpdb->get_row( $wpdb->prepare( 'SELECT COUNT(*) n, MAX(fetched_at) at FROM ' . PageStore::table() . ' WHERE host IN (%s, %s)', $host, 'www.' . $host ), ARRAY_A ); // the host index: a page stored or linked here (Link stores it) shows at once, so a new store's first page offers Start
+		$key  = 'mmpt_ext_site2_' . md5( implode( '|', [ $host, SiteGaps::stamp( $host ), $list['at'] ?? '', (int) $start, $map['drafted_at'] ?? 'none', $map['gaps']['at'] ?? '', $kept['n'] ?? 0, $kept['at'] ?? '' ] ) ); // a new map or a new grouping shows at once
 		$busy = self::site_busy( $host );
 		$sec  = $busy === '' ? get_transient( $key ) : false;
 		if ( is_array( $sec ) ) {
@@ -3529,6 +3531,35 @@ class ExtBridge {
 			$zip->addFile( $path, $root . $rel );
 		}
 		$zip->addFromString( $root . 'build.json', (string) wp_json_encode( array_filter( [ 'build' => self::build(), 'version' => self::version(), 'store' => $store ] ) ) );
+		$zip->close();
+		return $tmp;
+	}
+
+	/**
+	 * The Chrome Web Store's package (migration phase 10e, `wp mmpt extension package`): the copy that names no store,
+	 * its files at the zip's root (the store wants manifest.json there), without the alarms permission that only a
+	 * folder copy's self-update uses (the store updates its own copies).
+	 * @return string|\WP_Error the file
+	 */
+	public static function listing_zip() {
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			return new \WP_Error( 'mmpt_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-data-pipeline' ) );
+		}
+		$tmp = wp_tempnam( 'mmi-product-data-listing' );
+		$zip = new \ZipArchive();
+		if ( $zip->open( $tmp, \ZipArchive::OVERWRITE ) !== true ) {
+			return new \WP_Error( 'mmpt_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-data-pipeline' ) );
+		}
+		foreach ( self::files() as $rel => $path ) {
+			if ( $rel === 'manifest.json' ) {
+				$m                = (array) json_decode( (string) file_get_contents( $path ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
+				$m['permissions'] = array_values( array_diff( (array) ( $m['permissions'] ?? [] ), [ 'alarms' ] ) );
+				$zip->addFromString( $rel, (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+				continue;
+			}
+			$zip->addFile( $path, $rel );
+		}
+		$zip->addFromString( 'build.json', (string) wp_json_encode( [ 'build' => self::build(), 'version' => self::version() ] ) );
 		$zip->close();
 		return $tmp;
 	}

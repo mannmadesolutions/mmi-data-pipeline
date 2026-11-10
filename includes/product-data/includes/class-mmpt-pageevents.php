@@ -14,7 +14,10 @@
  *   filter 'mmi_pipeline_queue_pictures'   ( $res, $ids, $source, $kick ) → { queued, started }
  *   filter 'mmi_pipeline_maker_page_cleared' ( $dropped, $id ) → proposals dropped
  *
- * This site answers them in PageFollowUps (which stays in mmi-admin).
+ * The module answers them itself (register_hooks(), below: what follows a read is the module's own Enrichment and
+ * Pictures work, moved from the site plugin's PageFollowUps in migration phase 10d, when a store without it was found
+ * to propose nothing after a read). A store adds to them through the same hooks; this site's Product Variants and
+ * Product Paths answers stay in mmi-admin.
  *
  * @package MannMade\DataPipeline\ProductData
  */
@@ -29,6 +32,67 @@ final class PageEvents {
 
 	/** A description shorter than this (plain text) is thin: maker copy may fill it. */
 	const THIN_CHARS = 200;
+
+	public static function register_hooks(): void {
+		add_action( 'mmi_pipeline_maker_page_read', [ __CLASS__, 'after_read' ], 10, 2 );
+		add_filter( 'mmi_pipeline_queue_pictures', [ __CLASS__, 'enqueue_pictures' ], 10, 4 );
+		add_filter( 'mmi_pipeline_maker_page_cleared', [ __CLASS__, 'drop_proposals' ], 10, 2 );
+		add_filter( 'mmi_pipeline_exclusions_changed', [ __CLASS__, 'park_and_refresh' ], 10, 3 );
+	}
+
+	/** After a read: a description row, a picker row where it helps, writes that would happen anyway, first pictures. */
+	public static function after_read( $id, $may ): void {
+		$id   = (int) $id;
+		$may  = (array) $may;
+		$desc = ! empty( $may['description'] );
+		$pics = ! empty( $may['pictures'] );
+		Enrichment::generate( [ $id ] );             // description row (or a better description for one we wrote)
+		Enrichment::propose_for_imaged( 1, [ $id ] ); // a picker row, only where the picture runner said a person's pick helps
+		Enrichment::apply_ready( $id, array_keys( array_filter( [ 'content' => $desc, 'image' => $pics ] ) ) ); // written now when it would be written anyway
+		// No picture yet: the picture runner gives it its first pictures (once; while vendor-page pictures are approved).
+		if ( $pics && ! (int) get_post_thumbnail_id( $id ) && ! empty( Enrichment::rules()['image:vendor_page']['approved'] ) && ! empty( Enrichment::settings()['enabled'] ) && Pictures::enqueue( [ $id ], 'first' ) ) {
+			Pictures::kick( true );
+		}
+	}
+
+	/** @return array{queued:int, started:bool} */
+	public static function enqueue_pictures( $res, $ids, $source, $kick ): array {
+		$n       = Pictures::enqueue( (array) $ids, (string) $source );
+		$started = $kick === null ? ( $n ? Pictures::kick() : false ) : Pictures::kick( (bool) $kick );
+		return [ 'queued' => (int) ( $res['queued'] ?? 0 ) + $n, 'started' => ! empty( $res['started'] ) || $started ];
+	}
+
+	/** Proposals made from the product's maker page that a person hasn't applied. */
+	public static function drop_proposals( $dropped, $id ): int {
+		global $wpdb;
+		return (int) $dropped + (int) $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . Enrichment::table() . " WHERE product_id = %d AND source = 'vendor_page' AND status IN ('proposed','accepted','stale','error')", (int) $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+	}
+
+	/** Exclusions changed: the newly excluded parked, the restored refreshed, titles recomposed. @return int rows removed */
+	public static function park_and_refresh( $removed, $added, $restored ): int {
+		$removed = (int) $removed + self::park( (array) $added );
+		if ( $restored ) {
+			Descriptions::refresh( (array) $restored );
+		}
+		Generator::dispatch();
+		return $removed;
+	}
+
+	/**
+	 * Newly excluded products: their open title and description proposals removed, their description rows parked.
+	 * Applied titles stay (history; what is written on the product is never changed here). @return int rows removed
+	 */
+	public static function park( array $ids ): int {
+		global $wpdb;
+		$removed = 0;
+		foreach ( array_chunk( array_values( array_filter( array_map( 'intval', $ids ) ) ), 500 ) as $chunk ) {
+			$in       = implode( ',', $chunk );
+			$removed += (int) $wpdb->query( 'DELETE FROM ' . Store::table() . " WHERE product_id IN ({$in}) AND status IN ('proposed','accepted','stale','error')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints
+			$removed += (int) $wpdb->query( 'DELETE FROM ' . Enrichment::table() . " WHERE product_id IN ({$in}) AND status IN ('proposed','accepted')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints
+			$wpdb->query( 'UPDATE ' . Descriptions::table() . " SET status = 'skipped', note = 'excluded from Product Titles' WHERE product_id IN ({$in}) AND status NOT IN ('approved','rejected','skipped')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints
+		}
+		return $removed;
+	}
 
 	/** A product's page was read: let the modules that follow do their part. */
 	public static function page_read( int $id, array $may ): void {

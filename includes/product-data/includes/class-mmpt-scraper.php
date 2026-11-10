@@ -142,7 +142,7 @@ class Scraper {
 		if ( self::runner_alive() || ! (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . self::table() . ' WHERE done_at IS NULL' ) ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			return false;
 		}
-		if ( ! self::spawn( 'mmpt scrape-run', 'scrape-runner.log' ) ) {
+		if ( ! self::spawn( 'mmpt runner scrape', 'scrape-runner.log' ) ) {
 			return false;
 		}
 		Module::set_state( self::STATE, [ 'kicked_at' => current_time( 'mysql', true ) ] );
@@ -156,9 +156,8 @@ class Scraper {
 	public static function spawn( string $command, string $log_name ): bool {
 		// No is_executable() check: under PHP-FPM, open_basedir hides /usr/local/bin and /bin from
 		// PHP's file functions (it returned false for both), but proc_open still runs them.
-		if ( ! function_exists( 'proc_open' ) ) {
-			Module::warn( 'Background runner could not start: proc_open unavailable', [ 'command' => $command ] );
-			return false;
+		if ( ! Background::can_spawn() ) {
+			return Background::queue( $command ); // a host that can't start processes: the work runs in steps (Action Scheduler)
 		}
 		$wp   = 'wp'; // found on PATH (/usr/local/bin)
 		$dir  = mmi_shared_lib_private_subdir( 'mmpt-logs' );
@@ -181,12 +180,14 @@ class Scraper {
 	}
 
 	/**
-	 * The runner (WP-CLI). Works until the queue is empty or MAX_RUN_S.
-	 * @return array<string,int|string>
+	 * The runner (WP-CLI). Works until the queue is empty or MAX_RUN_S. With $budget (seconds, a Background step) it
+	 * runs in a web request too, stops after $budget or when the server is busy, and says whether work is left (more,
+	 * busy) instead of starting another runner.
+	 * @return array<string,int|string|bool>
 	 */
-	public static function run(): array {
-		if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
-			return [ 'error' => 'Runs from WP-CLI only (wp mmpt scrape-run).' ];
+	public static function run( int $budget = 0 ): array {
+		if ( ! $budget && ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			return [ 'error' => 'Runs from WP-CLI only (wp mmpt runner scrape).' ];
 		}
 		self::maybe_install();
 		global $wpdb;
@@ -195,10 +196,12 @@ class Scraper {
 		}
 		$t     = self::table();
 		$start = time();
+		$max   = $budget ?: self::MAX_RUN_S;
+		$busy  = false;
 		$out   = [ 'done' => 0 ];
 		$hosts = []; // sites read in this run: their Vendor maps numbers are brought up to date after it
 		Module::set_state( self::STATE, [ 'started_at' => current_time( 'mysql', true ), 'finished_at' => '', 'pid' => getmypid() ] );
-		while ( time() - $start < self::MAX_RUN_S ) {
+		while ( time() - $start < $max ) {
 			$rows = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT q.product_id, q.mode, q.force_fetch, d.vendor_url, u.meta_value stored
@@ -216,6 +219,10 @@ class Scraper {
 				break;
 			}
 			foreach ( self::interleave( $rows ) as $r ) {
+				if ( $budget && PageStore::server_busy() ) {
+					$busy = true; // a step doesn't wait: the next one comes later
+					break 2;
+				}
 				while ( PageStore::server_busy() ) {
 					Module::set_state( self::STATE, [ 'beat_at' => current_time( 'mysql', true ), 'note' => 'waiting: server busy' ] );
 					sleep( self::BUSY_SLEEP );
@@ -241,7 +248,7 @@ class Scraper {
 				$out['done']++;
 				$out[ $res ] = ( $out[ $res ] ?? 0 ) + 1;
 				Module::set_state( self::STATE, [ 'beat_at' => current_time( 'mysql', true ), 'note' => '', 'last_id' => $id ] );
-				if ( time() - $start >= self::MAX_RUN_S ) {
+				if ( time() - $start >= $max ) {
 					break 2;
 				}
 			}
@@ -251,7 +258,11 @@ class Scraper {
 		$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::LOCK ) );
 		VendorMaps::queue_refresh( array_keys( $hosts ) ); // the maps list's chips and picture bars follow what was just read
 		self::finish_nightly();
-		if ( (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE done_at IS NULL" ) ) { // phpcs:ignore WordPress.DB.PreparedSQL
+		$left = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE done_at IS NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		if ( $budget ) {
+			return $out + [ 'more' => $left > 0, 'busy' => $busy ]; // the step queues the next
+		}
+		if ( $left ) {
 			self::kick(); // ran out of time with work left: hand over to a fresh runner
 		}
 		return $out;

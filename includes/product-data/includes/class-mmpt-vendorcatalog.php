@@ -114,7 +114,7 @@ class VendorCatalog {
 	 * @return array<string,mixed>
 	 */
 	public static function run( array $brands = [], int $max_pages = 300, bool $dry = false, int $seconds = 1800 ): array {
-		if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+		if ( ! ( ( defined( 'WP_CLI' ) && WP_CLI ) || Background::$stepping ) ) {
 			return [ 'error' => 'Vendor catalogs are read from WP-CLI only.' ];
 		}
 		self::maybe_install();

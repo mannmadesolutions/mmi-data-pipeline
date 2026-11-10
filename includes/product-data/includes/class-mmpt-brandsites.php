@@ -1318,8 +1318,49 @@ class BrandSites {
 	}
 
 	/**
+	 * `wp mmpt runner brand-pages --term=<id>` (or a Background step): the brand's catalog (Shopify / WooCommerce) or
+	 * sitemap, matched to its products with no verified vendor URL (VendorCatalog, then UrlFinder), and what the
+	 * proposed pages can fill worked out (Coverage). Moved from the site plugin's screens (migration phase 10d).
+	 * @return array<string,mixed>
+	 */
+	public static function find_pages( int $term_id ): array {
+		if ( ! ( ( defined( 'WP_CLI' ) && WP_CLI ) || Background::$stepping ) ) {
+			return [ 'error' => 'Runs from WP-CLI or a background step only.' ];
+		}
+		$term = get_term( $term_id, 'product_brand' );
+		if ( ! $term instanceof \WP_Term ) {
+			return [ 'error' => 'No such brand.' ];
+		}
+		global $wpdb;
+		$m     = get_term_meta( $term_id, self::FIND_META, true );
+		$m     = is_array( $m ) ? $m : [];
+		$since = current_time( 'mysql' ); // UrlFinder's found_at is site time
+		update_term_meta( $term_id, self::FIND_META, [ 'started_at' => gmdate( 'Y-m-d H:i:s' ) ] + $m );
+		$finder  = UrlFinder::run( [ $term->name ] );                                               // sitemap guesses first,
+		$catalog = VendorCatalog::run( [ $term->name ], 60, false, Background::$stepping ? 60 : 600 ); // then the vendor's own list, which replaces weak ones
+		Coverage::precompute( 300 );
+		$found = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COUNT(*) FROM ' . UrlFinder::table() . " c JOIN {$wpdb->term_relationships} tr ON tr.object_id = c.product_id JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_brand' AND tt.term_id = %d WHERE c.status = 'candidate' AND c.found_at >= %s", // phpcs:ignore WordPress.DB.PreparedSQL
+				$term_id,
+				$since
+			)
+		);
+		$out = [
+			'looked'     => max( (int) ( $catalog['products'] ?? 0 ), (int) ( $finder['products'] ?? 0 ) ),
+			'found'      => $found,
+			'no_sitemap' => (int) ( $catalog['no_sitemap'] ?? 0 ) + (int) ( $finder['no_sitemap'] ?? 0 ) > 0,
+			'no_gaps'    => ! ( $catalog['brands'] ?? 0 ) && ! ( $finder['brands'] ?? 0 ),
+		];
+		$m = get_term_meta( $term_id, self::FIND_META, true );
+		update_term_meta( $term_id, self::FIND_META, $out + [ 'finished_at' => gmdate( 'Y-m-d H:i:s' ) ] + ( is_array( $m ) ? $m : [] ) );
+		Module::info( 'Brand product pages looked for', [ 'brand' => $term_id ] + $out );
+		return $out;
+	}
+
+	/**
 	 * POST /screens/brands/{id}/find — look for the brand's product pages on its own site, in the
-	 * background (`wp mmpt brand-pages`). Matches become proposed URLs waiting for a person.
+	 * background (`wp mmpt runner brand-pages`). Matches become proposed URLs waiting for a person.
 	 */
 	public static function brand_find( \WP_REST_Request $r ): \WP_REST_Response {
 		$id   = (int) $r['id'];
@@ -1336,7 +1377,7 @@ class BrandSites {
 			return new \WP_REST_Response( [ 'message' => 'No site is known for this brand: fill in Brand website above, click Update, then try again.' ], 400 );
 		}
 		update_term_meta( $id, self::FIND_META, [ 'started_at' => gmdate( 'Y-m-d H:i:s' ), 'site' => $site, 'by' => get_current_user_id() ] );
-		if ( ! Scraper::spawn( 'mmpt brand-pages --term=' . $id, 'brand-pages.log' ) ) {
+		if ( ! Scraper::spawn( 'mmpt runner brand-pages --term=' . $id, 'brand-pages.log' ) ) {
 			delete_term_meta( $id, self::FIND_META );
 			return new \WP_REST_Response( [ 'message' => 'The server could not start the search.' ], 500 );
 		}

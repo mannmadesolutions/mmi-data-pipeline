@@ -211,6 +211,21 @@ add_action( 'plugins_loaded', function () {
     // here forever after, same as the old bare mmi_is_licensed() gate did
     // for "never licensed at all."
     if ( function_exists( 'mmi_is_licensed_or_trialing' ) && ! mmi_is_licensed_or_trialing( 'mmi-data-pipeline' ) ) {
+        // The Chrome extension still asks: it is told why nothing happens, instead of WordPress's "no route".
+        add_action( 'rest_api_init', static function () {
+            register_rest_route( 'mmpt/v1', '/ext/(?P<route>[a-z/-]+)', [
+                'methods'             => 'GET, POST',
+                'permission_callback' => '__return_true',
+                'callback'            => static fn() => new WP_REST_Response( [
+                    'code'    => 'mmpt_license',
+                    'message' => sprintf(
+                        /* translators: %s: the store's name */
+                        __( 'MMI Data Pipeline’s license or trial on %s has ended, so Product Data is switched off there: nothing is read or written. A store admin can enter a license key on its Data Pipeline admin page.', 'mmi-data-pipeline' ),
+                        wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES )
+                    ),
+                ], 403 ),
+            ] );
+        } );
         return;
     }
 

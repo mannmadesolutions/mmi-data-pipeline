@@ -2476,15 +2476,24 @@ class VendorMaps {
 		return Scraper::spawn( 'mmpt maps run', 'maps-runner.log' );
 	}
 
-	/** WP-CLI: work the queue until it's empty. */
-	public static function run(): array {
+	/**
+	 * WP-CLI: work the queue until it's empty. With $budget (seconds, a Background step): until then, never waiting on
+	 * a busy server, and saying whether work is left (more, busy).
+	 */
+	public static function run( int $budget = 0 ): array {
 		global $wpdb;
 		if ( ! (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', self::LOCK ) ) ) {
 			return [ 'skipped' => 'another runner is working' ];
 		}
 		$out = [ 'drafted' => 0, 'shots' => 0, 'checked' => 0, 'refreshed' => 0, 'broke' => [], 'recovered' => [] ];
 		Module::set_state( self::STATE, [ 'started_at' => current_time( 'mysql', true ), 'finished_at' => '', 'note' => '' ] );
+		$start = time();
+		$busy  = false;
 		while ( $q = (array) ( Module::state( self::STATE )['queue'] ?? [] ) ) {
+			if ( $budget && ( time() - $start >= $budget || PageStore::server_busy() ) ) {
+				$busy = PageStore::server_busy();
+				break; // the step queues the next
+			}
 			$key = (string) array_key_first( $q );
 			[ $task, $host ] = $q[ $key ];
 			unset( $q[ $key ] );
@@ -2514,7 +2523,7 @@ class VendorMaps {
 				$out['refreshed']++;
 			} elseif ( $task === 'health' ) {
 				// Check the pages the nightly read just stored, not half-read ones: wait for that read (capped).
-				$until = time() + self::HEALTH_WAIT;
+				$until = $budget ? 0 : time() + self::HEALTH_WAIT; // a step doesn't wait
 				while ( Scraper::runner_alive() && time() < $until ) {
 					Module::set_state( self::STATE, [ 'note' => 'health check waiting for the nightly read', 'beat_at' => current_time( 'mysql', true ) ] );
 					sleep( 60 );
@@ -2541,7 +2550,7 @@ class VendorMaps {
 		if ( $out['checked'] ) {
 			self::audit( 'vendor_maps.health', '*', [ 'checked' => $out['checked'], 'broke' => $out['broke'], 'recovered' => $out['recovered'] ] );
 		}
-		return $out;
+		return $budget ? $out + [ 'more' => (bool) ( Module::state( self::STATE )['queue'] ?? [] ), 'busy' => $busy ] : $out;
 	}
 
 	/** Every site with a verified product URL and a stored page. @return string[] */

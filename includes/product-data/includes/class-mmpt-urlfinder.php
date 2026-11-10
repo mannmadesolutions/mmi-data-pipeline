@@ -288,7 +288,7 @@ class UrlFinder {
 	 * sitemap and store the best candidate. CLI only.
 	 */
 	public static function run( array $brands = [] ): array {
-		if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+		if ( ! ( ( defined( 'WP_CLI' ) && WP_CLI ) || Background::$stepping ) ) {
 			return [ 'error' => 'URL discovery runs from WP-CLI only (wp mmpt find_urls).' ];
 		}
 		self::maybe_install();

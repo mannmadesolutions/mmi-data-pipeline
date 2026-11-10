@@ -33,7 +33,7 @@ const HOOKED = [
 	Generator::class, Write::class, Applier::class, VendorFetcher::class, Picker::class, Descriptions::class, Enrichment::class,
 	Rest::class, UrlQueue::class, PageReview::class, MapProposals::class, Pictures::class, PictureChoices::class, FeedFill::class,
 	VendorMaps::class, BrandSites::class, SharedPages::class, UrlReview::class, PageList::class, WorkbenchColumns::class,
-	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class, ExtBridge::class, Capture::class,
+	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class, ExtBridge::class, Capture::class, Background::class, PageEvents::class,
 ];
 
 /** The module's tables, hooks, review API and CLI. */
@@ -53,6 +53,8 @@ function boot(): void {
 	if ( defined( 'WP_CLI' ) && WP_CLI ) {
 		\WP_CLI::add_command( 'mmpt images', ImagesCli::class );
 		\WP_CLI::add_command( 'mmpt maps', MapsCli::class );
+		\WP_CLI::add_command( 'mmpt runner', RunnerCli::class );
+		\WP_CLI::add_command( 'mmpt extension', ExtensionCli::class );
 	}
 }
 

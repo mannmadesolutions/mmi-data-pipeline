@@ -671,9 +671,12 @@ class Pictures {
 
 	/* ── The runner ────────────────────────────────────────────────────── */
 
-	/** WP-CLI. Reverts first, then quarantine that is due, then the queue up to the daily cap. */
-	public static function run( int $limit = 0 ): array {
-		if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+	/**
+	 * WP-CLI. Reverts first, then quarantine that is due, then the queue up to the daily cap. With $budget (seconds, a
+	 * Background step) it runs in a web request too, never sleeps, and says whether work is left (more, busy).
+	 */
+	public static function run( int $limit = 0, int $budget = 0 ): array {
+		if ( ! $budget && ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
 			return [ 'error' => 'Runs from WP-CLI only (wp mmpt images run).' ];
 		}
 		self::maybe_install();
@@ -693,9 +696,12 @@ class Pictures {
 			$r = self::revert( $id );
 			$out[ $r['result'] === 'reverted' ? 'reverted' : 'error' ]++;
 		}
-		$q = MediaRelease::quarantine_due();
+		$q    = MediaRelease::quarantine_due();
 		$done = 0;
-		while ( time() - $start < self::MAX_RUN_S && ( ! $limit || $done < $limit ) ) {
+		$max  = $budget ?: self::MAX_RUN_S;
+		$busy = false;
+		$more = false;
+		while ( time() - $start < $max && ( ! $limit || $done < $limit ) ) {
 			// A deploy: this process still runs the code it started with (2026-10-31, a runner kept a fixed bug for hours).
 			// It stops, and the watchdog starts one on the new code within a minute.
 			if ( PageEvents::code_changed() ) {
@@ -705,6 +711,11 @@ class Pictures {
 			$act = Activity::check();
 			if ( $act['manual'] ) {
 				$beat( 'Paused: ' . implode( '; ', $act['reasons'] ) );
+				if ( $budget ) {
+					$busy = true;
+					$more = true;
+					break;
+				}
 				sleep( self::PAUSE_S );
 				continue;
 			}
@@ -740,8 +751,15 @@ class Pictures {
 			$done++;
 			$beat( $act['busy'] ? 'Slowed: ' . implode( '; ', $act['reasons'] ) : '' );
 			if ( $act['busy'] || $r['result'] === 'later' ) { // 'later': an AVIF waits for Chromium; don't spin on it
+				if ( $budget ) {
+					$busy = true;
+					break;
+				}
 				sleep( self::SLOW_S );
 			}
+		}
+		if ( $budget && ! $more ) {
+			$more = self::done_today() < self::limits()['cap'] && (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE status IN ('queued','revert')" ); // phpcs:ignore WordPress.DB.PreparedSQL
 		}
 		$out['quarantined'] = $q['quarantined'];
 		$out['kept']        = $q['kept'];
@@ -752,7 +770,7 @@ class Pictures {
 			Module::warn( sprintf( 'NOTICE: %d product(s) kept their own pictures, re-saved to the 800×800 standard, because their vendor page had no usable pictures. The ledger (Vendor pages tab → Product pictures, filter "Own pictures") lists each with the reason.', $out['in_place'] ), [] );
 		}
 		$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::LOCK ) );
-		return $out;
+		return $budget ? $out + [ 'more' => $more, 'busy' => $busy ] : $out;
 	}
 
 	/**
@@ -1012,7 +1030,7 @@ class Pictures {
 			if ( get_post_type( $a ) === 'attachment' ) {
 				continue;
 			}
-			if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			if ( ! ( ( defined( 'WP_CLI' ) && WP_CLI ) || Background::$stepping ) ) {
 				$wpdb->update( $t, [ 'status' => 'revert' ], [ 'product_id' => $id ] );
 				self::kick();
 				return [ 'result' => 'queued', 'message' => 'Its old pictures are in quarantine; the background runner puts them back within a minute or two.' ];
