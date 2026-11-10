@@ -15,6 +15,7 @@ import {
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, Section } from "./ui";
 import { TitleWriting } from "./WritingSettings";
+import { landing } from "./landing";
 
 const COLS: { key: QueueSort; label: string }[] = [
   { key: "id", label: "ID" },
@@ -85,8 +86,10 @@ function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onC
 }
 
 export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
-  const [filter, setFilter] = useState<QueueFilter>(EMPTY_FILTER);
-  const [q, setQ] = useState("");
+  // A link to a product's title (wb_sec=titles&wb_q=…) opens the queue on it, any status.
+  const landed = landing().sec === "titles" && landing().q ? landing().q : "";
+  const [filter, setFilter] = useState<QueueFilter>(() => (landed ? { ...EMPTY_FILTER, q: landed, status: "any" } : EMPTY_FILTER));
+  const [q, setQ] = useState(landed);
   const [page, setPage] = useState<ProposalPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<QueueSummary | null>(null);
