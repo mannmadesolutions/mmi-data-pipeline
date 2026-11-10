@@ -3499,9 +3499,16 @@ class ExtBridge {
 	/**
 	 * The extension folder as a zip in a temporary file (the caller deletes it): the download, and the Mac updater's
 	 * package (a store's own updater, if it has one). Its files sit under one folder named with the version, so unzipping never makes "… 2"
-	 * (owner 2026-11-02); build.json says which build it is. @return string|\WP_Error the file
+	 * (owner 2026-11-02); build.json says which build it is.
+	 *
+	 * The source names no store (migration phase 10b). A copy for this store ($this_store, the download and the Mac
+	 * updater's package) is made this store's here: its manifest gets this site's host permission and the bridge on its
+	 * admin pages, and build.json names the store (store_info()), so it connects here without asking for an address. Without
+	 * $this_store it is the copy for the Chrome Web Store (10e), which asks which store when it is connected.
+	 *
+	 * @return string|\WP_Error the file
 	 */
-	public static function zip_file() {
+	public static function zip_file( bool $this_store = true ) {
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			return new \WP_Error( 'mmpt_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-data-pipeline' ) );
 		}
@@ -3511,12 +3518,50 @@ class ExtBridge {
 			return new \WP_Error( 'mmpt_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-data-pipeline' ) );
 		}
 		$root = 'mmi-product-data-extension-' . sanitize_file_name( self::version() ) . '/';
+		$store = $this_store ? self::store_info() : null;
 		foreach ( self::files() as $rel => $path ) {
+			if ( $store && $rel === 'manifest.json' ) {
+				$zip->addFromString( $root . $rel, self::store_manifest( (string) file_get_contents( $path ), $store ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
+				continue;
+			}
 			$zip->addFile( $path, $root . $rel );
 		}
-		$zip->addFromString( $root . 'build.json', (string) wp_json_encode( [ 'build' => self::build(), 'version' => self::version() ] ) );
+		$zip->addFromString( $root . 'build.json', (string) wp_json_encode( array_filter( [ 'build' => self::build(), 'version' => self::version(), 'store' => $store ] ) ) );
 		$zip->close();
 		return $tmp;
+	}
+
+	/**
+	 * This store as the extension keeps it (sw.js storeOf()): its origin, where WordPress is, its routes and its Chrome
+	 * extension page. @return array{origin:string,base:string,rest:string,connect:string}
+	 */
+	public static function store_info(): array {
+		$admin = untrailingslashit( admin_url() );
+		$p     = wp_parse_url( $admin );
+		$port  = isset( $p['port'] ) ? ':' . $p['port'] : '';
+		return [
+			'origin'  => ( $p['scheme'] ?? 'https' ) . '://' . ( $p['host'] ?? '' ) . $port,
+			'base'    => (string) preg_replace( '#/wp-admin$#', '', $admin ),
+			'rest'    => esc_url_raw( rest_url( Rest::NS . '/' ) ),
+			'connect' => admin_url( 'admin.php?page=' . self::SLUG ),
+		];
+	}
+
+	/** The source's manifest made this store's: host permission for its site, the bridge on its admin pages. */
+	private static function store_manifest( string $json, array $store ): string {
+		$m = json_decode( $json, true );
+		if ( ! is_array( $m ) ) {
+			return $json;
+		}
+		$m['host_permissions'] = [ $store['origin'] . '/*' ];
+		$m['content_scripts']  = [
+			[
+				'matches' => [ $store['origin'] . (string) wp_parse_url( admin_url(), PHP_URL_PATH ) . '*' ],
+				'js'      => [ 'bridge.js' ],
+				'run_at'  => 'document_idle',
+			],
+		];
+		return (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 	}
 
 	/** admin-post.php?action=mmpt_ext_download: the extension folder as a zip, built from the files on disk. */
