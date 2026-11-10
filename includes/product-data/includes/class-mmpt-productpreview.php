@@ -398,6 +398,7 @@ final class ProductPreview {
 			Scraper::$only = null;
 		}
 		$c   = self::changes( $before, self::snapshot( $id ) );
+		self::log_changes( $id, $c, 'product-extension' );
 		$rec = self::write_record( $id, [
 			'state'   => 'done',
 			'host'    => VendorMaps::host( $host ),
@@ -483,7 +484,7 @@ final class ProductPreview {
 		if ( ! is_array( $w ) || ( $w['state'] ?? '' ) !== 'done' ) {
 			return [ 'state' => 'error', 'note' => 'There is no write to undo.' ];
 		}
-		$u   = self::undo_changes( $id, $w );
+		$u   = self::undo_changes( $id, $w, 'product-extension' );
 		$rec = self::write_record( $id, [ 'state' => 'undone' ] + $u + array_intersect_key( $w, array_flip( [ 'host', 'wrote', 'at' ] ) ), false );
 		if ( class_exists( 'MMI_Audit_Log' ) ) {
 			\MMI_Audit_Log::record( 'mmi-admin', 'vendor_maps.write_one_undo', [ 'object_type' => 'product', 'object_id' => (string) $id, 'details' => [ 'undone' => $rec['undone'], 'kept' => $rec['kept'] ] ] );
@@ -494,9 +495,10 @@ final class ProductPreview {
 	/**
 	 * Put back what changes() recorded, part by part, and only what is still as it was left (anything edited since
 	 * is kept and named). Description and pictures go back through their own revert.
+	 * $source: the writer that logged them (log_changes()), so Recent changes loses them again.
 	 * @return array{undone:string[],kept:string[],queued:bool}
 	 */
-	public static function undo_changes( int $id, array $w ): array {
+	public static function undo_changes( int $id, array $w, string $source = '' ): array {
 		$keys   = self::write_keys();
 		$undone = [];
 		$kept   = [];
@@ -510,6 +512,9 @@ final class ProductPreview {
 				delete_post_meta( $id, $k );
 			} else {
 				update_post_meta( $id, $k, wp_slash( (string) $c['was'] ) );
+			}
+			if ( $source !== '' ) {
+				Write::logged( $id, (string) $k, $c['now'], $source );
 			}
 			$undone[] = $keys[ $k ] ?? $k;
 		}
@@ -543,6 +548,18 @@ final class ProductPreview {
 		}
 		wc_delete_product_transients( $id );
 		return [ 'undone' => array_values( array_unique( $undone ) ), 'kept' => array_values( array_unique( array_diff( $kept, $undone ) ) ), 'queued' => $queued ];
+	}
+
+	/**
+	 * Show the meta changes() found in the Product Workbench's Recent changes as $source's, with Undo there. They are
+	 * stored through the content registry, around the write gateway; the description and pictures log through their
+	 * own writers already.
+	 */
+	public static function log_changes( int $id, array $c, string $source ): void {
+		$locks = (array) ( $c['locks'] ?? [] );
+		foreach ( (array) ( $c['meta'] ?? [] ) as $k => $m ) {
+			Write::logged( $id, (string) $k, isset( $m['was'] ) ? (string) $m['was'] : null, $source, in_array( $k, $locks, true ) ? [ (string) $k ] : [] );
+		}
 	}
 
 	/** The last write to product $id (for the editor: what was written, not the values), or null. */

@@ -542,7 +542,7 @@ class ExtBridge {
 			$sections[] = [ 'title' => 'System requirements for ' . $maker, 'text' => '', 'rows' => $rows ];
 			$actions[]  = [ 'id' => 'map', 'label' => $picked ? 'Change the part' : ( $others ? 'Add the part from this page' : 'Pick the part that applies' ), 'help' => 'Opens the mapper on this page. The page is stored with your pick.', 'kind' => 'map', 'part' => 'requirements', 'primary' => true ];
 		}
-		$out = [ 'title' => self::store_name() . ' · ' . $host, 'subtitle' => self::short_url( $url ), 'notices' => $notices, 'sections' => $sections, 'actions' => $actions, 'product' => $focus ];
+		$out = [ 'title' => self::store_name() . ' · ' . $host, 'href' => Module::workbench_url( [ 'site' => $host ] ), 'subtitle' => self::short_url( $url ), 'notices' => $notices, 'sections' => $sections, 'actions' => $actions, 'product' => $focus ];
 		return $poll ? $out + [ 'poll' => $poll ] : $out;
 	}
 
@@ -556,6 +556,7 @@ class ExtBridge {
 		$title = html_entity_decode( get_the_title( $id ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		return [
 			'title'    => self::store_name() . ' · ' . $host,
+			'href'     => Module::workbench_url( [ 'site' => $host ] ),
 			'subtitle' => self::short_url( $url ),
 			'notices'  => [ [ 'kind' => 'info', 'text' => sprintf( 'Page %d of the choices for %s. Its other parts are read on the product’s own page.', ChoiceBundles::page_no( $url ), $title ) ] ],
 			'sections' => [ $sec ],
@@ -701,7 +702,8 @@ class ExtBridge {
 		}
 		$actions[] = [ 'id' => 'data', 'label' => 'Show it in the Workbench', 'help' => 'Opens the Product Workbench on this product, in a new tab.', 'kind' => 'open', 'href' => Module::workbench_url( [ 'q' => (string) $id ] ) ];
 
-		$out = [ 'title' => self::store_name(), 'subtitle' => self::short_url( (string) strtok( $raw, '#' ) ), 'notices' => $notices, 'sections' => [ [ 'title' => $title . ' · #' . $id, 'rows' => $rows, 'text' => '' ] ], 'actions' => $actions, 'product' => $id ];
+		$wb  = Module::workbench_url( [ 'q' => (string) $id ] );
+		$out = [ 'title' => self::store_name(), 'href' => $wb, 'subtitle' => self::short_url( (string) strtok( $raw, '#' ) ), 'notices' => $notices, 'sections' => [ [ 'title' => $title . ' · #' . $id, 'href' => $wb, 'rows' => $rows, 'text' => '' ] ], 'actions' => $actions, 'product' => $id ];
 		if ( $look ) { // committed through the vendor page's address (`base`), never with this page's HTML
 			$out['sections'][] = $look['section'];
 			$out['base']       = $page;
@@ -1614,7 +1616,7 @@ class ExtBridge {
 			return null;
 		}
 		$name = 'Layout ' . self::letter( $lay['i'] );
-		$sec  = [ 'title' => sprintf( '%s · %d pages built like this one', $name, $lay['pages'] ), 'rows' => [], 'text' => '', 'actions' => [] ];
+		$sec  = [ 'title' => sprintf( '%s · %d pages built like this one', $name, $lay['pages'] ), 'href' => Module::workbench_url( [ 'site' => $host ] ), 'rows' => [], 'text' => '', 'actions' => [] ];
 		$t    = MapTypes::for_layout( $host, $lay['i'] );
 		$own  = $t && ! is_wp_error( $t ) ? array_filter( (array) $t['fields'], static fn( $f, $k ) => ! empty( $f['sel'] ) && isset( PartFill::PLAN_FIELD[ $k ] ), ARRAY_FILTER_USE_BOTH ) : [];
 		if ( ! $own ) {

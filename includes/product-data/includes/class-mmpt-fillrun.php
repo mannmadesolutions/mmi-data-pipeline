@@ -113,6 +113,7 @@ class FillRun {
 			return;
 		}
 		$c = ProductPreview::changes( (array) json_decode( (string) $row['before_json'], true ), ProductPreview::snapshot( $id ) );
+		ProductPreview::log_changes( $id, $c, 'product-page-fills' );
 		$wpdb->update( $t, [ 'rec' => (string) wp_json_encode( $c ), 'state' => $c['wrote'] ? 'written' : 'nothing', 'done_at' => current_time( 'mysql', true ) ], [ 'id' => (int) $row['id'] ] );
 	}
 
@@ -229,7 +230,7 @@ class FillRun {
 			if ( ! $rec['meta'] && ! $rec['enrich'] && empty( $rec['pictures'] ) ) {
 				continue; // nothing written: nothing to put back
 			}
-			$u = ProductPreview::undo_changes( $id, $rec );
+			$u = ProductPreview::undo_changes( $id, $rec, 'product-page-fills' );
 			$wpdb->update( $t, [ 'state' => 'undone', 'undo_json' => (string) wp_json_encode( $u + [ 'at' => current_time( 'mysql', true ) ] ) ], [ 'id' => (int) $r['id'] ] );
 			$out['items'][ $id ] = $u;
 			$out['undone']      += $u['undone'] ? 1 : 0;
@@ -266,7 +267,7 @@ class FillRun {
 			if ( ! is_array( $was ) ) {
 				return [ 'state' => 'error', 'note' => 'There is no decision to undo.' ];
 			}
-			$u = $was['choice'] === 'use' && ! empty( $was['rec'] ) ? ProductPreview::undo_changes( $id, (array) $was['rec'] ) : [ 'undone' => [], 'kept' => [], 'queued' => false ];
+			$u = $was['choice'] === 'use' && ! empty( $was['rec'] ) ? ProductPreview::undo_changes( $id, (array) $was['rec'], 'product-page-fills' ) : [ 'undone' => [], 'kept' => [], 'queued' => false ];
 			delete_post_meta( $id, self::REQ_META );
 			self::audit( 'vendor_maps.requirements_undo', $id, [ 'was' => $was['choice'], 'kept' => $u['kept'] ] );
 			return [ 'state' => 'undone', 'note' => $u['kept'] ? 'Taken back, except what was edited since: ' . implode( ', ', $u['kept'] ) . '.' : 'Taken back.', 'undone' => $u ];
@@ -306,6 +307,7 @@ class FillRun {
 			if ( ! $rec['wrote'] && ! $wrote ) {
 				return [ 'state' => 'error', 'note' => 'Nothing to change: it already has its page’s requirements.' ];
 			}
+			ProductPreview::log_changes( $id, $rec, 'product-page-fills' );
 		} elseif ( $choice !== 'keep' ) {
 			return [ 'state' => 'error', 'note' => 'Choose use or keep.' ];
 		}

@@ -123,6 +123,31 @@ final class MMI_Pipeline_Write {
         return [ 'result' => 'written', 'lock_added' => $lock_now ];
     }
 
+    /**
+     * Log a meta change a writer already made another way (Product Data's
+     * content registry), as if field() had made it: a row in the source's
+     * job, so Recent changes shows it and Undo puts $was back while the field
+     * still holds what was written. Called again with the old value as $was
+     * after the writer's own undo, the same day's row goes away.
+     *
+     * @param string|null $was         the stored value before (null: none).
+     * @param string[]    $locks_added lock keys the writer added, released by Undo.
+     */
+    public static function record( int $id, string $field, $was, string $source, array $locks_added = [], string $label = '' ): void {
+        if ( $id <= 0 || $field === '' || in_array( $field, self::POST_FIELDS, true ) || $field === '_thumbnail_id' || strpos( $field, 'tax:' ) === 0 ) {
+            return; // those go through field()
+        }
+        $before = [ 'field' => $field, 'exists' => $was !== null, 'value' => $was ];
+        $after  = self::read( $id, $field );
+        if ( self::same( $before, $after['exists'] ? $after['value'] : null ) ) {
+            return;
+        }
+        if ( $locks_added && class_exists( 'MMI_Pipeline_Field_Locks' ) ) {
+            $before['locks_added'] = array_values( array_unique( array_map( [ 'MMI_Pipeline_Field_Locks', 'canonical' ], $locks_added ) ) );
+        }
+        self::log( $id, $field, $before, $after, sanitize_key( $source ), $label );
+    }
+
     /** The lock key a field is stored under. */
     public static function lock_key( string $field ): string {
         return self::LOCK_KEYS[ $field ] ?? $field;

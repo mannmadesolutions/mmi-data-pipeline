@@ -39,7 +39,8 @@ final class Write {
 		'product-vendor-links'   => [ 'Product Data: maker page links', [ 'vendor_product_url', 'vendor_product_url_verified' ], false ],
 		'product-terms'          => [ 'Product Data: categories and brands', [ 'tax:product_cat', 'tax:product_brand' ], true ],
 		'product-feed-fill'      => [ 'Product Data: filled from distributor data', [ '_mmi_features', '_mmi_youtube_urls', '_mmi_mac_requirements', '_mmi_windows_requirements', '_mmi_linux_requirements', '_mmi_licensing', '_mmi_platforms' ], false ],
-		'product-extension'      => [ 'Product Data: Chrome extension', [ '_mmi_disclaimer', '_mmi_youtube_urls', '_mmi_audio' ], false ],
+		'product-extension'      => [ 'Product Data: Chrome extension', [ '_mmi_disclaimer', '_mmi_youtube_urls', '_mmi_audio', '_mmi_features', '_mmi_manuals', '_mmi_version', '_mmi_mac_requirements', '_mmi_windows_requirements', '_mmi_linux_requirements', '_mmi_platforms', '_weight', '_length', '_width', '_height' ], false ],
+		'product-page-fills'     => [ 'Product Data: filled from maker pages', [ '_mmi_features', '_mmi_manuals', '_mmi_youtube_urls', '_mmi_audio', '_mmi_version', '_mmi_disclaimer', '_mmi_mac_requirements', '_mmi_windows_requirements', '_mmi_linux_requirements', '_mmi_platforms', '_weight', '_length', '_width', '_height' ], true ],
 	];
 
 	public static function register_hooks(): void {
@@ -52,6 +53,16 @@ final class Write {
 		}
 		foreach ( self::SOURCES as $source => [ $label, $fields, $locks ] ) {
 			\MMI_Pipeline_Write::register_source( $source, $label, $fields, $locks );
+		}
+	}
+
+	/**
+	 * A meta change already made through the content registry, logged as $source's (MMI_Pipeline_Write::record()), so
+	 * it shows in Recent changes with Undo. Nothing without the pipeline's change log.
+	 */
+	public static function logged( int $id, string $field, ?string $was, string $source, array $locks_added = [] ): void {
+		if ( class_exists( '\MMI_Pipeline_Write' ) && method_exists( '\MMI_Pipeline_Write', 'record' ) ) {
+			\MMI_Pipeline_Write::record( $id, $field, $was, $source, $locks_added );
 		}
 	}
 

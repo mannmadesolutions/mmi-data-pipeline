@@ -226,6 +226,8 @@
 		.hd { display: flex; align-items: flex-start; gap: 8px; padding: 12px 12px 10px 14px; border-bottom: 1px solid #dcdcde; background: #f6f7f7; }
 		.hd .t { flex: 1; min-width: 0; }
 		.hd h1 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+		.hd h1 a { color: inherit; text-decoration: none; }
+		.hd h1 a:hover { color: #2271b1; text-decoration: underline; }
 		.hd .s { margin-top: 2px; color: #646970; font-size: 12px; overflow-wrap: anywhere; }
 		.ib { flex: none; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #50575e; font-size: 16px; line-height: 1; cursor: pointer; }
 		.ib:hover, .ib:focus-visible { border-color: #c3c4c7; background: #fff; outline: none; }
@@ -1718,7 +1720,8 @@
 	function draw( panel, extra ) {
 		peekOff(); // its row is about to go, and with it the pointer's leaving
 		const scroll = body.scrollTop;
-		h1.textContent = panel.title || 'Product Data';
+		const top = panel.href ? ownLink( panel.href ) : ''; // the store's Workbench on this product or site
+		h1.replaceChildren( top ? link( 'a', '', panel.title || 'Product Data', top ) : document.createTextNode( panel.title || 'Product Data' ) );
 		sub.textContent = panel.subtitle || sub.textContent;
 		state.product = panel.product || state.product;
 		if ( state.ticksFor !== state.product ) { // another product: its own ticks
