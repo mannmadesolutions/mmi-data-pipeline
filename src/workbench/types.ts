@@ -138,7 +138,11 @@ export interface WorkbenchConfig {
   extraColumns?: Record<string, string>;
   /** Title rules section: present where the title rule routes are registered. */
   titleRules?: TitleRulesConfig;
+  /** A store's own panels (mmi_pipeline_product_data_panels), drawn by the store's script. */
+  panels?: PanelConfig[];
 }
+
+export interface PanelConfig { id: string; title: string; desc: string; icon: string }
 
 /** The shared action picker's current choice, read from its markup. */
 export interface ActionChoice {

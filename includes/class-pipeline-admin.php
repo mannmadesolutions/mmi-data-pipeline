@@ -174,6 +174,14 @@ class MMI_Pipeline_Admin {
             // shows self::$built_script_problem instead when it can't load.
             if ( self::enqueue_built_script( 'mmi-pipeline-workbench', 'workbench' ) ) {
                 wp_localize_script( 'mmi-pipeline-workbench', 'mmiWorkbench', self::workbench_ui_config() );
+                foreach ( self::workbench_panels() as $p ) { // a store's own panels bring their scripts and styles
+                    if ( $p['script'] !== '' && wp_script_is( $p['script'], 'registered' ) ) {
+                        wp_enqueue_script( $p['script'] );
+                    }
+                    if ( $p['style'] !== '' && wp_style_is( $p['style'], 'registered' ) ) {
+                        wp_enqueue_style( $p['style'] );
+                    }
+                }
             }
         }
 
@@ -1032,6 +1040,8 @@ class MMI_Pipeline_Admin {
              * from mmi_pipeline_workbench_column_values. Product Data offers its maker page, content and decisions.
              */
             'extraColumns'     => (object) array_map( 'strval', (array) apply_filters( 'mmi_pipeline_workbench_columns', [] ) ),
+            // A store's own panels (mmi_pipeline_product_data_panels): a section each, drawn by the store's script.
+            'panels'           => array_map( static fn( $p ) => array_intersect_key( $p, array_flip( [ 'id', 'title', 'desc', 'icon' ] ) ), self::workbench_panels() ),
         ];
         // Title rules (Product Data): shown where the title rule routes (mmpt/v1) are registered; the plugin that
         // registers them answers the filter. Site-relative URLs; the REST nonce is fetched by the page when needed.
@@ -1042,6 +1052,40 @@ class MMI_Pipeline_Admin {
             ];
         }
         return $config;
+    }
+
+    /**
+     * Panels a store's own plugin adds to the Product Workbench, after Product Data's sections (filter
+     * mmi_pipeline_product_data_panels): each [ id, title, desc, icon (a dashicon), script, style ]. script and style
+     * are handles the plugin registers (it may do so in its filter callback, which runs while this page enqueues);
+     * the Workbench draws a section per panel and calls window.mmiWorkbenchPanels[id].mount(element). A script
+     * that loads after the Workbench says so with the window event "mmi-wb:panel-ready" (detail: the id).
+     * At most 12; answered once per request.
+     *
+     * @return array<int,array{id:string,title:string,desc:string,icon:string,script:string,style:string}>
+     */
+    private static function workbench_panels(): array {
+        static $panels = null;
+        if ( $panels !== null ) {
+            return $panels;
+        }
+        $out = [];
+        foreach ( (array) apply_filters( 'mmi_pipeline_product_data_panels', [] ) as $p ) {
+            $id = is_array( $p ) ? sanitize_key( (string) ( $p['id'] ?? '' ) ) : '';
+            if ( $id === '' || isset( $out[ $id ] ) ) {
+                continue;
+            }
+            $out[ $id ] = [
+                'id'     => $id,
+                'title'  => sanitize_text_field( (string) ( $p['title'] ?? $id ) ),
+                'desc'   => sanitize_text_field( (string) ( $p['desc'] ?? '' ) ),
+                'icon'   => sanitize_key( (string) ( $p['icon'] ?? 'admin-generic' ) ),
+                'script' => sanitize_key( (string) ( $p['script'] ?? '' ) ),
+                'style'  => sanitize_key( (string) ( $p['style'] ?? '' ) ),
+            ];
+        }
+        $panels = array_values( array_slice( $out, 0, 12 ) );
+        return $panels;
     }
 
     private static function enqueue_style( string $handle, string $relative_path, array $deps ): void {
