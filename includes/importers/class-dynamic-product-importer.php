@@ -1160,11 +1160,17 @@ class MMI_Dynamic_Product_Importer {
      * The field mapping source is written for the "promotions.xxx" nesting that
      * would exist if the promo were embedded in the main item (it isn't — promos
      * live in a separate file matched by SKU), so a leading "promotions." prefix
-     * is stripped to get the real key on the promo record itself. Falls back to
-     * null when the field has no mapping (caller decides the legacy fallback).
+     * is stripped to get the real key on the promo record itself. Null when the
+     * field has no source for this supplier or is switched off for it, the same
+     * test map_product_data() uses: an unmapped field is a disabled field.
      */
     protected function get_promo_source_key($wc_field) {
-        $config = $this->field_mappings[$wc_field]['source'] ?? null;
+        $map     = $this->field_mappings[$wc_field] ?? [];
+        $enabled = $map['enabled'] ?? false;
+        if ( is_array( $enabled ) ? empty( $enabled[ $this->supplier_name ] ) : empty( $enabled ) ) {
+            return null;
+        }
+        $config = $map['source'] ?? null;
         $key     = is_array($config) ? ($config[$this->supplier_name] ?? null) : $config;
         return $key ? preg_replace('/^promotions\./', '', $key) : null;
     }
@@ -1173,15 +1179,16 @@ class MMI_Dynamic_Product_Importer {
      * Apply promotional pricing to product data
      */
     protected function apply_promotion($product_data, $promo_data) {
-        // Use the same source key already configured for _sale_price (e.g. xchange's
-        // "street_price" vs skuport's "promoPrice" — these are NOT interchangeable:
-        // xchange's "promo_price" is the dealer's net/wholesale cost, not a customer
-        // sale price). Only fall back to the old hardcoded guesses if this profile
-        // has no _sale_price mapping configured at all.
-        $price_key   = $this->get_promo_source_key('_sale_price');
-        $promo_price = $price_key !== null && isset( $promo_data[ $price_key ] )
-            ? $promo_data[ $price_key ]
-            : ( $promo_data['price'] ?? $promo_data['sale_price'] ?? $promo_data['promo_price'] ?? null );
+        // Use the source key configured for _sale_price (e.g. xchange's "street_price",
+        // skuport's "promoPrice"). A profile that doesn't map _sale_price for this
+        // supplier leaves sale prices alone. There is no guessed key: xchange's
+        // "promo_price" is the dealer's net cost, and the old guess put 93 products on
+        // sale at cost whenever Web Assets or New Products ran (changelog 2026-11-10.4).
+        $price_key = $this->get_promo_source_key('_sale_price');
+        if ( $price_key === null ) {
+            return $product_data;
+        }
+        $promo_price = $promo_data[ $price_key ] ?? null;
 
         if ($promo_price !== null) {
             $regular_price = $product_data['_regular_price'] ?? $product_data['regular_price'] ?? 0;
@@ -1573,9 +1580,10 @@ class MMI_Dynamic_Product_Importer {
         // Promotions
         if ( $var_sku ) {
             $promo = $this->find_promotion( $var_sku, $promotions );
-            if ( $promo && $price !== null ) {
-                $promo_price = $promo['sale_price'] ?? $promo['price'] ?? $promo['promo_price'] ?? null;
-                if ( $promo_price !== null ) {
+            $price_key = $this->get_promo_source_key( '_sale_price' ); // mapped key only: never xchange's promo_price (dealer cost)
+            if ( $promo && $price !== null && $price_key !== null ) {
+                $promo_price = $promo[ $price_key ] ?? null;
+                if ( $promo_price !== null && (float) $promo_price > 0 && (float) $promo_price < (float) $price ) {
                     $variation->set_sale_price( (string) $promo_price );
                 }
             }
