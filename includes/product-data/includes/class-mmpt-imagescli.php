@@ -130,6 +130,66 @@ class ImagesCli {
 	}
 
 	/**
+	 * Image attachments nothing uses (PRODUCT_DATA_PROGRAM.md §6 item 43, the P4 sweep): not any post's featured
+	 * picture or gallery, no term's or option's ID, not the site logo, not offered by an open picture pick, not attached
+	 * to a page or other non-product post, and no file of it named in any content, meta or option
+	 * (MediaRelease::references()). Read-only by default; --release hands them to the usual release (14 days' wait,
+	 * references checked again before quarantine, Restore puts one back). Releasing is the owner's decision.
+	 *
+	 * ## OPTIONS
+	 * [--csv=<file>]
+	 * : Write every orphan (id, file, bytes, parent, uploaded) to this file.
+	 * [--release]
+	 * : Release them (owner's go-ahead only).
+	 *
+	 * @subcommand orphans
+	 */
+	public function orphans( $args, $assoc ): void {
+		global $wpdb;
+		$ids = array_map( 'intval', $wpdb->get_col( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%' ORDER BY ID" ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- no input
+		MediaRelease::maybe_install();
+		$held = array_flip( array_map( 'intval', $wpdb->get_col( 'SELECT attachment_id FROM ' . MediaRelease::table() . " WHERE kind = 'attachment' AND state IN ('released','quarantined','deleted')" ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- no input
+		$orphans = [];
+		foreach ( array_chunk( $ids, 2000 ) as $chunk ) {
+			foreach ( MediaRelease::references( array_values( array_filter( $chunk, static fn( $a ) => ! isset( $held[ $a ] ) ) ) ) as $att => $refs ) {
+				if ( ! $refs ) {
+					$orphans[] = (int) $att;
+				}
+			}
+		}
+		$bytes   = 0;
+		$rows    = [];
+		$parents = [ 'product' => 0, 'none' => 0, 'gone' => 0 ];
+		foreach ( $orphans as $att ) {
+			$b      = MediaRelease::sum_bytes( MediaRelease::files_of( $att ) );
+			$bytes += $b;
+			$parent = (int) wp_get_post_parent_id( $att );
+			$kind   = $parent === 0 ? 'none' : ( get_post_type( $parent ) ? 'product' : 'gone' );
+			$parents[ $kind ]++;
+			$rows[] = [ $att, (string) get_post_meta( $att, '_wp_attached_file', true ), $b, $parent ? $parent . ' (' . $kind . ')' : '', (string) get_post_field( 'post_date_gmt', $att ) ];
+		}
+		$out = [ 'images' => count( $ids ), 'already_released' => count( $held ), 'orphans' => count( $orphans ), 'mb' => round( $bytes / 1048576, 1 ), 'uploaded_for' => $parents, 'examples' => array_slice( array_column( $rows, 1 ), 0, 10 ) ];
+		if ( ! empty( $assoc['csv'] ) ) {
+			$fh = fopen( (string) $assoc['csv'], 'w' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			if ( $fh ) {
+				fputcsv( $fh, [ 'attachment', 'file', 'bytes', 'parent', 'uploaded_gmt' ] );
+				foreach ( $rows as $r ) {
+					fputcsv( $fh, $r );
+				}
+				fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+				$out['csv'] = (string) $assoc['csv'];
+			}
+		}
+		if ( ! empty( $assoc['release'] ) ) {
+			foreach ( $orphans as $att ) {
+				MediaRelease::release( $att, [], 'orphan: nothing uses it (P4 sweep)' );
+			}
+			$out['released'] = count( $orphans );
+		}
+		\WP_CLI::log( wp_json_encode( $out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
+	}
+
+	/**
 	 * Move released media whose wait is over into quarantine (the runner does this too).
 	 *
 	 * ## OPTIONS
