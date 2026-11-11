@@ -501,9 +501,11 @@ class PageRequirements {
 			\MMI_Product_Content_Registry::sync_platforms( $pid );
 		}
 		if ( $backup ) {
-			$dir = '/home/runcloud/backups/product-data-quality/requirements/';
-			wp_mkdir_p( $dir );
-			file_put_contents( $dir . gmdate( 'Ymd-His' ) . '-product-' . $pid . '.json', wp_json_encode( [ $pid => $backup ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			// What the fill replaced, kept in the plugin's private folder (outside the web root where the host allows).
+			$dir = mmi_shared_lib_private_subdir( 'mmpt-requirements-backups' );
+			if ( $dir !== '' ) {
+				file_put_contents( $dir . gmdate( 'Ymd-His' ) . '-product-' . $pid . '.json', wp_json_encode( [ $pid => $backup ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			}
 			if ( class_exists( 'MMI_Audit_Log' ) ) {
 				\MMI_Audit_Log::record( 'mmi-admin', 'product_requirements.fill', [ 'object_type' => 'product', 'object_id' => (string) $pid, 'details' => $out + ( $locked ? [ 'locked' => $locked ] : [] ) ] );
 			}

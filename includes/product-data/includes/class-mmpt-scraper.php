@@ -164,7 +164,7 @@ class Scraper {
 		$log  = $dir !== '' ? $dir . $log_name : '/dev/null';
 		$args = implode( ' ', array_map( 'escapeshellarg', preg_split( '/\s+/', trim( $command ) ) ) );
 		$cmd  = 'setsid nohup ' . escapeshellarg( $wp ) . ' ' . $args . ' --path=' . escapeshellarg( untrailingslashit( ABSPATH ) ) . ' >> ' . escapeshellarg( $log ) . ' 2>&1 < /dev/null &';
-		$home = getenv( 'HOME' ) ?: '/home/runcloud';
+		$home = Module::home_dir();
 		// Pipes, not ['file','/dev/null']: PHP opens descriptor files itself and open_basedir blocks /dev.
 		// The shell redirects the runner's own input and output (the command line above).
 		$proc = proc_open( [ '/bin/sh', '-c', $cmd ], [ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes, ABSPATH, [ 'PATH' => '/usr/local/bin:/usr/bin:/bin', 'HOME' => $home ] );

@@ -2595,7 +2595,7 @@ class VendorMaps {
 		}
 		$file   = $dir . sanitize_file_name( self::host( $host ) ) . '.jpg';
 		$node   = is_executable( '/usr/bin/node' ) ? '/usr/bin/node' : '/usr/local/bin/node';
-		$home   = (string) getenv( 'HOME' ) ?: '/home/runcloud';
+		$home   = Module::home_dir();
 		$chrome = glob( $home . '/.cache/ms-playwright/chromium-*/chrome-linux64/chrome' );
 		$script = dirname( __DIR__, 3 ) . '/' . self::SHOT_SCRIPT;
 		if ( ! $chrome || ! is_readable( $script ) ) {

@@ -37,6 +37,15 @@ final class Module {
 		self::log( 'info', $msg, $ctx );
 	}
 
+	/** The home folder of the account PHP runs as (for its tools' caches): $HOME, else the account's own, else the temp folder. */
+	public static function home_dir(): string {
+		$home = (string) getenv( 'HOME' );
+		if ( $home === '' && function_exists( 'posix_getpwuid' ) && function_exists( 'posix_geteuid' ) ) {
+			$home = (string) ( posix_getpwuid( posix_geteuid() )['dir'] ?? '' );
+		}
+		return $home !== '' ? $home : untrailingslashit( get_temp_dir() );
+	}
+
 	public static function warn( string $msg, array $ctx = [] ): void {
 		self::log( 'warn', $msg, $ctx );
 	}
