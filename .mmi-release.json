@@ -1,0 +1,4 @@
+{
+  "checks": [ "lint", "site-rules", "run-all", "ui-check", "ui-e2e", "customer-site" ],
+  "customer_site_product": 90
+}

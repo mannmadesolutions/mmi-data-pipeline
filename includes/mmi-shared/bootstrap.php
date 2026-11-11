@@ -178,6 +178,9 @@
  * licensing-helpers.php, since it needs a hook registered once per request
  * rather than a lazily-autoloaded class.
  *
+ * MMI_Plugin_Update_Client::plugin_info() shows the catalog's release notes as the
+ * update details' Changelog tab (1.49.1, 2026-11-11; older servers send none).
+ *
  * MMI_AI::ask() and preflight(), and MMI_AI_Claude_Code::complete_content() (1.49.0,
  * 2026-11-09): content blocks with several pictures, a per-call model, time and
  * thinking on a plan, and a check before a batch starts (filter mmi_ai_preflight).
@@ -210,7 +213,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.49.0';
+$mmi_shared_lib_this_copy_version = '1.49.1';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir

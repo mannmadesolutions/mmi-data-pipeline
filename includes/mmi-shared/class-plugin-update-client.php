@@ -127,9 +127,11 @@ class MMI_Plugin_Update_Client {
             'homepage'      => $entry['url'] ?? '',
             'requires'      => $entry['requires'] ?? '',
             'requires_php'  => $entry['requires_php'] ?? '',
-            'sections'      => [
+            // Release notes come as HTML from the catalog (older servers send none; the tab is then left out).
+            'sections'      => array_filter( [
                 'description' => $entry['description'] ?? '',
-            ],
+                'changelog'   => wp_kses_post( (string) ( $entry['changelog'] ?? '' ) ),
+            ], static fn( $v ) => $v !== '' ),
             'download_link' => self::authorize_download_url( $args->slug, $entry['download_url'] ?? '' ) ?: '',
         ];
     }
