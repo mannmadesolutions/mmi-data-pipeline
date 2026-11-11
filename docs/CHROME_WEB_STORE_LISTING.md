@@ -47,12 +47,11 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 > on your store's Chrome extension page.
 
 **Graphic assets:**
-- Icon 128×128: `browser-extension/icons/128.png`.
-- Screenshots (1280×800) and the small promo tile (440×280): **not decided yet; the owner decides at the end.** No real
-  maker or vendor appears in them (owner, 2026-11-10): either a made-up maker's page built for the purpose, or no web
-  page at all, showing the extension's panel and the plugin's admin screens instead. `customer-site.sh` can take
-  1280×800 shots with `MMI_SHOTS=<folder>`, but it runs on a real maker's stored page, so its shots aren't for the
-  listing.
+- Store icon (128×128 PNG, the extension's icon at 96×96 with 16 px clear around it), five 1280×800 screenshots, the
+  small promo tile (440×280) and the marquee tile (1400×560): MMI Admin → Extensions → Chrome Web Store → Graphic
+  assets, each with Download. They show the extension at work on a made-up maker's page (Fernhollow Audio's Driftline
+  Tape Echo; neither exists) on the test store, so no real maker or vendor appears (owner, 2026-11-10 and 11-11). A
+  session takes them again with `mmi-admin/scripts/web-store-art/run.sh` when the extension's screens change.
 
 ## Privacy practices tab
 
