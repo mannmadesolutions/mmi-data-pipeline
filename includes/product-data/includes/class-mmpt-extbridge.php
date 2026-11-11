@@ -3523,8 +3523,12 @@ class ExtBridge {
 	 * The files a download carries: the extension folder, and the live mapper's scripts from assets/js (BUNDLED, one
 	 * source). @return array<string,string> path in the zip => file
 	 */
-	private static function files(): array {
-		$dir = self::source_dir();
+	/**
+	 * The extension's files: relative path → file. From this plugin's folder, or from $root, another copy of the plugin (a
+	 * commit exported from git, for the Chrome Web Store package of a pushed commit).
+	 */
+	private static function files( string $root = '' ): array {
+		$dir = $root !== '' ? trailingslashit( $root ) . 'browser-extension/' : self::source_dir();
 		$out = [];
 		$it  = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $dir, \FilesystemIterator::SKIP_DOTS ) );
 		foreach ( $it as $file ) {
@@ -3534,7 +3538,7 @@ class ExtBridge {
 			}
 		}
 		foreach ( self::BUNDLED as $f ) {
-			$out[ $f ] = dirname( __DIR__ ) . '/assets/js/' . $f;
+			$out[ $f ] = ( $root !== '' ? trailingslashit( $root ) . 'includes/product-data' : dirname( __DIR__ ) ) . '/assets/js/' . $f;
 		}
 		ksort( $out );
 		return $out;
@@ -3593,10 +3597,15 @@ class ExtBridge {
 	/**
 	 * The Chrome Web Store's package (migration phase 10e, `wp mmpt extension package`): the copy that names no store,
 	 * its files at the zip's root (the store wants manifest.json there), without the alarms permission that only a
-	 * folder copy's self-update uses (the store updates its own copies).
+	 * folder copy's self-update uses (the store updates its own copies). $root: build it from another copy of this plugin
+	 * (a pushed commit exported from git) instead of this folder.
 	 * @return string|\WP_Error the file
 	 */
-	public static function listing_zip() {
+	public static function listing_zip( string $root = '' ) {
+		$files = self::files( $root );
+		if ( ! isset( $files['manifest.json'] ) || ! is_file( $files['manifest.json'] ) ) {
+			return new \WP_Error( 'mmpt_ext_zip', __( 'That copy has no browser-extension/manifest.json.', 'mmi-data-pipeline' ) );
+		}
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			return new \WP_Error( 'mmpt_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-data-pipeline' ) );
 		}
@@ -3605,16 +3614,19 @@ class ExtBridge {
 		if ( $zip->open( $tmp, \ZipArchive::OVERWRITE ) !== true ) {
 			return new \WP_Error( 'mmpt_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-data-pipeline' ) );
 		}
-		foreach ( self::files() as $rel => $path ) {
+		$version = '?';
+		foreach ( $files as $rel => $path ) {
 			if ( $rel === 'manifest.json' ) {
 				$m                = (array) json_decode( (string) file_get_contents( $path ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
+				$version          = (string) ( $m['version'] ?? '?' );
 				$m['permissions'] = array_values( array_diff( (array) ( $m['permissions'] ?? [] ), [ 'alarms' ] ) );
 				$zip->addFromString( $rel, (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
 				continue;
 			}
 			$zip->addFile( $path, $rel );
 		}
-		$zip->addFromString( 'build.json', (string) wp_json_encode( [ 'build' => self::build(), 'version' => self::version() ] ) );
+		$build = $root === '' ? self::build() : substr( md5( (string) wp_json_encode( array_map( 'md5_file', $files ) ) ), 0, 12 );
+		$zip->addFromString( 'build.json', (string) wp_json_encode( [ 'build' => $build, 'version' => $version ] ) );
 		$zip->close();
 		return $tmp;
 	}
