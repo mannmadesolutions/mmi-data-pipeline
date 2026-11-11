@@ -289,7 +289,9 @@ class MMI_Access_Log {
 	 * "Browser" for an ordinary browser, or "Other".
 	 */
 	public static function agent_family( string $ua ): string {
-		if ( preg_match( '/([A-Za-z][A-Za-z0-9._-]*(?:bot|crawler|spider|fetcher|scraper|agent)[A-Za-z0-9._-]*)/i', $ua, $m ) ) {
+		// "indexer" and "externalhit": Meta's meta-webindexer and facebookexternalhit carry neither "bot" nor
+		// "agent", and were counted as browsers (2026-11-11).
+		if ( preg_match( '/([A-Za-z][A-Za-z0-9._-]*(?:bot|crawler|spider|fetcher|scraper|agent|indexer|externalhit)[A-Za-z0-9._-]*)/i', $ua, $m ) ) {
 			$name = rtrim( $m[1], '/._-' );
 			if ( strcasecmp( $name, 'user-agent' ) !== 0 ) {
 				return substr( $name, 0, 40 );
