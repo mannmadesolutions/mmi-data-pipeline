@@ -165,7 +165,7 @@ final class Health_Checks {
                 'label'       => 'On sale below our cost (supplier promotion to check)',
                 'chip'        => 'Sale below cost',
                 'match_logic' => 'all',
-                'conditions'  => [ $meta( MMI_Pipeline_Field_Resolver::SALE_BELOW_COST_META, 'is_not_empty' ) ],
+                'conditions'  => [ $meta( \MMI_Pipeline_Field_Resolver::SALE_BELOW_COST_META, 'is_not_empty' ) ],
             ],
         ];
 
