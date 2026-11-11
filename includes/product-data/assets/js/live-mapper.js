@@ -135,6 +135,9 @@
 		save: 'Save for %part%',
 		saveWarn: 'Save with warning',
 		clearPick: 'Clear this pick',
+		undoPick: 'Undo last change',
+		undoTitle: 'Put this part’s pick for the site back as it was before its last change (%at% UTC)',
+		undone: '%part%’s pick is back as it was before its last change.',
 		clearSure: 'Click again to clear it',
 		clearLayoutSure: 'Click again: its pages go back to the site’s pick',
 		cleared: '%part%’s pick is cleared.',
@@ -1012,6 +1015,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			state.layout = r.data.layout || null;
 			state.scope = state.layout && state.layout.pages >= 2 ? 'layout' : 'site';
 			state.proposals = r.data.proposals || {};
+			state.undo = r.data.undo || {}; // parts whose site pick can be put back (VendorMaps::undoable())
 			const waiting = Object.values( state.proposals ).filter( ( p ) => p.status === 'proposed' ).length;
 			state.note = state.away ? { text: fill( MESSAGES.pageAway, { h: state.away } ), type: 'info' } : r.data.map ? { text: thisPage() + ( waiting ? fill( MESSAGES.waiting, { n: waiting } ) : '' ), type: 'info' } : { text: MESSAGES.noMap, type: 'warning' };
 		}
@@ -1188,6 +1192,26 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			if ( BRIDGE.saved ) {
 				BRIDGE.saved( r.data );
 			}
+		}
+		render();
+	}
+
+	/** The site's pick for this part as it was before its last change (VendorMaps::undo_part()). */
+	async function undoPart( b ) {
+		const k = state.part;
+		b.disabled = true;
+		const r = await ask( 'undo', { field: k } );
+		if ( ! r.ok ) {
+			state.note = { text: r.message || MESSAGES.noAnswer, type: 'error' };
+			render();
+			return;
+		}
+		state.showSaved = false;
+		state.saved = [];
+		await hello();
+		state.note = { text: fill( MESSAGES.undone, { part: partName( k ) } ), type: 'success' }; // after hello(), which sets its own
+		if ( BRIDGE.saved ) {
+			BRIDGE.saved( r.data );
 		}
 		render();
 	}
@@ -1512,7 +1536,8 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 				? h( 'button', { type: 'button', class: 'btn quiet', onclick: stopPicking, text: MESSAGES.stop } )
 				: h( 'button', { type: 'button', class: 'btn primary', disabled: ! state.map || undefined, onclick: startPicking, text: f ? MESSAGES.pickAgain : MESSAGES.pick } ),
 			f ? h( 'button', { type: 'button', class: 'btn quiet', onclick: toggleSaved, text: state.showSaved ? MESSAGES.hideSaved : MESSAGES.showSaved } ) : null,
-			f && f.sel ? h( 'button', { type: 'button', class: 'btn quiet', onclick: ( e ) => clearSaved( e.currentTarget ), text: MESSAGES.clearPick } ) : null ) );
+			f && f.sel ? h( 'button', { type: 'button', class: 'btn quiet', onclick: ( e ) => clearSaved( e.currentTarget ), text: MESSAGES.clearPick } ) : null,
+			state.undo && state.undo[ k ] && ! state.picking ? h( 'button', { type: 'button', class: 'btn quiet', title: fill( MESSAGES.undoTitle, { at: state.undo[ k ] } ), onclick: ( e ) => undoPart( e.currentTarget ), text: MESSAGES.undoPick } ) : null ) );
 		if ( state.picking ) {
 			box.append( modeSwitch() );
 		}

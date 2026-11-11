@@ -1931,6 +1931,18 @@ class ExtBridge {
 			$hello = self::map_hello( $url, '' );
 			return rest_ensure_response( ( $hello->get_status() === 200 ? (array) $hello->get_data() : [] ) + [ 'proposal' => MapProposals::out( $res ) ] );
 		}
+		if ( $op === 'undo' ) { // the site's pick for a part put back as it was before its last change (§6 item 7b)
+			$field = sanitize_key( (string) $r->get_param( 'field' ) );
+			if ( ! isset( VendorMaps::FIELDS[ $field ] ) ) {
+				return new \WP_REST_Response( [ 'message' => 'Unknown part.' ], 400 );
+			}
+			$res = VendorMaps::undo_part( VendorMaps::site_of( $url ), $field );
+			if ( is_wp_error( $res ) ) {
+				return new \WP_REST_Response( [ 'message' => $res->get_error_message() ], 409 );
+			}
+			$hello = self::map_hello( $url, '' );
+			return rest_ensure_response( ( $hello->get_status() === 200 ? (array) $hello->get_data() : [] ) + [ 'undone' => $field ] );
+		}
 		if ( $op === 'clear' ) { // a saved pick taken away, for the site or the layout the mapper is on
 			return self::map_clear( $r, $url );
 		}
@@ -2072,7 +2084,7 @@ class ExtBridge {
 			$lay['letter'] = self::letter( $lay['i'] );
 		}
 		$props = array_map( [ MapProposals::class, 'out' ], MapProposals::for_page( $host, $lay ? (int) $lay['i'] : null ) );
-		return rest_ensure_response( $res->get_data() + [ 'layout' => $lay, 'proposals' => (object) $props ] );
+		return rest_ensure_response( $res->get_data() + [ 'layout' => $lay, 'proposals' => (object) $props, 'undo' => (object) VendorMaps::undoable( $host ) ] );
 	}
 
 	/**

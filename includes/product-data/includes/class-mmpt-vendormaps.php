@@ -2200,6 +2200,48 @@ class VendorMaps {
 
 	/* ── Undo ──────────────────────────────────────────────────────────── */
 
+	/** When each of the site's parts last changed and can be undone: field → time (UTC). @return array<string,string> */
+	public static function undoable( string $host ): array {
+		$out = [];
+		foreach ( (array) ( ( (array) get_option( self::HISTORY_OPTION, [] ) )[ self::host( $host ) ] ?? [] ) as $e ) {
+			$out[ (string) $e['field'] ] = (string) $e['at'];
+		}
+		return $out;
+	}
+
+	/**
+	 * Put a part back as it was before its last change (§6 item 7b): the site's pick, not a layout's. The history entry
+	 * is used up, so a second Undo goes one change further back. A part that had no pick before is cleared.
+	 * @return array|\WP_Error the site's map
+	 */
+	public static function undo_part( string $host, string $field ) {
+		$h    = self::host( $host );
+		$all  = (array) get_option( self::HISTORY_OPTION, [] );
+		$list = array_values( (array) ( $all[ $h ] ?? [] ) );
+		$at   = null;
+		foreach ( $list as $i => $e ) {
+			if ( (string) $e['field'] === $field ) {
+				$at = $i;
+			}
+		}
+		$row = self::get( $h );
+		if ( $at === null || ! $row ) {
+			return new \WP_Error( 'mmpt_map_undo', 'Nothing to undo for this part.' );
+		}
+		$before = $list[ $at ]['before'];
+		array_splice( $list, $at, 1 );
+		$all[ $h ] = $list;
+		update_option( self::HISTORY_OPTION, $all, false );
+		$fields = $row['fields'];
+		if ( is_array( $before ) && ! empty( $before['sel'] ) ) {
+			$fields[ $field ] = $before;
+		} else {
+			unset( $fields[ $field ] );
+		}
+		self::audit( 'vendor_maps.part_undo', $h, [ 'field' => $field, 'restored' => is_array( $before ) ? (string) ( $before['sel'] ?? '' ) : '' ] );
+		return self::save_fields( $h, $row, $fields );
+	}
+
 	/** Keep what a part was before a change (newest last, HISTORY_MAX per site). */
 	private static function remember( string $host, string $field, ?array $before ): void {
 		$all          = (array) get_option( self::HISTORY_OPTION, [] );

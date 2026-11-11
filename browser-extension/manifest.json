@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "MMI Product Data",
-	"version": "0.10.3",
+	"version": "0.10.4",
 	"description": "Work on a maker's product page for your store: see what it gives each product, write it, pick parts and pictures on the page.",
 	"minimum_chrome_version": "116",
 	"permissions": [
