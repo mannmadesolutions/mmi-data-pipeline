@@ -217,7 +217,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.49.2';
+$mmi_shared_lib_this_copy_version = '1.50.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -267,6 +267,7 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_AI'             => 'class-ai.php',
 	'MMI_AI_Claude_Code' => 'class-ai-claude-code.php',
 	'MMI_Product_Identifiers' => 'class-product-identifiers.php',
+	'MMI_Access_Log'     => 'class-access-log.php',
 );
 
 // ── Candidate registry ──────────────────────────────────────────────────

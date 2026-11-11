@@ -244,6 +244,15 @@ return array(
 		'status'    => 'live',
 	),
 
+	'google.link_evidence'   => array(
+		'provider'  => 'mmi-google-services',
+		'consumers' => array( 'mmi-seo' ),
+		'title'     => 'Broken links: what Google and crawlers saw',
+		'pitch'     => 'Shows whether Google has seen each broken link, which crawlers follow it, and whether its 404s fall after the fix.',
+		'kind'      => 'ui',
+		'status'    => 'live',
+	),
+
 	/* ── Provider: mmi-seo ────── */
 	'seo.product_schema' => array(
 		'provider'  => 'mmi-seo',
