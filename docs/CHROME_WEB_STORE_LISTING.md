@@ -53,6 +53,14 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
   Tape Echo; neither exists) on the test store, so no real maker or vendor appears (owner, 2026-11-10 and 11-11). A
   session takes them again with `mmi-admin/scripts/web-store-art/run.sh` when the extension's screens change.
 
+**Official URL:** the publisher's site, as Google Search Console verified it
+
+**Homepage URL:** the publisher's product page of MMI Data Pipeline
+
+**Support URL:** the publisher's contact page
+
+**Mature content:** off
+
 ## Privacy practices tab
 
 **Single purpose:**
@@ -102,3 +110,11 @@ connected, and that store answers with data, not code.
 - **Visibility:** Unlisted for the first stores (owner decision 6, 2026-11-09), public once a few stores have used it.
 - **Regions:** all.
 - **Trader status:** trader (owner decision 7); the dashboard asks for the trader's contact details.
+
+## Test instructions tab
+
+Reviewers need a store to connect to: the publisher's test store, with a reviewer account the publisher makes there
+(its username and password go in Credentials, typed by the publisher; never in this document).
+
+**Additional instructions:**
+> It needs a store running MMI Data Pipeline: use our test store. 1. After installing, the page that opens asks for a store: enter {test store}, continue, sign in with the account above, then click Connect. 2. Open {maker page} and click the MMI Product Data toolbar button: the panel shows what that maker page gives the store's product. 3. Click a part to pick it on the page; tick parts, click This product to review. Nothing is written until Commit.
