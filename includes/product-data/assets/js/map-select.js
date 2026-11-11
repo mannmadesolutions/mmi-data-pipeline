@@ -18,9 +18,10 @@
 	const SKIP_TAGS = [ 'BODY', 'HTML' ];
 	const MANUAL_TEXT = /manual|user.?guide|operation|documentation|handbook|reference guide|quick.?start|getting started/i; // VendorMaps::MANUAL_TEXT
 	// What each part needs from the picks, as the server reads it (VendorMaps: MIN_TEXT, features 3+, REQ_TEXT, VERSION_RE, VIDEO_RE / VIDEO_ATTR).
-	const NEEDS = { text: 200, items: 3, reqText: 40 };
+	const NEEDS = { text: 200, items: 3, reqText: 40, names: 2 };
 	/** Parts read as a list of things: more elements like a pick are what a person means, not a surprise (red dashes are for the rest). */
-	const LIST_PARTS = [ 'features', 'pictures', 'videos', 'manual', 'audio' ];
+	const LIST_PARTS = [ 'features', 'pictures', 'videos', 'manual', 'audio', 'contents' ];
+	const CONTENTS = { max: 150, name: 120 }; // VendorMaps::CONTENTS_MAX, CONTENTS_NAME
 	const REQ_TEXT = /system\s*requirement|requirements|compatib|specification/i;
 	const VERSION_RE = /\b(?:version|ver\.?|v)\s*:?\s*(\d{1,3}(?:\.\d{1,4}){1,3})/i;
 	const VIDEO_SRC = /youtube(?:-nocookie)?\.com\/(?:embed|watch)|youtu\.be\/|player\.vimeo\.com\/video|vimeo\.com\/\d/i;
@@ -37,6 +38,7 @@
 			videos: [ '%n% video', '%n% videos', 'nothing' ],
 			audio: [ '%n% audio demo', '%n% audio demos', 'nothing' ],
 			disclaimer: [ '%n% character', '%n% characters', 'nothing' ],
+			contents: [ '%n% product named', '%n% products named', 'nothing' ],
 		},
 		reqLink: 'a requirements link',
 		// Why an element gives Features nothing (featureVerdicts(): the reader's own rules, owner 2026-10-30)
@@ -49,7 +51,7 @@
 			smaller: 'nothing: a bigger group of cards is read',
 		},
 		needs: '%what% (needs %need%)',
-		need: { description: '200', features: '3', requirements: 'a link or 40' },
+		need: { description: '200', features: '3', requirements: 'a link or 40', contents: '2' },
 	};
 
 	const fill = ( tpl, vars ) => tpl.replace( /%(\w+)%/g, ( m, k ) => ( k in vars ? String( vars[ k ] ) : m ) );
@@ -554,6 +556,61 @@
 		return els;
 	}
 
+	/**
+	 * The products a Bundle contents pick names, as VendorMaps::read_part() reads them: one per list item (top level), table
+	 * row, repeated card or picked element; its name is a heading in it, else its link's words, else bold words, else its own
+	 * first words. A name met twice counts once. @return string[]
+	 */
+	function contentNames( els ) {
+		const clean = ( t ) => String( t || '' ).replace( /\s+/g, ' ' ).replace( /^[\s•·–—:|✓✔►▸*-]+|[\s•·–—:|✓✔►▸*-]+$/g, '' );
+		const items = ( el ) => {
+			const tag = tagOf( el );
+			if ( [ 'LI', 'TR', 'A', 'H2', 'H3', 'H4', 'H5', 'H6', 'DT' ].includes( tag ) ) {
+				return [ el ];
+			}
+			if ( tag === 'TABLE' || tag === 'TBODY' ) {
+				return Array.from( el.querySelectorAll( 'tr' ) ).filter( ( tr ) => tr.querySelector( 'td' ) );
+			}
+			const top = Array.from( el.querySelectorAll( 'li' ) ).filter( ( li ) => {
+				let up = li.parentElement;
+				while ( up && up !== el && tagOf( up ) !== 'LI' ) {
+					up = up.parentElement;
+				}
+				return up === el;
+			} );
+			if ( top.length ) {
+				return top;
+			}
+			const cards = cardChildren( el );
+			return cards.length ? cards : [ el ];
+		};
+		const first = ( it, q ) => {
+			for ( const h of it.querySelectorAll( q ) ) {
+				const t = clean( h.textContent );
+				if ( t ) {
+					return t;
+				}
+			}
+			return '';
+		};
+		const seen = new Map();
+		els.forEach( ( el ) => items( el ).forEach( ( it ) => {
+			const link = tagOf( it ) === 'A' ? it : it.querySelector( 'a[href]' );
+			let name = first( it, 'h1, h2, h3, h4, h5, h6' ) || ( link ? clean( link.textContent ) : '' ) || first( it, 'strong, b' );
+			if ( ! name ) {
+				name = clean( Array.from( it.childNodes ).filter( ( c ) => ! ( c.nodeType === 1 && [ 'UL', 'OL', 'SCRIPT', 'STYLE', 'BUTTON', 'SELECT' ].includes( tagOf( c ) ) ) ).map( ( c ) => c.textContent ).join( ' ' ) );
+				if ( name.length > CONTENTS.name ) {
+					name = clean( name.split( /\s[–—-]\s|:\s|\.\s/ )[ 0 ] );
+				}
+			}
+			name = name.replace( /\s*\(?\s*(?:[$€£]\s?\d[\d.,]*|\d[\d.,]*\s?(?:USD|EUR|GBP))\s*\)?\s*$/, '' ).trim();
+			if ( name.length >= 2 && name.length <= CONTENTS.name && /\p{L}/u.test( name ) && ! seen.has( name.toLowerCase() ) ) {
+				seen.set( name.toLowerCase(), name );
+			}
+		} ) );
+		return [ ...seen.values() ].slice( 0, CONTENTS.max );
+	}
+
 	/* ── Links: where a link goes, as a person says it ────────────────── */
 
 	const FILE_KINDS = { pdf: 'PDF', zip: 'ZIP', dmg: 'Mac installer', pkg: 'Mac installer', exe: 'Windows installer', msi: 'Windows installer', doc: 'Word file', docx: 'Word file', txt: 'text file', rtf: 'text file', html: 'page', htm: 'page' };
@@ -689,6 +746,10 @@
 				const n = top.flatMap( ( el ) => [ el, ...el.querySelectorAll( 'iframe, a[href], video, source, [data-video-id], [data-videoid], [data-youtube], [videoid]' ) ] ).filter( isVideo ).length;
 				return { n, ok: n > 0 };
 			}
+			case 'contents': { // the products a bundle's page names (VendorMaps::RELATIONS): 2 or more
+				const n = contentNames( top ).length;
+				return { n, ok: n >= NEEDS.names };
+			}
 			case 'audio': {
 				// SoundCloud players and tracks, <audio> and audio files: what VendorPage::fields() reads as audio demos.
 				const isAudio = ( e ) => e.nodeName === 'AUDIO' || AUDIO_SRC.test( `${ e.getAttribute( 'src' ) || '' } ${ e.getAttribute( 'href' ) || '' }` );
@@ -713,6 +774,8 @@
 			d.pictures = takenFrom( 'pictures', [ el ] ).slice( 0, 4 ).map( ( i ) => ( { src: i.currentSrc || i.src || '', w: i.naturalWidth || Number( i.getAttribute( 'width' ) ) || 0, h: i.naturalHeight || Number( i.getAttribute( 'height' ) ) || 0 } ) );
 		} else if ( k === 'features' ) {
 			d.items = ( el.nodeName === 'LI' ? [ el ] : Array.from( el.querySelectorAll( 'li' ) ) ).slice( 0, 8 ).map( ( li ) => clean( li.textContent ).slice( 0, 120 ) );
+		} else if ( k === 'contents' ) {
+			d.items = contentNames( [ el ] ).slice( 0, 8 );
 		} else if ( k === 'manual' || k === 'requirements' ) {
 			const as = k === 'manual' ? takenFrom( 'manual', [ el ] ) : ( el.nodeName === 'A' ? [ el ] : Array.from( el.querySelectorAll( 'a[href]' ) ) ).filter( ( a ) => REQ_TEXT.test( `${ a.textContent } ${ a.getAttribute( 'href' ) || '' }` ) );
 			d.links = as.slice( 0, 4 ).map( ( a ) => ( { text: clean( a.textContent ).slice( 0, 80 ), href: a.href, info: linkInfo( a ) } ) );
@@ -830,5 +893,5 @@
 		}
 	};
 
-	window.mmptMapSelect = { GALLERY, linkInfo, linkSaid, linkFor, setKnown, iconText, withIcons, fullSize, bestOffered, bestSrc, keyOf, givesAnything, SKIP_TAGS, REQ_TEXT, MANUAL_TEXT, VIDEO_SRC, NEEDS, signature, selectorFor, matchAll, extrasOf, stepOf, narrowest, combine, combineLoose, openingTag, takenFrom, givesOf, describe, givesLabel, featureVerdicts, cardOf, LIST_PARTS };
+	window.mmptMapSelect = { GALLERY, linkInfo, linkSaid, linkFor, setKnown, iconText, withIcons, fullSize, bestOffered, bestSrc, keyOf, givesAnything, SKIP_TAGS, REQ_TEXT, MANUAL_TEXT, VIDEO_SRC, NEEDS, signature, selectorFor, matchAll, extrasOf, stepOf, narrowest, combine, combineLoose, openingTag, takenFrom, givesOf, describe, givesLabel, featureVerdicts, cardOf, LIST_PARTS, contentNames };
 }() );

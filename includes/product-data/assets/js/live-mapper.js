@@ -67,8 +67,8 @@
 		return;
 	}
 
-	const PARTS = [ 'pictures', 'description', 'requirements', 'manual', 'videos', 'audio', 'disclaimer' ]; // VendorMaps::FIELDS without NOT_MAPPED (features, version: the generic reader)
-	const COLORS = { pictures: '#2f7de1', description: '#2e7d32', features: '#00897b', requirements: '#8d6e63', version: '#5c6bc0', manual: '#c2185b', videos: '#e65100', audio: '#6a1b9a', disclaimer: '#ad5a00', extra: '#d63638', hover: '#1d2327' };
+	const PARTS = [ 'pictures', 'description', 'requirements', 'manual', 'videos', 'audio', 'disclaimer', 'contents' ]; // VendorMaps::FIELDS without NOT_MAPPED (features, version: the generic reader); contents names other products (RELATIONS)
+	const COLORS = { pictures: '#2f7de1', description: '#2e7d32', features: '#00897b', requirements: '#8d6e63', version: '#5c6bc0', manual: '#c2185b', videos: '#e65100', audio: '#6a1b9a', disclaimer: '#ad5a00', contents: '#455a64', extra: '#d63638', hover: '#1d2327' };
 	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, thumbs: 4, minPicture: 300, spots: 12, flashMs: 1800, lineChars: 200, measure: 60 };
 	const THRESHOLDS = { bannerAspect: 1.6, bannerShare: 0.6, menuShare: 0.6, menuItemChars: 40 };
 	const KEYS = { wider: 'p', narrower: 'c', browse: 'b', stop: 'Escape' };
@@ -144,6 +144,7 @@
 		single: { pictures: 'Only this product? Pick single pictures', videos: 'Only this product? Pick single videos', audio: 'Only this product? Pick single audio demos' },
 		saving: 'Saving…',
 		saved: '%part% saved: found on %found% of %of% stored pages. When the site’s map looks right, confirm it with Fill in Product Data → Site maps.',
+		savedContents: '%part% saved: it names products on %found% of %of% bundle pages. It writes nothing to products. %said%',
 		stop: 'Stop picking',
 		pageMode: 'Use this page’s requirements for every product',
 		pageAway: 'Only what you pick here is read, for all of %h%’s products. Leave out what doesn’t apply to them. If a second page has more, pick there too: both are read.',
@@ -221,7 +222,7 @@
 			built: 'it isn’t in the page as delivered: the page’s scripts build it after loading, and stored pages are read as delivered, so it would find nothing there.',
 			builtPart: '%sel% isn’t in the page as delivered (the page’s scripts build it), so stored pages read nothing from it.',
 		},
-		parts: { pictures: 'Pictures', description: 'Description', features: 'Features', requirements: 'System requirements', version: 'Version', manual: 'Manual', videos: 'Videos', audio: 'Audio demos', disclaimer: 'Disclaimer' },
+		parts: { pictures: 'Pictures', description: 'Description', features: 'Features', requirements: 'System requirements', version: 'Version', manual: 'Manual', videos: 'Videos', audio: 'Audio demos', disclaimer: 'Disclaimer', contents: 'Bundle contents' },
 	};
 
 	const CSS = `
@@ -690,7 +691,10 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		// badges) are read as wanted, "also read"; the rest is a warning (owner 2026-10-31: matches like the pick drawn as
 		// red warnings read as the UI overruling the person).
 		const extras = state.sel && m ? SEL.extrasOf( document, state.sel, read, state.part ) : [];
-		const alike = ( el ) => state.picks.some( ( p ) => p.parentElement === el.parentElement && p.nodeName === el.nodeName && p.className === el.className );
+		// Bundle contents: the same kind of element in the list's other items or rows is the rest of the list (a product
+		// link in each li of its own).
+		const item = ( e ) => ( state.part === 'contents' ? e.closest( 'li, tr, dt' ) || e : e );
+		const alike = ( el ) => state.picks.some( ( p ) => item( p ).parentElement === item( el ).parentElement && p.nodeName === el.nodeName && p.className === el.className );
 		state.alike = extras.filter( alike );
 		state.extras = extras.filter( ( el ) => ! alike( el ) );
 		state.test = null;
@@ -1186,7 +1190,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		}
 		state.showSaved = false;
 		state.saved = [];
-		state.note = { text: r.data.message || fill( MESSAGES.cleared, { part: partName( k ) } ), type: 'success' };
+		state.note = { text: `${ r.data.message || fill( MESSAGES.cleared, { part: partName( k ) } ) } ${ r.data.said || '' }`.trim(), type: 'success' };
 		if ( ! r.data.dry ) {
 			await hello();
 			if ( BRIDGE.saved ) {
@@ -1209,7 +1213,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		state.showSaved = false;
 		state.saved = [];
 		await hello();
-		state.note = { text: fill( MESSAGES.undone, { part: partName( k ) } ), type: 'success' }; // after hello(), which sets its own
+		state.note = { text: `${ fill( MESSAGES.undone, { part: partName( k ) } ) } ${ r.data.said || '' }`.trim(), type: 'success' }; // after hello(), which sets its own
 		if ( BRIDGE.saved ) {
 			BRIDGE.saved( r.data );
 		}
@@ -1274,7 +1278,8 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			if ( forLayout ) {
 				state.layout.own = Object.assign( {}, state.layout.own, { [ state.part ]: f } );
 			}
-			state.note = { text: fill( forLayout ? MESSAGES.savedLayout : MESSAGES.saved, { part: partName( state.part ), found: f.found, of: f.of, l: state.layout && state.layout.letter } ), type: warn.length ? 'warning' : 'success' };
+			const said = typeof r.data.said === 'string' ? r.data.said : null; // a contents list: what the store's bundle review did with it
+			state.note = { text: fill( said !== null ? MESSAGES.savedContents : ( forLayout ? MESSAGES.savedLayout : MESSAGES.saved ), { part: partName( state.part ), found: f.found, of: f.of, l: state.layout && state.layout.letter, said: said || '' } ).trim(), type: warn.length ? 'warning' : 'success' };
 			if ( BRIDGE.saved ) {
 				BRIDGE.saved( r.data );
 			}

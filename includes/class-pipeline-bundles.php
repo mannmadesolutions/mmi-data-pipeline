@@ -115,6 +115,32 @@ final class MMI_Pipeline_Bundles {
     }
 
     /**
+     * Which of these products are bundles: is_bundle()'s answer for many at once. A store whose rule needs a query per
+     * product answers the whole list through the filter 'mmi_pipeline_bundle_ids' (an array of ids → true), else each
+     * product is asked on its own.
+     *
+     * @param int[] $ids
+     * @return array<int,true>
+     */
+    public static function which( array $ids ): array {
+        $ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+        if ( ! $ids ) {
+            return [];
+        }
+        $bulk = apply_filters( 'mmi_pipeline_bundle_ids', null, $ids );
+        if ( is_array( $bulk ) ) {
+            return array_intersect_key( array_map( static fn() => true, $bulk ), array_flip( $ids ) );
+        }
+        $out = [];
+        foreach ( $ids as $id ) {
+            if ( self::is_bundle( $id ) ) {
+                $out[ $id ] = true;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * A bundle's member rows, decided ones first, in their order.
      *
      * @param string $status '' for all, or one of STATUSES.

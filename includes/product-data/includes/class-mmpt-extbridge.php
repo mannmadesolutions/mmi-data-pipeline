@@ -1941,7 +1941,7 @@ class ExtBridge {
 				return new \WP_REST_Response( [ 'message' => $res->get_error_message() ], 409 );
 			}
 			$hello = self::map_hello( $url, '' );
-			return rest_ensure_response( ( $hello->get_status() === 200 ? (array) $hello->get_data() : [] ) + [ 'undone' => $field ] );
+			return rest_ensure_response( ( $hello->get_status() === 200 ? (array) $hello->get_data() : [] ) + [ 'undone' => $field ] + ( isset( VendorMaps::RELATIONS[ $field ] ) ? [ 'said' => VendorMaps::$said ] : [] ) );
 		}
 		if ( $op === 'clear' ) { // a saved pick taken away, for the site or the layout the mapper is on
 			return self::map_clear( $r, $url );
@@ -2000,6 +2000,9 @@ class ExtBridge {
 	private static function map_effect( \WP_REST_Request $r, string $url ): \WP_REST_Response {
 		$part = sanitize_key( (string) $r->get_param( 'field' ) );
 		$sel  = trim( sanitize_text_field( (string) $r->get_param( 'sel' ) ) );
+		if ( isset( VendorMaps::RELATIONS[ $part ] ) && $sel !== '' && ! is_wp_error( VendorMaps::css_to_xpath( $sel ) ) ) {
+			return rest_ensure_response( self::contents_effect( VendorMaps::site_of( $url ), $sel, is_numeric( $r->get_param( 'layout' ) ) ? (int) $r->get_param( 'layout' ) : null ) );
+		}
 		if ( ! isset( PartFill::PLAN_FIELD[ $part ] ) || $sel === '' || is_wp_error( VendorMaps::css_to_xpath( $sel, $part === 'pictures' ) ) ) {
 			return rest_ensure_response( [ 'message' => '' ] ); // a part with no plan (Audio demos), or a selector being typed
 		}
@@ -2032,6 +2035,32 @@ class ExtBridge {
 		return rest_ensure_response( $res['next'] === null ? $say( $now ) : [ 'next' => $res['next'], 'done' => count( $rows ), 'total' => $res['total'] ] );
 	}
 
+	/**
+	 * What a Bundle contents pick would do, in words: the bundle pages it names products on and how many names. It writes
+	 * nothing to products: the names go to the store's bundle review, if it has one. Kept per pick and stored pages.
+	 * @return array{next:null,message:string}|array{busy:bool,message:string}
+	 */
+	private static function contents_effect( string $host, string $sel, ?int $i ): array {
+		$only = $i !== null ? array_flip( MapTypes::layout_pages( $host )[ $i ]['urls'] ?? [] ) : null;
+		$key  = 'mmpt_ext_cx1_' . md5( implode( '|', [ $host, $i ?? 'site', $sel, VendorMaps::pages_sig( $host ) ] ) );
+		$kept = get_transient( $key );
+		if ( ! is_array( $kept ) ) {
+			if ( PageStore::server_busy() ) {
+				return [ 'busy' => true, 'message' => '' ];
+			}
+			$kept = VendorMaps::contents_reach( $host, $sel, $only );
+			set_transient( $key, $kept, self::LAYOUT_S );
+		}
+		$where = $i === null ? 'the site’s' : sprintf( 'Layout %s’s', self::letter( $i ) );
+		$next  = has_filter( 'mmi_pipeline_bundle_contents_saved' ) ? 'Saved, the names go to the Bundles review as proposed members; nothing is written to products.' : 'Nothing on this store reads the names yet; nothing is written to products.';
+		return [
+			'next'    => null,
+			'message' => $kept['found']
+				? sprintf( 'Names %d products on %d of %s %d bundle pages read. %s', (int) $kept['names'], (int) $kept['found'], $where, (int) $kept['of'], $next )
+				: sprintf( 'Names fewer than 2 products on each of %s %d bundle pages read: pick the list of what a bundle holds.', $where, (int) $kept['of'] ),
+		];
+	}
+
 	/** A part's saved pick cleared: the layout's own (its pages go back to the site's pick) or the site's. */
 	private static function map_clear( \WP_REST_Request $r, string $url ): \WP_REST_Response {
 		$host  = VendorMaps::site_of( $url );
@@ -2060,7 +2089,7 @@ class ExtBridge {
 			\MMI_Audit_Log::record( 'mmi-admin', 'vendor_maps.field_clear', [ 'object_type' => 'vendor_site', 'object_id' => $host, 'details' => [ 'field' => $field, 'layout' => $i, 'via' => 'extension' ] ] );
 		}
 		$hello = self::map_hello( $url, '' );
-		return rest_ensure_response( ( $hello->get_status() === 200 ? (array) $hello->get_data() : [] ) + [ 'cleared' => $field ] );
+		return rest_ensure_response( ( $hello->get_status() === 200 ? (array) $hello->get_data() : [] ) + [ 'cleared' => $field ] + ( isset( VendorMaps::RELATIONS[ $field ] ) ? [ 'said' => VendorMaps::$said ] : [] ) );
 	}
 
 	private static function map_hello( string $url, string $html ): \WP_REST_Response {

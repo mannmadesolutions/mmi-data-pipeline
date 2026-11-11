@@ -118,7 +118,7 @@ class LiveMapper {
 				$own = $l['i'] === $layout ? ( $l['type']['own'][ $field ] ?? null ) : $own;
 			}
 		}
-		return rest_ensure_response( [ 'field' => $layout >= 0 ? $own : ( self::as_here( $res['fields'], $host, $url )[ $field ] ?? null ), 'layout' => $layout, 'status' => VendorMaps::status_of( $res ), 'fields' => self::fields_out( self::as_here( $res['fields'], $host, $url ) ), 'stored' => count( $stored['stored'] ), 'kept' => count( $stored['kept'] ) ] );
+		return rest_ensure_response( [ 'field' => $layout >= 0 ? $own : ( self::as_here( $res['fields'], $host, $url )[ $field ] ?? null ), 'layout' => $layout, 'status' => VendorMaps::status_of( $res ), 'fields' => self::fields_out( self::as_here( $res['fields'], $host, $url ) ), 'stored' => count( $stored['stored'] ), 'kept' => count( $stored['kept'] ) ] + ( isset( VendorMaps::RELATIONS[ $field ] ) ? [ 'said' => VendorMaps::$said ] : [] ) ); // said: what the store's bundle review did with a contents list
 	}
 
 	/** A vendor page address from the panel: http(s), not this site, without its #fragment. @return string|\WP_Error */

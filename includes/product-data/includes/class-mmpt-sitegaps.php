@@ -295,7 +295,7 @@ class SiteGaps {
 				$req    = class_exists( PageRequirements::class ) ? PageRequirements::extract( VendorMaps::requirements_html( $u['url'], $html ) ) : null;
 				$doc    = VendorPage::parse( $html );
 				$picks  = [];
-				foreach ( $fields as $k => $f ) {
+				foreach ( array_diff_key( $fields, VendorMaps::RELATIONS ) as $k => $f ) { // a contents list is no part of a product's gaps
 					if ( empty( $f['sel'] ) || ! empty( $f['health']['broken'] ) || in_array( (string) ( $f['mode'] ?? '' ), VendorMaps::ELSEWHERE, true ) || ! $doc ) { // a part read from another page has no pick on this one
 						continue;
 					}

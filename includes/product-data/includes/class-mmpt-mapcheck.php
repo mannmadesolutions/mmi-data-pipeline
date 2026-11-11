@@ -316,6 +316,9 @@ class MapCheck {
 		// The site: every product with a page on it, stored or not (the one definition the gaps count by too).
 		global $wpdb;
 		$linked = VendorMaps::site_products( $h );
+		if ( isset( VendorMaps::RELATIONS[ $field ] ) ) {
+			$linked = VendorMaps::bundle_pages( $linked ); // only a bundle's page has a contents list
+		}
 		$by_url   = [];
 		$unstored = []; // never read: "Read their pages" reads them
 		$failed   = []; // read, but the site moved, refused or lost the page: a URL decision, not another read

@@ -78,8 +78,20 @@ class VendorMaps {
 		'videos'       => [ 'Videos', 'Vid', true ],
 		'audio'        => [ 'Audio demos', 'Aud', true ],
 		'disclaimer'   => [ 'Disclaimer', 'Note', true ],
+		'contents'     => [ 'Bundle contents', 'Inc', true ],
 	];
-	const MODES       = [ 'pictures' => [ 'img' ], 'description' => [ 'text' ], 'features' => [ 'list' ], 'requirements' => [ 'text', 'follow', 'page', 'sub' ], 'version' => [ 'text' ], 'manual' => [ 'links', 'page', 'sub' ], 'videos' => [ 'embed', 'page', 'sub' ], 'audio' => [ 'embed', 'page', 'sub' ], 'disclaimer' => [ 'text' ] ];
+	const MODES       = [ 'pictures' => [ 'img' ], 'description' => [ 'text' ], 'features' => [ 'list' ], 'requirements' => [ 'text', 'follow', 'page', 'sub' ], 'version' => [ 'text' ], 'manual' => [ 'links', 'page', 'sub' ], 'videos' => [ 'embed', 'page', 'sub' ], 'audio' => [ 'embed', 'page', 'sub' ], 'disclaimer' => [ 'text' ], 'contents' => [ 'list' ] ];
+	/**
+	 * Parts that name other products instead of holding this product's data (PRODUCT_DATA_PROGRAM.md §7, B2): Bundle
+	 * contents, the list of products a bundle's page says it holds. A person picks it in the extension's mapper, on a
+	 * bundle's page, for the site or a layout. It is never drafted, filled, written or committed to a product, and the
+	 * reader, Fill, Confirm and the gaps leave it out; contents() reads it whatever the map's status (but off), because
+	 * what it names only becomes proposed bundle members that a person decides (filter mmi_pipeline_bundle_contents_saved).
+	 * It is tested on the site's bundle pages (MMI_Pipeline_Bundles::which()), the only pages that can have one.
+	 */
+	const RELATIONS     = [ 'contents' => true ];
+	const CONTENTS_MAX  = 150; // names one page's contents list gives
+	const CONTENTS_NAME = 120; // a name's characters: longer is a description, cut at its first separator
 	/**
 	 * Parts a vendor often keeps off the product page (owner 2026-10-21): on one page for the whole site (`page`, src =
 	 * its address) or on each product's own sub-page (`sub`, src = the path after the product's address, overloud.com's
@@ -127,6 +139,9 @@ class VendorMaps {
 
 	/** Set while measuring what the generic reader finds without any map. */
 	public static bool $bypass = false;
+
+	/** What the store said after a relation part changed this request (relation_changed()): the mapper shows it. */
+	public static string $said = '';
 
 	private static ?array $confirmed = null;
 
@@ -364,7 +379,7 @@ class VendorMaps {
 		if ( $skip !== '' ) {
 			$parts[] = 'skip=' . $skip;
 		}
-		foreach ( $m['fields'] as $f => $d ) {
+		foreach ( array_diff_key( $m['fields'], self::RELATIONS ) as $f => $d ) { // a relation part changes no page's reading
 			$parts[] = $f . '=' . $d['sel'] . '|' . ( $d['mode'] ?? '' ) . ( ! empty( $d['src'] ) ? '|' . $d['src'] : '' ) . ( ! empty( $d['also'] ) ? '|' . wp_json_encode( $d['also'] ) : '' );
 		}
 		$types = MapTypes::stamp_part( (array) ( $m['types'] ?? [] ) ); // a site's page types: any change re-reads its pages
@@ -563,8 +578,9 @@ class VendorMaps {
 	private static function read_part( string $field, \DOMXPath $x, \DOMDocument $doc, string $xp, string $url ) {
 		$nodes = @$x->query( $xp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors -- a malformed query reads as "not found"
 		$list  = [];
+		$cap   = isset( self::RELATIONS[ $field ] ) ? self::CONTENTS_MAX : 20; // a contents list's items may each be matched
 		foreach ( $nodes ?: [] as $i => $el ) {
-			if ( $i >= 20 || ! $el instanceof \DOMElement ) {
+			if ( $i >= $cap || ! $el instanceof \DOMElement ) {
 				break;
 			}
 			$list[] = $el;
@@ -697,6 +713,20 @@ class VendorMaps {
 					}
 				}
 				return array_slice( array_keys( $ids ), 0, 20 );
+			case 'contents':
+				// One product per list item, card or picked element: its name and, when it links somewhere, where. A name
+				// met twice (a ul and its li both matched) counts once. map-select.js contentItems() mirrors the count.
+				$items = [];
+				foreach ( $list as $el ) {
+					foreach ( self::content_items( $x, $el ) as $it ) {
+						$named = self::item_named( $x, $it, $url );
+						$key   = $named ? mb_strtolower( $named['name'] ) : '';
+						if ( $key !== '' && ! isset( $items[ $key ] ) ) {
+							$items[ $key ] = $named;
+						}
+					}
+				}
+				return array_slice( array_values( $items ), 0, self::CONTENTS_MAX );
 			case 'audio':
 				// The generic reader's audio rules (SoundCloud players and tracks, audio files) inside the picked part.
 				$frag = implode( '', array_map( static fn( $el ) => (string) $doc->saveHTML( $el ), $list ) );
@@ -704,6 +734,80 @@ class VendorMaps {
 				return array_slice( array_map( static fn( $l ) => [ 'label' => (string) $l['label'], 'url' => (string) $l['value'] ], $fv['audio'] ), 0, 10 );
 		}
 		return [];
+	}
+
+	/**
+	 * The elements of a picked contents element that each name one product: a list's items (the top level only), a
+	 * table's rows, a box's repeated cards (card_children()), or the element itself. @return \DOMElement[]
+	 */
+	private static function content_items( \DOMXPath $x, \DOMElement $el ): array {
+		$tag = $el->nodeName;
+		if ( in_array( $tag, [ 'li', 'tr', 'a', 'h2', 'h3', 'h4', 'h5', 'h6', 'dt' ], true ) ) {
+			return [ $el ];
+		}
+		if ( in_array( $tag, [ 'table', 'tbody' ], true ) ) {
+			return iterator_to_array( $x->query( './/tr[td]', $el ) );
+		}
+		$top = [];
+		foreach ( $x->query( './/li', $el ) as $li ) {
+			$up = $li->parentNode;
+			while ( $up && $up !== $el && $up->nodeName !== 'li' ) {
+				$up = $up->parentNode;
+			}
+			if ( $up === $el ) {
+				$top[] = $li; // a nested list's items belong to their item's product
+			}
+		}
+		if ( $top ) {
+			return $top;
+		}
+		return self::card_children( $el ) ?: [ $el ];
+	}
+
+	/**
+	 * One contents item's product: its name (a heading in it, else its link's words, else its own first line) and the
+	 * address it links to ('' for none). Null when it holds no name (an empty slot, a price, a button's words).
+	 * @return array{name:string,url:string}|null
+	 */
+	private static function item_named( \DOMXPath $x, \DOMElement $it, string $url ): ?array {
+		$clean = static fn( string $t ) => (string) preg_replace( [ '/\s+/u', '/^[\s•·–—:|✓✔►▸*-]+|[\s•·–—:|✓✔►▸*-]+$/u' ], [ ' ', '' ], html_entity_decode( $t, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$link  = $it->nodeName === 'a' ? $it : $x->query( './/a[@href]', $it )->item( 0 );
+		$href  = $link instanceof \DOMElement ? VendorPage::absolute_url( html_entity_decode( trim( (string) $link->getAttribute( 'href' ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ), $url ) : '';
+		$href  = preg_match( '#^https?://#i', $href ) ? (string) strtok( $href, '#' ) : '';
+		$name  = '';
+		$first = static function ( string $q ) use ( $x, $it, $clean ): string {
+			foreach ( $x->query( $q, $it ) ?: [] as $h ) {
+				$t = $clean( (string) $h->textContent );
+				if ( $t !== '' ) {
+					return $t;
+				}
+			}
+			return '';
+		};
+		$name = $first( './/h1|.//h2|.//h3|.//h4|.//h5|.//h6' ); // a card's title
+		if ( $name === '' && $link instanceof \DOMElement ) {
+			$name = $clean( (string) $link->textContent );
+		}
+		if ( $name === '' ) {
+			$name = $first( './/strong|.//b' );
+		}
+		if ( $name === '' ) {
+			$own = '';
+			foreach ( $it->childNodes as $c ) { // the item's own words, not a nested list's
+				if ( ! ( $c instanceof \DOMElement && in_array( $c->nodeName, [ 'ul', 'ol', 'script', 'style', 'button', 'select' ], true ) ) ) {
+					$own .= ' ' . $c->textContent;
+				}
+			}
+			$name = $clean( $own );
+			if ( mb_strlen( $name ) > self::CONTENTS_NAME ) {
+				$name = $clean( (string) preg_split( '/\s[–—-]\s|:\s|\.\s/u', $name )[0] ); // "Name – what it is" → "Name"
+			}
+		}
+		$name = trim( (string) preg_replace( '/\s*\(?\s*(?:[$€£]\s?\d[\d.,]*|\d[\d.,]*\s?(?:USD|EUR|GBP))\s*\)?\s*$/u', '', $name ) ); // a price after the name
+		if ( mb_strlen( $name ) < 2 || mb_strlen( $name ) > self::CONTENTS_NAME || ! preg_match( '/\p{L}/u', $name ) || VendorPage::is_chrome( $name ) ) {
+			return null;
+		}
+		return [ 'name' => $name, 'url' => $href ];
 	}
 
 	/** Elements a card's words never come from, and the ones that start a new line of them (VendorMaps::card_text()). */
@@ -935,7 +1039,7 @@ class VendorMaps {
 			$label = count( $urls ) . ' picture' . ( count( $urls ) === 1 ? '' : 's' );
 			return [ 'found' => (bool) $urls, 'detail' => $label, 'n' => count( $urls ), 'short' => $urls ? $label : '', 'urls' => array_slice( $urls, 0, 6 ) ];
 		}
-		if ( isset( self::FILLS[ $field ] ) || $field === 'version' ) {
+		if ( isset( self::FILLS[ $field ] ) || isset( self::RELATIONS[ $field ] ) || $field === 'version' ) {
 			return self::values_cell( $field, self::read_part( $field, $x, $doc, $xp, $url ) );
 		}
 		$nodes = @$x->query( $xp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors -- a malformed query reads as "not found"
@@ -1036,6 +1140,8 @@ class VendorMaps {
 				return [ 'found' => $v !== '', 'detail' => $v !== '' ? 'Version ' . $v : '', 'n' => $n, 'short' => $v !== '' ? 'Version ' . $v : '' ];
 			case 'disclaimer':
 				return [ 'found' => $v !== '', 'detail' => mb_substr( (string) $v, 0, 140 ), 'n' => mb_strlen( (string) $v ), 'short' => mb_substr( (string) $v, 0, 80 ) ];
+			case 'contents': // a list of one is no bundle's contents
+				return [ 'found' => $n >= 2, 'detail' => $v ? $many( $n, 'product' ) . ' named: ' . mb_substr( implode( ' · ', array_map( static fn( $i ) => (string) $i['name'], array_slice( $v, 0, 4 ) ) ), 0, 140 ) . ( $n > 4 ? ' …' : '' ) : '', 'n' => $n, 'short' => $v ? $many( $n, 'product' ) . ' named' : '' ];
 			case 'manual':
 			case 'audio':
 				return [ 'found' => (bool) $v, 'detail' => implode( ' · ', array_map( static fn( $l ) => $l['label'] . ' → ' . rawurldecode( (string) preg_replace( '#^https?://(www\.)?#', '', $l['url'] ) ), array_slice( $v, 0, 2 ) ) ), 'n' => $n, 'short' => $v ? ( $field === 'audio' ? $many( $n, 'audio demo' ) : mb_substr( self::link_file( (string) ( $v[0]['url'] ?? '' ) ) ?: $v[0]['label'], 0, 80 ) . ( $n > 1 ? ' +' . ( $n - 1 ) : '' ) ) : '' ]; // a manual by its file ("… User Manual - v1.1.pdf"), not "Click here"
@@ -1401,6 +1507,9 @@ class VendorMaps {
 	 */
 	public static function test( string $host, string $field, string $sel, string $mode, int $max = self::TEST_MAX, string $sample = '', string $src = '', ?array $only = null ): array { // $only: these pages only (url → any; one layout's)
 		$pages   = self::pages( $host );
+		if ( isset( self::RELATIONS[ $field ] ) ) {
+			$pages = self::bundle_pages( $pages ); // a contents list is on a bundle's page: a spread of the site's pages may hold none
+		}
 		$pages   = self::readable( $only === null ? $pages : array_values( array_filter( $pages, static fn( $p ) => isset( $only[ $p['url'] ] ) ) ), $max );
 		$out     = [ 'found' => 0, 'of' => 0, 'examples' => [] ];
 		$targets = [];
@@ -1431,6 +1540,80 @@ class VendorMaps {
 			arsort( $targets );
 			$out['targets'] = array_map( static fn( $u, $n ) => [ 'url' => $u, 'pages' => $n ], array_keys( array_slice( $targets, 0, 3, true ) ), array_slice( $targets, 0, 3, true ) );
 			$out['target_count'] = count( $targets );
+		}
+		return $out;
+	}
+
+	/**
+	 * The pages of a site's stored pages that are a bundle's (MMI_Pipeline_Bundles::which()): all of them when none is, so
+	 * a store that sells no bundles tests on what it has. @param array<int,array> $pages pages() rows @return array<int,array>
+	 */
+	public static function bundle_pages( array $pages ): array {
+		if ( ! $pages || ! class_exists( '\MMI_Pipeline_Bundles' ) ) {
+			return $pages;
+		}
+		$is  = \MMI_Pipeline_Bundles::which( array_map( static fn( $p ) => (int) $p['id'], $pages ) );
+		$out = array_values( array_filter( $pages, static fn( $p ) => isset( $is[ (int) $p['id'] ] ) ) );
+		return $out ?: $pages;
+	}
+
+	/**
+	 * The Bundle contents part that reads this page (RELATIONS): its layout's own pick, else the site's. A person's pick
+	 * (the part is never drafted), on a map that isn't off, not broken. Null for none.
+	 */
+	public static function contents_part( string $url, string $html = '' ): ?array {
+		$row = self::get( self::site_of( $url ) );
+		if ( ! $row || (string) $row['status'] === 'off' ) {
+			return null;
+		}
+		$site = MapTypes::usable( (array) $row['fields'] );
+		$type = MapTypes::match( MapTypes::editor( (string) $row['host'], $site ), $url, $html );
+		$f    = $type ? ( $type['fields']['contents'] ?? null ) : ( $site['contents'] ?? null );
+		return is_array( $f ) && ! empty( $f['sel'] ) && empty( $f['health']['broken'] ) && ! in_array( (string) ( $f['mode'] ?? '' ), self::ELSEWHERE, true ) ? $f : null;
+	}
+
+	/**
+	 * What a stored page's Bundle contents part names: [ { name, url } ], in the page's order; [] without a pick or when it
+	 * names fewer than 2 here. Nothing is written: a store's bundle review turns the names into proposed members.
+	 * @return array<int,array{name:string,url:string}>
+	 */
+	public static function contents( string $url, string $html ): array {
+		if ( self::$bypass || $html === '' ) {
+			return [];
+		}
+		$f   = self::contents_part( $url, $html );
+		$doc = $f ? VendorPage::parse( $html ) : null;
+		$xp  = $f ? self::css_to_xpath( (string) $f['sel'] ) : '';
+		if ( ! $doc || ! is_string( $xp ) || $xp === '' ) {
+			return [];
+		}
+		$v = self::read_part( 'contents', new \DOMXPath( $doc ), $doc, $xp, $url );
+		return count( $v ) >= 2 ? $v : [];
+	}
+
+	/**
+	 * What a contents pick reads across a site's bundle pages, for the mapper before it is saved: pages it names products
+	 * on, of how many, and the names it gives. @return array{found:int,of:int,names:int}
+	 */
+	public static function contents_reach( string $host, string $sel, ?array $only = null ): array {
+		$xp    = self::css_to_xpath( $sel );
+		$pages = self::bundle_pages( self::pages( $host ) );
+		$pages = self::readable( $only === null ? $pages : array_values( array_filter( $pages, static fn( $p ) => isset( $only[ $p['url'] ] ) ) ), self::TEST_MAX );
+		$out   = [ 'found' => 0, 'of' => 0, 'names' => 0 ];
+		if ( ! is_string( $xp ) ) {
+			return $out;
+		}
+		foreach ( $pages as $p ) {
+			$doc = VendorPage::parse( PageStore::read( (string) $p['file'] ) );
+			if ( ! $doc ) {
+				continue;
+			}
+			++$out['of'];
+			$v = self::read_part( 'contents', new \DOMXPath( $doc ), $doc, $xp, (string) $p['url'] );
+			if ( count( $v ) >= 2 ) {
+				++$out['found'];
+				$out['names'] += count( $v );
+			}
 		}
 		return $out;
 	}
@@ -1546,7 +1729,7 @@ class VendorMaps {
 		$fields = (array) ( $row['fields'] ?? [] );
 		$keep   = ( $row['status'] ?? '' ) === 'confirmed';
 		foreach ( array_keys( self::MODES ) as $f ) {
-			if ( $keep || ( $fields[ $f ]['source'] ?? '' ) === 'person' ) {
+			if ( $keep || ( $fields[ $f ]['source'] ?? '' ) === 'person' || isset( self::RELATIONS[ $f ] ) ) { // a relation part is a person's pick only
 				continue;
 			}
 			$generic = $cov[ $f ][0];
@@ -2127,7 +2310,7 @@ class VendorMaps {
 		if ( wp_json_encode( $before ) !== wp_json_encode( $fields[ $field ] ?? null ) ) {
 			self::remember( $host, $field, $before );
 		}
-		return self::save_fields( $host, $row, $fields );
+		return self::save_fields( $host, $row, $fields, $field );
 	}
 
 	/** A pick on one of the part's kept pages, into $was: that page's pick is replaced, the others stay. @return array|\WP_Error */
@@ -2163,7 +2346,12 @@ class VendorMaps {
 	}
 
 	/** Write a map's parts: the reader uses a confirmed map's edit at once; a draft's preview is measured again. */
-	private static function save_fields( string $host, array $row, array $fields ): ?array {
+	private static function save_fields( string $host, array $row, array $fields, string $field = '' ): ?array {
+		if ( isset( self::RELATIONS[ $field ] ) ) { // what the reader reads is unchanged: nothing to measure or read again
+			self::update( $host, [ 'fields' => wp_json_encode( $fields ) ] );
+			self::relation_changed( $host );
+			return self::get( $host );
+		}
 		$live = $row['status'] === 'confirmed'; // the reader uses this map now: the edit changes what it reads
 		// Not in use: the preview of what confirming would change no longer holds; it is measured again (and
 		// confirming waits for it, drops()).
@@ -2173,6 +2361,15 @@ class VendorMaps {
 		}
 		self::queue( 'refresh', $host ); // what the reader finds with it now, or would once confirmed
 		return self::get( $host );
+	}
+
+	/**
+	 * A relation part (RELATIONS) was saved, cleared or undone, for the site or one of its layouts: the store's own bundle
+	 * review reads it again (filter mmi_pipeline_bundle_contents_saved: ( string $said, string $host ) → what it did, in
+	 * words, for the mapper). A store with no review answers nothing.
+	 */
+	public static function relation_changed( string $host ): void {
+		self::$said = (string) apply_filters( 'mmi_pipeline_bundle_contents_saved', '', self::host( $host ) );
 	}
 
 	/**
@@ -2239,7 +2436,7 @@ class VendorMaps {
 			unset( $fields[ $field ] );
 		}
 		self::audit( 'vendor_maps.part_undo', $h, [ 'field' => $field, 'restored' => is_array( $before ) ? (string) ( $before['sel'] ?? '' ) : '' ] );
-		return self::save_fields( $h, $row, $fields );
+		return self::save_fields( $h, $row, $fields, $field );
 	}
 
 	/** Keep what a part was before a change (newest last, HISTORY_MAX per site). */

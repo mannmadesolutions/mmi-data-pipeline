@@ -285,7 +285,7 @@ class MapTypes {
 		}
 		$parts = [];
 		foreach ( $types as $t ) {
-			$f = $t['fields'];
+			$f = array_diff_key( (array) $t['fields'], VendorMaps::RELATIONS ); // a relation part changes no page's reading
 			ksort( $f );
 			$parts[] = $t['key'] . '|' . $t['marker'] . '|' . $t['pattern'] . '|' . ( $t['sigk'] ?? '' ) . '|' . implode( ';', array_map( static fn( $k, $d ) => $k . '=' . $d['sel'] . '|' . ( $d['mode'] ?? '' ) . '|' . ( $d['src'] ?? '' ), array_keys( $f ), $f ) );
 		}
@@ -405,10 +405,16 @@ class MapTypes {
 			$fields[ $field ] = $part;
 		}
 		global $wpdb;
+		$relation = isset( VendorMaps::RELATIONS[ $field ] ); // names other products: no page is read differently
 		if ( ! $fields ) {
 			$wpdb->delete( self::table(), [ 'id' => (int) $t['id'] ] );
 		} else {
-			$wpdb->update( self::table(), [ 'fields' => wp_json_encode( $fields ), 'map_at' => current_time( 'mysql', true ) ], [ 'id' => (int) $t['id'] ] );
+			$wpdb->update( self::table(), [ 'fields' => wp_json_encode( $fields ) ] + ( $relation ? [] : [ 'map_at' => current_time( 'mysql', true ) ] ), [ 'id' => (int) $t['id'] ] );
+		}
+		if ( $relation ) {
+			self::forget();
+			VendorMaps::relation_changed( $host );
+			return;
 		}
 		self::changed( $host );
 	}
