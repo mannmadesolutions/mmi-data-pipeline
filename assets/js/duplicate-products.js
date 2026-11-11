@@ -324,6 +324,7 @@
         if ( group.source === 'mpn' ) { return `Same ${ group.brand } part number, ${ group.match }`; }
         if ( group.source === 'legacy' ) { return `Already linked to canonical #${ group.canonical_product_id }`; }
         if ( group.source === 'older' ) { return 'Same product: the other listings are out of stock and in no supplier feed'; }
+        if ( group.source === 'title' ) { return 'Same brand and product title in this store (no feed match or part number groups them)'; }
         return 'Same brand and product name in the supplier feeds';
     }
 
@@ -744,6 +745,7 @@
         const idsOf  = ( g ) => ( g.members || [] ).map( ( m ) => m.wc_product_id ).filter( Boolean );
         const mpn    = merged.filter( ( g ) => g.source === 'mpn' );
         const legacy = merged.filter( ( g ) => g.source === 'legacy' );
+        const fresh  = merged.filter( ( g ) => g.source === 'candidate' );
         mpn.forEach( ( g ) => { g.covers = []; g.nothing_on_sale = false; g.sale_candidate_id = 0; } );
         const contains = ( outer, ids ) => {
             const set = new Set( idsOf( outer ) );
@@ -759,9 +761,11 @@
                 // A brand + name match whose listings are all already in one linked
                 // group is that group (the 2026-09-30 "Avid" / "AVID" AudioScore
                 // Ultimate pair): the Legacy row manages it.
-                return ! ( g.source === 'candidate' && legacy.some( ( l ) => contains( l, ids ) ) );
+                // A same-title group is shown only when no linked group or feed match already holds its listings.
+                return ! ( ( g.source === 'candidate' || g.source === 'title' ) && legacy.some( ( l ) => contains( l, ids ) ) )
+                    && ! ( g.source === 'title' && fresh.some( ( c ) => c.members.every( ( m ) => m.wc_product_id ) && contains( c, ids ) ) );
             }
-            owner.covers.push( g.source === 'legacy' ? `the existing linked group of #${ g.canonical_product_id }` : 'the brand + name match' );
+            owner.covers.push( g.source === 'legacy' ? `the existing linked group of #${ g.canonical_product_id }` : ( g.source === 'title' ? 'the same-title match' : 'the brand + name match' ) );
             if ( g.nothing_on_sale ) {
                 owner.nothing_on_sale      = true;
                 owner.no_sale_canonical_id = g.canonical_product_id;
@@ -1339,15 +1343,18 @@
         const isLegacy     = group.source === 'legacy';
         const isMpn        = group.source === 'mpn';
         const isOlder      = group.source === 'older';
+        const isTitle      = group.source === 'title';
         const sourceClass  = isLegacy || isOlder ? 'info' : ( isMpn ? 'success' : 'warning' );
-        const sourceLabel  = isLegacy ? 'Legacy link' : ( isMpn ? 'Same MPN' : ( isOlder ? 'Older listing' : 'Fresh match' ) );
+        const sourceLabel  = isLegacy ? 'Legacy link' : ( isMpn ? 'Same MPN' : ( isOlder ? 'Older listing' : ( isTitle ? 'Same title' : 'Fresh match' ) ) );
         const sourceTitle  = isLegacy
             ? 'A real, pre-existing canonical/associated_product_ids link found directly in the database'
             : ( isMpn
                 ? `Same brand and manufacturer part number (${ group.match || '' }) — the strongest evidence of one product listed more than once`
                 : ( isOlder
                     ? 'An old listing no supplier carries any more, beside a listing of the same product on sale'
-                    : 'Detected by matching brand + product name across live supplier feeds' ) );
+                    : ( isTitle
+                        ? 'Listed under the same brand and title in this store; nothing else groups them, so check they are one product before linking'
+                        : 'Detected by matching brand + product name across live supplier feeds' ) ) );
 
         const $tr = $( '<tr class="mmi-dupes-row" role="button" tabindex="0">' )
             .toggleClass( 'is-not-sold', group.availability === 'notsold' )
@@ -1856,7 +1863,7 @@
             associated_product_ids:   associated,
             field_winners:            JSON.stringify( fieldWinners ),
             // Same-MPN groups may hold a second canonical listing: fold it into the one picked here.
-            merge_canonicals:         groupEntry.source === 'mpn' ? 1 : 0,
+            merge_canonicals:         groupEntry.source === 'mpn' || groupEntry.source === 'title' ? 1 : 0,
         } )
         .done( function ( resp ) {
             $reviewRow.removeClass( 'is-saving' );

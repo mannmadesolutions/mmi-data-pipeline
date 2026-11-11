@@ -590,7 +590,7 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
  * Durable record of the groups the Duplicates queue shows as needing review (not
  * dismissed, not already linked), so other screens can show a product's duplicate
  * status without re-reading the feeds. Each scan replaces its own source's groups:
- * 'candidate' (brand + name feed matches), 'mpn' (same part number) or 'older' (an old
+ * 'candidate' (brand + name feed matches), 'mpn' (same part number), 'title' (same brand and title here) or 'older' (an old
  * listing of a product on sale, CanonicalOlderListings.php). Approving or dismissing a
  * group removes it.
  */
@@ -1452,6 +1452,79 @@ function mmi_canonical_candidates_mpn_groups( array $feed_index ): array {
 }
 
 /**
+ * Same-brand, same-title groups: a fourth source for the Duplicates queue (source 'title'). Listings this store titles
+ * identically under one brand but that no feed match, part number or link groups (two distributors' SKUs of one
+ * product whose feed names differ). Product Paths folded these into one path node with no screen to link them
+ * (PRODUCT_DATA_PROGRAM.md §6 item 61); here a person picks the canonical and links them like any other group.
+ * Published listings only; a dismissed group ('title-' + key) and a fully linked one are left out.
+ *
+ * @return array[] groups in the same shape as mmi_canonical_candidates_mpn_groups()'
+ */
+function mmi_canonical_candidates_title_groups( array $feed_index ): array {
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT p.ID id, p.post_title title, t.name brand
+         FROM {$wpdb->posts} p
+         JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+         JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_brand'
+         JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+         WHERE p.post_type = 'product' AND p.post_status = 'publish' AND p.post_title <> ''",
+        ARRAY_A
+    );
+    $dismissed = array_flip( (array) MMI_DB::get_setting( 'mmi_canonical_candidates_dismissed', [] ) );
+    $by        = [];
+    foreach ( $rows as $r ) {
+        $by[ mmi_canonical_candidates_group_key( (string) $r['brand'], html_entity_decode( (string) $r['title'], ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) ][] = (int) $r['id'];
+    }
+
+    $groups = [];
+    foreach ( $by as $key => $ids ) {
+        $ids = array_values( array_unique( $ids ) );
+        if ( count( $ids ) < 2 || isset( $dismissed[ 'title-' . $key ] ) || isset( $dismissed[ $key ] ) ) {
+            continue;
+        }
+        $members = [];
+        foreach ( $ids as $id ) {
+            $members[] = mmi_canonical_candidates_build_existing_member( $id, get_post_meta( $id, 'canonical', true ) === 'TRUE', $feed_index );
+        }
+        $canonicals = array_values( array_filter( $members, static fn( $m ) => ! empty( $m['is_canonical'] ) ) );
+        $linked     = false;
+        foreach ( $canonicals as $c ) {
+            $assoc = mmi_canonical_candidates_parse_associated_ids( get_post_meta( $c['wc_product_id'], 'associated_product_ids', true ) );
+            if ( ! array_diff( array_diff( $ids, [ $c['wc_product_id'] ] ), $assoc ) ) {
+                $linked = true;
+                break;
+            }
+        }
+        if ( $linked && count( $canonicals ) === 1 ) {
+            continue; // already one linked group: the queue shows it as that group
+        }
+        $recommended            = mmi_canonical_candidates_recommend( $members );
+        $recommended_product_id = $recommended['wc_product_id'] ?? null;
+        foreach ( $members as &$member ) {
+            $member['is_recommended'] = $recommended_product_id !== null && $member['wc_product_id'] === $recommended_product_id;
+        }
+        unset( $member );
+        $price    = mmi_canonical_candidates_price_summary( $members );
+        $brand    = explode( '|', $key, 2 )[0];
+        $groups[] = [
+            'group_key'              => 'title-' . $key,
+            'source'                 => 'title',
+            'multiple_canonicals'    => count( $canonicals ) > 1,
+            'brand'                  => (string) ( wp_get_post_terms( $ids[0], 'product_brand', [ 'fields' => 'names' ] )[0] ?? $brand ),
+            'name'                   => get_the_title( $ids[0] ) ?: '(untitled)',
+            'members'                => $members,
+        ] + $price + [
+            'already_linked'         => false,
+            'recommended_product_id' => $recommended_product_id,
+            'brand_thumbnail_url'    => mmi_canonical_candidates_brand_thumbnail_url( $brand ),
+            'image_url'              => mmi_canonical_candidates_group_image_url( array_merge( [ (int) ( $recommended_product_id ?: $ids[0] ) ], $ids ) ),
+        ];
+    }
+    return $groups;
+}
+
+/**
  * One existing linked group (source 'legacy') in the queue's group shape: the
  * canonical plus every real product its associated_product_ids names. Null when
  * it names none (canonical=TRUE with no real link is the ambient default, not a
@@ -1592,6 +1665,11 @@ add_action( 'wp_ajax_mmi_scan_existing_canonical_groups', function () {
     $mpn_groups = mmi_canonical_candidates_mpn_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() );
     mmi_canonical_candidates_save_review_index( $mpn_groups, 'mpn' );
     $groups = array_merge( $groups, $mpn_groups );
+
+    // Same-title groups (§6 item 61) ride here too.
+    $title_groups = mmi_canonical_candidates_title_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() );
+    mmi_canonical_candidates_save_review_index( $title_groups, 'title' );
+    $groups = array_merge( $groups, $title_groups );
 
     // Old listings of products on sale ride here too: they read the same index.
     $older_groups = mmi_canonical_candidates_older_groups( $feed_index ?? mmi_canonical_candidates_build_feed_index() );
