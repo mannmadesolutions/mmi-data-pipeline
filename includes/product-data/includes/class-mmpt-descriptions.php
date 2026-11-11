@@ -486,7 +486,8 @@ class Descriptions {
 	}
 
 	public static function plain( string $html ): string {
-		$s = html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$html = (string) preg_replace( '#<br\s*/?>|</(?:p|li|h[1-6]|div|tr|td|th|dt|dd|blockquote|ul|ol|section|figcaption)>#i', '$0 ', $html ); // "<li>a</li><li>b</li>" reads "a b", not "ab"
+		$s    = html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		return trim( preg_replace( '/\s+/u', ' ', $s ) );
 	}
 
