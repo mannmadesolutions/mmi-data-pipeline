@@ -1946,6 +1946,20 @@ class ExtBridge {
 			}
 			return rest_ensure_response( [ 'added' => count( $lines ), 'lines' => count( $all ) ] );
 		}
+		if ( $op === 'check' ) { // the pick under Test, checked across the site's stored pages (MapCheck; §6 item 7a). Read-only.
+			$part = sanitize_key( (string) $r->get_param( 'field' ) );
+			$sel  = trim( sanitize_text_field( (string) $r->get_param( 'sel' ) ) );
+			if ( $sel === '' || ! isset( VendorMaps::MODES[ $part ] ) ) {
+				return rest_ensure_response( [ 'lines' => [] ] );
+			}
+			if ( PageStore::server_busy() ) {
+				return rest_ensure_response( [ 'busy' => true, 'lines' => [] ] );
+			}
+			$modes = VendorMaps::MODES[ $part ];
+			$mode  = in_array( sanitize_key( (string) $r->get_param( 'mode' ) ), $modes, true ) ? sanitize_key( (string) $r->get_param( 'mode' ) ) : $modes[0];
+			$res   = MapCheck::run( VendorMaps::site_of( $url ), $part, [ 'sel' => $sel, 'mode' => $mode ] );
+			return rest_ensure_response( is_wp_error( $res ) ? [ 'lines' => [], 'message' => $res->get_error_message() ] : MapCheck::summary( $res ) );
+		}
 		if ( ! in_array( $op, [ 'test', 'save' ], true ) ) {
 			return new \WP_REST_Response( [ 'message' => 'Unknown mapper request.' ], 400 );
 		}

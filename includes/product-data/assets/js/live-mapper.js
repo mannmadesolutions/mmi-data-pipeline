@@ -128,6 +128,9 @@
 		test: 'Test on stored pages',
 		testing: 'Testing on the stored pages…',
 		tested: 'Found on %found% of %of% stored pages.',
+		checking: 'Checking this pick across the site’s stored pages…',
+		checkHead: 'Across the site',
+		checkBusy: 'The server is busy; the across-the-site check is skipped this time.',
 		sample: 'On this page the reader gets: %detail%',
 		save: 'Save for %part%',
 		saveWarn: 'Save with warning',
@@ -253,6 +256,9 @@
 .spin { flex: none; width: 14px; height: 14px; background: #3f7a2b; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 640'%3E%3Cpath d='M286.7 96.1C291.7 113 282.1 130.9 265.2 135.9C185.9 159.5 128.1 233 128.1 320C128.1 426 214.1 512 320.1 512C426.1 512 512.1 426 512.1 320C512.1 233.1 454.3 159.6 375 135.9C358.1 130.9 348.4 113 353.5 96.1C358.6 79.2 376.4 69.5 393.3 74.6C498.9 106.1 576 204 576 320C576 461.4 461.4 576 320 576C178.6 576 64 461.4 64 320C64 204 141.1 106.1 246.9 74.6C263.8 69.6 281.7 79.2 286.7 96.1z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 640'%3E%3Cpath d='M286.7 96.1C291.7 113 282.1 130.9 265.2 135.9C185.9 159.5 128.1 233 128.1 320C128.1 426 214.1 512 320.1 512C426.1 512 512.1 426 512.1 320C512.1 233.1 454.3 159.6 375 135.9C358.1 130.9 348.4 113 353.5 96.1C358.6 79.2 376.4 69.5 393.3 74.6C498.9 106.1 576 204 576 320C576 461.4 461.4 576 320 576C178.6 576 64 461.4 64 320C64 204 141.1 106.1 246.9 74.6C263.8 69.6 281.7 79.2 286.7 96.1z'/%3E%3C/svg%3E") center / contain no-repeat; animation: spin .8s linear infinite }
 @keyframes spin { to { transform: rotate(360deg) } }
 .muted { color: #646970; font-size: 12px }
+.checks { display: grid; gap: 4px; margin-top: 4px }
+.checks .ex { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 2px; font-size: 11.5px }
+.checks .ex a { color: #2271b1; text-decoration: underline; overflow-wrap: anywhere }
 .inspect { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid #c5d9ed; border-radius: 4px; background: #f0f6fc }
 .inspect code { word-break: break-all }
 .inspect .samples { margin: 0; padding-left: 16px; font-size: 12px; display: grid; gap: 3px }
@@ -685,6 +691,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		state.alike = extras.filter( alike );
 		state.extras = extras.filter( ( el ) => ! alike( el ) );
 		state.test = null;
+		state.check = null;
 		effectSoon();
 	}
 
@@ -1209,6 +1216,22 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			state.note = { text: r.message, type: 'error' };
 		}
 		render();
+		if ( r.ok ) {
+			checkSite();
+		}
+	}
+
+	/** The tested pick across the site's stored pages (MapCheck: repeated pictures, other products' pictures, collection pages, outliers). */
+	async function checkSite() {
+		const sel = state.sel;
+		state.check = { busy: true, lines: [] };
+		render();
+		const r = await ask( 'check', { field: state.part, sel, mode: mode() } );
+		if ( state.sel !== sel || ! state.test ) {
+			return; // the pick changed while the site was checked
+		}
+		state.check = r.ok ? ( r.data.busy ? { lines: [ { type: 'info', text: MESSAGES.checkBusy, examples: [] } ] } : r.data ) : null;
+		render();
 	}
 
 	async function save() {
@@ -1593,6 +1616,15 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		}
 		if ( state.test && state.test.sample && state.test.sample.detail ) {
 			box.append( h( 'div', { class: 'muted', text: fill( MESSAGES.sample, { detail: state.test.sample.detail } ) } ) );
+		}
+		if ( state.test && state.check ) {
+			box.append( state.check.busy
+				? h( 'div', { class: 'note busy', text: MESSAGES.checking } )
+				: h( 'div', { class: 'checks', 'aria-label': MESSAGES.checkHead },
+					h( 'div', { class: 'muted', text: MESSAGES.checkHead } ),
+					...( state.check.lines || [] ).map( ( l ) => h( 'div', { class: `note ${ l.type || 'info' }` },
+						h( 'div', { text: l.text } ),
+						( l.examples || [] ).length ? h( 'div', { class: 'ex' }, ...l.examples.map( ( x ) => h( 'a', { href: x.url, target: '_blank', rel: 'noopener', title: x.url, text: x.title || x.url.replace( /^https?:\/\/[^/]+/, '' ) || x.url } ) ) ) : null ) ) ) );
 		}
 		const ready = state.map && state.sel && ! state.selError && state.matched.length && ! state.busy; // picks can start before the server has answered
 		if ( said ) {

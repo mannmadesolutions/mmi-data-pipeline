@@ -267,9 +267,13 @@ class VendorPage {
 			return $r;
 		}
 		$nodes = [];
-		$walk  = static function ( $n ) use ( &$walk, &$nodes ) {
+		$byid  = []; // "@id" => node: an image given as {"@id": "…#/schema/image/1"} is that node (Yoast, arturia.com)
+		$walk  = static function ( $n ) use ( &$walk, &$nodes, &$byid ) {
 			if ( ! is_array( $n ) ) {
 				return;
+			}
+			if ( ! array_is_list( $n ) && is_string( $n['@id'] ?? null ) && count( $n ) > 1 ) {
+				$byid[ $n['@id'] ] = $n;
 			}
 			if ( isset( $n['@graph'] ) ) {
 				$walk( $n['@graph'] );
@@ -312,11 +316,15 @@ class VendorPage {
 					$r['identifiers'][ $k ] = trim( (string) $n[ $k ] );
 				}
 			}
-			foreach ( (array) ( $n['image'] ?? [] ) as $k => $img ) {
+			$image = $n['image'] ?? [];
+			foreach ( is_array( $image ) && ! array_is_list( $image ) ? [ $image ] : (array) $image as $img ) {
 				if ( is_string( $img ) ) {
 					$r['images'][] = $img;
 				} elseif ( is_array( $img ) ) {
 					foreach ( array_is_list( $img ) ? $img : [ $img ] as $x ) {
+						if ( is_array( $x ) && ! isset( $x['contentUrl'] ) && ! isset( $x['url'] ) && is_string( $x['@id'] ?? null ) ) {
+							$x = $byid[ $x['@id'] ] ?? []; // a reference: the node it names, or nothing (never the reference itself)
+						}
 						$u = is_string( $x ) ? $x : ( $x['contentUrl'] ?? ( $x['url'] ?? '' ) );
 						if ( is_string( $u ) && $u !== '' ) {
 							$r['images'][] = $u;
@@ -380,7 +388,11 @@ class VendorPage {
 		$xp = new \DOMXPath( $doc );
 		// Tab bars too: their labels ("Features System Requirements") were read into the first paragraph (Undertone, 2026-10-08).
 		$tabs = "//*[@role='tablist']|//*[@role='tab']|//*[contains(@class,'tab__header') or contains(@class,'tabs__header') or contains(@class,'tab-header') or contains(@class,'tabs-header') or contains(@class,'tabs__nav') or contains(@class,'tab-nav') or contains(@class,'tabs-nav') or contains(@class,'nav-tabs')]";
-		foreach ( $xp->query( '//script|//style|//noscript|//template|//iframe|//svg|//nav|//header|//footer|//form|//button|//select|//aside|//*[@role="navigation"]|//*[@aria-hidden="true"]|' . $tabs ) as $n ) {
+		// Text only screen readers get ("Original price was: 799,00$. Current price is: …", "Echorec quantity") and
+		// WooCommerce's price amounts: never product copy (pulsar.audio, 2026-10-29: 229 descriptions carried price lines).
+		$cls  = static fn( string $c ): string => "contains(concat(' ',normalize-space(@class),' '),' {$c} ')";
+		$hide = '//*[' . implode( ' or ', array_map( $cls, [ 'screen-reader-text', 'sr-only', 'visually-hidden', 'screen-reader-only', 'woocommerce-Price-amount' ] ) ) . ']';
+		foreach ( $xp->query( '//script|//style|//noscript|//template|//iframe|//svg|//nav|//header|//footer|//form|//button|//select|//aside|//*[@role="navigation"]|//*[@aria-hidden="true"]|' . $hide . '|' . $tabs ) as $n ) {
 			if ( $embeds && $n->nodeName === 'iframe' && preg_match( self::EMBED_SRC, (string) $n->getAttribute( 'src' ) ) ) {
 				$n->nodeValue = ''; // a map's Videos or Audio demos may name it; its fallback words aren't the page's
 				continue;

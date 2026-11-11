@@ -297,13 +297,14 @@ class MapCheck {
 	 * Check a part of a site's map across its stored pages, store and return the result.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public static function run( string $host, string $field ) {
+	public static function run( string $host, string $field, array $trial = [] ) {
 		self::maybe_install();
 		$row = VendorMaps::get( $host );
 		if ( ! $row ) {
 			return new \WP_Error( 'mmpt_check', 'No map for this site yet.' );
 		}
-		$f    = (array) ( $row['fields'][ $field ] ?? [] );
+		// $trial: a pick not saved yet (the extension mapper's Test, §6 item 7a): checked the same way, never stored.
+		$f    = isset( $trial['sel'] ) ? [ 'sel' => (string) $trial['sel'], 'mode' => (string) ( $trial['mode'] ?? '' ) ] : (array) ( $row['fields'][ $field ] ?? [] );
 		$sel  = (string) ( $f['sel'] ?? '' );
 		$mode = (string) ( $f['mode'] ?? '' );
 		if ( $sel === '' ) {
@@ -545,8 +546,46 @@ class MapCheck {
 		$out['gaps_n'] = count( $out['gaps'] );
 		$out['gaps']   = array_slice( $out['gaps'], 0, self::LIST_MAX );
 		$out['ms']     = (int) round( ( microtime( true ) - $start ) * 1000 );
+		if ( $trial ) {
+			$out['trial'] = true;
+			return $out;
+		}
 		$wpdb->replace( self::table(), [ 'host' => $h, 'field' => $field, 'checked_at' => $out['checked_at'], 'result' => wp_json_encode( $out ) ] );
 		return $out;
+	}
+
+	/**
+	 * A check's findings as short lines for the extension mapper (under its Test): what each finding means, how many
+	 * pages, and up to three example pages. Nothing found: one line saying so.
+	 *
+	 * @return array{lines: array<int,array{key:string,text:string,n:int,type:string,examples:array<int,array{url:string,title:string}>}>, checked:int, pages:int, products:int}
+	 */
+	public static function summary( array $c ): array {
+		$ex    = static fn( array $list ): array => array_values( array_map( static fn( $x ) => [ 'url' => (string) ( $x['url'] ?? '' ), 'title' => (string) ( $x['title'] ?? '' ) ], array_slice( array_filter( $list, static fn( $x ) => is_array( $x ) && ! empty( $x['url'] ) ), 0, 3 ) ) );
+		$is    = (array) ( $c['issues'] ?? [] );
+		$lines = [];
+		$add   = static function ( string $key, int $n, string $text, array $examples = [], string $type = 'warning' ) use ( &$lines ): void {
+			if ( $n > 0 ) {
+				$lines[] = [ 'key' => $key, 'text' => $text, 'n' => $n, 'type' => $type, 'examples' => $examples ];
+			}
+		};
+		$site    = (array) ( $c['site'] ?? [] );
+		$checked = (int) ( $site['checked'] ?? 0 );
+		$gaps    = (int) ( $c['gaps_n'] ?? 0 );
+		$add( 'gaps', $gaps, sprintf( 'Finds nothing on %d of the %d stored pages checked.', $gaps, $checked ), $ex( (array) ( $c['gaps'] ?? [] ) ) );
+		$rep = (array) ( $is['repeated'] ?? [] );
+		$add( 'repeated', count( $rep ), sprintf( '%d picture(s) are on many pages (site decoration, not this product): mark them "not a product picture".', count( $rep ) ), array_values( array_map( static fn( $x ) => [ 'url' => (string) $x['url'], 'title' => sprintf( 'on %d pages', (int) $x['pages'] ) ], array_slice( $rep, 0, 3 ) ) ) );
+		$add( 'other_product', count( (array) ( $is['other_product'] ?? [] ) ), sprintf( '%d page(s) have a picture named after another of the site’s products.', count( (array) ( $is['other_product'] ?? [] ) ) ), $ex( (array) ( $is['other_product'] ?? [] ) ) );
+		$add( 'shared', count( (array) ( $is['shared'] ?? [] ) ), sprintf( '%d collection page(s): several products share the page, so each would get every picture.', count( (array) ( $is['shared'] ?? [] ) ) ), $ex( (array) ( $is['shared'] ?? [] ) ) );
+		$add( 'many', count( (array) ( $is['many'] ?? [] ) ), sprintf( '%d page(s) give far more pictures than the site’s usual page.', count( (array) ( $is['many'] ?? [] ) ) ), $ex( (array) ( $is['many'] ?? [] ) ) );
+		$add( 'small', (int) ( $is['small_n'] ?? 0 ), sprintf( '%d page(s) have no picture as large as the %d px standard.', (int) ( $is['small_n'] ?? 0 ), self::STANDARD ), $ex( (array) ( $is['small'] ?? [] ) ), 'info' );
+		$add( 'length', count( (array) ( $is['length'] ?? [] ) ), sprintf( '%d page(s) read far shorter or longer than the rest (the site’s usual is %d).', count( (array) ( $is['length'] ?? [] ) ), (int) ( $c['median'] ?? 0 ) ), $ex( (array) ( $is['length'] ?? [] ) ) );
+		$same = (array) ( $is['same_text'] ?? [] );
+		$add( 'same_text', count( $same ), sprintf( '%d line(s) are the same on 3 or more pages (the site’s template): leave them out on this site.', count( $same ) ), array_values( array_map( static fn( $x ) => [ 'url' => (string) ( $x['examples'][0]['url'] ?? '' ), 'title' => mb_substr( (string) $x['text'], 0, 80 ) ], array_slice( $same, 0, 3 ) ) ) );
+		if ( ! $lines ) {
+			$lines[] = [ 'key' => 'clean', 'text' => sprintf( 'Across the site: nothing odd on the %d stored pages checked.', $checked ), 'n' => 0, 'type' => 'success', 'examples' => [] ];
+		}
+		return [ 'lines' => $lines, 'checked' => $checked, 'pages' => (int) ( $site['pages'] ?? 0 ), 'products' => (int) ( $site['products'] ?? 0 ) ];
 	}
 
 	/** The stored check, or null when there is none or the part's picks or the skip list changed since. */
