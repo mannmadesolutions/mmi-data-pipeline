@@ -1,2 +1,6 @@
-lint pass ship 10 files
-site-rules pass ship 10 files
+lint pass 300 files
+site-rules pass dirty:2
+run-all pass 8 scenarios dirty:2
+ui-check pass 121 dirty:2
+ui-e2e fail exit 1 dirty:2
+customer-site fail exit 1 dirty:2
