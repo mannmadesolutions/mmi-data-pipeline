@@ -3,4 +3,4 @@ site-rules pass ship 3 files
 run-all pass 8 scenarios
 ui-check pass 121
 ui-e2e pass 160
-customer-site pass
+customer-site pass 26 ok
