@@ -29,11 +29,75 @@ final class Background {
 	const STEP_S = 20;  // a step's work, well inside a web request's limit
 	const WAIT_S = 60;  // the next step, when the server was busy
 
+	/** The heartbeat: every 30 minutes through WP-Cron (§6 item 27: it needed a system cron line no one added). */
+	const HEARTBEAT    = 'mmpt_heartbeat';
+	const HB_SCHEDULE  = 'mmpt_half_hour';
+	const HB_LOCK      = 'mmpt_heartbeat';
+
 	/** True while a step runs: the runners' WP-CLI-only paths may run in it. */
 	public static bool $stepping = false;
 
 	public static function register_hooks(): void {
 		add_action( self::HOOK, [ __CLASS__, 'step' ], 10, 1 );
+		add_filter(
+			'cron_schedules',
+			static function ( $s ) {
+				$s[ self::HB_SCHEDULE ] = [ 'interval' => 30 * MINUTE_IN_SECONDS, 'display' => 'Every 30 minutes (Product Data heartbeat)' ];
+				return $s;
+			}
+		);
+		add_action( self::HEARTBEAT, [ __CLASS__, 'heartbeat_tick' ] );
+		add_action(
+			'init',
+			static function () {
+				if ( ! wp_next_scheduled( self::HEARTBEAT ) ) {
+					wp_schedule_event( time() + 5 * MINUTE_IN_SECONDS, self::HB_SCHEDULE, self::HEARTBEAT );
+				}
+			},
+			20
+		);
+	}
+
+	/**
+	 * WP-Cron's half-hour tick: the heartbeat runs on its own (`wp mmpt runner heartbeat`), never inside WP-Cron, whose
+	 * run this server stops after 45 seconds; on a host that can't start processes it is a Background step.
+	 */
+	public static function heartbeat_tick(): void {
+		Scraper::spawn( 'mmpt runner heartbeat', 'heartbeat.log' );
+	}
+
+	/**
+	 * Keep the background work moving, with no Claude call: the store's own parts first (action
+	 * mmi_pipeline_heartbeat; this site: products no longer sold), then products imports made (their feed's data
+	 * first), the maker-page queue, the picture runner, the description writer, and picture rows waiting for a
+	 * conversion only the server's browser can do ($step: a Background step, which has no such browser, skips them).
+	 * One at a time (a lock).
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function heartbeat( bool $step = false ): array {
+		global $wpdb;
+		if ( ! (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', self::HB_LOCK ) ) ) {
+			return [ 'skipped' => 'another heartbeat is running' ];
+		}
+		$out = [];
+		try {
+			do_action( 'mmi_pipeline_heartbeat' );
+			$out['feed_fill'] = FeedFill::run_queue();
+			$out['scrape']    = Scraper::kick();
+			$out['pictures']  = Pictures::kick( true );
+			$out['writer']    = Enrichment::watchdog();
+			if ( ! $step ) {
+				$out['waiting_pictures'] = Enrichment::apply_waiting();
+			}
+			Module::set_state( 'heartbeat', [ 'at' => current_time( 'mysql', true ) ] );
+		} catch ( \Throwable $e ) {
+			Module::warn( 'Heartbeat failed', [ 'error' => $e->getMessage() ] );
+			$out['error'] = $e->getMessage();
+		} finally {
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::HB_LOCK ) );
+		}
+		return $out;
 	}
 
 	/** Whether this server can start `wp` in the background. */
@@ -98,6 +162,9 @@ final class Background {
 				case 'runner scrape':
 				case 'scrape-run':
 					$res = Scraper::run( self::STEP_S );
+					break;
+				case 'runner heartbeat':
+					$res = self::heartbeat( true );
 					break;
 				case 'runner brand-pages':
 				case 'brand-pages':

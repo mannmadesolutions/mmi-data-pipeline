@@ -23,6 +23,14 @@ final class RunnerCli {
 	}
 
 	/**
+	 * Keep the background work moving (Background::heartbeat()). Started every 30 minutes by WP-Cron; safe to run by
+	 * hand: a second one exits at once.
+	 */
+	public function heartbeat(): void {
+		\WP_CLI::log( wp_json_encode( Background::heartbeat() ) );
+	}
+
+	/**
 	 * Look for a brand's product pages on its maker site. Matches become proposed URLs waiting for a person.
 	 *
 	 * ## OPTIONS
