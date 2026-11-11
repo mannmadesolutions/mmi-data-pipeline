@@ -102,7 +102,7 @@ class MMI_Dynamic_Product_Importer {
         'pricing_updated' => 0,
         'stock_updated' => 0,
         'promo_applied' => 0,
-        'sale_held' => 0,
+        'sale_below_cost' => 0,
     ];
 
     /**
@@ -527,7 +527,7 @@ class MMI_Dynamic_Product_Importer {
             $this->throttle->complete_process("product_import_{$this->supplier_name}", $this->stats);
         }
 
-        $this->log("Import complete: {$this->stats['created']} created, {$this->stats['updated']} updated, {$this->stats['unchanged']} unchanged, {$this->stats['skipped']} skipped, {$this->stats['errors']} errors, {$this->stats['promo_applied']} promos applied, {$this->stats['sale_held']} sale prices held below cost");
+        $this->log("Import complete: {$this->stats['created']} created, {$this->stats['updated']} updated, {$this->stats['unchanged']} unchanged, {$this->stats['skipped']} skipped, {$this->stats['errors']} errors, {$this->stats['promo_applied']} promos applied, {$this->stats['sale_below_cost']} sale prices below cost (written, noted)");
 
         return $this->get_results();
     }
@@ -630,7 +630,10 @@ class MMI_Dynamic_Product_Importer {
         if ($promo_data) {
             $product_data = $this->apply_promotion($product_data, $promo_data);
         }
-        $product_data = $this->hold_sale_below_cost( $product_data, $promo_data ?: null, (int) $product_id, (string) $primary_value );
+        $product_data = $this->note_sale_below_cost( $product_data, $promo_data ?: null, (int) $product_id, (string) $primary_value );
+        // The promotion's cost, for costing sales while it runs. Written before the
+        // hash gate: an unchanged product still gets the promotion's dates.
+        $this->sync_promo_cost( $product_data, $promo_data ?: null, (int) $product_id );
 
         // Apply stock override (per-product meta or bulk rule) before CRUD.
         // Runs after promo so promotional pricing is preserved regardless.
@@ -906,6 +909,10 @@ class MMI_Dynamic_Product_Importer {
                 }
             }
         }
+
+        // A product created by this run gets its promotion's cost now that it has an ID
+        // (a no-op for an existing product, already written above).
+        $this->sync_promo_cost( $product_data, $promo_data ?: null, (int) $product_id );
 
         // Force the resolved stock status directly to postmeta after all WC save() calls.
         // WC's validate_props() recalculates _stock_status from stock_quantity for managed-
@@ -1246,20 +1253,22 @@ class MMI_Dynamic_Product_Importer {
     }
     
     /**
-     * Never write a sale price below our cost. The floor is the promotion's
-     * cost while one covers the product, else the cost this import maps, else
-     * the stored cost (MMI_Pipeline_Field_Resolver::sale_price_floor()). A
-     * sale price below it is left out with its dates, so the product keeps
-     * what it has, and the product is noted for the Product Workbench's
-     * "Sale below cost" check. Xchange 13388 (2026-11-10): street 79.00,
-     * promo cost 139.30 (changelog 2026-11-10.5).
+     * Note a sale price below our cost; the sale is still written. The floor
+     * is the promotion's cost while one covers the product, else the cost this
+     * import maps, else the stored cost (MMI_Pipeline_Field_Resolver::
+     * sale_price_floor()). A supplier promotion priced under its own cost is
+     * the supplier's slip: the product goes on sale as the promotion says and
+     * is listed under the Product Workbench's "Sale below cost" check for a
+     * person to look into; Distributors → Vendors drafts the email to the
+     * vendor (owner, 2026-11-11). From 2026-11-10.5 to 2026-11-11 such sales
+     * were held back instead.
      */
-    protected function hold_sale_below_cost( array $product_data, ?array $promo_data, int $product_id, string $primary_value ): array {
+    protected function note_sale_below_cost( array $product_data, ?array $promo_data, int $product_id, string $primary_value ): array {
         $sale = $product_data['_sale_price'] ?? $product_data['sale_price'] ?? null;
         $maps_sale = $this->get_promo_source_key( '_sale_price' ) !== null;
         if ( $sale === null || $sale === '' ) {
             if ( $maps_sale ) {
-                \MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+                \MMI_Pipeline_Field_Resolver::record_sale_below_cost( $product_id, null );
             }
             return $product_data;
         }
@@ -1267,24 +1276,36 @@ class MMI_Dynamic_Product_Importer {
         $cost_key = \MMI_Pipeline_Field_Resolver::cost_meta_key();
         $floor    = \MMI_Pipeline_Field_Resolver::sale_price_floor( $this->supplier_name, $promo_data, $product_id, $product_data[ $cost_key ] ?? null );
         if ( ! \MMI_Pipeline_Field_Resolver::is_below_floor( $sale, $floor ) ) {
-            \MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            \MMI_Pipeline_Field_Resolver::record_sale_below_cost( $product_id, null );
             return $product_data;
         }
 
-        unset(
-            $product_data['_sale_price'], $product_data['sale_price'],
-            $product_data['_sale_price_dates_from'], $product_data['_sale_price_dates_to'],
-            $product_data['date_on_sale_from'], $product_data['date_on_sale_to']
-        );
-        \MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, [
+        \MMI_Pipeline_Field_Resolver::record_sale_below_cost( $product_id, [
             'sale'     => round( (float) $sale, 2 ),
             'floor'    => round( (float) $floor, 2 ),
             'profile'  => (string) $this->profile,
             'supplier' => (string) $this->supplier_name,
         ] );
-        $this->stats['sale_held']++;
-        $this->log( "Sale price held for {$primary_value}: {$sale} is below our cost {$floor}", 'warning' );
+        $this->stats['sale_below_cost']++;
+        $this->log( "Sale price below our cost for {$primary_value}: {$sale} under {$floor}; written, noted for review", 'warning' );
         return $product_data;
+    }
+
+    /**
+     * Store the matched promotion's cost on a product whose cost this import
+     * writes, or clear it when no promotion with a cost covers the product.
+     * An import that doesn't map the cost leaves it alone (an unmapped field
+     * is a disabled field).
+     */
+    protected function sync_promo_cost( array $product_data, ?array $promo_data, int $product_id ): void {
+        if ( $product_id <= 0 || ! array_key_exists( \MMI_Pipeline_Field_Resolver::cost_meta_key(), $product_data ) ) {
+            return;
+        }
+        \MMI_Pipeline_Field_Resolver::record_promo_cost(
+            $product_id,
+            (string) $this->supplier_name,
+            \MMI_Pipeline_Field_Resolver::promo_cost_record( (string) $this->supplier_name, $promo_data )
+        );
     }
 
     /**
@@ -1634,11 +1655,13 @@ class MMI_Dynamic_Product_Importer {
             if ( $promo && $price !== null && $price_key !== null ) {
                 $promo_price = $promo[ $price_key ] ?? null;
                 $floor = \MMI_Pipeline_Field_Resolver::sale_price_floor( $this->supplier_name, $promo, (int) $variation->get_id() );
-                if ( \MMI_Pipeline_Field_Resolver::is_below_floor( $promo_price, $floor ) ) {
-                    $this->stats['sale_held']++;
-                    $this->log( "Sale price held for variation {$var_sku}: {$promo_price} is below our cost {$floor}", 'warning' );
-                } elseif ( $promo_price !== null && (float) $promo_price > 0 && (float) $promo_price < (float) $price ) {
+                if ( $promo_price !== null && (float) $promo_price > 0 && (float) $promo_price < (float) $price ) {
                     $variation->set_sale_price( (string) $promo_price );
+                    if ( \MMI_Pipeline_Field_Resolver::is_below_floor( $promo_price, $floor ) ) {
+                        // Written anyway, as for simple products (note_sale_below_cost()).
+                        $this->stats['sale_below_cost']++;
+                        $this->log( "Sale price below our cost for variation {$var_sku}: {$promo_price} under {$floor}; written", 'warning' );
+                    }
                 }
             }
         }

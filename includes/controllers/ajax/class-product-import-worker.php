@@ -234,14 +234,11 @@ class Product_Import_Worker {
         // Only ever non-empty for an existing product — see import_single_product().
         $locked = $options['locked_fields'] ?? [];
 
-        // A sale price below our cost is left out with its dates (changelog 2026-11-10.5).
-        $hold_sale = self::sale_below_cost( $product, (array) $data, (array) $mappings, $supplier, (string) ( $options['profile'] ?? '' ) );
+        // A sale price below our cost is written and noted for review (owner, 2026-11-11).
+        self::sale_below_cost( $product, (array) $data, (array) $mappings, $supplier, (string) ( $options['profile'] ?? '' ) );
 
         foreach ( $mappings as $field_name => $mapping ) {
             if ( MMI_Pipeline_Field_Locks::in_list( (string) $field_name, $locked ) ) {
-                continue;
-            }
-            if ( $hold_sale && in_array( $field_name, [ '_sale_price', 'sale_price', '_sale_price_dates_from', '_sale_price_dates_to' ], true ) ) {
                 continue;
             }
 
@@ -413,6 +410,15 @@ class Product_Import_Worker {
 
         // An OS the feed gave requirements for is listed among the product's platforms.
         \MMI_Product_Content_Registry::sync_platforms( (int) $product->get_id() );
+
+        // The promotion's cost, when this run writes the product's cost.
+        if ( self::maps_field( (array) $mappings, '__mmi_cog', $supplier ) ) {
+            MMI_Pipeline_Field_Resolver::record_promo_cost(
+                (int) $product->get_id(),
+                $supplier,
+                MMI_Pipeline_Field_Resolver::promo_cost_record( $supplier, self::promotion_of( (array) $data, $supplier ) )
+            );
+        }
 
         // Flush this product's changed-field details, now that a real post ID
         // exists — powers the "Field changes" table's row-expand spot-check UI.
@@ -599,10 +605,32 @@ class Product_Import_Worker {
      * Read the current value of a product field (before overwrite) for diff tracking.
      */
     /**
+     * Whether $mappings has $field switched on with a source for $supplier.
+     */
+    private static function maps_field( array $mappings, string $field, string $supplier ): bool {
+        $mapping = $mappings[ $field ] ?? null;
+        if ( ! is_array( $mapping ) ) {
+            return false;
+        }
+        $enabled = $mapping['enabled'] ?? false;
+        if ( is_array( $enabled ) ? empty( $enabled[ $supplier ] ) : empty( $enabled ) ) {
+            return false;
+        }
+        $source = is_array( $mapping['source'] ?? null ) ? ( $mapping['source'][ $supplier ] ?? '' ) : (string) ( $mapping['source'] ?? '' );
+        return $source !== '';
+    }
+
+    /** The promotion merged into a row: Xchange's under "promotions", SkuPort's and Plugivery's flat. */
+    private static function promotion_of( array $data, string $supplier ): ?array {
+        return is_array( $data['promotions'] ?? null ) ? $data['promotions'] : ( $supplier === 'xchange' ? null : $data );
+    }
+
+    /**
      * Whether this row's mapped sale price is below our cost (the promotion's
      * cost while one covers the product, else the stored cost), noting the
      * result on the product either way when the profile maps a sale price.
-     * Same rule as MMI_Dynamic_Product_Importer::hold_sale_below_cost().
+     * The sale is written regardless. Same rule as
+     * MMI_Dynamic_Product_Importer::note_sale_below_cost().
      */
     private static function sale_below_cost( $product, array $data, array $mappings, string $supplier, string $profile ): bool {
         $mapping = $mappings['_sale_price'] ?? $mappings['sale_price'] ?? null;
@@ -620,17 +648,16 @@ class Product_Import_Worker {
         $product_id = (int) $product->get_id();
         $sale       = MMI_Pipeline_Field_Resolver::apply_transform( MMI_Pipeline_Field_Resolver::get_nested_value( $data, $source ), $mapping['transform'] ?? 'none' );
         if ( $sale === null || $sale === '' ) {
-            MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            MMI_Pipeline_Field_Resolver::record_sale_below_cost( $product_id, null );
             return false;
         }
-        // Xchange's promotion is injected under "promotions"; SkuPort's and Plugivery's are merged flat.
-        $promo = is_array( $data['promotions'] ?? null ) ? $data['promotions'] : ( $supplier === 'xchange' ? null : $data );
+        $promo = self::promotion_of( $data, $supplier );
         $floor = MMI_Pipeline_Field_Resolver::sale_price_floor( $supplier, $promo, $product_id );
         if ( ! MMI_Pipeline_Field_Resolver::is_below_floor( $sale, $floor ) ) {
-            MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, null );
+            MMI_Pipeline_Field_Resolver::record_sale_below_cost( $product_id, null );
             return false;
         }
-        MMI_Pipeline_Field_Resolver::record_sale_hold( $product_id, [
+        MMI_Pipeline_Field_Resolver::record_sale_below_cost( $product_id, [
             'sale'     => round( (float) $sale, 2 ),
             'floor'    => round( (float) $floor, 2 ),
             'profile'  => $profile,
@@ -765,12 +792,8 @@ class Product_Import_Worker {
     public static function has_product_changes( $product, $data, $mappings, $options ): bool {
         $supplier  = $options['supplier'] ?? '';
         $locked    = $options['locked_fields'] ?? [];
-        $hold_sale = self::sale_below_cost( $product, (array) $data, (array) $mappings, $supplier, (string) ( $options['profile'] ?? '' ) );
         foreach ( $mappings as $field_name => $mapping ) {
             if ( MMI_Pipeline_Field_Locks::in_list( (string) $field_name, $locked ) ) {
-                continue;
-            }
-            if ( $hold_sale && in_array( $field_name, [ '_sale_price', 'sale_price', '_sale_price_dates_from', '_sale_price_dates_to' ], true ) ) {
                 continue;
             }
             // Respect enabled flag for constants and source fields alike

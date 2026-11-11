@@ -791,8 +791,24 @@ class MMI_Pipeline_Field_Resolver {
         'plugivery' => 'promo_cost',
     ];
 
-    /** Product meta naming a sale price an import held back because it was below our cost. */
-    public const SALE_HELD_META = '_mmi_sale_held';
+    /**
+     * Product meta noting that an import wrote a sale price below our cost. The
+     * sale is written anyway: a supplier promotion whose sale price is under its
+     * own promotional cost is the supplier's slip, settled by a person, not by
+     * refusing the sale (owner, 2026-11-11). Until 2026-11-11 imports held such a
+     * sale back and noted it as `_mmi_sale_held`.
+     */
+    public const SALE_BELOW_COST_META = '_mmi_sale_below_cost';
+
+    /**
+     * Product meta holding the cost of the supplier promotion that covers the
+     * product, now or next: JSON {cost, from, to, supplier, promotion}, times as
+     * UNIX seconds (null = open-ended). Written by imports that write the
+     * product's cost (record_promo_cost()), read by cost_at() and the global
+     * mmi_get_product_cog(), so a sale made while the promotion runs is costed at
+     * what the supplier charges then, not the regular cost in `cog`.
+     */
+    public const PROMO_COST_META = '_mmi_promo_cog';
 
     /**
      * The lowest sale price an import may write: our cost. While a promotion
@@ -837,28 +853,101 @@ class MMI_Pipeline_Field_Resolver {
     }
 
     /**
-     * Note on the product that an import held back a sale price below cost
-     * ($hold), or that it no longer does (null). The Product Workbench's
+     * Note on the product that an import wrote a sale price below our cost
+     * ($note), or that it no longer does (null). The Product Workbench's
      * "Sale below cost" health check lists products carrying the note.
      *
-     * @param array{sale:float,floor:float,profile:string,supplier:string}|null $hold
+     * @param array{sale:float,floor:float,profile:string,supplier:string}|null $note
      */
-    public static function record_sale_hold( int $product_id, ?array $hold ): void {
+    public static function record_sale_below_cost( int $product_id, ?array $note ): void {
         if ( $product_id <= 0 ) {
             return;
         }
-        $current = get_post_meta( $product_id, self::SALE_HELD_META, true );
-        if ( $hold === null ) {
+        $current = get_post_meta( $product_id, self::SALE_BELOW_COST_META, true );
+        if ( $note === null ) {
             if ( $current !== '' ) {
-                delete_post_meta( $product_id, self::SALE_HELD_META );
+                delete_post_meta( $product_id, self::SALE_BELOW_COST_META );
             }
             return;
         }
         $old = is_string( $current ) && $current !== '' ? json_decode( $current, true ) : null;
-        if ( is_array( $old ) && array_diff_key( $old, [ 'at' => 1 ] ) == $hold ) {
-            return; // same hold already noted
+        if ( is_array( $old ) && array_diff_key( $old, [ 'at' => 1 ] ) == $note ) {
+            return; // same note already there
         }
-        update_post_meta( $product_id, self::SALE_HELD_META, wp_json_encode( $hold + [ 'at' => gmdate( 'Y-m-d H:i:s' ) ] ) );
+        update_post_meta( $product_id, self::SALE_BELOW_COST_META, wp_json_encode( $note + [ 'at' => gmdate( 'Y-m-d H:i:s' ) ] ) );
+    }
+
+    /**
+     * The promotional cost to store for a product from its matched promotion
+     * record: null when there is no promotion or it carries no cost.
+     *
+     * @param array|null $promo The promotion choose_promotion() picked (raw).
+     * @return array{cost:float,from:?int,to:?int,supplier:string,promotion:string}|null
+     */
+    public static function promo_cost_record( string $supplier, ?array $promo ): ?array {
+        $key = self::PROMO_COST_KEYS[ $supplier ] ?? null;
+        if ( ! $promo || $key === null || ! is_numeric( $promo[ $key ] ?? null ) || (float) $promo[ $key ] <= 0 ) {
+            return null;
+        }
+        [ $from, $to ] = self::promotion_window( $promo );
+        $name = $promo['promotion_name'] ?? $promo['promoName'] ?? $promo['name'] ?? $promo['title'] ?? '';
+        return [
+            'cost'      => round( (float) $promo[ $key ], 2 ),
+            'from'      => $from,
+            'to'        => $to,
+            'supplier'  => $supplier,
+            'promotion' => is_scalar( $name ) ? (string) $name : '',
+        ];
+    }
+
+    /**
+     * Store (or clear) a product's promotional cost. Clearing only removes a
+     * record this supplier wrote, so one supplier's import never erases
+     * another's promotion. Writes nothing when the stored value is the same.
+     *
+     * @param array{cost:float,from:?int,to:?int,supplier:string,promotion:string}|null $record
+     */
+    public static function record_promo_cost( int $product_id, string $supplier, ?array $record ): void {
+        if ( $product_id <= 0 ) {
+            return;
+        }
+        $current = get_post_meta( $product_id, self::PROMO_COST_META, true );
+        $old     = is_string( $current ) && $current !== '' ? json_decode( $current, true ) : null;
+        if ( $record === null ) {
+            if ( $current !== '' && ( ! is_array( $old ) || ( $old['supplier'] ?? '' ) === $supplier ) ) {
+                delete_post_meta( $product_id, self::PROMO_COST_META );
+            }
+            return;
+        }
+        if ( is_array( $old ) && $old == $record ) {
+            return;
+        }
+        update_post_meta( $product_id, self::PROMO_COST_META, wp_json_encode( $record ) );
+    }
+
+    /**
+     * What a product costs us at $at: the stored promotional cost while its
+     * promotion runs ([from, to)), else the regular cost. Null when neither is
+     * known. Also says which it was, for costs written into records.
+     *
+     * @param int|null $at UNIX time; now when null.
+     * @return array{cost:float,promo:bool,promotion:string}|null
+     */
+    public static function cost_at( int $product_id, ?int $at = null ): ?array {
+        if ( $product_id <= 0 ) {
+            return null;
+        }
+        $at     = $at ?? time();
+        $record = json_decode( (string) get_post_meta( $product_id, self::PROMO_COST_META, true ), true );
+        if ( is_array( $record ) && is_numeric( $record['cost'] ?? null ) && (float) $record['cost'] > 0
+            && ( ! isset( $record['from'] ) || (int) $record['from'] <= $at )
+            && ( ! isset( $record['to'] ) || $at < (int) $record['to'] ) ) {
+            return [ 'cost' => (float) $record['cost'], 'promo' => true, 'promotion' => (string) ( $record['promotion'] ?? '' ) ];
+        }
+        $regular = get_post_meta( $product_id, self::cost_meta_key(), true );
+        return is_numeric( $regular ) && (float) $regular > 0
+            ? [ 'cost' => (float) $regular, 'promo' => false, 'promotion' => '' ]
+            : null;
     }
 
     /**
@@ -1739,5 +1828,29 @@ class MMI_Pipeline_Field_Resolver {
         } ) );
 
         return array_values( array_unique( $urls ) );
+    }
+}
+
+if ( ! function_exists( 'mmi_get_product_cog' ) ) {
+    /**
+     * What a product cost us at $at (UNIX time; now when null): the supplier
+     * promotion's cost while one ran, else the regular cost. Null when unknown.
+     * Other MMI plugins call this behind function_exists() and fall back to the
+     * `cog` meta (mmi-distributors' Reverb order costs, Reverb's margins).
+     */
+    function mmi_get_product_cog( int $product_id, ?int $at = null ): ?float {
+        $cost = MMI_Pipeline_Field_Resolver::cost_at( $product_id, $at );
+        return $cost['cost'] ?? null;
+    }
+}
+
+if ( ! function_exists( 'mmi_get_product_cog_detail' ) ) {
+    /**
+     * mmi_get_product_cog() with where the figure came from.
+     *
+     * @return array{cost:float,promo:bool,promotion:string}|null
+     */
+    function mmi_get_product_cog_detail( int $product_id, ?int $at = null ): ?array {
+        return MMI_Pipeline_Field_Resolver::cost_at( $product_id, $at );
     }
 }
