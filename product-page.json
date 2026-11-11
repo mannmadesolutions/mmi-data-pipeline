@@ -1,0 +1,303 @@
+{
+    "product": 195183,
+    "name": "MMI Data Pipeline",
+    "excerpt": "Import and export any WordPress or WooCommerce data on a schedule, with a review step before anything changes.",
+    "intro": "MMI Data Pipeline moves data into and out of WordPress in three steps: fetch it, review exactly what would change, then import. It handles products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies. The same engine exports in CSV, JSON or XML.",
+    "features": [
+        {
+            "id": "field-mapping",
+            "text": "Field mapping, taxonomy mapping and conditions",
+            "anchor": "file:admin/views/partials/panel-field-mapping.php",
+            "since": ""
+        },
+        {
+            "id": "schedules",
+            "text": "Scheduled imports and exports with post-run reports",
+            "anchor": "class:MMI_Pipeline_Cron",
+            "since": ""
+        },
+        {
+            "id": "workbench",
+            "text": "Product Workbench: search the catalog and make bulk changes with undo",
+            "anchor": "class:Product_Workbench",
+            "since": ""
+        },
+        {
+            "id": "catalog-rules",
+            "text": "Catalog Maintenance rules for stock and pricing",
+            "anchor": "class:Standing_Rules",
+            "since": ""
+        }
+    ],
+    "sections": [],
+    "requirements": "WordPress with WooCommerce, PHP 7.4+.",
+    "suite_line": "scheduled imports and exports of any WordPress or WooCommerce data, with review",
+    "screenshots": [
+        {
+            "slug": "data-pipeline-sources",
+            "attachment": 214119,
+            "title": "Supplier data sources",
+            "caption": "Every feed the store pulls from, in one table.",
+            "features": [
+                "Connect supplier APIs or upload CSV, TSV, JSON and XML files as sources",
+                "Each source's type, status, last fetch and record count at a glance",
+                "Fetch on demand, preview the raw data or open a source's logs from the toolbar",
+                "Switch taxonomy mapping on or off per source"
+            ],
+            "screen": [
+                "admin/views/partials/pipeline-step-1-acquisition.php",
+                "assets/js/import-pipeline-sources.js",
+                "assets/css/import-pipeline.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-profile-sources",
+            "attachment": 214120,
+            "title": "Import profile: name and sources",
+            "caption": "A five-step wizard sets up each import profile.",
+            "features": [
+                "Steps for name and sources, keys, fields, attributes, and scope and mode",
+                "Drag and drop a file to add it as a new source without leaving the wizard",
+                "One profile can pull from several sources, each matched on its own primary key",
+                "Save & Close at any step; changes save as you go"
+            ],
+            "screen": [
+                "admin/views/partials/section-profile-wizard.php",
+                "admin/views/partials/wizard-sources-*.php",
+                "assets/js/import-settings.js",
+                "assets/css/import-settings.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-field-mapping",
+            "attachment": 214121,
+            "title": "Field mapping",
+            "caption": "Map each supplier's fields to WooCommerce fields.",
+            "features": [
+                "A field picker per supplier, so every feed maps in its own shape",
+                "Constants, transforms and conditions on any field",
+                "Auto-map source fields, or save the mapping as a preset for other profiles",
+                "Advanced fields cover sale pricing, dimensions, gallery images and custom fields"
+            ],
+            "screen": [
+                "admin/views/partials/panel-field-mapping*.php",
+                "admin/views/partials/default-field-mappings.php",
+                "includes/controllers/ajax/FieldMappingPanelController.php",
+                "assets/js/import-settings.js",
+                "assets/css/import-settings.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-scope-mode",
+            "attachment": 214122,
+            "title": "Scope and mode",
+            "caption": "Decide which products a profile may touch, and what it does to them.",
+            "features": [
+                "Limit a profile to products tagged for it, so suppliers never overwrite each other",
+                "Create & Update, Create Only, Update Only or Availability Sync",
+                "Update Only keeps pricing and stock current without adding new products",
+                "Availability Sync reacts only when products drop out of a feed"
+            ],
+            "screen": [
+                "admin/views/partials/section-profile-wizard.php",
+                "assets/js/import-settings.js",
+                "assets/css/import-settings.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-taxonomy",
+            "attachment": 214123,
+            "title": "Taxonomy mapping",
+            "caption": "Turn supplier categories and brands into your own terms.",
+            "features": [
+                "Map each supplier value to a WooCommerce category or brand once",
+                "Sample products beside every value, so you can check a mapping before saving it",
+                "Profile variations, alias rules and a filter for unmapped values",
+                "Apply all mappings to existing products in one click"
+            ],
+            "screen": [
+                "admin/views/partials/section-taxonomy-mapping.php",
+                "includes/controllers/ajax/TaxonomyMappingController.php",
+                "assets/js/taxonomy-mapping.js",
+                "assets/css/taxonomy-mapping.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-review-compare",
+            "attachment": 214124,
+            "title": "Review & Compare",
+            "caption": "See exactly what an import will do before it runs.",
+            "features": [
+                "Totals for the full feed: how many products will be created, updated or left alone",
+                "Filter by change status, stock, images, coupons, price range, order history and any taxonomy",
+                "Search the feed by name, SKU or ID",
+                "The preview follows the profile's own mode, so skipped products are shown as skipped"
+            ],
+            "screen": [
+                "admin/views/partials/pipeline-step-2-review.php",
+                "includes/admin/class-import-preview.php",
+                "assets/js/import-preview.js",
+                "assets/css/import-preview.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-price-compare",
+            "attachment": 214125,
+            "title": "Row-by-row comparison",
+            "caption": "Your store's value beside the supplier's, for every field.",
+            "features": [
+                "Each product matched to its feed row by the supplier's primary key",
+                "Current and incoming values side by side, with up-to-date rows marked",
+                "Pages of up to 200 rows, sortable by any column",
+                "Only real changes go through on the next run"
+            ],
+            "screen": [
+                "includes/admin/class-import-preview.php",
+                "assets/js/import-preview.js",
+                "assets/css/import-preview.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-import-history",
+            "attachment": 214126,
+            "title": "Import history",
+            "caption": "Every run, with what it did and how long it took.",
+            "features": [
+                "Created, updated, skipped and failed counts for each run",
+                "Filter the history by import profile",
+                "Partial runs open a report of the failed records and why they failed",
+                "Load the full recent history on demand"
+            ],
+            "screen": [
+                "admin/views/partials/section-process-logs.php",
+                "admin/views/partials/modal-run-insights.php",
+                "includes/controllers/ajax/ProcessLogController.php",
+                "assets/js/product-import.js",
+                "assets/js/import-run-insights.js"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-catalog-maintenance",
+            "attachment": 214127,
+            "title": "Catalog maintenance",
+            "caption": "Rules that keep the whole catalog consistent.",
+            "features": [
+                "Built-in clean-up of duplicate stock data and canonical-product rules",
+                "Feed sync marks products out of stock when a supplier drops them, and back when they return",
+                "Assign categories and brands to products that have none",
+                "Rules run in order, manually or on a schedule, and switch on or off one at a time"
+            ],
+            "screen": [
+                "admin/views/partials/panel-catalog-maintenance.php",
+                "assets/js/import-pipeline-catalog-maintenance.js",
+                "admin/views/tab-workbench.php",
+                "src/workbench/StandingRules.tsx",
+                "src/workbench/CatalogUpkeep.tsx",
+                "assets/css/product-workbench.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-custom-rules",
+            "attachment": 214128,
+            "title": "Custom rules",
+            "caption": "Build your own rules from conditions, without code.",
+            "features": [
+                "Conditions on product fields, supplier feed data or taxonomies",
+                "Combine conditions with AND or OR and see how many products match before saving",
+                "Per-condition match counts show which condition narrows the set",
+                "Save conditions and load them into other rules"
+            ],
+            "screen": [
+                "admin/views/partials/panel-catalog-maintenance.php",
+                "assets/js/import-pipeline-catalog-maintenance.js",
+                "includes/rule-builder/class-rule-builder-view.php",
+                "assets/js/rule-builder.js",
+                "assets/css/rule-builder.css",
+                "src/workbench/StandingRules.tsx"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-duplicates",
+            "attachment": 214129,
+            "title": "Duplicate finder",
+            "caption": "The same product from different suppliers, grouped together.",
+            "features": [
+                "Groups found by matching brand and product name across live feeds",
+                "Each group's members and the cost spread between suppliers",
+                "Choose which listing customers see; the rest stay out of the shop",
+                "New groups to review are counted apart from groups already linked"
+            ],
+            "screen": [
+                "admin/views/partials/section-duplicate-products.php",
+                "includes/controllers/ajax/CanonicalCandidatesController.php",
+                "assets/js/duplicate-products.js",
+                "assets/css/duplicate-products.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        },
+        {
+            "slug": "data-pipeline-duplicates-linked",
+            "attachment": 214130,
+            "title": "Linked listings",
+            "caption": "Groups already linked, and how each was matched.",
+            "features": [
+                "Matches by shared part number are flagged for review",
+                "Remove a member, reassign the customer-facing listing, or unlink a group",
+                "Sort by brand, product, members or cost spread"
+            ],
+            "screen": [
+                "admin/views/partials/section-duplicate-products.php",
+                "includes/controllers/ajax/CanonicalCandidatesController.php",
+                "assets/js/duplicate-products.js",
+                "assets/css/duplicate-products.css"
+            ],
+            "taken": {
+                "date": "2026-10-14",
+                "commit": "73ab304"
+            }
+        }
+    ]
+}

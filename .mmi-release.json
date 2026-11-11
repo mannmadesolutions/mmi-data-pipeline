@@ -1,4 +1,12 @@
 {
-  "checks": [ "lint", "site-rules", "run-all", "ui-check", "ui-e2e", "customer-site" ],
+  "checks": [
+    "lint",
+    "site-rules",
+    "run-all",
+    "ui-check",
+    "ui-e2e",
+    "customer-site",
+    "page"
+  ],
   "customer_site_product": 90
 }
