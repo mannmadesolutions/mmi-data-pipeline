@@ -178,6 +178,10 @@
  * licensing-helpers.php, since it needs a hook registered once per request
  * rather than a lazily-autoloaded class.
  *
+ * cross-plugin-features.php (1.49.2, 2026-11-11): pipeline.promo_cost (imports keep
+ * a supplier promotion's cost for order costs and margins) and
+ * pipeline.supplier_promotions marked live.
+ *
  * MMI_Plugin_Update_Client::plugin_info() shows the catalog's release notes as the
  * update details' Changelog tab (1.49.1, 2026-11-11; older servers send none).
  *
@@ -213,7 +217,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.49.1';
+$mmi_shared_lib_this_copy_version = '1.49.2';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir

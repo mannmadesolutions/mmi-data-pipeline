@@ -269,7 +269,15 @@ return array(
 		'title'     => 'Promotions vs. your price',
 		'pitch'     => 'Compares each supplier promotion with your current price in the catalog browser.',
 		'kind'      => 'ui',
-		'status'    => 'planned',
+		'status'    => 'live',
+	),
+	'pipeline.promo_cost' => array(
+		'provider'  => 'mmi-data-pipeline',
+		'consumers' => array( 'mmi-distributors:xchange', 'mmi-reverb-integration' ),
+		'title'     => 'Promotional cost',
+		'pitch'     => 'Imports keep each supplier promotion\'s cost, so order costs and margins use what the supplier charged while the promotion ran.',
+		'kind'      => 'background',
+		'status'    => 'live',
 	),
 	'pipeline.plugivery_stock' => array(
 		'provider'  => 'mmi-data-pipeline',
