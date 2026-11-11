@@ -1,2 +1,4 @@
-lint pass ship 1 files
-site-rules pass ship 1 files
+lint pass 300 files
+site-rules pass dirty:3
+run-all pass 8 scenarios dirty:3
+ui-check pass 121 dirty:3
