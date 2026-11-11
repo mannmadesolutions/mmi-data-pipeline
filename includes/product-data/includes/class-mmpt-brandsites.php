@@ -387,7 +387,7 @@ class BrandSites {
 			'open'       => $open,
 			'host'       => self::host( $url ),
 			'state'      => in_array( $res, [ 'read', 'manual', 'no_copy' ], true ) ? 'read' : ( in_array( $res, [ 'not_read', 'changed' ], true ) ? 'unread' : 'failed' ),
-			'unverified' => ! in_array( $v, [ 'TRUE', '1' ], true ),
+			'unverified' => ! UrlFinder::is_verified( $v ),
 			// Its page now redirects to another site and that address is proposed: the site it moved to.
 			'to'         => $open && (string) $x['fs'] === 'moved_offsite' && (string) $x['cr'] === 'moved_offsite' ? self::host( (string) $x['ch'] ) : '',
 		];

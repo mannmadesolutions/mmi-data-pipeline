@@ -875,11 +875,11 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
                 $winners[ (string) $field ] = $donor_id;
             }
         }
-        if ( ! empty( $winners ) ) {
-            $applied        = Product_CRUD_Manager::apply_field_winners( $canonical_id, $winners );
-            $fields_applied = $applied['fields_applied'];
-        }
     }
+    // Winners go through the write gateway (locks kept, Recent changes with Undo); the
+    // canonical's empty content fields are filled from the listings it is linked to.
+    $applied        = Product_CRUD_Manager::apply_field_winners( $canonical_id, $winners ?? [], $associated );
+    $fields_applied = $applied['fields_applied'];
 
     // Same-MPN groups can hold a second canonical (two half-linked groups of one product). Folding it in:
     // its own links join the chosen canonical's, and it stops being a canonical (the same reset
@@ -912,12 +912,39 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
         'details'     => [ 'associated_product_ids' => array_values( $associated ), 'suppressed' => $done['suppressed'] ],
     ] );
     wp_send_json_success( [
-        'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ) . '.' . $done['on_sale'],
+        'message'                => 'Linked ' . count( $associated ) . ' product(s) to the canonical listing' . ( $merged ? ' (folded in ' . count( $merged ) . ' former canonical listing(s): #' . implode( ', #', $merged ) . ')' : '' ) . '.' . $done['on_sale'] . mmi_canonical_candidates_winners_note( $applied, false ),
         'canonical_product_id'   => $canonical_id,
         'associated_product_ids' => $associated,
         'fields_applied'         => $fields_applied,
+        'fields_locked'          => $applied['fields_locked'],
+        'fields_filled'          => $applied['fields_filled'],
     ] );
 } );
+
+/**
+ * What a winners apply did beyond its picks, for the row's notice: fields left
+ * alone because they are locked, and empty fields filled from the group.
+ *
+ * @param array $applied Product_CRUD_Manager::apply_field_winners()'s result.
+ * @param bool  $picks   Also say how many picks were written.
+ */
+function mmi_canonical_candidates_winners_note( array $applied, bool $picks = true ): string {
+    $labels = array_map( static fn( $d ) => $d['label'], mmi_canonical_candidates_asset_field_defs() );
+    $name   = static fn( string $f ): string => $labels[ $f ] ?? ucwords( str_replace( [ '_mmi_', '_' ], [ '', ' ' ], $f ) );
+    $out    = '';
+    if ( $picks && ! empty( $applied['fields_applied'] ) ) {
+        $out .= ' Applied ' . count( $applied['fields_applied'] ) . ' picked field(s) to the canonical product.';
+    }
+    if ( ! empty( $applied['fields_locked'] ) ) {
+        $out .= ' Left alone because locked: ' . implode( ', ', array_map( $name, $applied['fields_locked'] ) ) . ' (unlock the field first to replace it).';
+    }
+    if ( ! empty( $applied['fields_filled'] ) ) {
+        $out .= ' Filled from the group where the canonical had none: ' . implode( ', ', array_map( $name, $applied['fields_filled'] ) ) . '.';
+    }
+    return $out;
+}
+
+add_action( 'init', [ Product_CRUD_Manager::class, 'register_write_sources' ], 2 );
 
 /**
  * Makes one listing canonical over others: the writes every link shares, from the review panel
@@ -985,12 +1012,12 @@ add_action( 'wp_ajax_mmi_canonical_apply_field_winners', function () {
         }
     }
 
-    $applied = Product_CRUD_Manager::apply_field_winners( $canonical_id, $winners );
+    $applied = Product_CRUD_Manager::apply_field_winners( $canonical_id, $winners, $assoc_ids );
 
     delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 
-    if ( empty( $applied['fields_applied'] ) ) {
-        wp_send_json_error( [ 'message' => 'Nothing to apply — every selected winner already matches the canonical product' ] );
+    if ( empty( $applied['fields_applied'] ) && empty( $applied['fields_filled'] ) ) {
+        wp_send_json_error( [ 'message' => $applied['fields_locked'] ? 'Nothing applied.' . mmi_canonical_candidates_winners_note( $applied, false ) : 'Nothing to apply — every selected winner already matches the canonical product' ] );
     }
 
     mmi_data_pipeline_audit( 'canonical.apply_field_winners', [
@@ -999,8 +1026,10 @@ add_action( 'wp_ajax_mmi_canonical_apply_field_winners', function () {
         'outcome'     => 'success',
     ] );
     wp_send_json_success( [
-        'message'        => 'Applied ' . count( $applied['fields_applied'] ) . ' field(s) to the canonical product',
+        'message'        => trim( mmi_canonical_candidates_winners_note( $applied ) ),
         'fields_applied' => $applied['fields_applied'],
+        'fields_locked'  => $applied['fields_locked'],
+        'fields_filled'  => $applied['fields_filled'],
         'group'          => mmi_canonical_candidates_refresh_legacy_group( $canonical_id ),
     ] );
 } );

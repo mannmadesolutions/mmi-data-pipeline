@@ -622,33 +622,101 @@ class Product_CRUD_Manager {
         }
     }
 
+    /** The write gateway source for a person's per-field winner picks. */
+    const WINNERS_SOURCE = 'duplicates-winners';
+    /** The write gateway source for filling the canonical's empty fields from its group. */
+    const GROUP_FILL_SOURCE = 'duplicates-fill';
+
     /**
-     * Sets, per field, which member of a duplicate group "wins" — i.e. whose
-     * value for that one field gets copied onto the canonical product,
-     * overwriting whatever the canonical currently has (or has none of).
-     * Lets an admin promote any candidate to canonical while still keeping
-     * the best individual data point — an image from one listing, a
-     * description from another — rather than being stuck with whichever
-     * fields happened to ship with the chosen canonical's own source data.
-     * Supersedes an earlier, additive-only "copy this donor's images onto
-     * the canonical" checkbox mechanism (image/gallery are now just two of
-     * this method's fields, replaced rather than merged).
+     * Product content fields a group's other listings may fill on the
+     * canonical when it has none: the content registry's stored concepts,
+     * less the product's own maker page and MPN (each listing keeps its own).
+     *
+     * @return string[] meta keys
+     */
+    public static function group_fill_keys(): array {
+        $keys = [];
+        if ( class_exists( '\MMI_Product_Content_Registry' ) ) {
+            foreach ( \MMI_Product_Content_Registry::storable_concepts() as $concept ) {
+                $key = \MMI_Product_Content_Registry::canonical_key( $concept );
+                if ( $key !== '' && strpos( $key, '_mmi_' ) === 0 ) {
+                    $keys[] = $key;
+                }
+            }
+        }
+        return array_values( array_unique( $keys ) );
+    }
+
+    /** Name the two Duplicates writers to the gateway (Field Conflicts, Recent changes). */
+    public static function register_write_sources(): void {
+        if ( ! class_exists( '\MMI_Pipeline_Write' ) ) {
+            return;
+        }
+        \MMI_Pipeline_Write::register_source( self::WINNERS_SOURCE, 'Duplicates: field picks', [ 'post_title', 'post_content', 'post_excerpt', '_thumbnail_id', '_product_image_gallery' ], true );
+        \MMI_Pipeline_Write::register_source( self::GROUP_FILL_SOURCE, 'Duplicates: filled from the group', self::group_fill_keys(), false );
+    }
+
+    /**
+     * Copies a person's per-field winners in a duplicate group onto the
+     * canonical product, then fills the canonical's empty content fields from
+     * the group's other listings.
+     *
+     * Every write goes through the pipeline's write gateway (MMI_Pipeline_Write):
+     *  - a field locked before the click is left alone and reported (result
+     *    'locked'), never overwritten; the person unlocks it first if they mean it;
+     *  - each change is a row in the Product Workbench's Recent changes, with Undo;
+     *  - a winner is locked after it is written, so an import can't undo the
+     *    person's pick.
+     *
+     * Nothing good is taken away (owner, 2026-10-10: product data processes
+     * only add):
+     *  - gallery: the winner's pictures lead and the canonical's own pictures
+     *    stay after them (merged, never replaced);
+     *  - image: a canonical's featured picture that loses moves into its gallery;
+     *  - title, description and short description: a person's pick replaces the
+     *    text; the old text stays in Recent changes for Undo;
+     *  - requirements, features, videos, manuals and the other `_mmi_*` content
+     *    fields are only filled where the canonical has none (gateway 'fill'
+     *    mode), from the winners' donors first, then the other listings in order.
      *
      * @param  int   $canonical_id
-     * @param  array $winners  field => donor product ID (from
-     *                         CanonicalCandidatesController's asset field
-     *                         registry: image/gallery/content/title/excerpt).
-     *                         A donor equal to $canonical_id or 0/empty is a
-     *                         no-op for that field — nothing to copy from.
-     * @return array{fields_applied: string[]}
+     * @param  array $winners  field => donor product ID (image/gallery/content/title/excerpt).
+     *                         A donor equal to $canonical_id or 0/empty is a no-op for that field.
+     * @param  int[] $members  The group's other listings, for filling empty fields. Empty: no fill.
+     * @return array{fields_applied: string[], fields_locked: string[], fields_filled: string[]}
      */
-    public static function apply_field_winners( int $canonical_id, array $winners ): array {
-        $result = [ 'fields_applied' => [] ];
-        if ( ! $canonical_id ) {
-            return $result;
+    public static function apply_field_winners( int $canonical_id, array $winners, array $members = [] ): array {
+        $result = [ 'fields_applied' => [], 'fields_locked' => [], 'fields_filled' => [] ];
+        if ( ! $canonical_id || ! class_exists( '\MMI_Pipeline_Write' ) ) {
+            return $result; // the gateway loads with the plugin; nothing is written around it
         }
+        self::register_write_sources();
 
-        $post_update = [];
+        // Locks are read once, before anything is written: a field locked then is left
+        // alone; one this click locks (image and gallery share the pictures lock) doesn't
+        // stop the click's own other writes, which go in as the person's ('force').
+        $locked_before = [];
+        foreach ( [ 'post_title', 'post_content', 'post_excerpt', '_thumbnail_id', '_product_image_gallery' ] as $f ) {
+            $locked_before[ $f ] = class_exists( '\MMI_Pipeline_Field_Locks' ) && \MMI_Pipeline_Field_Locks::is_locked( $canonical_id, \MMI_Pipeline_Write::lock_key( $f ) );
+        }
+        $write = static function ( string $field, $value, string $source, string $mode, array $opts = [] ) use ( $canonical_id, $locked_before ): string {
+            if ( isset( $locked_before[ $field ] ) ) {
+                if ( $locked_before[ $field ] ) {
+                    return 'locked';
+                }
+                $mode = \MMI_Pipeline_Write::MODE_FORCE;
+            }
+            return (string) ( \MMI_Pipeline_Write::field( $canonical_id, $field, $value, $source, $mode, $opts )['result'] ?? 'error' );
+        };
+        $note = static function ( string $res, string $name ) use ( &$result ): void {
+            if ( $res === 'written' ) {
+                $result['fields_applied'][] = $name;
+            } elseif ( $res === 'locked' ) {
+                $result['fields_locked'][] = $name;
+            }
+        };
+        $pick = [ 'lock' => true, 'label' => 'Duplicates: field picked' ];
+
         foreach ( $winners as $field => $donor_id ) {
             $donor_id = (int) $donor_id;
             if ( $donor_id <= 0 || $donor_id === $canonical_id ) {
@@ -658,56 +726,77 @@ class Product_CRUD_Manager {
             switch ( $field ) {
                 case 'image':
                     $thumb_id = (int) get_post_thumbnail_id( $donor_id );
-                    if ( $thumb_id ) {
-                        set_post_thumbnail( $canonical_id, $thumb_id );
-                        $result['fields_applied'][] = 'image';
+                    $old      = (int) get_post_thumbnail_id( $canonical_id );
+                    if ( ! $thumb_id || $thumb_id === $old ) {
+                        break;
+                    }
+                    $res = $write( '_thumbnail_id', $thumb_id, self::WINNERS_SOURCE, \MMI_Pipeline_Write::MODE_SET, $pick );
+                    $note( $res, 'image' );
+                    // The picture that lost stays with the product, in its gallery.
+                    if ( $res === 'written' && $old ) {
+                        $ids = self::gallery_ids( $canonical_id );
+                        if ( ! in_array( $old, $ids, true ) ) {
+                            $ids[] = $old;
+                            $ids   = array_values( array_diff( $ids, [ $thumb_id ] ) );
+                            $write( '_product_image_gallery', implode( ',', $ids ), self::WINNERS_SOURCE, \MMI_Pipeline_Write::MODE_SET, [ 'label' => 'Duplicates: replaced featured picture kept' ] );
+                        }
                     }
                     break;
 
                 case 'gallery':
-                    $gallery = get_post_meta( $donor_id, '_product_image_gallery', true );
-                    if ( trim( (string) $gallery ) !== '' ) {
-                        update_post_meta( $canonical_id, '_product_image_gallery', $gallery );
-                        $result['fields_applied'][] = 'gallery';
+                    $donor = self::gallery_ids( $donor_id );
+                    if ( ! $donor ) {
+                        break;
                     }
+                    $featured = (int) get_post_thumbnail_id( $canonical_id );
+                    $merged   = array_values( array_diff( array_unique( array_merge( $donor, self::gallery_ids( $canonical_id ) ) ), [ $featured ] ) );
+                    $note( $write( '_product_image_gallery', implode( ',', $merged ), self::WINNERS_SOURCE, \MMI_Pipeline_Write::MODE_SET, $pick ), 'gallery' );
                     break;
 
                 case 'content':
-                    $content = get_post_field( 'post_content', $donor_id );
-                    if ( trim( wp_strip_all_tags( (string) $content ) ) !== '' ) {
-                        $post_update['post_content'] = $content;
-                        $result['fields_applied'][]  = 'content';
-                    }
-                    break;
-
                 case 'title':
-                    // Raw stored value, not get_the_title() — that applies
-                    // WP's own "Private: "/"Protected: " display prefix for
-                    // non-public statuses, which would otherwise get baked
-                    // into the canonical's real post_title verbatim.
-                    $title = get_post_field( 'post_title', $donor_id );
-                    if ( trim( (string) $title ) !== '' ) {
-                        $post_update['post_title']  = $title;
-                        $result['fields_applied'][] = 'title';
-                    }
-                    break;
-
                 case 'excerpt':
-                    $excerpt = get_post_field( 'post_excerpt', $donor_id );
-                    if ( trim( (string) $excerpt ) !== '' ) {
-                        $post_update['post_excerpt'] = $excerpt;
-                        $result['fields_applied'][]  = 'excerpt';
+                    // Raw stored values, not get_the_title(): that adds WordPress's own
+                    // "Private: "/"Protected: " prefix for non-public statuses.
+                    $post_field = [ 'content' => 'post_content', 'title' => 'post_title', 'excerpt' => 'post_excerpt' ][ $field ];
+                    $value      = (string) get_post_field( $post_field, $donor_id, 'raw' );
+                    $has        = $field === 'title' ? trim( $value ) !== '' : trim( wp_strip_all_tags( $value ) ) !== '';
+                    if ( $has ) {
+                        $note( $write( $post_field, $value, self::WINNERS_SOURCE, \MMI_Pipeline_Write::MODE_SET, $pick ), $field );
                     }
                     break;
             }
         }
 
-        if ( ! empty( $post_update ) ) {
-            $post_update['ID'] = $canonical_id;
-            wp_update_post( $post_update );
+        // Fill what the canonical lacks from the rest of the group: the winners' donors first.
+        $donors = array_values( array_unique( array_filter(
+            array_map( 'intval', array_merge( array_values( $winners ), $members ) ),
+            static fn( $id ) => $id > 0 && $id !== $canonical_id && get_post_type( $id ) === 'product'
+        ) ) );
+        if ( $members && $donors ) {
+            foreach ( self::group_fill_keys() as $key ) {
+                if ( ! \MMI_Pipeline_Write::is_field_empty( $canonical_id, $key ) ) {
+                    continue;
+                }
+                foreach ( $donors as $donor_id ) {
+                    if ( \MMI_Pipeline_Write::is_field_empty( $donor_id, $key ) ) {
+                        continue;
+                    }
+                    $res = $write( $key, get_post_meta( $donor_id, $key, true ), self::GROUP_FILL_SOURCE, \MMI_Pipeline_Write::MODE_FILL, [ 'label' => 'Duplicates: filled from #' . $donor_id ] );
+                    if ( $res === 'written' ) {
+                        $result['fields_filled'][] = $key;
+                    }
+                    break; // one donor per field; a locked or refused field isn't tried again
+                }
+            }
         }
 
         return $result;
+    }
+
+    /** A product's gallery as attachment ids, in order. @return int[] */
+    private static function gallery_ids( int $id ): array {
+        return array_values( array_unique( array_filter( array_map( 'intval', explode( ',', (string) get_post_meta( $id, '_product_image_gallery', true ) ) ) ) ) );
     }
 
     /**

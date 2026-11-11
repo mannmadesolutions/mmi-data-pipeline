@@ -68,6 +68,9 @@ class VendorCatalog {
 	const CONTENT_SECTIONS = '#^/(resource-?centers?|resources|customer-stories|case-stud(y|ies)|success-stories|stories|press-room|press-releases|newsroom|courses?|training|certifications?|learning|webinars?|podcasts?|technical-support|white-?papers?|ebooks?|insights|articles?)(/|$)#i';
 
 	/** Words that tell editions apart: both names must carry the same ones. */
+	/** Words that make a name's ":" or " - " tail part of what the product is, not a tagline. */
+	const TAGLINE_NOT = [ 'upgrade', 'upgrades', 'crossgrade', 'update', 'updates', 'bundle', 'bundles', 'expansion', 'expansions', 'pack', 'packs', 'library', 'libraries', 'edition', 'editions', 'version', 'volume', 'vol', 'collection', 'suite', 'kit', 'add', 'addon', 'subscription', 'license', 'licence', 'academic', 'education', 'educational', 'student', 'teacher', 'nfr', 'trial', 'demo', 'mac', 'win', 'windows', 'macos', 'ios', 'ipad', 'hardware', 'plugin' ];
+
 	const EDITIONS = [ 'elements', 'standard', 'advanced', 'pro', 'lite', 'le', 'se', 'max', 'deluxe', 'essentials', 'essential', 'complete', 'ultimate', 'artist', 'producer', 'core', 'plus', 'mini', 'express', 'intro', 'first', 'expanded', 'ce', 'xl', 'native', 'hd', 'hdx', 'basic', 'premium', 'professional', 'starter' ];
 
 	/** Candidate reasons a vendor-catalog match may replace (none of them confirms the page). */
@@ -900,8 +903,19 @@ class VendorCatalog {
 		if ( ! $ours || ! $theirs || ! array_filter( $theirs, static fn( $w ) => ! ctype_digit( $w ) ) ) {
 			return null;
 		}
+		$tagline = false;
 		if ( array_diff( $theirs, $ours ) ) {
-			return null; // the vendor's name says something ours doesn't
+			// A maker's name with a tagline after ":" or " - " ("Bull Sub Machine - Leslie Brathwaite's secret
+			// weapon") is its name before it, when the tagline names no version, edition or offer.
+			$parts = preg_split( '/:\s|\s[-–—|]\s/u', $vendor, 2 );
+			$head  = count( $parts ) === 2 ? UrlFinder::tokens( $parts[0], UrlFinder::tokens( $brand ) ) : [];
+			$tail  = count( $parts ) === 2 ? UrlFinder::tokens( $parts[1] ) : [];
+			$plain = $tail && ! array_filter( $tail, 'ctype_digit' ) && ! array_intersect( $tail, array_merge( self::EDITIONS, self::TAGLINE_NOT ) );
+			if ( ! $plain || ! $head || ! array_filter( $head, static fn( $w ) => ! ctype_digit( $w ) ) || array_diff( $head, $ours ) ) {
+				return null; // the vendor's name says something ours doesn't
+			}
+			$theirs  = $head;
+			$tagline = true;
 		}
 		// Our name proper is what comes before a ":" or " - " descriptor ("Launch Bundle: Grand Piano Suite,
 		// Plucks…" is the Launch Bundle). A vendor name found only in our descriptor names something else.
@@ -931,6 +945,10 @@ class VendorCatalog {
 		if ( $in_desc ) {
 			$score = min( $score, 65 );
 			$why[] = 'only our description names it';
+		}
+		if ( $tagline ) {
+			$score -= 5;
+			$why[]  = 'their name adds a tagline';
 		}
 		if ( $score >= 100 ) {
 			$why[] = 'same name';
