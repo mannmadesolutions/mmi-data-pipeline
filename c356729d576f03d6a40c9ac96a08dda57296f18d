@@ -1,2 +1,6 @@
-lint pass ship 3 files
-site-rules pass ship 3 files
+lint pass 300 files
+site-rules pass
+run-all pass 8 scenarios
+ui-check pass 121
+ui-e2e pass 160
+customer-site fail exit 1
