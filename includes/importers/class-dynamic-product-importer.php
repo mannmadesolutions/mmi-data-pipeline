@@ -1259,9 +1259,8 @@ class MMI_Dynamic_Product_Importer {
      * sale_price_floor()). A supplier promotion priced under its own cost is
      * the supplier's slip: the product goes on sale as the promotion says and
      * is listed under the Product Workbench's "Sale below cost" check for a
-     * person to look into; Distributors → Vendors drafts the email to the
-     * vendor (owner, 2026-11-11). From 2026-11-10.5 to 2026-11-11 such sales
-     * were held back instead.
+     * person to take up with the supplier. Until 3.1.0 such sales were held
+     * back instead.
      */
     protected function note_sale_below_cost( array $product_data, ?array $promo_data, int $product_id, string $primary_value ): array {
         $sale = $product_data['_sale_price'] ?? $product_data['sale_price'] ?? null;
