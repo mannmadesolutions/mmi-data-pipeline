@@ -898,6 +898,9 @@ add_action('wp_ajax_mmi_save_data_source', function () {
         'data_root_path' => sanitize_text_field($parsing['data_root_path'] ?? ''),
         'sheet_name' => sanitize_text_field($parsing['sheet_name'] ?? ''),
         'skip_rows' => max(0, (int) ($parsing['skip_rows'] ?? 0)),
+        // Heading rows → a Section field on the records under them; see
+        // MMI_Pipeline_Upload_Source_Fetcher::apply_section_rows().
+        'section_rows' => !empty($parsing['section_rows']),
     ];
 
     // Update source type from connection settings
@@ -993,6 +996,24 @@ add_action('wp_ajax_mmi_save_data_source', function () {
 
     if ($update_result === false) {
         wp_send_json_error(['message' => 'Database error: ' . $wpdb->last_error]);
+    }
+
+    // Section heading rows switched on or off: an uploaded file is already on
+    // disk, so its records are rebuilt now rather than at the next fetch —
+    // the Section field (or its absence) then shows in Taxonomy Mapping and
+    // Field Mapping straight away.
+    $old_file_config = is_array($source['file_config'] ?? null)
+        ? $source['file_config']
+        : (json_decode((string) ($source['file_config'] ?? '{}'), true) ?: []);
+    if ($source_type === 'upload'
+        && !empty($old_file_config['section_rows']) !== $file_config['section_rows']
+        && class_exists('MMI_Pipeline_Upload_Source_Fetcher')) {
+        try {
+            \MMI_Pipeline_Upload_Source_Fetcher::fetch($supplier_id);
+            delete_transient('mmi_taxmap_raw_scan_cache');
+        } catch (\RuntimeException $e) {
+            // The saved setting stands; the next fetch applies it.
+        }
     }
 
     // Save endpoints

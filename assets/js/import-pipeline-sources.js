@@ -396,9 +396,13 @@
                                     <input type="checkbox" class="mmi-source-taxmap-toggle" data-supplier="${escAttr(src.supplier_id)}" checked>
                                     <span class="mmi-toggle-slider"></span>
                                 </label>
-                                <button type="button" class="mmi-taxmap-quick-link is-unmapped" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" data-taxmap-supplier-name="${escAttr(src.supplier_name)}" title="No taxonomy mapping set up for this source yet — click to assign one">
+                                ${((src.configuration && Array.isArray(src.configuration.taxonomy_fields)) ? src.configuration.taxonomy_fields : []).length
+                                    ? `<button type="button" class="mmi-taxmap-quick-link is-unmapped" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" data-taxmap-supplier-name="${escAttr(src.supplier_name)}" title="No taxonomy mapping set up for this source yet — click to assign one">
                                     <span class="dashicons dashicons-warning"></span> Not mapped
-                                </button>
+                                </button>`
+                                    : `<button type="button" class="mmi-taxmap-quick-link is-unmapped is-undeclared" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" data-taxmap-supplier-name="${escAttr(src.supplier_name)}" title="No field of this source is set as its brand or category yet — click to pick one from its file.">
+                                    <span class="dashicons dashicons-admin-generic"></span> Set up
+                                </button>`}
                             </td>
                             <td class="mmi-last-fetch-cell">—</td>
                             <td class="mmi-record-count-cell"><span class="status-unavailable">—</span></td>

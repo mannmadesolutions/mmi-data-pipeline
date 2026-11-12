@@ -110,7 +110,104 @@ class MMI_Pipeline_Upload_Source_Fetcher {
         $data_root_path = trim( (string) ( $file_config['data_root_path'] ?? '' ) );
 
         $records = self::parse_file( $file_path, $format, $delimiter, $has_header );
-        return self::apply_data_root_path( $records, $data_root_path );
+        $records = self::apply_data_root_path( $records, $data_root_path );
+        if ( ! empty( $file_config['section_rows'] ) ) {
+            $records = self::apply_section_rows( $records );
+        }
+        return $records;
+    }
+
+    /**
+     * Field a section heading is written to on the records under it — see
+     * apply_section_rows().
+     */
+    const SECTION_FIELD = 'Section';
+
+    /**
+     * A dealer price list often groups its products under heading rows that
+     * fill only the first column ("GUITAR & INSTRUMENT", then that group's
+     * products, then "SPEAKER CABLES", ...). The heading is the product's
+     * category, yet it sits on a row of its own, so without this no field on
+     * a product holds it and Taxonomy Mapping has nothing to map.
+     *
+     * A heading row: first value filled, every other value empty. Returns
+     * heading => number of records under it, in file order, or [] when the
+     * records have fewer than two headings (one could be a stray row).
+     *
+     * @param array<int, mixed> $records Parsed records (heading rows still in).
+     * @return array<string, int>
+     */
+    public static function find_section_headings( array $records ): array {
+        $headings = [];
+        $current  = null;
+        foreach ( $records as $record ) {
+            $kind = self::row_kind( $record );
+            if ( $kind === 'heading' ) {
+                $current = trim( (string) reset( $record ) );
+                $headings[ $current ] = $headings[ $current ] ?? 0;
+            } elseif ( $kind === 'record' && $current !== null ) {
+                $headings[ $current ]++;
+            }
+        }
+        return count( $headings ) >= 2 ? $headings : [];
+    }
+
+    /**
+     * Opt-in per source (file_config.section_rows): heading rows and blank
+     * rows leave the records, and every record under a heading carries it in
+     * the Section field (SECTION_FIELD, or "Section heading" if the file
+     * already has a Section column). Records before the first heading get no
+     * Section value.
+     */
+    private static function apply_section_rows( array $records ): array {
+        if ( empty( $records ) || ! is_array( $records[0] ?? null ) ) {
+            return $records;
+        }
+        $field   = array_key_exists( self::SECTION_FIELD, $records[0] ) ? self::SECTION_FIELD . ' heading' : self::SECTION_FIELD;
+        $out     = [];
+        $current = '';
+        foreach ( $records as $record ) {
+            $kind = self::row_kind( $record );
+            if ( $kind === 'heading' ) {
+                $current = trim( (string) reset( $record ) );
+                continue;
+            }
+            if ( $kind === 'blank' ) {
+                continue;
+            }
+            if ( is_array( $record ) ) {
+                $record[ $field ] = $current;
+            }
+            $out[] = $record;
+        }
+        return $out;
+    }
+
+    /**
+     * 'heading' (first value only), 'blank' (no value) or 'record'. A
+     * record that isn't a flat array of scalars is always 'record'.
+     */
+    private static function row_kind( $record ): string {
+        if ( ! is_array( $record ) || count( $record ) < 2 ) {
+            return 'record';
+        }
+        $first  = null;
+        $others = false;
+        foreach ( $record as $value ) {
+            if ( is_array( $value ) || is_object( $value ) ) {
+                return 'record';
+            }
+            $filled = trim( (string) $value ) !== '';
+            if ( $first === null ) {
+                $first = $filled;
+            } elseif ( $filled ) {
+                $others = true;
+            }
+        }
+        if ( $others ) {
+            return 'record';
+        }
+        return $first ? 'heading' : 'blank';
     }
 
     private static function parse_file( string $file_path, string $format, string $delimiter, bool $has_header ): array {

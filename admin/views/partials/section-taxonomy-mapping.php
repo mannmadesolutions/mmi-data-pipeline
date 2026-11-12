@@ -345,6 +345,17 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources() as
     <!-- Notice area -->
     <div id="mmi-taxmap-notice" class="mmi-taxmap-notice mmi-hidden"></div>
 
+    <?php /* Which data source the table is scoped to, when opened from a data
+         source row's link (MMITaxMapping.openForSupplier()); filled by
+         updateSupplierScopedBanner(). Never rendered before 2026-11-12, so
+         that summary had silently gone nowhere. */ ?>
+    <div id="mmi-taxmap-supplier-summary" class="mmi-taxmap-supplier-summary mmi-hidden" aria-live="polite"></div>
+
+    <?php /* A source with no values to map (no brand/category field declared):
+         what its file offers, declared in place — taxonomy-mapping.js
+         showSourceSetup(). */ ?>
+    <div id="mmi-taxmap-source-setup" class="mmi-taxmap-source-setup mmi-hidden"></div>
+
     <?php /* Stats bar (shows once data is loaded) — the three counters ARE the status filter,
          no separate radio group duplicating what they already show. */ ?>
     <div class="mmi-taxmap-stats mmi-hidden" id="mmi-taxmap-stats">
@@ -410,6 +421,11 @@ foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources() as
                 <!-- Rows injected by JS -->
             </tbody>
         </table>
+
+        <div class="mmi-taxmap-empty mmi-hidden" id="mmi-taxmap-filter-empty">
+            <span class="dashicons dashicons-info"></span>
+            No values match this view. Pick All Sources, clear the filter box, or click Total source values.
+        </div>
 
         <div class="mmi-taxmap-empty mmi-hidden" id="mmi-taxmap-empty">
             <span class="dashicons dashicons-info"></span>

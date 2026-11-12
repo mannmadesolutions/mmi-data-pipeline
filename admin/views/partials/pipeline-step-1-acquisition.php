@@ -535,12 +535,23 @@ $status_badge_map = [
                                 ? ' Fields: ' . implode( ', ', $mmi_src_tax_desc ) . '.'
                                 : ' No taxonomy field declared for this source yet (Configure › Taxonomies).';
                             ?>
-                            <button type="button" class="mmi-taxmap-quick-link<?php echo $mmi_src_mapped_count === 0 ? ' is-unmapped' : ''; ?>"
+                            <?php
+                            // No field declared and nothing mapped: there are no
+                            // values to map yet, so the link sets the source up
+                            // (taxonomy-mapping.js showSourceSetup()) rather than
+                            // claiming values are waiting (2026-11-12).
+                            $mmi_src_undeclared = $mmi_src_mapped_count === 0 && ! $mmi_src_tax_fields;
+                            ?>
+                            <button type="button" class="mmi-taxmap-quick-link<?php echo $mmi_src_mapped_count === 0 ? ' is-unmapped' : ''; ?><?php echo $mmi_src_undeclared ? ' is-undeclared' : ''; ?>"
                                     data-taxmap-open-supplier="<?php echo esc_attr($sid); ?>"
                                     data-taxmap-supplier-name="<?php echo esc_attr($name); ?>"
-                                    title="<?php echo esc_attr( ( $mmi_src_mapped_count > 0 ? $mmi_src_mapped_count . ' value(s) mapped for this source — view or add more.' : 'No taxonomy mapping set up for this source yet — click to assign one.' ) . $mmi_src_tax_title ); ?>">
+                                    title="<?php echo esc_attr( $mmi_src_undeclared
+                                        ? 'No field of this source is set as its brand or category yet — click to pick one from its file.'
+                                        : ( ( $mmi_src_mapped_count > 0 ? $mmi_src_mapped_count . ' value(s) mapped for this source — view or add more.' : 'No taxonomy mapping set up for this source yet — click to assign one.' ) . $mmi_src_tax_title ) ); ?>">
                                 <?php if ( $mmi_src_mapped_count > 0 ) : ?>
                                     <span class="dashicons dashicons-yes-alt"></span> <?php echo (int) $mmi_src_mapped_count; ?> mapped
+                                <?php elseif ( $mmi_src_undeclared ) : ?>
+                                    <span class="dashicons dashicons-admin-generic"></span> Set up
                                 <?php else : ?>
                                     <span class="dashicons dashicons-warning"></span> Not mapped
                                 <?php endif; ?>
@@ -788,6 +799,12 @@ $status_badge_map = [
                         <label>
                             <input type="checkbox" id="cfg-has-header" checked> First row is header
                         </label>
+                    </div>
+                    <div class="mmi-config-field">
+                        <label>
+                            <input type="checkbox" id="cfg-section-rows"> Section heading rows
+                        </label>
+                        <small class="mmi-field-description">For price lists that group products under a heading row with only the first column filled (e.g. "SPEAKER CABLES"). Heading and blank rows stop counting as records, and each product gets its heading in a <code>Section</code> field you can map to a category.</small>
                     </div>
                     <div class="mmi-config-field">
                         <label for="cfg-encoding">File Encoding</label>

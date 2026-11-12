@@ -1692,14 +1692,20 @@ tr.mmi-wb-mp-gone .notice {
 /* The menu card has the page section's look (.mmi-process-section); its
    active item has the suite's nav-tab active wash; badges are .mmi-badge. */
 
+/* Items stretch to the row (2026-11-12): the main column is never shorter
+   than the menu beside it, and the open section's card grows to the bottom
+   of it (below) — short sections (Standing rules, Left alone, Maker pages)
+   used to end hundreds of pixels above the menu. The menu itself keeps
+   align-self: start, which position: sticky needs. */
 .mmi-wb-shell {
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
     gap: 20px;
-    align-items: start;
+    align-items: stretch;
 }
 
 .mmi-wb-menu {
+    align-self: start;
     position: sticky;
     top: 46px; /* below the admin bar */
     max-height: calc(100vh - 66px);
@@ -1805,6 +1811,19 @@ tr.mmi-wb-mp-gone .notice {
 
 .mmi-wb-main {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.mmi-wb-pane {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The open section's last card fills what is left of the column. */
+.mmi-wb-pane > :last-child {
+    flex: 1 0 auto;
 }
 
 .mmi-wb-pane[hidden] {

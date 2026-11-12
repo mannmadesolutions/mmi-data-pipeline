@@ -63,6 +63,8 @@
         RESIZE_HANDLE:    '.mmi-taxmap-th-resize',
 
         SUPPLIER_SUMMARY: '#mmi-taxmap-supplier-summary',
+        SOURCE_SETUP:     '#mmi-taxmap-source-setup',
+        FILTER_EMPTY:     '#mmi-taxmap-filter-empty',
 
         PROFILE_OPTIONS_TEMPLATE: '#mmi-taxmap-profile-options-template',
 
@@ -261,6 +263,12 @@
             return scanAllSources();
         },
 
+        /** Re-read every source's values (after a source declares a field). */
+        rescan: function () {
+            hasLoadedOnce = true;
+            return scanAllSources( true );
+        },
+
         /**
          * Open the panel (if closed), ensure its data is loaded, then filter
          * the table down to just this one supplier's values — the mechanism
@@ -278,8 +286,19 @@
             const applyFilter = () => {
                 $( SELECTORS.PILL_BTN ).removeClass( 'is-active' );
                 activeFilter = { supplier: supplierId, sourceField: '' };
+                refreshStats();
                 applyTableFilter();
-                updateSupplierScopedBanner( supplierId, supplierName || supplierId );
+                // No values scanned for this source (no brand/category field
+                // declared, or none readable): show what its file offers
+                // instead of an empty table. The card says why, so the
+                // one-line summary is only for a source with values.
+                if ( allRows.some( r => r.supplier === supplierId ) ) {
+                    hideSourceSetup();
+                    updateSupplierScopedBanner( supplierId, supplierName || supplierId );
+                } else {
+                    updateSupplierScopedBanner( '' );
+                    showSourceSetup( supplierId, supplierName || supplierId );
+                }
                 $panel[ 0 ]?.scrollIntoView( { behavior: 'smooth', block: 'start' } );
             };
 
@@ -377,6 +396,9 @@
                 supplier:    $btn.data( 'filter-supplier' ) ?? '',
                 sourceField: $btn.data( 'filter-field' )    ?? '',
             };
+            hideSourceSetup();
+            updateSupplierScopedBanner( '' );
+            refreshStats();
             applyTableFilter();
         } );
     }
@@ -1088,7 +1110,7 @@
             }
 
             allRows = resp.data.values || [];
-            updateStats( resp.data.total, resp.data.mapped );
+            refreshStats();
             updateSortIcons();
             sortAndRerender();
         } )
@@ -1220,7 +1242,7 @@
         // Source context: filename chip + field tag
         const fieldLabel   = escHtml( row.source_field  || '' );
         const fileChipHtml = row.source_file
-            ? `<span class="mmi-taxmap-file-chip">${ escHtml( row.source_file ) }</span>`
+            ? `<span class="mmi-taxmap-file-chip" title="${ escHtml( row.source_file ) }">${ escHtml( row.source_file ) }</span>`
             : '';
         const fieldTagHtml = fieldLabel
             ? `<span class="mmi-taxmap-field-tag">${ fieldLabel }</span>`
@@ -1482,6 +1504,193 @@
 
             $tr.toggle( showByFilter && showByPill && showBySearch );
         } );
+
+        // A filter that leaves nothing says so, rather than a bare header row.
+        // (A source with nothing scanned at all gets the setup card instead.)
+        const visible = $( SELECTORS.TBODY + ' > tr:not(.mmi-taxmap-variant-row)' ).filter( function () {
+            return this.style.display !== 'none';
+        } ).length;
+        const noneShown = allRows.length > 0 && visible === 0 && $( SELECTORS.SOURCE_SETUP ).hasClass( 'mmi-hidden' );
+        $( SELECTORS.FILTER_EMPTY ).toggleClass( 'mmi-hidden', ! noneShown );
+    }
+
+    /* ── Per-source setup card (2026-11-12) ─────────────────────────────── *
+     * Opened from a data source row's link when the source has no scanned
+     * values: no brand/category field declared yet, so there is nothing to
+     * map. Lists what the source's file offers (fields that look like a
+     * brand or category; section heading rows in a price list) and declares
+     * the one picked, in place, through mmi_taxmap_declare_source_field.
+     * Declaring a field never turns on an import — Field Mapping's
+     * "Enable for …" does that per profile. */
+
+    let setupRequest = null;
+
+    function hideSourceSetup() {
+        if ( setupRequest ) { setupRequest.abort(); setupRequest = null; }
+        $( SELECTORS.SOURCE_SETUP ).addClass( 'mmi-hidden' ).empty();
+        $( SELECTORS.TABLE ).toggleClass( 'mmi-hidden', allRows.length === 0 );
+    }
+
+    function taxonomySelectHtml( taxonomies, selected ) {
+        let html = '<select class="mmi-taxmap-setup-taxonomy"><option value="">— Taxonomy —</option>';
+        ( taxonomies || [] ).forEach( t => {
+            html += `<option value="${ escHtml( t.slug ) }"${ t.slug === selected ? ' selected' : '' }>${ escHtml( t.label ) }</option>`;
+        } );
+        return html + '</select>';
+    }
+
+    function showSourceSetup( supplierId, supplierName ) {
+        const $card = $( SELECTORS.SOURCE_SETUP );
+        if ( ! $card.length ) { return; }
+        if ( setupRequest ) { setupRequest.abort(); }
+        $( SELECTORS.TABLE ).addClass( 'mmi-hidden' );
+        $( SELECTORS.FILTER_EMPTY ).addClass( 'mmi-hidden' );
+        $card.removeClass( 'mmi-hidden' ).attr( 'data-supplier', supplierId ).html(
+            `<p class="mmi-taxmap-setup-loading"><span class="spinner is-active"></span> Reading ${ escHtml( supplierName ) }'s file…</p>`
+        );
+
+        setupRequest = $.post( AJAX_URL, { action: 'mmi_taxmap_source_setup', nonce: NONCE, supplier_id: supplierId } )
+            .done( resp => {
+                if ( ! resp?.success ) {
+                    $card.html( `<p class="mmi-taxmap-setup-error"><span class="dashicons dashicons-warning"></span> ${ escHtml( resp?.data?.message || 'Could not read this source.' ) }</p>` );
+                    return;
+                }
+                $card.html( renderSourceSetup( resp.data ) );
+            } )
+            .fail( ( xhr, status ) => {
+                if ( status === 'abort' ) { return; }
+                $card.html( `<p class="mmi-taxmap-setup-error"><span class="dashicons dashicons-warning"></span> Request failed: ${ escHtml( xhr.statusText || 'error' ) }</p>` );
+            } )
+            .always( () => { setupRequest = null; } );
+    }
+
+    function renderSourceSetup( d ) {
+        const name = escHtml( d.supplier_name );
+        let html = `<h4 class="mmi-taxmap-setup-title"><span class="dashicons dashicons-admin-generic"></span> Set up ${ name } for Taxonomy Mapping</h4>`;
+
+        if ( ! d.mapping_on ) {
+            html += `<p class="mmi-taxmap-setup-note">Taxonomy Mapping is switched off for this source (the switch beside its link in the table above). Switch it on to map its values.</p>`;
+            return html;
+        }
+        if ( d.declared && d.declared.length ) {
+            // Declared but nothing scanned: the field isn't in the fetched file.
+            const list = d.declared.map( f => `<code>${ escHtml( f.source_field ) }</code> → ${ escHtml( taxonomyLabel( f.wc_taxonomy ) ) }` ).join( ', ' );
+            html += `<p class="mmi-taxmap-setup-note">This source reads ${ list }, but its fetched file has no values in ${ d.declared.length > 1 ? 'those fields' : 'that field' }${ d.file ? ` (<code>${ escHtml( d.file ) }</code>)` : '' }. Fetch Data again, or change the field in Configure › Taxonomies.</p>`;
+            return html;
+        }
+        if ( d.error ) {
+            html += `<p class="mmi-taxmap-setup-note">${ escHtml( d.error ) }</p>`;
+            return html;
+        }
+
+        html += `<p class="mmi-taxmap-setup-note">No field of this source is set as its brand or category yet, so there are no values to map. `
+            + `Pick where ${ name }'s file keeps them (${ escHtml( String( d.total_items ) ) } records in <code>${ escHtml( d.file ) }</code>). `
+            + `This only lists the values here; an import profile still switches the field on in Field Mapping.</p>`;
+
+        let options = 0;
+        const sec = d.sections || {};
+        if ( ( sec.headings || [] ).length ) {
+            options++;
+            const shown = sec.headings.slice( 0, 6 ).map( h => `${ escHtml( h.name ) } (${ h.count })` ).join( ', ' );
+            const more  = sec.headings.length > 6 ? `, and ${ sec.headings.length - 6 } more` : '';
+            html += `<div class="mmi-taxmap-setup-option" data-use-sections="1">
+                <div class="mmi-taxmap-setup-option-text"><strong>Section headings</strong> — the file groups its products under ${ sec.headings.length } heading rows: ${ shown }${ more }.
+                    ${ sec.can_apply
+                        ? 'Using them turns on <em>Section heading rows</em> for this source: the heading rows stop counting as records, and each product gets its heading in a <code>Section</code> field.'
+                        : 'Turn on <em>Section heading rows</em> in Configure › Format, then fetch again.' }
+                </div>
+                ${ sec.can_apply ? `<div class="mmi-taxmap-setup-option-actions">${ taxonomySelectHtml( d.taxonomies, 'product_cat' ) }
+                    <button type="button" class="button button-primary mmi-taxmap-setup-use">Use headings</button></div>` : '' }
+            </div>`;
+        }
+        ( d.candidates || [] ).forEach( c => {
+            options++;
+            const samples = ( c.sample_vals || [] ).slice( 0, 4 ).map( escHtml ).join( ', ' );
+            html += `<div class="mmi-taxmap-setup-option" data-source-field="${ escHtml( c.path ) }">
+                <div class="mmi-taxmap-setup-option-text"><code>${ escHtml( c.path ) }</code> — ${ escHtml( String( c.unique_count ) ) } values: ${ samples }</div>
+                <div class="mmi-taxmap-setup-option-actions">${ taxonomySelectHtml( d.taxonomies, c.suggested_taxonomy ) }
+                    <button type="button" class="button mmi-taxmap-setup-use">Use field</button></div>
+            </div>`;
+        } );
+
+        if ( ! options ) {
+            html += `<p class="mmi-taxmap-setup-note"><strong>Nothing in this file names a brand or category</strong>: no field repeats a short set of values, and there are no section heading rows. `
+                + `If every product in it is from one maker, set Brand to a fixed value in the import profile's Field Mapping instead.</p>`;
+        }
+        html += '<p class="mmi-taxmap-setup-status" aria-live="polite"></p>';
+        return html;
+    }
+
+    $( document ).on( 'click', SELECTORS.SOURCE_SETUP + ' .mmi-taxmap-setup-use', function () {
+        const $btn      = $( this );
+        const $opt      = $btn.closest( '.mmi-taxmap-setup-option' );
+        const $card     = $( SELECTORS.SOURCE_SETUP );
+        const $status   = $card.find( '.mmi-taxmap-setup-status' );
+        const supplier  = String( $card.attr( 'data-supplier' ) || '' );
+        const taxonomy  = String( $opt.find( '.mmi-taxmap-setup-taxonomy' ).val() || '' );
+        const sections  = $opt.data( 'use-sections' ) ? 1 : 0;
+        if ( ! taxonomy ) {
+            $status.removeClass( 'is-success' ).addClass( 'is-error' ).text( 'Pick the taxonomy these values are, then Use.' );
+            $opt.find( '.mmi-taxmap-setup-taxonomy' ).trigger( 'focus' );
+            return;
+        }
+        $card.find( '.mmi-taxmap-setup-use' ).prop( 'disabled', true );
+        $status.removeClass( 'is-error is-success' ).html( `<span class="spinner is-active"></span> ${ sections ? 'Re-reading the file with section headings…' : 'Saving…' }` );
+
+        $.post( AJAX_URL, {
+            action:       'mmi_taxmap_declare_source_field',
+            nonce:        NONCE,
+            supplier_id:  supplier,
+            source_field: sections ? '' : String( $opt.attr( 'data-source-field' ) || '' ),
+            wc_taxonomy:  taxonomy,
+            use_sections: sections,
+        } ).done( resp => {
+            if ( ! resp?.success ) {
+                $status.addClass( 'is-error' ).text( resp?.data?.message || 'Could not save.' );
+                $card.find( '.mmi-taxmap-setup-use' ).prop( 'disabled', false );
+                return;
+            }
+            const d = resp.data;
+            addSourcePill( supplier, d.source_field, d.wc_taxonomy, d.pill_label );
+            markSourceRowDeclared( supplier, d.records, d.refetched );
+            hideSourceSetup();
+            // Rescan, then show this source's new values.
+            window.MMITaxMapping.rescan().always( () => {
+                $( SELECTORS.PILL_BTN ).removeClass( 'is-active' );
+                $( `${ SELECTORS.PILL_BTN }[data-filter-supplier="${ supplier }"][data-filter-field="${ d.source_field }"]` ).addClass( 'is-active' );
+                activeFilter = { supplier: supplier, sourceField: d.source_field };
+                refreshStats();
+                applyTableFilter();
+                updateSupplierScopedBanner( '' );
+                showNotice( `${ d.pill_label }: ${ d.source_field } values are listed below for mapping.`, 'success' );
+            } );
+        } ).fail( xhr => {
+            $status.addClass( 'is-error' ).text( 'Request failed: ' + ( xhr.statusText || 'error' ) );
+            $card.find( '.mmi-taxmap-setup-use' ).prop( 'disabled', false );
+        } );
+    } );
+
+    /** A filter pill for a just-declared field, as the page would render it on reload. */
+    function addSourcePill( supplier, sourceField, wcTaxonomy, label ) {
+        const exists = $( `${ SELECTORS.PILL_BTN }[data-filter-supplier="${ supplier }"][data-filter-field="${ sourceField }"]` ).length;
+        if ( exists ) { return; }
+        const icon = wcTaxonomy === 'product_cat' ? 'dashicons-category' : ( wcTaxonomy === 'product_brand' || wcTaxonomy === 'product_tag' ? 'dashicons-tag' : 'dashicons-networking' );
+        const $pill = $( '<button class="mmi-taxmap-pill" title="No import profile maps this field yet. Mappings saved here are used once a profile maps it in Field Mapping."></button>' )
+            .attr( 'data-filter-supplier', supplier )
+            .attr( 'data-filter-field', sourceField )
+            .append( $( '<span class="dashicons"></span>' ).addClass( icon ) )
+            .append( document.createTextNode( ' ' + label + ' (not imported yet)' ) );
+        $( SELECTORS.FILTER_PILLS ).append( $pill );
+    }
+
+    /** The data source row's link and record count follow the new declaration. */
+    function markSourceRowDeclared( supplier, records, refetched ) {
+        const $link = $( `.mmi-taxmap-quick-link[data-taxmap-open-supplier="${ supplier }"]` );
+        $link.removeClass( 'is-undeclared' ).html( '<span class="dashicons dashicons-warning"></span> Not mapped' )
+            .attr( 'title', 'No taxonomy mapping set up for this source yet — click to assign one.' );
+        if ( refetched ) {
+            $link.closest( 'tr' ).find( '.mmi-record-count-cell' ).text( Number( records ).toLocaleString() );
+        }
     }
 
     /* ── Row event delegation ───────────────────────────────────────────── */
@@ -2437,12 +2646,12 @@
         // The deleted-term check: values whose mapping (or one of whose
         // profile variations) points at a term that no longer exists. Only
         // shown when there are some.
-        const missing = allRows.filter( r => ! r.excluded && rowHasMissingTerm( r ) ).length;
+        const missing = scopedRows().filter( r => ! r.excluded && rowHasMissingTerm( r ) ).length;
         $( SELECTORS.MISSING_COUNT ).text( missing );
         $( SELECTORS.MISSING_STAT ).toggleClass( 'mmi-hidden', missing === 0 );
 
         // Excluded values: in none of the counts above, listed by this stat.
-        const excluded = allRows.filter( r => r.excluded ).length;
+        const excluded = scopedRows().filter( r => r.excluded ).length;
         $( SELECTORS.EXCLUDED_COUNT ).text( excluded );
         $( SELECTORS.EXCLUDED_STAT ).toggleClass( 'mmi-hidden', excluded === 0 );
 
@@ -2456,8 +2665,18 @@
             || ( r.variants || [] ).some( v => ( v.missing_term_id || 0 ) > 0 );
     }
 
+    /** Rows under the active source pill / data source link (all rows when none). */
+    function scopedRows() {
+        if ( ! activeFilter.supplier && ! activeFilter.sourceField ) { return allRows; }
+        return allRows.filter( r =>
+            ( ! activeFilter.supplier    || r.supplier     === activeFilter.supplier ) &&
+            ( ! activeFilter.sourceField || r.source_field === activeFilter.sourceField )
+        );
+    }
+
+    /** Stats count what the table is scoped to, not every source at once. */
     function refreshStats() {
-        const inMapper = allRows.filter( r => ! r.excluded );
+        const inMapper = scopedRows().filter( r => ! r.excluded );
         updateStats( inMapper.length, inMapper.filter( r => r.wc_term_id !== 0 ).length );
     }
 
@@ -2489,7 +2708,7 @@
             .map( slug => `${ escHtml( taxonomyLabel( slug ) ) } (${ byTaxonomy[ slug ] } aliased)` );
 
         const safeName = $( '<div>' ).text( supplierName ).html();
-        const brk      = '<br class="mmi-inline-break">';
+        const brk      = ''; // Its own line now (#mmi-taxmap-supplier-summary, 2026-11-12).
 
         if ( bySupplier.length === 0 ) {
             $el.removeClass( 'mmi-hidden' ).html(

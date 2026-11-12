@@ -242,6 +242,7 @@
                     $('#cfg-enclosure').val(file.enclosure || '"');
                     $('#cfg-has-header').prop('checked', file.has_header !== false);
                     $('#cfg-excel-has-header').prop('checked', file.has_header !== false);
+                    $('#cfg-section-rows').prop('checked', !!file.section_rows);
                     $('#cfg-encoding').val(file.encoding || 'UTF-8');
                     $('#cfg-skip-rows').val(file.skip_rows || 0);
                     $('#cfg-excel-skip-rows').val(file.skip_rows || 0);
@@ -428,6 +429,7 @@
                     delimiter:      $('#cfg-delimiter').val(),
                     enclosure:      $('#cfg-enclosure').val(),
                     has_header:     $('#cfg-has-header').is(':checked') || $('#cfg-excel-has-header').is(':checked'),
+                    section_rows:   $('#cfg-section-rows').is(':checked'),
                     encoding:       $('#cfg-encoding').val(),
                     skip_rows:      parseInt($('#cfg-skip-rows').val() || $('#cfg-excel-skip-rows').val() || 0, 10),
                     sheet_name:     $('#cfg-sheet-name').val(),

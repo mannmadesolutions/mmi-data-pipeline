@@ -722,6 +722,10 @@ th.sort-active .sort-icon {
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: middle;
+    /* Without a width cap the ellipsis never applies: an uploaded source's
+       long file name ran out of its column over the Products count. */
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Source field tag — shown below the file chip */
@@ -1286,5 +1290,89 @@ th.sort-active .sort-icon {
 
     .mmi-taxmap-table .col-target {
         min-width: 140px;
+    }
+}
+
+/* ── Scoped source summary + per-source setup card (2026-11-12) ─────────── */
+
+.mmi-taxmap-supplier-summary {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    color: #50575e;
+}
+
+.mmi-taxmap-supplier-summary .dashicons {
+    color: #b3690f;
+}
+
+.mmi-taxmap-source-setup {
+    margin: 0 0 1rem;
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #b3690f;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    color: #1d2327;
+}
+
+.mmi-taxmap-setup-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+}
+
+.mmi-taxmap-setup-note,
+.mmi-taxmap-setup-loading,
+.mmi-taxmap-setup-error {
+    margin: 0 0 0.75rem;
+    line-height: 1.5;
+}
+
+.mmi-taxmap-setup-loading .spinner,
+.mmi-taxmap-setup-status .spinner {
+    float: none;
+    margin: 0 0.35rem 0 0;
+    vertical-align: middle;
+}
+
+.mmi-taxmap-setup-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid #f0f0f1;
+}
+
+.mmi-taxmap-setup-option-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.mmi-taxmap-setup-option-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.mmi-taxmap-setup-status {
+    margin: 0.5rem 0 0;
+    min-height: 1.25rem;
+}
+
+.mmi-taxmap-setup-status.is-error {
+    color: #8a1f1f;
+}
+
+@media (max-width: 782px) {
+    .mmi-taxmap-setup-option {
+        flex-direction: column;
+        align-items: stretch;
     }
 }

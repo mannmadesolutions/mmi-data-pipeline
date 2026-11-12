@@ -44,6 +44,33 @@ function mmi_taxmap_build_supplier_file_map(): array {
 }
 
 /**
+ * A record's product name for Sample Products: the API feeds' own name
+ * fields first ('product' is XChange's, 'name' SkuPort's), then — for an
+ * uploaded spreadsheet, whose columns are whatever the file calls them
+ * ("DESCRIPTION", "Item") — the same names in any case, then a
+ * description or item column.
+ */
+function mmi_taxmap_record_label( array $item ): string {
+    foreach ( [ 'name', 'product', 'title', 'product_name' ] as $key ) {
+        if ( isset( $item[ $key ] ) && is_scalar( $item[ $key ] ) && trim( (string) $item[ $key ] ) !== '' ) {
+            return (string) $item[ $key ];
+        }
+    }
+    $lower = [];
+    foreach ( $item as $key => $value ) {
+        if ( is_scalar( $value ) && trim( (string) $value ) !== '' ) {
+            $lower[ strtolower( trim( (string) $key ) ) ] ??= (string) $value;
+        }
+    }
+    foreach ( [ 'name', 'product', 'title', 'product name', 'product_name', 'description', 'item', 'model' ] as $key ) {
+        if ( isset( $lower[ $key ] ) ) {
+            return $lower[ $key ];
+        }
+    }
+    return '';
+}
+
+/**
  * The postmeta key holding a product's own SKU from a given supplier — the
  * primary-key convention every configured source's matched products carry
  * regardless of supplier (see class-stock-override-resolver.php's identical
@@ -645,12 +672,7 @@ add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
             // silently blank until this was added, since none of the other
             // three checks could ever match. SkuPort records use 'name' and
             // have no 'product' key, so the two suppliers never collide.
-            $product_name = (string) (
-                $item['name']    ??
-                $item['product'] ??
-                $item['title']   ??
-                $item['product_name'] ?? ''
-            );
+            $product_name = mmi_taxmap_record_label( (array) $item );
             if ( $product_name !== '' && ! in_array( $product_name, $sample_products[ $key ], true ) ) {
                 $sample_products[ $key ][] = $product_name;
             }
@@ -1032,7 +1054,7 @@ function mmi_taxmap_get_raw_source_scan( bool $force_refresh ): array {
             if ( count( $samples[ $key ] ) < 3 ) {
                 // 'product' is Xchange's own product-name field — see the
                 // matching comment in mmi_get_taxonomy_source_values above.
-                $pname = (string) ( $item['name'] ?? $item['product'] ?? $item['title'] ?? $item['product_name'] ?? '' );
+                $pname = mmi_taxmap_record_label( (array) $item );
                 if ( $pname !== '' && ! in_array( $pname, $samples[ $key ], true ) ) {
                     $samples[ $key ][] = $pname;
                 }
@@ -1056,75 +1078,57 @@ function mmi_taxmap_get_raw_source_scan( bool $force_refresh ): array {
     return $scan;
 }
 
-/* ── Discover taxonomy candidates from a supplier sample file (setup-time) ──
- * Step 5 of the 2026-08-30 taxonomy/data-source integration plan: surface
- * likely taxonomy fields (low-cardinality, repeated string values — a
- * category or brand column, not a description or a price) when a data
- * source is being set up, rather than leaving the admin to discover them
- * later by trial and error in Field Mapping. Mirrors
- * AttributeMappingController.php's mmi_discover_attributes (same sampling
- * approach, same mmi_flatten_item() helper, same cardinality-scoring idea)
- * — the two features solve the same underlying problem (which fields in an
- * unfamiliar feed are worth mapping to something) for two different kinds
- * of "something" (a WC attribute vs. a WC taxonomy), so they deliberately
- * share the discovery mechanics rather than reinventing them independently.
+/* ── A source's fetched records (setup-time readers) ──────────────────────── */
+/**
+ * Reads a source's fetched JSON records. Shared by the candidate discovery
+ * below and the per-source setup card.
  *
- * Not yet wired into any specific setup-flow UI moment (the wizard's Step 1
- * source picker, the "+ Add Data Source" creation flow, and Field Mapping's
- * own panel are all plausible places) — that placement needs its own design
- * decision, the same way the 2026-08-29 PK-quality-review entry deferred
- * wiring a third entry point rather than guessing at where it belongs. This
- * endpoint is the reusable detection backend those UIs would call.
+ * @return array{items: array, file: string}|WP_Error
  */
-add_action( 'wp_ajax_mmi_discover_taxonomy_candidates', function () {
-    check_ajax_referer( TAXMAP_NONCE, 'nonce' );
-    if ( ! mmi_data_pipeline_user_can() ) {
-        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
-    }
-
-    $supplier_id = sanitize_text_field( $_POST['supplier_id'] ?? '' );
-    $file_key    = sanitize_text_field( $_POST['file_key']    ?? '' );
-
-    if ( empty( $supplier_id ) ) {
-        wp_send_json_error( [ 'message' => 'supplier_id required' ] );
-    }
-
-    $json_dir  = mmi_shared_lib_json_dir();
+function mmi_taxmap_load_source_items( string $supplier_id, string $file_key = '' ) {
     $file_map  = mmi_taxmap_build_supplier_file_map();
-    $json_path = rtrim( $json_dir, '/' ) . '/' . ( $file_key ?: ( $file_map[ $supplier_id ] ?? "{$supplier_id}-products.json" ) );
+    $file      = $file_key !== '' ? basename( $file_key ) : ( $file_map[ $supplier_id ] ?? "{$supplier_id}-products.json" );
+    $json_path = rtrim( mmi_shared_lib_json_dir(), '/' ) . '/' . $file;
 
     if ( ! file_exists( $json_path ) ) {
-        wp_send_json_error( [ 'message' => 'No data file found for this source. Run a Data Fetch or upload first.' ] );
+        return new WP_Error( 'no_file', 'No data file found for this source. Run a Data Fetch or upload first.' );
     }
-
-    $data = json_decode( file_get_contents( $json_path ), true );
+    $data = json_decode( (string) file_get_contents( $json_path ), true );
     if ( ! is_array( $data ) ) {
-        wp_send_json_error( [ 'message' => 'Could not parse the data file as JSON.' ] );
+        return new WP_Error( 'bad_json', 'Could not parse the data file as JSON.' );
     }
 
-    if ( isset( $data['products'] ) && is_array( $data['products'] ) )       { $items = $data['products']; }
-    elseif ( isset( $data['items'] ) && is_array( $data['items'] ) )         { $items = $data['items']; }
-    elseif ( isset( $data['data'] ) && is_array( $data['data'] ) )           { $items = $data['data']; }
-    elseif ( is_array( $data ) && isset( $data[0] ) )                       { $items = $data; }
-    else                                                                     { $items = []; }
+    if ( isset( $data['products'] ) && is_array( $data['products'] ) )  { $items = $data['products']; }
+    elseif ( isset( $data['items'] ) && is_array( $data['items'] ) )    { $items = $data['items']; }
+    elseif ( isset( $data['data'] ) && is_array( $data['data'] ) )      { $items = $data['data']; }
+    elseif ( isset( $data[0] ) )                                        { $items = $data; }
+    else                                                                { $items = []; }
 
     if ( empty( $items ) ) {
-        wp_send_json_error( [ 'message' => 'No product items found in the file.' ] );
+        return new WP_Error( 'empty', 'No product items found in the file.' );
     }
+    return [ 'items' => $items, 'file' => $file ];
+}
 
-    // Fields this supplier already has a real taxonomy mapping for, anywhere
-    // in any real profile — never suggest re-mapping something already done.
+/**
+ * Feed fields that look like a brand or category: short text values that
+ * repeat across records. A field whose values are mostly unique (a model
+ * code, a description, an image file name) is a free-text field, not a
+ * taxonomy, so a value must repeat: distinct values at most half of the
+ * filled ones. Numbers, and ids/prices/descriptions by name, are left out.
+ * Fields this source already declares or a profile already maps are skipped.
+ *
+ * @return array<int, array{path:string, label:string, suggested_taxonomy:string, unique_count:int, sample_vals:array<int,string>}>
+ */
+function mmi_taxmap_field_candidates( string $supplier_id, array $items ): array {
     $already_mapped = [];
-    foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $row ) {
+    foreach ( MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources() as $row ) {
         if ( $row['supplier'] === $supplier_id ) {
             foreach ( array_map( 'trim', explode( '+', $row['source_field'] ) ) as $part ) {
                 $already_mapped[ $part ] = true;
             }
         }
     }
-
-    $sample_items = array_slice( $items, 0, min( 50, count( $items ) ) );
-    $field_values = [];
 
     // Same non-taxonomy-signal skip list AttributeMappingController.php uses
     // for the identical reason — an id/price/description/date field is never
@@ -1137,73 +1141,59 @@ add_action( 'wp_ajax_mmi_discover_taxonomy_candidates', function () {
         '/\.(id|sku|price|url|image|description|name)$/i',
     ];
 
-    foreach ( $sample_items as $item ) {
+    $field_values = [];
+    foreach ( array_slice( $items, 0, 500 ) as $item ) {
         if ( ! is_array( $item ) ) {
             continue;
         }
-        $flat = mmi_flatten_item( $item );
-        foreach ( $flat as $path => $value ) {
-            if ( isset( $already_mapped[ $path ] ) ) {
+        foreach ( mmi_flatten_item( $item ) as $path => $value ) {
+            if ( $path === '' || isset( $already_mapped[ $path ] ) || ! is_string( $value ) || is_numeric( $value ) ) {
                 continue;
             }
-            if ( ! is_string( $value ) && ! is_numeric( $value ) ) {
+            $str = trim( $value );
+            // Links and dates are never a brand or category.
+            if ( $str === '' || strlen( $str ) > 100 || preg_match( '#^(https?://|www\.|\d{4}-\d{2}-\d{2})#i', $str ) ) {
                 continue;
             }
-            if ( is_numeric( $value ) ) {
-                continue;
-            }
-
-            $skip = false;
             foreach ( $skip_patterns as $pattern ) {
                 if ( preg_match( $pattern, $path ) ) {
-                    $skip = true;
-                    break;
+                    continue 2;
                 }
             }
-            if ( $skip ) {
-                continue;
-            }
-
-            $str = (string) $value;
-            if ( strlen( $str ) > 100 || strlen( $str ) < 1 ) {
-                continue;
-            }
-
             $field_values[ $path ][] = $str;
         }
     }
 
-    // Same cardinality window as attribute discovery — a plausible category/
-    // brand/tag column repeats a modest set of values across many products,
-    // unlike a free-text field (near-unique per row) or a boolean-like flag
-    // (1-2 values, already excluded by the >= 2 floor below matching
-    // mmi_discover_attributes' own reasoning for the identical bound).
+    $taxonomies = get_object_taxonomies( 'product', 'objects' );
     $candidates = [];
     foreach ( $field_values as $path => $values ) {
-        $unique = array_unique( $values );
+        $filled = count( $values );
+        $unique = array_values( array_unique( $values ) );
         $count  = count( $unique );
-        if ( $count < 2 || $count > 60 ) {
+        if ( $count < 2 || $count * 2 > $filled ) {
             continue;
         }
 
-        $last_seg = basename( str_replace( '.', '/', $path ) );
+        $last_seg = basename( str_replace( '.', '/', (string) $path ) );
         $label    = ucwords( str_replace( [ '_', '-' ], ' ', $last_seg ) );
 
-        // Suggest an existing product taxonomy this field's name resembles,
-        // if any — the admin still chooses the real mapping, this is only a
-        // starting suggestion (mirrors mmi_discover_attributes' identical
-        // wc_slug match against existing WC attributes).
+        // A starting suggestion only — the person still picks the taxonomy.
         $suggested_taxonomy = '';
-        foreach ( get_object_taxonomies( 'product', 'objects' ) as $tax ) {
+        foreach ( $taxonomies as $tax ) {
             $tax_short = preg_replace( '/^(product_|pa_)/', '', $tax->name );
             if ( strcasecmp( $tax_short, $last_seg ) === 0 || strcasecmp( $tax->label, $label ) === 0 ) {
                 $suggested_taxonomy = $tax->name;
                 break;
             }
         }
+        if ( $suggested_taxonomy === '' && preg_match( '/categor|section|group|department|type/i', $last_seg ) ) {
+            $suggested_taxonomy = 'product_cat';
+        } elseif ( $suggested_taxonomy === '' && preg_match( '/brand|maker|manufacturer|vendor/i', $last_seg ) && taxonomy_exists( 'product_brand' ) ) {
+            $suggested_taxonomy = 'product_brand';
+        }
 
         $candidates[] = [
-            'path'               => $path,
+            'path'               => (string) $path,
             'label'              => $label,
             'suggested_taxonomy' => $suggested_taxonomy,
             'unique_count'       => $count,
@@ -1211,16 +1201,231 @@ add_action( 'wp_ajax_mmi_discover_taxonomy_candidates', function () {
         ];
     }
 
-    usort( $candidates, static function ( $a, $b ) {
-        $score_a = abs( $a['unique_count'] - 10 );
-        $score_b = abs( $b['unique_count'] - 10 );
-        return $score_a - $score_b;
-    } );
+    usort( $candidates, static fn( $a, $b ) => abs( $a['unique_count'] - 10 ) - abs( $b['unique_count'] - 10 ) );
+    return array_slice( $candidates, 0, 15 );
+}
+
+/**
+ * Product taxonomies a source field can feed: categories, brands, tags and
+ * any custom product taxonomy — not WooCommerce's internal ones.
+ *
+ * @return array<int, array{slug:string, label:string}>
+ */
+function mmi_taxmap_assignable_taxonomies(): array {
+    $internal = [ 'product_type', 'product_visibility', 'product_shipping_class' ];
+    $out      = [];
+    foreach ( get_object_taxonomies( 'product', 'objects' ) as $tax ) {
+        if ( in_array( $tax->name, $internal, true ) || strpos( $tax->name, 'pa_' ) === 0 ) {
+            continue;
+        }
+        $out[] = [ 'slug' => $tax->name, 'label' => $tax->label ];
+    }
+    return $out;
+}
+
+/* ── Discover taxonomy candidates from a supplier sample file (setup-time) ──
+ * Backs Configure › Taxonomies' "Suggest from feed" button. See
+ * mmi_taxmap_field_candidates() for what counts as a candidate.
+ */
+add_action( 'wp_ajax_mmi_discover_taxonomy_candidates', function () {
+    check_ajax_referer( TAXMAP_NONCE, 'nonce' );
+    if ( ! mmi_data_pipeline_user_can() ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+    }
+
+    $supplier_id = sanitize_text_field( wp_unslash( $_POST['supplier_id'] ?? '' ) );
+    $file_key    = sanitize_text_field( wp_unslash( $_POST['file_key'] ?? '' ) );
+    if ( $supplier_id === '' ) {
+        wp_send_json_error( [ 'message' => 'supplier_id required' ] );
+    }
+
+    $loaded = mmi_taxmap_load_source_items( $supplier_id, $file_key );
+    if ( is_wp_error( $loaded ) ) {
+        wp_send_json_error( [ 'message' => $loaded->get_error_message() ] );
+    }
 
     wp_send_json_success( [
-        'candidates'  => array_slice( $candidates, 0, 15 ),
-        'total_items' => count( $items ),
-        'file'        => basename( $json_path ),
+        'candidates'  => mmi_taxmap_field_candidates( $supplier_id, $loaded['items'] ),
+        'total_items' => count( $loaded['items'] ),
+        'file'        => $loaded['file'],
+    ] );
+} );
+
+/* ── Per-source setup (2026-11-12) ────────────────────────────────────────
+ * A data source row's "Set up" link opens Taxonomy Mapping on that source.
+ * A source with no declared brand/category field has no values to map, so
+ * instead of an empty table the panel shows what the source's file offers:
+ * fields that look like a brand or category, and — for a price list that
+ * groups products under heading rows (Mogami's dealer CSV) — the headings,
+ * which become a Section field once switched on. Picking one declares it
+ * (configuration.taxonomy_fields, the same list Configure › Taxonomies
+ * edits) and the values appear for mapping. Declaring a field never turns
+ * on an import: a profile still switches it on in Field Mapping
+ * ("Enable for …").
+ */
+add_action( 'wp_ajax_mmi_taxmap_source_setup', function () {
+    check_ajax_referer( TAXMAP_NONCE, 'nonce' );
+    if ( ! mmi_data_pipeline_user_can() ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+    }
+
+    $supplier_id = sanitize_text_field( wp_unslash( $_POST['supplier_id'] ?? '' ) );
+    $suppliers   = MMI_Pipeline_Admin::get_configured_suppliers();
+    if ( $supplier_id === '' || ! isset( $suppliers[ $supplier_id ] ) ) {
+        wp_send_json_error( [ 'message' => 'Unknown data source.' ] );
+    }
+    $info = $suppliers[ $supplier_id ];
+
+    global $wpdb;
+    $file_config = json_decode( (string) $wpdb->get_var( $wpdb->prepare(
+        "SELECT file_config FROM {$wpdb->prefix}mmi_data_sources WHERE supplier_id = %s",
+        $supplier_id
+    ) ), true ) ?: [];
+
+    $result = [
+        'supplier_id'   => $supplier_id,
+        'supplier_name' => (string) ( $info['supplier_name'] ?? $supplier_id ),
+        'source_type'   => (string) ( $info['source_type'] ?? '' ),
+        'mapping_on'    => (bool) ( $info['taxonomy_mapping_enabled'] ?? true ),
+        'declared'      => array_values( (array) ( $info['taxonomy_fields'] ?? [] ) ),
+        'taxonomies'    => mmi_taxmap_assignable_taxonomies(),
+        'file'          => '',
+        'total_items'   => 0,
+        'candidates'    => [],
+        'sections'      => [
+            'enabled'   => ! empty( $file_config['section_rows'] ),
+            'headings'  => [],
+            'can_apply' => ( $info['source_type'] ?? '' ) === 'upload',
+        ],
+        'error'         => '',
+    ];
+
+    $loaded = mmi_taxmap_load_source_items( $supplier_id );
+    if ( is_wp_error( $loaded ) ) {
+        $result['error'] = $loaded->get_error_message();
+        wp_send_json_success( $result );
+    }
+    $result['file']        = $loaded['file'];
+    $result['total_items'] = count( $loaded['items'] );
+    $result['candidates']  = mmi_taxmap_field_candidates( $supplier_id, $loaded['items'] );
+
+    if ( ! $result['sections']['enabled'] && class_exists( 'MMI_Pipeline_Upload_Source_Fetcher' ) ) {
+        foreach ( MMI_Pipeline_Upload_Source_Fetcher::find_section_headings( $loaded['items'] ) as $name => $count ) {
+            $result['sections']['headings'][] = [ 'name' => (string) $name, 'count' => (int) $count ];
+        }
+    }
+
+    wp_send_json_success( $result );
+} );
+
+add_action( 'wp_ajax_mmi_taxmap_declare_source_field', function () {
+    check_ajax_referer( TAXMAP_NONCE, 'nonce' );
+    if ( ! mmi_data_pipeline_user_can() ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+    }
+
+    $supplier_id  = sanitize_text_field( wp_unslash( $_POST['supplier_id'] ?? '' ) );
+    $source_field = trim( sanitize_text_field( wp_unslash( $_POST['source_field'] ?? '' ) ) );
+    $wc_taxonomy  = sanitize_key( wp_unslash( $_POST['wc_taxonomy'] ?? '' ) );
+    $use_sections = ! empty( $_POST['use_sections'] );
+
+    if ( ! in_array( $wc_taxonomy, array_column( mmi_taxmap_assignable_taxonomies(), 'slug' ), true ) ) {
+        wp_send_json_error( [ 'message' => 'Pick a product taxonomy.' ] );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'mmi_data_sources';
+    $row   = $wpdb->get_row( $wpdb->prepare(
+        "SELECT supplier_name, source_type, configuration, file_config FROM {$table} WHERE supplier_id = %s",
+        $supplier_id
+    ), ARRAY_A );
+    if ( ! $row ) {
+        wp_send_json_error( [ 'message' => 'Unknown data source.' ] );
+    }
+    $configuration = json_decode( (string) $row['configuration'], true ) ?: [];
+    $file_config   = json_decode( (string) $row['file_config'], true ) ?: [];
+
+    // Section headings: switch the option on and rebuild the records, so the
+    // Section field exists before it is declared.
+    $refetched = false;
+    if ( $use_sections ) {
+        if ( $row['source_type'] !== 'upload' || ! class_exists( 'MMI_Pipeline_Upload_Source_Fetcher' ) ) {
+            wp_send_json_error( [ 'message' => 'Section headings can be read from an uploaded file only.' ] );
+        }
+        if ( empty( $file_config['section_rows'] ) ) {
+            $file_config['section_rows'] = true;
+            $wpdb->update( $table, [ 'file_config' => wp_json_encode( $file_config ), 'updated_at' => current_time( 'mysql' ) ], [ 'supplier_id' => $supplier_id ] );
+            try {
+                MMI_Pipeline_Upload_Source_Fetcher::fetch( $supplier_id );
+                $refetched = true;
+            } catch ( \RuntimeException $e ) {
+                $file_config['section_rows'] = false;
+                $wpdb->update( $table, [ 'file_config' => wp_json_encode( $file_config ) ], [ 'supplier_id' => $supplier_id ] );
+                wp_send_json_error( [ 'message' => 'Could not re-read the uploaded file: ' . $e->getMessage() ] );
+            }
+        }
+        $source_field = MMI_Pipeline_Upload_Source_Fetcher::SECTION_FIELD;
+    }
+
+    if ( $source_field === '' ) {
+        wp_send_json_error( [ 'message' => 'Pick a field.' ] );
+    }
+
+    // The field must exist in the records (compound a+b: every part).
+    $loaded = mmi_taxmap_load_source_items( $supplier_id );
+    if ( is_wp_error( $loaded ) ) {
+        wp_send_json_error( [ 'message' => $loaded->get_error_message() ] );
+    }
+    $first = is_array( $loaded['items'][0] ?? null ) ? $loaded['items'][0] : [];
+    if ( $use_sections && ! array_key_exists( $source_field, $first ) && array_key_exists( $source_field . ' heading', $first ) ) {
+        $source_field .= ' heading'; // The file had its own Section column.
+    }
+    $seen_paths = [];
+    foreach ( array_slice( $loaded['items'], 0, 50 ) as $item ) {
+        if ( is_array( $item ) ) {
+            $seen_paths += mmi_flatten_item( $item );
+        }
+    }
+    foreach ( array_map( 'trim', explode( '+', $source_field ) ) as $part ) {
+        if ( ! array_key_exists( $part, $seen_paths ) ) {
+            wp_send_json_error( [ 'message' => sprintf( 'The file has no "%s" field.', $part ) ] );
+        }
+    }
+
+    $fields = MMI_Pipeline_Admin::resolve_source_taxonomy_fields( $supplier_id, $configuration );
+    foreach ( $fields as $existing ) {
+        if ( $existing['wc_taxonomy'] === $wc_taxonomy && $existing['source_field'] !== $source_field ) {
+            wp_send_json_error( [ 'message' => sprintf( 'This source already reads %s from "%s". Change it in Configure › Taxonomies.', $wc_taxonomy, $existing['source_field'] ) ] );
+        }
+    }
+    $fields[] = [ 'source_field' => $source_field, 'wc_taxonomy' => $wc_taxonomy ];
+    $configuration['taxonomy_fields'] = MMI_Pipeline_Field_Mapping_Defaults::normalize_taxonomy_fields( $fields );
+
+    $ok = $wpdb->update(
+        $table,
+        [ 'configuration' => wp_json_encode( $configuration ), 'updated_at' => current_time( 'mysql' ) ],
+        [ 'supplier_id' => $supplier_id ]
+    );
+    if ( $ok === false ) {
+        wp_send_json_error( [ 'message' => 'Database error: ' . $wpdb->last_error ] );
+    }
+    delete_transient( 'mmi_taxmap_raw_scan_cache' );
+
+    mmi_data_pipeline_audit( 'source.update', [
+        'object_type' => 'data_source',
+        'object_id'   => $supplier_id,
+        'outcome'     => 'success',
+        'details'     => [ 'taxonomy_field' => $source_field, 'wc_taxonomy' => $wc_taxonomy, 'section_rows' => $use_sections ],
+    ] );
+
+    $tax_obj = get_taxonomy( $wc_taxonomy );
+    wp_send_json_success( [
+        'fields'       => $configuration['taxonomy_fields'],
+        'source_field' => $source_field,
+        'wc_taxonomy'  => $wc_taxonomy,
+        'pill_label'   => $row['supplier_name'] . ' — ' . ( $tax_obj ? $tax_obj->label : $wc_taxonomy ),
+        'records'      => count( $loaded['items'] ),
+        'refetched'    => $refetched,
     ] );
 } );
 
