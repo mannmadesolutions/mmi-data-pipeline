@@ -1114,12 +1114,15 @@ button.mmi-health-chip.is-open {
 }
 .mmi-wb-en-pic {
     position: relative;
-    width: 96px;
+    width: var(--mmi-wb-en-pic, 120px);
+}
+.mmi-wb-en-pic[draggable="true"] {
+    cursor: grab;
 }
 .mmi-wb-en-pic-img {
     display: block;
-    width: 96px;
-    height: 96px;
+    width: var(--mmi-wb-en-pic, 120px);
+    height: var(--mmi-wb-en-pic, 120px);
     padding: 0;
     border: 2px solid var(--mmi-wb-border);
     border-radius: 4px;
@@ -1167,10 +1170,74 @@ button.mmi-health-chip.is-open {
     right: 4px;
     color: var(--mmi-wb-danger);
 }
-.mmi-wb-en-star {
+/* Where a dragged picture lands: a bar before or after a used one, or "left out" over one that isn't. */
+.mmi-wb-en-pic.is-drop-before::before,
+.mmi-wb-en-pic.is-drop-after::after {
+    content: "";
     position: absolute;
-    top: 2px;
-    right: 2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--mmi-wb-accent);
+}
+.mmi-wb-en-pic.is-drop-before::before { left: -6px; }
+.mmi-wb-en-pic.is-drop-after::after { right: -6px; }
+.mmi-wb-en-pic.is-drop-out .mmi-wb-en-pic-img {
+    outline: 2px dashed var(--mmi-wb-danger);
+    outline-offset: 2px;
+}
+
+/* Pictures (2026-11-12): a product's facts on one row, its pictures and actions across the table under it.
+   The two rows read as one band, alternating with the next product's. */
+#mmi-wb-en-table.mmi-wb-en-has-pics > tbody > tr {
+    background: #fff;
+}
+#mmi-wb-en-table.mmi-wb-en-has-pics > tbody > tr.is-alt {
+    background: #f6f7f7;
+}
+#mmi-wb-en-table.mmi-wb-en-has-pics > tbody > tr.mmi-wb-en-head > * {
+    border-bottom: 0;
+    padding-bottom: 4px;
+}
+#mmi-wb-en-table.mmi-wb-en-has-pics > tbody > tr.mmi-wb-en-sub > td {
+    padding-top: 4px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--mmi-wb-border);
+}
+.mmi-wb-en-used {
+    color: var(--mmi-wb-muted);
+    white-space: nowrap;
+}
+.mmi-wb-en-used-low {
+    color: var(--mmi-wb-danger);
+}
+.mmi-wb-en-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.mmi-wb-en-bar .description {
+    margin: 0;
+}
+.mmi-wb-en-bar .mmi-wb-job-actions {
+    display: inline-flex;
+    gap: 6px;
+}
+.mmi-wb-en-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-wb-en-size input[type="range"] {
+    width: 140px;
+}
+.mmi-wb-en-size output {
+    min-width: 4.5em;
+    color: var(--mmi-wb-muted);
 }
 
 /* ── Maker pages: product pages (src/workbench/MakerPages.tsx) ── */

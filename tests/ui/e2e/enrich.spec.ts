@@ -23,6 +23,8 @@ async function open(page: Page, key = "descriptions") {
   return { api, errors, sec };
 }
 const row = (page: Page, id: number) => page.locator(`#mmi-wb-en-rows tr[data-id="${id}"]`);
+/** A product's pictures and actions: the sub-row under its row. */
+const pics = (page: Page, id: number) => page.locator(`#mmi-wb-en-rows tr[data-pics-for="${id}"]`);
 
 test("descriptions to review: now, proposed, where from; counts per kind and source", async ({ page }) => {
   const { sec, errors } = await open(page);
@@ -57,28 +59,46 @@ test("accept one, reject ticked ones, write now and put back", async ({ page }) 
   await expect(row(page, 3001)).toContainText("Put back");
 });
 
-test("pictures are picked in the row: own ones kept, featured first, saved as you click", async ({ page }) => {
+test("pictures are picked under the row: own ones kept, the first is featured, ordered by dragging, saved as you go", async ({ page }) => {
   const { api, sec } = await open(page);
   await sec.locator('[data-kind="image"]').click();
   await expect(sec.locator("#mmi-wb-en-rows tr[data-id]")).toHaveCount(3);
-  const r = row(page, 4001);
+  const r = pics(page, 4001);
   const logo = '.mmi-wb-en-pic[data-token="/wp-includes/images/w-logo-blue.png"]';
+  const own = '.mmi-wb-en-pic[data-token="att:77"]';
+  const chose = () => api.callsTo("enrich/4001/image/choose").at(-1)!.body;
   await expect(r.locator(".mmi-wb-en-pic")).toHaveCount(3);
   await expect(r.locator(".mmi-wb-en-pic-own")).toHaveText("now");
+  await expect(r.locator(".mmi-wb-en-star")).toHaveCount(0); // ordering is by dragging now
   // Nothing saved yet: the product's own picture starts picked, so adding one keeps it.
-  await expect(r.locator('.mmi-wb-en-pic[data-token="att:77"] .mmi-wb-en-pic-badge')).toHaveText("Featured");
+  await expect(r.locator(`${own} .mmi-wb-en-pic-badge`)).toHaveText("Featured");
   await r.locator(`${logo} .mmi-wb-en-pic-img`).click();
   await expect(r.locator(`${logo} .mmi-wb-en-pic-badge`)).toHaveText("1");
-  expect(api.callsTo("enrich/4001/image/choose").at(-1)!.body).toEqual({ images: ["att:77", "/wp-includes/images/w-logo-blue.png"] });
-  await r.locator(logo).getByRole("button", { name: "Make this the featured picture" }).click();
+  expect(chose()).toEqual({ images: ["att:77", "/wp-includes/images/w-logo-blue.png"] });
+  await expect(row(page, 4001).locator(".mmi-wb-en-used")).toHaveText("2 of 3 used");
+  // Dragged before the first tile, it takes the featured place, and the tiles follow the pick.
+  await r.locator(logo).dragTo(r.locator(own), { targetPosition: { x: 6, y: 40 } });
   await expect(r.locator(`${logo} .mmi-wb-en-pic-badge`)).toHaveText("Featured");
-  expect(api.callsTo("enrich/4001/image/choose").at(-1)!.body).toEqual({ images: ["/wp-includes/images/w-logo-blue.png", "att:77"] });
-  await r.locator('.mmi-wb-en-pic[data-token="att:77"] .mmi-wb-en-pic-img').click();
-  await r.locator(`${logo} .mmi-wb-en-pic-img`).click();
+  expect(chose()).toEqual({ images: ["/wp-includes/images/w-logo-blue.png", "att:77"] });
+  await expect(r.locator(".mmi-wb-en-pic").first()).toHaveAttribute("data-token", "/wp-includes/images/w-logo-blue.png");
+  // Alt+Left moves a focused picture one place: the product's own is featured again.
+  await r.locator(`${own} .mmi-wb-en-pic-img`).focus();
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(r.locator(`${own} .mmi-wb-en-pic-badge`)).toHaveText("Featured");
+  expect(chose()).toEqual({ images: ["att:77", "/wp-includes/images/w-logo-blue.png"] });
+  // Dropped on a picture left out, it is left out too.
+  await r.locator(logo).dragTo(r.locator(".mmi-wb-en-pic.is-out").first());
+  expect(chose()).toEqual({ images: ["att:77"] });
+  await expect(r.locator(`${logo}.is-out`)).toHaveCount(1);
+  await r.locator(`${own} .mmi-wb-en-pic-img`).click();
   await expect(r.getByRole("button", { name: "Accept" })).toBeDisabled(); // nothing picked
+  // The picture size is the person's: the slider resizes every tile, and is kept for the next visit.
+  await sec.locator("#mmi-wb-en-size").fill("200");
+  await expect(r.locator(`${own} .mmi-wb-en-pic-img`)).toHaveCSS("width", "200px");
+  expect(await page.evaluate(() => localStorage.getItem("mmi-wb-en-pic-size"))).toBe("200");
   // A row with no pictures now starts with the first candidates; Accept saves the shown pick before deciding.
   const n = api.callsTo("enrich/4002/image/choose").length;
-  await row(page, 4002).getByRole("button", { name: "Accept" }).click();
+  await pics(page, 4002).getByRole("button", { name: "Accept" }).click();
   await expect(page.locator("#mmi-wb-en-notice")).toHaveText("1 picture proposal accepted: written in the next batch.");
   expect(api.callsTo("enrich/4002/image/choose").length).toBe(n + 1);
   expect(api.callsTo("enrich/4002/image/choose").at(-1)!.body).toEqual({ images: ["/wp-includes/images/w-logo-blue.png", "/wp-includes/images/wpicons.png"] });
@@ -87,5 +107,6 @@ test("pictures are picked in the row: own ones kept, featured first, saved as yo
 test("a picture smaller than the standard is marked", async ({ page }) => {
   const { sec } = await open(page);
   await sec.locator('[data-kind="image"]').click();
-  await expect(row(page, 4002).locator(".mmi-wb-en-pic-low")).toHaveText("small");
+  await expect(pics(page, 4002).locator(".mmi-wb-en-pic-low")).toHaveText("small");
+  await expect(row(page, 4002).locator(".mmi-wb-en-used-low")).toContainText("1 small");
 });

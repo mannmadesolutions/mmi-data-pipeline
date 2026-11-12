@@ -134,6 +134,49 @@ export function makeFeatured(chosen: string[], token: string): string[] {
   return [token, ...chosen.filter((t) => t !== token)];
 }
 
+/**
+ * A picture dragged onto another: dropped before or after a used one, it is used at that place (the first
+ * place is the featured picture); dropped on one left out, it is left out too. Anything else: no change.
+ */
+export function placePick(chosen: string[], token: string, target: string, side: "before" | "after"): string[] {
+  if (token === target) return chosen;
+  const rest = chosen.filter((t) => t !== token);
+  const at = rest.indexOf(target);
+  if (at < 0) return chosen.includes(target) ? chosen : rest; // onto a left-out picture: leave this one out
+  const next = [...rest];
+  next.splice(side === "before" ? at : at + 1, 0, token);
+  return next;
+}
+
+/** A used picture moved one place left (-1) or right (+1) in the pick. */
+export function nudgePick(chosen: string[], token: string, by: -1 | 1): string[] {
+  const i = chosen.indexOf(token);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= chosen.length) return chosen;
+  const next = [...chosen];
+  [next[i], next[j]] = [next[j]!, next[i]!];
+  return next;
+}
+
+/** The order the tiles are shown in: the pick (featured first), then the pictures left out, as listed. */
+export function tileOrder<T extends { token: string }>(tiles: T[], chosen: string[]): T[] {
+  const by = new Map(tiles.map((t) => [t.token, t]));
+  const used = chosen.map((t) => by.get(t)).filter((t): t is T => !!t);
+  return [...used, ...tiles.filter((t) => !chosen.includes(t.token))];
+}
+
+/** Picture size in the picker, in pixels: the person's choice, kept in this browser. */
+export const PIC_SIZE = { key: "mmi-wb-en-pic-size", min: 72, max: 320, step: 8, fallback: 120 } as const;
+export function readPicSize(): number {
+  try {
+    const n = Number(window.localStorage.getItem(PIC_SIZE.key));
+    return n >= PIC_SIZE.min && n <= PIC_SIZE.max ? n : PIC_SIZE.fallback;
+  } catch { return PIC_SIZE.fallback; }
+}
+export function savePicSize(n: number): void {
+  try { window.localStorage.setItem(PIC_SIZE.key, String(n)); } catch { /* private window: this visit only */ }
+}
+
 /** What write-now answered, in words. */
 export function writeResult(r: { result: string; message: string }, kind: EnrichKind): { text: string; ok: boolean } {
   const what = kind === "content" ? "Description" : "Pictures";

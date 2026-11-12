@@ -3,14 +3,19 @@
  * Workbench: descriptions read from a maker's page or a supplier, and pictures
  * for products that have few or none. Accept queues a proposal for the
  * throttled writer; Write now writes one at once; Put back restores the old
- * value. Pictures are picked in the row: click to use or leave out, the star
- * makes one the featured picture; the pick is saved as you click, and Accept
- * or Write now imports exactly that.
+ * value. Pictures are picked under each product's row, across the table: the
+ * tiles show the pick in order, the first one the featured picture, then the
+ * pictures left out. Click a tile to use or leave it out; drag it before or
+ * after a used one to put it there, or onto a left-out one to leave it out
+ * (Alt+arrows move a focused one, Alt+Home makes it featured). The pick is
+ * saved as you go, and Accept or Write now imports exactly that, in that
+ * order. The tiles' size is the person's choice, kept in this browser.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
 import { ApiError } from "./api";
 import {
-  effectivePick, EMPTY_ENRICH, ENRICH_STATUS, ENRICH_VIEWS, enrichActions, enrichCount, enrichQuery, enrichSources, makeFeatured, pickable, sourceShort, togglePick, writeResult,
+  effectivePick, EMPTY_ENRICH, ENRICH_STATUS, ENRICH_VIEWS, enrichActions, enrichCount, enrichQuery, enrichSources, makeFeatured, nudgePick, PIC_SIZE, pickable, placePick, readPicSize,
+  savePicSize, sourceShort, tileOrder, togglePick, writeResult,
   type EnrichAction, type EnrichFilter, type EnrichKind, type EnrichPage, type EnrichRow, type EnrichSummary,
 } from "./enrichApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
@@ -46,6 +51,10 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
   // Picks a person made on this page, saved as they clicked: shown as they are, even when empty.
   const [picks, setPicks] = useState<Record<number, string[]>>({});
   const shown = (r: EnrichRow): string[] => picks[r.id] ?? effectivePick(r);
+  const [picSize, setPicSize] = useState(readPicSize);
+  // The tile being dragged, and where it would land.
+  const drag = useRef<{ row: number; token: string } | null>(null);
+  const [drop, setDrop] = useState<{ row: number; token: string; side: "before" | "after" | "out" } | null>(null);
 
   const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
   const loadSummary = useCallback(() => { rest<EnrichSummary>(cfg, "GET", "enrich/summary").then(setSummary).catch(() => {}); }, [cfg]);
@@ -123,6 +132,9 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
   const sourceLabel = (src: string) => sources.find((s) => s.value === src)?.label ?? src;
   const ticked = selected.filter((id) => enrichActions(rows.find((r) => r.id === id)?.status ?? "applied").includes("accept"));
   const allTicked = rows.length > 0 && rows.every((r) => selected.includes(r.id));
+  // Pictures: each product's tiles take the table's whole width, under its row.
+  const pics = filter.kind === "image";
+  const cols = pics ? 6 : 7;
   const setKind = (k: EnrichKind) => { setFilter({ ...EMPTY_ENRICH, kind: k }); onKind?.(k); };
 
   const button = (row: EnrichRow, a: EnrichAction) => {
@@ -138,27 +150,67 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
     }
   };
 
+  /** Where a dragged tile would land on this one: before or after it when it is used, "out" when it is left out. */
+  const landing = (e: DragEvent<HTMLDivElement>, used: boolean): "before" | "after" | "out" => {
+    if (!used) return "out";
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left + r.width / 2 ? "before" : "after";
+  };
+
   const pictures = (row: EnrichRow) => {
-    const can = pickable(row);
+    const can = pickable(row) && busy === null;
     const chosen = shown(row);
-    const tiles = [...row.own.map((o) => ({ token: o.token, url: o.url, own: true })), ...row.images.map((u) => ({ token: u, url: u, own: false }))];
+    const tiles = tileOrder([...row.own.map((o) => ({ token: o.token, url: o.url, own: true })), ...row.images.map((u) => ({ token: u, url: u, own: false }))], chosen);
+    const onKey = (e: KeyboardEvent<HTMLButtonElement>, token: string) => {
+      if (!e.altKey || !chosen.includes(token)) return;
+      const next = e.key === "ArrowLeft" ? nudgePick(chosen, token, -1) : e.key === "ArrowRight" ? nudgePick(chosen, token, 1) : e.key === "Home" ? makeFeatured(chosen, token) : null;
+      if (!next) return;
+      e.preventDefault();
+      void pick(row, next);
+      // The tile keeps the focus in its new place.
+      window.setTimeout(() => (document.querySelector(`#mmi-wb-en-rows .mmi-wb-en-pic[data-token="${CSS.escape(token)}"] .mmi-wb-en-pic-img`) as HTMLElement | null)?.focus(), 0);
+    };
     return (
-      <div className="mmi-wb-en-pics">
+      <div className="mmi-wb-en-pics" role="list" aria-label={`Pictures for #${row.id}, in the order they are used`}>
         {tiles.map((p) => {
           const i = chosen.indexOf(p.token);
           const low = row.low_res.includes(p.token);
+          const here = drop && drop.row === row.id && drop.token === p.token ? ` is-drop-${drop.side}` : "";
           return (
-            <div key={p.token} className={`mmi-wb-en-pic${i === 0 ? " is-featured" : i > 0 ? " is-gallery" : " is-out"}${low ? " is-low-res" : ""}`} data-token={p.token}>
-              <button type="button" className="mmi-wb-en-pic-img" disabled={!can || busy !== null}
-                aria-pressed={i >= 0} aria-label={`${i >= 0 ? "Leave out" : "Use"} ${p.own ? "the product's picture" : "this picture"}`} onClick={() => pick(row, togglePick(chosen, p.token))}>
-                <img src={p.url} alt="" loading="lazy" />
+            <div key={p.token} role="listitem" data-token={p.token}
+              className={`mmi-wb-en-pic${i === 0 ? " is-featured" : i > 0 ? " is-gallery" : " is-out"}${low ? " is-low-res" : ""}${here}`}
+              draggable={can}
+              onDragStart={(e) => { drag.current = { row: row.id, token: p.token }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.token); }}
+              onDragOver={(e) => {
+                const d = drag.current;
+                if (!d || d.row !== row.id || d.token === p.token) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                const side = landing(e, i >= 0);
+                setDrop((cur) => (cur && cur.row === row.id && cur.token === p.token && cur.side === side ? cur : { row: row.id, token: p.token, side }));
+              }}
+              onDragLeave={() => setDrop((cur) => (cur && cur.token === p.token ? null : cur))}
+              onDrop={(e) => {
+                const d = drag.current;
+                setDrop(null);
+                drag.current = null;
+                if (!d || d.row !== row.id) return;
+                e.preventDefault();
+                const side = landing(e, i >= 0);
+                const next = placePick(chosen, d.token, p.token, side === "out" ? "after" : side);
+                if (next.join("\n") !== chosen.join("\n")) void pick(row, next);
+              }}
+              onDragEnd={() => { drag.current = null; setDrop(null); }}>
+              <button type="button" className="mmi-wb-en-pic-img" disabled={!can}
+                aria-pressed={i >= 0}
+                aria-label={`${i >= 0 ? "Leave out" : "Use"} ${p.own ? "the product's picture" : "this picture"}${i === 0 ? " (featured)" : i > 0 ? ` (picture ${i + 1})` : ""}`}
+                title={can ? (i >= 0 ? "Click to leave out. Drag to change the order: the first is the featured picture" : "Click to use. Drag before or after a used picture to put it there") : undefined}
+                onClick={() => pick(row, togglePick(chosen, p.token))} onKeyDown={(e) => onKey(e, p.token)}>
+                <img src={p.url} alt="" loading="lazy" draggable={false} />
               </button>
               {i >= 0 && <span className="mmi-wb-en-pic-badge">{i === 0 ? "Featured" : i}</span>}
               {p.own && <span className="mmi-wb-en-pic-own">now</span>}
               {low && <span className="mmi-wb-en-pic-low" title="Smaller than the picture standard">small</span>}
-              {can && i !== 0 && (
-                <button type="button" className="button-link mmi-wb-en-star" aria-label="Make this the featured picture" disabled={busy !== null} onClick={() => pick(row, makeFeatured(chosen, p.token))}><Dashicon name="star-empty" /></button>
-              )}
             </div>
           );
         })}
@@ -199,6 +251,14 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
             <option value="yes">Some pictures now</option>
           </select>
         )}
+        {filter.kind === "image" && (
+          <label className="mmi-wb-en-size" title="How big the pictures show; kept in this browser">
+            <span>Picture size</span>
+            <input type="range" id="mmi-wb-en-size" min={PIC_SIZE.min} max={PIC_SIZE.max} step={PIC_SIZE.step} value={picSize}
+              onChange={(e) => { const n = Number(e.target.value); setPicSize(n); savePicSize(n); }} />
+            <output htmlFor="mmi-wb-en-size">{picSize} px</output>
+          </label>
+        )}
         <span className="mmi-wb-count" id="mmi-wb-en-count">{page ? `${page.total} proposal${page.total === 1 ? "" : "s"}` : ""}</span>
         {selected.length > 0 && (
           <span className="mmi-wb-pr-bulk">
@@ -210,7 +270,8 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
       </div>
 
       <div className="mmi-table-scroll-wrapper">
-        <table ref={tableRef} className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-en-table">
+        <table ref={tableRef} className={`wp-list-table widefat mmi-wb-pr-table${pics ? " mmi-wb-en-has-pics" : " striped"}${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-en-table"
+          style={pics ? ({ "--mmi-wb-en-pic": `${picSize}px` } as CSSProperties) : undefined}>
           <thead>
             <tr>
               <td className="check-column"><input type="checkbox" aria-label="Tick every row on this page" checked={allTicked} onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])} /></td>
@@ -218,17 +279,47 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
                 <SortTh key={c.key} col={c.key} label={c.label} title="Sorts this page" active={sort.key === c.key} desc={sort.dir === "desc"} onSort={sortBy} />
               ))}
               <SortTh col="value" active={sort.key === "value"} desc={sort.dir === "desc"} onSort={sortBy}
-                label={filter.kind === "content" ? "Description: now → proposed" : "Pictures: click to use or leave out"}
-                title={filter.kind === "content" ? "Sorts this page by the proposed description's length" : "Sorts this page by how many pictures are proposed"} />
-              <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
+                label={pics ? "Pictures" : "Description: now → proposed"}
+                title={pics ? "Sorts this page by how many pictures are proposed" : "Sorts this page by the proposed description's length"} />
+              {!pics && <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>}
             </tr>
           </thead>
           <tbody id="mmi-wb-en-rows">
-            {!page && <tr><td colSpan={7} className="mmi-wb-empty-cell">Loading proposals…</td></tr>}
-            {page && !rows.length && <tr><td colSpan={7} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
-            {rows.map((row) => {
+            {!page && <tr><td colSpan={cols} className="mmi-wb-empty-cell">Loading proposals…</td></tr>}
+            {page && !rows.length && <tr><td colSpan={cols} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
+            {rows.map((row, n) => {
               const [st, sk] = ENRICH_STATUS[row.status] ?? [row.status, ""];
               const mine = rowNotice && rowNotice.id === row.id ? rowNotice : null;
+              const note = mine && <div className={`notice notice-${mine.kind === "error" ? "error" : "success"} inline`} role="status"><p>{mine.text}</p></div>;
+              if (pics) {
+                // The product's facts on one line, its pictures across the whole table under it.
+                const used = shown(row).length;
+                const all = row.own.length + row.images.length;
+                const alt = n % 2 ? " is-alt" : "";
+                return (
+                  <Fragment key={row.id}>
+                    <tr data-id={row.id} className={`mmi-wb-en-head${alt}`}>
+                      <th scope="row" className="check-column"><input type="checkbox" aria-label={`Tick #${row.id}`} checked={selected.includes(row.id)}
+                        onChange={(e) => setSelected((s) => (e.target.checked ? [...s, row.id] : s.filter((x) => x !== row.id)))} /></th>
+                      <td className="mmi-wb-col-id"><a href={row.edit_url} target="_blank" rel="noreferrer">{row.id}</a></td>
+                      <td className="mmi-wb-en-product">{row.title}</td>
+                      <td>{row.source_url ? <a href={row.source_url} target="_blank" rel="noreferrer" title={sourceLabel(row.source)}>{sourceShort(row.source)}</a> : <span title={sourceLabel(row.source)}>{sourceShort(row.source)}</span>}</td>
+                      <td><span className={`mmi-badge ${sk} inline`}>{st}</span></td>
+                      <td className="mmi-wb-en-used">{used} of {all} used{row.low_res.length ? <span className="mmi-wb-en-used-low"> · {row.low_res.length} small</span> : null}</td>
+                    </tr>
+                    <tr data-pics-for={row.id} className={`mmi-wb-en-sub${alt}`}>
+                      <td colSpan={cols}>
+                        <div className="mmi-wb-en-bar">
+                          <span className="description">{pickable(row) ? "Click to use or leave out. Drag to order: the first is the featured picture, the rest the gallery." : "The pick this proposal was written with."}</span>
+                          <span className="mmi-wb-job-actions">{enrichActions(row.status).map((a) => button(row, a))}</span>
+                        </div>
+                        {note}
+                        {pictures(row)}
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              }
               return (
                 <tr key={row.id} data-id={row.id}>
                   <th scope="row" className="check-column"><input type="checkbox" aria-label={`Tick #${row.id}`} checked={selected.includes(row.id)}
@@ -244,7 +335,7 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
                         <div className="mmi-wb-en-new">{row.proposed}{row.chars > row.proposed.length ? "…" : ""}</div>
                       </>
                     ) : pictures(row)}
-                    {mine && <div className={`notice notice-${mine.kind === "error" ? "error" : "success"} inline`} role="status"><p>{mine.text}</p></div>}
+                    {note}
                   </td>
                   <td className="mmi-wb-job-actions">{enrichActions(row.status).map((a) => button(row, a))}</td>
                 </tr>

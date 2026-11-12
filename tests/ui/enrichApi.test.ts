@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectivePick, EMPTY_ENRICH, sourceShort, enrichActions, enrichCount, enrichQuery, enrichSources, makeFeatured, togglePick, writeResult, type EnrichSummary } from "../../src/workbench/enrichApi";
+import { effectivePick, EMPTY_ENRICH, sourceShort, enrichActions, enrichCount, enrichQuery, enrichSources, makeFeatured, nudgePick, placePick, tileOrder, togglePick, writeResult, type EnrichSummary } from "../../src/workbench/enrichApi";
 
 const s: EnrichSummary = {
   counts: { "content:vendor_page": { proposed: 10, applied: 5 }, "content:web_assets": { proposed: 2 }, "image:vendor_page": { proposed: 3, stale: 1 } },
@@ -30,6 +30,24 @@ describe("description and picture proposals", () => {
     expect(togglePick(["a", "b"], "a")).toEqual(["b"]);
     expect(makeFeatured(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
     expect(makeFeatured(["a"], "z")).toEqual(["z", "a"]);
+  });
+  it("orders the pick by dragging: before or after a used picture, or onto a left-out one to leave it out", () => {
+    expect(placePick(["a", "b", "c"], "c", "a", "before")).toEqual(["c", "a", "b"]); // the featured place
+    expect(placePick(["a", "b", "c"], "a", "b", "after")).toEqual(["b", "a", "c"]);
+    expect(placePick(["a", "b"], "z", "b", "before")).toEqual(["a", "z", "b"]); // a left-out one is used there
+    expect(placePick(["a", "b"], "b", "z", "before")).toEqual(["a"]); // onto a left-out one: left out
+    expect(placePick(["a", "b"], "y", "z", "after")).toEqual(["a", "b"]); // both left out: nothing changes
+    expect(placePick(["a", "b"], "a", "a", "after")).toEqual(["a", "b"]);
+  });
+  it("moves a used picture one place with the keyboard, never past either end", () => {
+    expect(nudgePick(["a", "b", "c"], "b", -1)).toEqual(["b", "a", "c"]);
+    expect(nudgePick(["a", "b", "c"], "c", 1)).toEqual(["a", "b", "c"]);
+    expect(nudgePick(["a", "b"], "z", 1)).toEqual(["a", "b"]);
+  });
+  it("shows the pick first, featured leading, then the pictures left out as listed", () => {
+    const t = ["a", "b", "c", "d"].map((token) => ({ token }));
+    expect(tileOrder(t, ["c", "a"]).map((x) => x.token)).toEqual(["c", "a", "b", "d"]);
+    expect(tileOrder(t, ["gone", "b"]).map((x) => x.token)).toEqual(["b", "a", "c", "d"]);
   });
   it("says what write-now did", () => {
     expect(writeResult({ result: "applied", message: "" }, "content")).toEqual({ text: "Description written to the product.", ok: true });
