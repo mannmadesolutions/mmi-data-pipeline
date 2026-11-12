@@ -186,6 +186,19 @@ add_action( 'wp_ajax_mmi_workbench_set_terms', function () {
     is_wp_error( $row ) ? wp_send_json_error( [ 'message' => $row->get_error_message() ] ) : wp_send_json_success( [ 'row' => $row ] );
 } );
 
+// One product's row as the results table shows it, after a fix made in its row elsewhere (Product Data's
+// issue fixes write through the mmpt/v1 REST routes; 2026-11-12).
+add_action( 'wp_ajax_mmi_workbench_row', function () {
+    mmi_workbench_ajax_guard();
+    // phpcs:disable WordPress.Security.NonceVerification.Missing
+    $id = absint( $_POST['product_id'] ?? 0 );
+    $row = get_post_type( $id ) === 'product'
+        ? ( Product_Workbench::rows( [ $id ], Product_Workbench::sanitize_meta_columns( mmi_workbench_post_array( 'meta_cols' ) ) )[0] ?? null )
+        : null;
+    // phpcs:enable
+    $row ? wp_send_json_success( [ 'row' => $row ] ) : wp_send_json_error( [ 'message' => 'Unknown product.' ] );
+} );
+
 add_action( 'wp_ajax_mmi_workbench_set_field', function () {
     mmi_workbench_ajax_guard();
     // phpcs:disable WordPress.Security.NonceVerification.Missing

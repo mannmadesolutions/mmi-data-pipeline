@@ -34,6 +34,7 @@ const HOOKED = [
 	Rest::class, UrlQueue::class, PageReview::class, MapProposals::class, Pictures::class, PictureChoices::class, FeedFill::class,
 	VendorMaps::class, BrandSites::class, SharedPages::class, UrlReview::class, PageList::class, WorkbenchColumns::class,
 	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class, ExtBridge::class, Capture::class, Background::class, PageEvents::class,
+	Issues::class,
 ];
 
 /** The module's tables, hooks, review API and CLI. */

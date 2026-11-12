@@ -168,6 +168,8 @@ class MMI_Pipeline_Admin {
 
         if ( 'workbench' === $current_tab ) {
             self::enqueue_rule_builder();
+            // The media library: a brand created from an issue's fix picks or uploads its logo (2026-11-12).
+            wp_enqueue_media();
             self::enqueue_style( 'mmi-pipeline-workbench',
                 'assets/css/product-workbench.css', [ 'mmi-pipeline-settings', 'mmi-pipeline-rule-builder' ] );
             // The React app (src/workbench → build/workbench.js); the view

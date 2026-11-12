@@ -38,6 +38,7 @@ final class Write {
 		'product-first-pictures' => [ 'Product Data: first pictures', [ '_thumbnail_id', '_product_image_gallery' ], false ],
 		'product-vendor-links'   => [ 'Product Data: maker page links', [ 'vendor_product_url', 'vendor_product_url_verified' ], false ],
 		'product-terms'          => [ 'Product Data: categories and brands', [ 'tax:product_cat', 'tax:product_brand' ], true ],
+		'product-issue-fixes'    => [ 'Product Data: fixed from the Workbench', [ '_sku', '_virtual', '_thumbnail_id', '_product_image_gallery', '_weight', '_length', '_width', '_height', '_global_unique_id' ], false ],
 		'product-feed-fill'      => [ 'Product Data: filled from distributor data', [ '_mmi_features', '_mmi_youtube_urls', '_mmi_mac_requirements', '_mmi_windows_requirements', '_mmi_linux_requirements', '_mmi_licensing', '_mmi_platforms' ], false ],
 		'product-extension'      => [ 'Product Data: Chrome extension', [ '_mmi_disclaimer', '_mmi_youtube_urls', '_mmi_audio', '_mmi_features', '_mmi_manuals', '_mmi_version', '_mmi_mac_requirements', '_mmi_windows_requirements', '_mmi_linux_requirements', '_mmi_platforms', '_weight', '_length', '_width', '_height' ], false ],
 		'product-page-fills'     => [ 'Product Data: filled from maker pages', [ '_mmi_features', '_mmi_manuals', '_mmi_youtube_urls', '_mmi_audio', '_mmi_version', '_mmi_disclaimer', '_mmi_mac_requirements', '_mmi_windows_requirements', '_mmi_linux_requirements', '_mmi_platforms', '_weight', '_length', '_width', '_height' ], true ],

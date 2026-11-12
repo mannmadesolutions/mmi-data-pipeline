@@ -34,7 +34,25 @@ final class FeedFill {
 
 	public static function register_hooks(): void {
 		add_action( 'woocommerce_new_product', [ __CLASS__, 'noted' ], 20 );
+		add_action( 'set_object_terms', [ __CLASS__, 'brand_arrived' ], 20, 6 );
 		add_action( self::HOOK, [ __CLASS__, 'run_queue' ] );
+	}
+
+	/**
+	 * A new product got its first brand after it was filled (a supplier value mapped later, a brand
+	 * created in the Workbench): fill it again, since its description and pictures were looked up
+	 * without one (2026-11-12). fill() only fills gaps, so a second pass adds and never replaces.
+	 */
+	public static function brand_arrived( $object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids ): void {
+		$id = (int) $object_id;
+		if ( $taxonomy !== 'product_brand' || $old_tt_ids || ! $tt_ids || get_post_type( $id ) !== 'product' || ! metadata_exists( 'post', $id, self::CHECKED ) ) {
+			return;
+		}
+		if ( strtotime( (string) get_post_field( 'post_date_gmt', $id ) . ' UTC' ) < time() - self::NEW_DAYS * DAY_IN_SECONDS ) {
+			return; // run_queue() only looks at new products; an old one is the catalog-wide `wp mmpt feed_fill`'s
+		}
+		delete_post_meta( $id, self::CHECKED );
+		self::noted();
 	}
 
 	/** An import (or a person) made a product: fill it shortly, once the import has set its links and terms. */

@@ -639,6 +639,8 @@ class MMI_Dynamic_Product_Importer {
         // Runs after promo so promotional pricing is preserved regardless.
         // Works for both new ($product_id = 0) and existing products.
         $override_stock_status = null; // captured for post-save force-write (see below)
+        $created_this_run      = false; // set when this item creates the product (stock re-check below)
+        $stock_override_input  = null;  // [ effective source status, stock mapped?, resolved status, mapped qty ] for that re-check
         if ( $this->stock_override_resolver !== null ) {
             $src_status      = $product_data['stock_status'] ?? ( $product_data['_stock_status'] ?? null );
             $stock_is_mapped = ( $src_status !== null );
@@ -655,6 +657,7 @@ class MMI_Dynamic_Product_Importer {
                 $item,
                 $this->supplier_name
             );
+            $stock_override_input = [ $effective_src, $stock_is_mapped, $resolved, $product_data['stock_quantity'] ?? ( $product_data['_stock'] ?? null ) ];
             if ( $resolved !== $effective_src ) {
                 $this->log(
                     "Stock override applied: source={$effective_src} → {$resolved}"
@@ -797,7 +800,8 @@ class MMI_Dynamic_Product_Importer {
             // profile mapping _virtual's constant '1' against WooCommerce's
             // stored 'yes' otherwise never matches, so every such product
             // gets needlessly re-saved on every scheduled run).
-            $crud_data = $this->resolve_crud_taxonomy_terms($item, $product_data);
+            $tax_plan = $this->taxonomy_handler->plan_taxonomy_terms( (int) $product_id, $product_data );
+            [ $crud_data, $tax_written ] = $this->crud_data_with_planned_terms( $item, $product_data, (int) $product_id, $tax_plan );
             // "Only fill when empty" mappings leave a field the product already has (dropped like a locked field).
             if ( class_exists( 'MMI_Pipeline_Write' ) ) {
                 $crud_data = \MMI_Pipeline_Field_Locks::filter_data( $crud_data, \MMI_Pipeline_Write::filled_fields( (int) $product_id, $this->field_mappings ) );
@@ -846,7 +850,10 @@ class MMI_Dynamic_Product_Importer {
             }
 
             // Create new product
-            $create_result = $this->product_crud->create_product($this->resolve_crud_taxonomy_terms($item, $product_data));
+            $tax_plan = $this->taxonomy_handler->plan_taxonomy_terms( 0, $product_data );
+            [ $create_data, $tax_written ] = $this->crud_data_with_planned_terms( $item, $product_data, 0, $tax_plan );
+            $created_this_run = true;
+            $create_result = $this->product_crud->create_product( $create_data );
             $product_id    = $create_result['product_id'];
             $this->stats['stock_updated'] += $create_result['stock_updated_count'];
             if ($product_id) {
@@ -880,7 +887,55 @@ class MMI_Dynamic_Product_Importer {
         // Apply taxonomy mappings (brand → product_brand, etc.) and store raw
         // source values as _mmi_src_{field} meta for later batch-apply.
         if ( ! empty( $product_id ) ) {
-            $this->taxonomy_handler->apply_taxonomy_mappings( (int) $product_id, $product_data );
+            $this->taxonomy_handler->apply_taxonomy_mappings( (int) $product_id, $product_data, $tax_plan ?? null, $tax_written ?? [] );
+
+            // A product created by this run was checked against the stock
+            // rules before it had an ID, when a brand or category condition
+            // can't match anything (evaluate_taxonomy_condition() needs a
+            // real product). Now that it has its terms, check again so it
+            // starts out the way the next catalog run would leave it
+            // (2026-11-12).
+            if ( $created_this_run && $stock_override_input !== null ) {
+                [ $effective_src, $stock_is_mapped, $resolved_before, $mapped_qty ] = $stock_override_input;
+                clean_object_term_cache( (int) $product_id, 'product' );
+                $resolved_now = $this->stock_override_resolver->resolve( (int) $product_id, $effective_src, $item, $this->supplier_name );
+                if ( $resolved_now !== $resolved_before ) {
+                    $this->log( "Stock override re-checked after create: {$resolved_before} → {$resolved_now} (SKU: {$primary_value})", 'info' );
+                    \MMI_Logger::info(
+                        "Stock override re-checked after create: {$resolved_before} → {$resolved_now} (SKU: {$primary_value})",
+                        [ 'product_id' => (int) $product_id, 'sku' => $primary_value, 'before' => $resolved_before, 'resolved' => $resolved_now ],
+                        'sync',
+                        'MMI_Dynamic_Product_Importer'
+                    );
+                    // The answers differ, so one of them is a rule's: always written,
+                    // like the first answer was (it either fired a rule or matched
+                    // the mapped feed status).
+                    $product_data['stock_status']  = $resolved_now;
+                    $product_data['_stock_status'] = $resolved_now;
+                    if ( $resolved_now === 'outofstock' ) {
+                        $product_data['stock_quantity'] = 0;
+                        $product_data['_stock']         = 0;
+                    } elseif ( $resolved_before === 'outofstock' && $this->import_rules['stock_update'] ) {
+                        // The first answer zeroed the quantity; undo that, or
+                        // WooCommerce recalculates the product out of stock.
+                        if ( $mapped_qty !== null ) {
+                            $product_data['stock_quantity'] = $mapped_qty;
+                            $product_data['_stock']         = $mapped_qty;
+                            wc_update_product_stock( (int) $product_id, (int) $mapped_qty, 'set' );
+                        } elseif ( ! $stock_is_mapped ) {
+                            // Stock isn't mapped: the zero only turned managed stock on.
+                            unset( $product_data['stock_quantity'], $product_data['_stock'] );
+                            $created = wc_get_product( (int) $product_id );
+                            if ( $created && $created->get_manage_stock() ) {
+                                $created->set_manage_stock( false );
+                                $created->save();
+                            }
+                        }
+                    }
+                    $override_stock_status = $resolved_now; // written by the force-write at the end
+                    $source_hash = md5( wp_json_encode( $product_data ) );
+                }
+            }
 
             // Record this run's source+destination hash so the next run can skip
             // this product outright if neither has moved (see hash gate above).
@@ -952,13 +1007,11 @@ class MMI_Dynamic_Product_Importer {
             if ( ! array_key_exists( $taxonomy, $product_data ) ) {
                 continue;
             }
-            $mapping = is_array( $this->field_mappings[ $taxonomy ] ?? null ) ? $this->field_mappings[ $taxonomy ] : [];
-            $skipped = false;
-            $term_ids = \MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $this->supplier_name, $item, $taxonomy, $this->profile, $skipped );
-            if ( empty( $term_ids ) ) {
-                $is_constant = \MMI_Pipeline_Field_Mapping_Defaults::resolve_constant( $mapping, $this->supplier_name ) !== null;
-                $term_ids    = \MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids( $taxonomy, $mapping, $product_data[ $taxonomy ], $is_constant, $skipped );
-            }
+            $mapping     = is_array( $this->field_mappings[ $taxonomy ] ?? null ) ? $this->field_mappings[ $taxonomy ] : [];
+            $is_constant = \MMI_Pipeline_Field_Mapping_Defaults::resolve_constant( $mapping, $this->supplier_name ) !== null;
+            // The shared resolution order (2026-11-12), over every source
+            // field Taxonomy Mapping has rows for, as the manual import does.
+            $term_ids = \MMI_Pipeline_Field_Resolver::resolve_taxonomy_terms( $this->supplier_name, $taxonomy, $mapping, $product_data[ $taxonomy ], $item, (string) $this->profile, $is_constant );
             if ( empty( $term_ids ) ) {
                 unset( $product_data[ $taxonomy ] );
                 continue;
@@ -966,6 +1019,56 @@ class MMI_Dynamic_Product_Importer {
             $product_data[ $taxonomy ] = array_values( array_unique( array_map( 'intval', $term_ids ) ) );
         }
         return $product_data;
+    }
+
+    /**
+     * resolve_crud_taxonomy_terms() with product_cat and product_tag already
+     * set to the terms Taxonomy_Mapping_Handler::apply_taxonomy_mappings()
+     * would have left after its own replace and redirects, so the product's
+     * save writes them once (2026-11-12). Before, the save wrote the alias
+     * table's terms and apply_taxonomy_mappings() replaced them a moment
+     * later: set_object_terms fired twice per import, the first time with
+     * a category the product didn't keep.
+     *
+     * Result, per taxonomy: the field's own mapped terms if it has any, else
+     * what resolve_crud_taxonomy_terms() found (unchanged), plus any value
+     * redirected there. Locks are applied by the CRUD write and the planner
+     * alike. Not done when the profile's category mapping is off, since the
+     * save then writes no terms at all.
+     *
+     * @param array $plan Taxonomy_Mapping_Handler::plan_taxonomy_terms() for this product.
+     * @return array{0: array, 1: string[]} The CRUD data, and the taxonomies it now
+     *                                      fully writes (pass to apply_taxonomy_mappings()).
+     */
+    protected function crud_data_with_planned_terms( array $item, array $product_data, int $product_id, array $plan ): array {
+        $crud_data = $this->resolve_crud_taxonomy_terms( $item, $product_data );
+        $written   = [];
+        if ( empty( $this->import_rules['category_mapping'] ) ) {
+            return [ $crud_data, $written ];
+        }
+        foreach ( [ 'product_cat', 'product_tag' ] as $taxonomy ) {
+            if ( ! array_key_exists( $taxonomy, $product_data ) ) {
+                continue; // not mapped: the save doesn't touch it, a redirect is added after save
+            }
+            $append = $plan['append'][ $taxonomy ] ?? [];
+            if ( ! empty( $plan['own'][ $taxonomy ] ) ) {
+                $ids = $plan['own'][ $taxonomy ];
+            } elseif ( isset( $crud_data[ $taxonomy ] ) ) {
+                $ids = (array) $crud_data[ $taxonomy ];
+            } elseif ( $append ) {
+                $current = $product_id ? wp_get_object_terms( $product_id, $taxonomy, [ 'fields' => 'ids' ] ) : [];
+                $ids     = is_wp_error( $current ) ? [] : (array) $current;
+            } else {
+                continue;
+            }
+            $ids = array_values( array_unique( array_map( 'intval', array_merge( $ids, $append ) ) ) );
+            if ( ! $ids ) {
+                continue;
+            }
+            $crud_data[ $taxonomy ] = $ids;
+            $written[]              = $taxonomy;
+        }
+        return [ $crud_data, $written ];
     }
 
     protected function map_product_data($item) {
@@ -1481,8 +1584,20 @@ class MMI_Dynamic_Product_Importer {
             $product = new \WC_Product_Variable();
         }
 
-        // Apply standard fields to the parent
-        $this->product_crud->apply_fields_to_product( $product, $this->resolve_crud_taxonomy_terms( $base_item, $parent_data ) );
+        // Apply standard fields to the parent. An existing parent keeps the
+        // fields locked on it and the "Only fill when empty" fields it already
+        // has, as a simple product does in Product_CRUD_Manager::update_product()
+        // (2026-11-12: this path wrote straight over both).
+        $tax_plan = $this->taxonomy_handler->plan_taxonomy_terms( (int) $product_id, $parent_data );
+        [ $parent_crud, $tax_written ] = $this->crud_data_with_planned_terms( $base_item, $parent_data, (int) $product_id, $tax_plan );
+        if ( $product_id ) {
+            $parent_skip = \MMI_Pipeline_Field_Locks::get( (int) $product_id );
+            if ( class_exists( 'MMI_Pipeline_Write' ) ) {
+                $parent_skip = array_merge( $parent_skip, \MMI_Pipeline_Write::filled_fields( (int) $product_id, $this->field_mappings ) );
+            }
+            $parent_crud = \MMI_Pipeline_Field_Locks::filter_data( $parent_crud, $parent_skip );
+        }
+        $this->product_crud->apply_fields_to_product( $product, $parent_crud );
 
         // Collect all unique variation attribute values across the group
         $var_attr_defs = array_filter(
@@ -1535,7 +1650,7 @@ class MMI_Dynamic_Product_Importer {
         // Store primary key on new product
         $this->apply_primary_key_to_product( (int) $product_id, $parent_key );
         $this->taxonomy_handler->apply_identifier_to_product( (int) $product_id );
-        $this->taxonomy_handler->apply_taxonomy_mappings( (int) $product_id, $parent_data );
+        $this->taxonomy_handler->apply_taxonomy_mappings( (int) $product_id, $parent_data, $tax_plan, $tax_written );
 
         // Create/update individual variations
         $this->log( "Processing " . count( $group_items ) . " variations for group '{$parent_key}' ({$current}/{$total})" );

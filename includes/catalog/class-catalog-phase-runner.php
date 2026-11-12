@@ -170,16 +170,6 @@ final class Catalog_Phase_Runner {
             ];
         }
 
-        $override_rules = MMI_DB::get_setting( 'mmi_stock_override_rules', [] );
-        $has_overrides  = is_array( $override_rules ) && ! empty( $override_rules );
-        $phases[] = [
-            'phase'       => 'override_stock',
-            'label'       => 'Apply standing rules',
-            'args'        => [],
-            'skipped'     => ! $has_overrides,
-            'skip_reason' => $has_overrides ? '' : 'No custom rules configured',
-        ];
-
         $phases[] = [
             'phase'       => 'categories',
             'label'       => 'Auto-assign categories to uncategorized products',
@@ -194,6 +184,22 @@ final class Catalog_Phase_Runner {
             'args'        => [],
             'skipped'     => ! $rules['auto_assign_brands'],
             'skip_reason' => $rules['auto_assign_brands'] ? '' : 'Disabled in Catalog Rules',
+        ];
+
+        // Standing rules run after categories and brands (2026-11-12): a
+        // rule conditioned on brand or category (e.g. force out of stock for
+        // a brand) must see the terms this run just gave Uncategorized and
+        // brandless products, not wait a run. Nothing in those two phases
+        // reads what the rules write (both scanners pick products by terms
+        // alone, the category scanner by publish/private status).
+        $override_rules = MMI_DB::get_setting( 'mmi_stock_override_rules', [] );
+        $has_overrides  = is_array( $override_rules ) && ! empty( $override_rules );
+        $phases[] = [
+            'phase'       => 'override_stock',
+            'label'       => 'Apply standing rules',
+            'args'        => [],
+            'skipped'     => ! $has_overrides,
+            'skip_reason' => $has_overrides ? '' : 'No custom rules configured',
         ];
 
         return $phases;

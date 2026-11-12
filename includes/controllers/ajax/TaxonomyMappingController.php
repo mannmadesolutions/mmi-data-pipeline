@@ -840,73 +840,102 @@ add_action( 'wp_ajax_mmi_apply_taxonomy_mappings', function () {
         wp_send_json_success( [ 'message' => 'No mappings to apply', 'updated' => 0, 'skipped' => 0 ] );
     }
 
-    // The source_field may be compound ("master_category+sub_category").
-    // In that case we need to look at stored values like "Software / Sound Libraries".
-    // We derive the compound value from product meta OR we read from the raw JSON.
-    // Simplest reliable approach: read the meta key that the importer would have stored
-    // for this field (the raw value) — or fall back to scanning the JSON file.
-
-    // Determine the meta key where the raw source value is stored
-    // Convention: importer stores raw source values under _mmi_src_{field}
-    // If that meta doesn't exist we fall back to scanning product titles.
-    // For most cases (brand), brand is stored in the product_brand taxonomy already.
-    // Here we apply to products that have the source meta stored.
-
+    // Products are found by the raw value apply_taxonomy_mappings() stores in
+    // _mmi_src_{field}. 2026-11-12: limited to this supplier's products when a
+    // supplier is given (it took every supplier's products with that meta),
+    // values matched case-sensitively, and field locks respected — all by
+    // writing through Taxonomy_Mapping_Handler::apply_saved_mapping(), the
+    // same path saving a mapping uses. Values over its on-save limit go to the
+    // background pass (schedule_heal()).
     global $wpdb;
     $meta_key = '_mmi_src_' . str_replace( '+', '_', $source_field );
 
-    $rows = $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT post_id, meta_value FROM {$wpdb->postmeta}
-             WHERE meta_key = %s",
+    // Distinct values with how many products carry each. Grouped in PHP: the
+    // column's collation would merge "Effects" and "effects".
+    if ( $supplier !== '' ) {
+        $values = $wpdb->get_col( $wpdb->prepare(
+            "SELECT m.meta_value FROM {$wpdb->postmeta} m
+             JOIN {$wpdb->postmeta} s ON s.post_id = m.post_id AND s.meta_key = %s
+             WHERE m.meta_key = %s",
+            '_mmi_supplier_sku_' . $supplier,
             $meta_key
-        ),
-        ARRAY_A
-    );
+        ) );
+    } else {
+        $values = $wpdb->get_col( $wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s",
+            $meta_key
+        ) );
+    }
+    $value_counts = [];
+    foreach ( $values as $value ) {
+        $value = (string) $value;
+        $value_counts[ $value ] = ( $value_counts[ $value ] ?? 0 ) + 1;
+    }
 
     $updated = 0;
+    $already = 0;
+    $locked  = 0;
     $skipped = 0;
+    $queued  = 0;
 
-    foreach ( $rows as $row ) {
-        $product_id  = (int) $row['post_id'];
-        $source_val  = (string) $row['meta_value'];
-        if ( MMI_Pipeline_Taxmap_Exclusions::is_excluded( $supplier, $source_field, $wc_taxonomy, $source_val ) ) {
-            $skipped++;
+    foreach ( $value_counts as $source_val => $count ) {
+        $source_val = (string) $source_val;
+        if ( $source_val === '' || MMI_Pipeline_Taxmap_Exclusions::is_excluded( $supplier, $source_field, $wc_taxonomy, $source_val ) ) {
+            $skipped += $count;
             continue;
         }
-        $mapped_tid  = $mappings[ $source_val ]
+        $mapped_tid = $mappings[ $source_val ]
             ?? MMI_DB::match_taxmap_alias_rule( $supplier, $source_field, $source_val, $wc_taxonomy );
 
-        if ( $mapped_tid === null ) {
-            $skipped++;
-            continue;
-        }
-        if ( $mapped_tid === -1 ) {
-            $skipped++;
+        if ( $mapped_tid === null || (int) $mapped_tid <= 0 ) {
+            $skipped += $count;
             continue;
         }
 
         // Verify term exists
-        $term = get_term( $mapped_tid, $wc_taxonomy );
+        $term = get_term( (int) $mapped_tid, $wc_taxonomy );
         if ( ! $term || is_wp_error( $term ) ) {
-            $skipped++;
+            $skipped += $count;
             continue;
         }
 
-        wp_set_object_terms( $product_id, [ $mapped_tid ], $wc_taxonomy );
-        $updated++;
+        $out = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::apply_saved_mapping(
+            $supplier, $source_field, $source_val, $wc_taxonomy, (int) $mapped_tid, [ $wc_taxonomy ]
+        );
+        if ( ! empty( $out['too_many'] ) ) {
+            \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::schedule_heal( [
+                'mode'         => 'value',
+                'supplier_id'  => $supplier,
+                'source_field' => $source_field,
+                'source_value' => $source_val,
+                'wc_taxonomy'  => $wc_taxonomy,
+                'term_id'      => (int) $mapped_tid,
+            ] );
+            $queued += (int) $out['too_many'];
+            continue;
+        }
+        $updated += (int) $out['updated'];
+        $already += (int) $out['already'];
+        $locked  += (int) $out['locked'];
     }
 
     mmi_data_pipeline_audit( 'taxonomy.apply', [
         'object_type' => 'taxonomy_mapping',
         'object_id'   => $supplier,
         'outcome'     => 'success',
-        'details'     => [ 'source_field' => $source_field, 'wc_taxonomy' => $wc_taxonomy ],
+        'details'     => [ 'source_field' => $source_field, 'wc_taxonomy' => $wc_taxonomy, 'updated' => $updated, 'locked' => $locked, 'queued' => $queued ],
     ] );
+    $message = "Applied taxonomy mappings: {$updated} updated, {$already} already set, {$locked} locked, {$skipped} skipped";
+    if ( $queued ) {
+        $message .= ", {$queued} queued for a background pass";
+    }
     wp_send_json_success( [
-        'message' => "Applied taxonomy mappings: {$updated} updated, {$skipped} skipped",
+        'message' => $message,
         'updated' => $updated,
+        'already' => $already,
+        'locked'  => $locked,
         'skipped' => $skipped,
+        'queued'  => $queued,
     ] );
 } );
 

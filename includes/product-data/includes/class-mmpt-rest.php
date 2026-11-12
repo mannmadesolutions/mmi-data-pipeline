@@ -611,7 +611,7 @@ class Rest {
 	}
 
 	/** Set (or add) one product's terms, lock them against supplier imports, and log it. */
-	private static function write_terms( int $id, string $taxonomy, array $ids, bool $append ) {
+	public static function write_terms( int $id, string $taxonomy, array $ids, bool $append ) {
 		$before = wp_get_object_terms( $id, $taxonomy, [ 'fields' => 'ids' ] );
 		$before = is_wp_error( $before ) ? [] : array_map( 'intval', $before );
 		// A person's change from the Review table: written over a lock, then locked against supplier imports.
@@ -636,6 +636,8 @@ class Rest {
 		$locked  = static fn( string $tax ) => class_exists( 'MMI_Pipeline_Field_Locks' ) && \MMI_Pipeline_Field_Locks::is_locked( (int) $row['product_id'], $tax );
 		return [
 			'missing'    => $missing[ (int) $row['product_id'] ] ?? [],
+			// What is wrong and how to fix it in the row: one list, live gaps first (2026-11-12, Issues).
+			'issues'     => Issues::for_row( $row, $missing[ (int) $row['product_id'] ] ?? [] ),
 			'id'         => $row['product_id'],
 			'status'     => $row['status'],
 			'current'    => $row['current_title'],

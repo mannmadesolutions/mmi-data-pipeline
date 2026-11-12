@@ -37,7 +37,7 @@ test("opens on the titles to review: counts, what changes, the rules and how sur
   await expect(first.locator(".mmi-wb-pr-now .mmi-wb-before")).toHaveText("Perp Lic");
   await expect(first.locator(".mmi-wb-pr-chip")).toHaveText(["Tidy punctuation"]);
   await expect(first).toContainText("95%");
-  await expect(row(page, 2004)).toContainText("over length");
+  await expect(row(page, 2004).locator(".mmi-wb-issue")).toHaveText(["Too long"]);
   await expect(page.locator("#mmi-wb-pr-writer")).toHaveText("3 titles waiting to be written.");
   expect(errors).toEqual([]);
 });
@@ -143,9 +143,15 @@ test("ticked rows change brand together, replacing or adding", async ({ page }) 
   expect(api.callsTo("proposals/bulk-terms")[0]!.body).toEqual({ kind: "brands", mode: "add", products: [2001, 2003], ids: [21] });
 });
 
-test("a product missing an input says so, and what it costs", async ({ page }) => {
-  await open(page);
+test("a product missing an input says so, what it costs, and is fixed in the row", async ({ page }) => {
+  const { api } = await open(page);
   const badge = row(page, 2007).locator(".mmi-badge.error");
   await expect(badge).toHaveText("No SKU");
-  await expect(badge).toHaveAttribute("title", "No SKU: the supplier's data can't be matched.");
+  await expect(badge).toHaveAttribute("title", "Without a SKU the supplier’s data can’t be matched to it. Click to fix it here.");
+  await badge.click();
+  await page.locator(".mmi-wb-issue-sku").fill("FP-1000");
+  await page.locator(".mmi-wb-issue-row .mmi-wb-issue-save").click();
+  await expect(page.locator(".mmi-wb-pr-row-notice")).toHaveText("SKU set to FP-1000.");
+  expect(api.callsTo("products/2007/fix")[0]!.body).toEqual({ kind: "sku", sku: "FP-1000" });
+  await expect(row(page, 2007).locator(".mmi-wb-issue")).toHaveCount(0);
 });

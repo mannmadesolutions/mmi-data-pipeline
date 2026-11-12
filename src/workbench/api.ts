@@ -117,6 +117,10 @@ export const api = {
   setTerms: (productId: number, taxonomy: string, termIds: number[], metaCols: string[] = []) =>
     post<{ row: ProductRow }>("mmi_workbench_set_terms", { product_id: productId, taxonomy, term_ids: termIds, meta_cols: metaCols }),
 
+  /** One product's row again, after a fix made in it through Product Data's REST routes. */
+  row: (productId: number, metaCols: string[] = []) =>
+    post<{ row: ProductRow }>("mmi_workbench_row", { product_id: productId, meta_cols: metaCols }),
+
   /** Edit one cell: "title", "regular", "sale", "stock_qty" or "meta:{key}". */
   setField: (productId: number, field: string, value: string, lock: boolean, metaCols: string[] = []) =>
     post<{ row: ProductRow }>("mmi_workbench_set_field", { product_id: productId, field, value, lock: lock ? 1 : 0, meta_cols: metaCols }),

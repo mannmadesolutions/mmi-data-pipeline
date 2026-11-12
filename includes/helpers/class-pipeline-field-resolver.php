@@ -208,6 +208,74 @@ class MMI_Pipeline_Field_Resolver {
     }
 
     /**
+     * Term IDs for one taxonomy field of one product, in the one order every
+     * import path uses (2026-11-12): Taxonomy Mapping's saved rows, then its
+     * alias rules (both MMI_DB::resolve_tax_mapping()), then the field's
+     * "When a value isn't in Taxonomy Mapping" setting
+     * (resolve_unmapped_term_ids(); default skip for brands and categories).
+     * Before this the scheduled importer stopped after the alias rules while
+     * the manual import went on to the field's setting, so a brand field set
+     * to "Match an existing term" filled the brand on one path only.
+     *
+     * The source-mapping tiers are skipped when the source's Taxonomy Mapping
+     * toggle is off, as if it had no rows; the field's own setting still
+     * applies (DataSourceController.php's toggle docblock).
+     *
+     * @param string      $source_field The field's own source (scheduled
+     *                                  importer): only that value is looked up.
+     *                                  null = every source field Taxonomy
+     *                                  Mapping has rows for, read from $item
+     *                                  (resolve_taxonomy_via_alias_table(), the
+     *                                  manual import and Import Preview).
+     * @param bool|null   $skipped      Set true when Taxonomy Mapping says Skip
+     *                                  (or the value is excluded).
+     * @return int[]|null null = leave the product's terms as they are.
+     */
+    public static function resolve_taxonomy_terms(
+        string $supplier,
+        string $taxonomy,
+        array $mapping,
+        $raw_value,
+        array $item = [],
+        string $profile_id = '',
+        bool $is_constant = false,
+        ?string $source_field = null,
+        ?bool &$skipped = null
+    ): ?array {
+        $skipped = false;
+        $ids     = [];
+
+        if ( $source_field === null ) {
+            $ids = self::resolve_taxonomy_via_alias_table( $supplier, $item, $taxonomy, $profile_id, $skipped );
+        } elseif ( is_scalar( $raw_value ) && (string) $raw_value !== '' && self::taxonomy_mapping_enabled( $supplier ) ) {
+            $value = (string) $raw_value;
+            if ( MMI_Pipeline_Taxmap_Exclusions::is_excluded( $supplier, $source_field, $taxonomy, $value ) ) {
+                $skipped = true;
+            } else {
+                $term_id = MMI_DB::resolve_tax_mapping( $supplier, $source_field, $value, $taxonomy, $profile_id );
+                if ( $term_id && $term_id > 0 ) {
+                    $ids = [ (int) $term_id ];
+                } elseif ( $term_id === -1 ) {
+                    $skipped = true;
+                }
+            }
+        }
+
+        if ( $ids ) {
+            return array_values( array_unique( array_map( 'intval', $ids ) ) );
+        }
+        return self::resolve_unmapped_term_ids( $taxonomy, $mapping, $raw_value, $is_constant, (bool) $skipped );
+    }
+
+    /** Whether a source resolves its taxonomy values through Taxonomy Mapping (its per-source toggle, default on). */
+    public static function taxonomy_mapping_enabled( string $supplier ): bool {
+        if ( self::$configured_suppliers_cache === null && class_exists( 'MMI_Pipeline_Admin' ) ) {
+            self::$configured_suppliers_cache = MMI_Pipeline_Admin::get_configured_suppliers();
+        }
+        return ! isset( self::$configured_suppliers_cache[ $supplier ] ) || ( self::$configured_suppliers_cache[ $supplier ]['taxonomy_mapping_enabled'] ?? true );
+    }
+
+    /**
      * Resolve a field value: extract via dot/bracket path, then apply transform.
      *
      * @param array  $item              Full source item (also used by 'template').

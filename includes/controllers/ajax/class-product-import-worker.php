@@ -309,24 +309,18 @@ class Product_Import_Worker {
                 // (get_tax_mappings()/resolve_tax_mapping()'s $wc_taxonomy), so a
                 // dynamic 'tax:{slug}' field name never matched any alias row here
                 // before this was fixed.
-                $alias_skipped  = false;
-                $alias_term_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_via_alias_table( $supplier, $data, $real_taxonomy, $options['profile'] ?? 'default', $alias_skipped );
-
+                //
                 // A value Taxonomy Mapping does not resolve follows the field's
                 // "When a value isn't in Taxonomy Mapping" setting; null leaves
                 // the product's terms as they are (never a new term from the
-                // raw value unless that setting is "Create a new term").
-                $unmapped_ids = empty( $alias_term_ids )
-                    ? MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids( $real_taxonomy, $mapping, $raw_value, $is_constant, $alias_skipped )
-                    : null;
+                // raw value unless that setting is "Create a new term"). Same
+                // resolver and order as the scheduled importer (2026-11-12).
+                $resolved_ids = MMI_Pipeline_Field_Resolver::resolve_taxonomy_terms( $supplier, $real_taxonomy, (array) $mapping, $raw_value, (array) $data, (string) ( $options['profile'] ?? 'default' ), $is_constant );
 
                 if ( $is_native_taxonomy ) {
-                    if ( ! empty( $alias_term_ids ) ) {
-                        self::set_taxonomy_field_ids( $product, $real_taxonomy, $alias_term_ids );
-                        $display_value = self::terms_display_from_ids( $alias_term_ids, $real_taxonomy );
-                    } elseif ( $unmapped_ids !== null ) {
-                        self::set_taxonomy_field_ids( $product, $real_taxonomy, $unmapped_ids );
-                        $display_value = self::terms_display_from_ids( $unmapped_ids, $real_taxonomy );
+                    if ( ! empty( $resolved_ids ) ) {
+                        self::set_taxonomy_field_ids( $product, $real_taxonomy, $resolved_ids );
+                        $display_value = self::terms_display_from_ids( $resolved_ids, $real_taxonomy );
                     } else {
                         $display_value = $old;
                     }
@@ -338,7 +332,7 @@ class Product_Import_Worker {
                     // apply_non_native_taxonomy_aliases()'s docblock). Queue the
                     // resolved term IDs and apply them once the product is saved,
                     // below.
-                    $term_ids = ! empty( $alias_term_ids ) ? $alias_term_ids : ( $unmapped_ids ?? [] );
+                    $term_ids = $resolved_ids ?? [];
 
                     if ( ! empty( $term_ids ) ) {
                         $pending_non_native_terms[ $real_taxonomy ] = $term_ids;

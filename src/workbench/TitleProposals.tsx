@@ -9,9 +9,11 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ApiError } from "./api";
 import {
-  actionsFor, applyLine, confKind, EMPTY_FILTER, filterQuery, filterTerms, MISSING_LABELS, STATUS_LABEL, STATUS_VIEWS, target, viewCount, wordDiff,
+  actionsFor, applyLine, confKind, EMPTY_FILTER, filterQuery, filterTerms, STATUS_LABEL, STATUS_VIEWS, target, viewCount, wordDiff,
   type ApplyStatus, type DiffPart, type ProposalPage, type ProposalRow, type QueueFilter, type QueueSort, type QueueSummary, type RowAction, type Suggestion, type TermKind,
 } from "./proposalsApi";
+import { IssueChips, IssuePanel } from "./IssueFixes";
+import type { FixResult, Issue } from "./issuesApi";
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, Section } from "./ui";
 import { TitleWriting } from "./WritingSettings";
@@ -37,10 +39,15 @@ const Diff = ({ parts }: { parts: DiffPart[] }) => (
 
 interface TermEdit { target: number | "bulk"; kind: TermKind; mode: "replace" | "add" }
 
+/** The brand panel opened from the Brand cell's picker, for a product whose brand is set but wrong or not made yet. */
+const NEW_BRAND: Issue = { key: "brand", label: "Brand", help: "Choose another brand, or create the maker as a new brand.", tone: "info", fixes: [{ kind: "brand", label: "Choose or create a brand", primary: true }] };
+
 /** A searchable checkbox list of categories or brands, with the chosen ones as chips. */
-function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onCancel }: {
+function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onCancel, onCreate }: {
   terms: TermOption[] | null; chosen: number[]; kind: TermKind; bulk: number; mode: "replace" | "add"; busy: boolean;
   onMode: (m: "replace" | "add") => void; onSave: (ids: number[]) => void; onCancel: () => void;
+  /** One product's brand: open the brand panel, where a new brand is created. */
+  onCreate?: () => void;
 }) {
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<number[]>(chosen);
@@ -80,6 +87,7 @@ function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onC
         <BusyButton id="mmi-wb-pr-terms-save" className="button button-primary" busy={busy} icon="saved" label={`Save ${noun}`} busyLabel="Saving…"
           disabled={kind === "cats" && !picked.length || mode === "add" && !picked.length} onClick={() => onSave(picked)} />
         <button type="button" className="button" id="mmi-wb-pr-terms-cancel" onClick={onCancel}>Cancel</button>
+        {onCreate && <button type="button" className="button-link mmi-wb-pr-terms-create" onClick={onCreate}><Dashicon name="plus-alt2" /> Not listed? Create a new brand…</button>}
       </div>
     </div>
   );
@@ -106,6 +114,8 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   const lastApply = useRef<ApplyStatus | null>(null);
   const [terms, setTerms] = useState<TermEdit | null>(null);
   const [termLists, setTermLists] = useState<Record<TermKind, TermOption[] | null>>({ cats: null, brands: null });
+  /** The issue whose fixes are open under its row. */
+  const [issueOpen, setIssueOpen] = useState<{ id: number; key: string } | null>(null);
 
   const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 
@@ -222,8 +232,27 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
     } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setApplyBusy(false); }
   };
 
+  /** A fix was made in a row: say so beside it (or above, when the row left this view) and reload. */
+  const fixed = (r: FixResult) => {
+    setIssueOpen(null);
+    if (r.row && !r.removed) setRowNotice({ id: r.id, text: r.message, kind: "ok" });
+    else setNotice({ text: `#${r.id}: ${r.message}${r.removed ? " Its title now matches the rules, so it left the queue." : ""}`, kind: "ok" });
+    refresh();
+  };
+  const openIssue = (id: number, key: string | null) => {
+    setEditing(null);
+    setTerms(null);
+    setIssueOpen(key ? { id, key } : null);
+  };
+  const editTitle = (row: ProposalRow) => {
+    setIssueOpen(null);
+    setTerms(null);
+    setEditing({ id: row.id, text: target(row), suggestions: null, picks: {} });
+  };
+
   const openTerms = (t: TermEdit) => {
     setEditing(null);
+    setIssueOpen(null);
     setTerms(t);
     if (!termLists[t.kind]) {
       const path = t.kind === "cats" ? "categories" : "brands";
@@ -279,7 +308,7 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
       case "accept": return <button key={a} type="button" className="button button-small button-primary" disabled={dis} onClick={() => decide("accept", [row.id])}><Dashicon name="yes" /> Accept</button>;
       case "reject": return <button key={a} type="button" className="button button-small mmi-wb-icon-btn mmi-wb-rule-delete" disabled={dis} aria-label={`Reject #${row.id}`} title="Reject: keep the current title" onClick={() => decide("reject", [row.id])}><Dashicon name="no-alt" /></button>;
       case "reset": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => decide("reset", [row.id])}><Dashicon name="undo" /> Undo</button>;
-      case "edit": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => { setTerms(null); setEditing({ id: row.id, text: target(row), suggestions: null, picks: {} }); }}><Dashicon name="edit" /> Edit</button>;
+      case "edit": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => editTitle(row)}><Dashicon name="edit" /> Edit</button>;
       case "apply": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => writeOne(row, "apply")}><Dashicon name="upload" /> Write now</button>;
       case "revert": return <button key={a} type="button" className="button button-small" disabled={dis} onClick={() => writeOne(row, "revert")}><Dashicon name="backup" /> Put back</button>;
     }
@@ -369,8 +398,7 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
                     <div className="mmi-wb-pr-now"><Diff parts={shown.before} /></div>
                     <div className="mmi-wb-pr-new"><Diff parts={shown.after} /></div>
                     {row.renamed && <div className="description">The supplier renamed it: “{row.renamed.from}” → “{row.renamed.to}”.</div>}
-                    {row.missing.length > 0 && <div className="mmi-wb-pr-flags">{row.missing.map((k) => <span key={k} className="mmi-badge error inline" title={MISSING_LABELS[k]?.[1]}>{MISSING_LABELS[k]?.[0] ?? k}</span>)}</div>}
-                    {row.flags.length > 0 && <div className="mmi-wb-pr-flags">{row.flags.map((f) => <span key={f} className="mmi-badge warning inline">{f.split(":")[0]!.replace(/_/g, " ")}</span>)}</div>}
+                    <IssueChips issues={row.issues ?? []} open={issueOpen?.id === row.id ? issueOpen.key : null} onOpen={(k) => openIssue(row.id, k)} />
                     {row.error && <div className="notice notice-error inline"><p>{row.error}</p></div>}
                     {mine && <div className={`notice notice-${mine.kind === "error" ? "error" : "success"} inline mmi-wb-pr-row-notice`} role="status"><p>{mine.text}</p></div>}
                   </td>
@@ -425,7 +453,16 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
                   <tr key={`${row.id}-terms`} className="mmi-wb-pr-edit-row">
                     <td colSpan={10}>
                       <TermPicker key={`${row.id}-${terms.kind}`} terms={termLists[terms.kind]} chosen={(terms.kind === "cats" ? row.cats : row.brands).map((x) => x.id)}
-                        kind={terms.kind} bulk={0} mode="replace" busy={busy === row.id} onMode={() => {}} onSave={saveTerms} onCancel={() => setTerms(null)} />
+                        kind={terms.kind} bulk={0} mode="replace" busy={busy === row.id} onMode={() => {}} onSave={saveTerms} onCancel={() => setTerms(null)}
+                        onCreate={terms.kind === "brands" ? () => openIssue(row.id, "brand") : undefined} />
+                    </td>
+                  </tr>
+                ) : null,
+                issueOpen && issueOpen.id === row.id ? (
+                  <tr key={`${row.id}-issue`} className="mmi-wb-pr-edit-row mmi-wb-issue-row">
+                    <td colSpan={10}>
+                      <IssuePanel key={issueOpen.key} cfg={cfg} productId={row.id} issue={(row.issues ?? []).find((i) => i.key === issueOpen.key) ?? NEW_BRAND}
+                        cats={row.cats.map((c) => c.id)} onTitle={() => editTitle(row)} onDone={fixed} onClose={() => setIssueOpen(null)} />
                     </td>
                   </tr>
                 ) : null,

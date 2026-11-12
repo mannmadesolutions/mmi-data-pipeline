@@ -155,19 +155,27 @@ class Taxonomy_Mapping_Handler {
     }
 
     /**
-     * Store raw source values as postmeta and apply any saved taxonomy
-     * mappings (brand → product_brand, etc.) to the given product.
+     * What apply_taxonomy_mappings() writes to one product, worked out without
+     * writing anything (2026-11-12), so the importer can put a CRUD-native
+     * taxonomy's (product_cat, product_tag) final terms into the product's
+     * own save instead of saving one set and replacing it straight after:
+     * every replace fired set_object_terms twice, with an in-between state.
      *
-     * Called after create_product() / update_product() for every processed item.
+     *  - 'src_meta' raw source values for _mmi_src_{field} (written even when
+     *    the source's Taxonomy Mapping toggle is off, so a mapping saved later
+     *    can still find the product — before, a source imported with the
+     *    toggle off was invisible to every later Apply);
+     *  - 'own'      taxonomy => term ids that replace the taxonomy's terms;
+     *  - 'append'   taxonomy => term ids redirected there (added, never replacing).
      *
-     * @param int   $product_id   WC product post ID.
+     * Field locks are respected; a product with no ID yet has none.
+     *
+     * @param int   $product_id   WC product post ID, 0 for a product not created yet.
      * @param array $product_data Mapped product data (keyed by WC field name).
+     * @return array{src_meta: array<string,string>, own: array<string,int[]>, append: array<string,int[]>}
      */
-    public function apply_taxonomy_mappings( int $product_id, array $product_data ): void {
-        if ( ! $this->taxonomy_mapping_enabled ) {
-            return;
-        }
-
+    public function plan_taxonomy_terms( int $product_id, array $product_data ): array {
+        $plan   = [ 'src_meta' => [], 'own' => [], 'append' => [] ];
         $locked = \MMI_Pipeline_Field_Locks::get( $product_id );
 
         // Which source field feeds which taxonomy, worked out before the
@@ -190,9 +198,6 @@ class Taxonomy_Mapping_Handler {
             $field_sources[ $wc_field ]        = $source_field;
             $own_taxonomies[ $source_field ][] = (string) $wc_field;
         }
-
-        // Terms from redirected values, added after the loop (see below).
-        $redirected = [];
 
         foreach ( $field_sources as $wc_field => $source_field ) {
             // A lock on this field's own taxonomy (e.g. a brand set by hand in
@@ -221,56 +226,102 @@ class Taxonomy_Mapping_Handler {
             // handler, which normalizes a compound '+' field the same way before its own
             // lookup — a literal '+' here would never match that sanitized key.
             if ( ! $own_locked ) {
-                update_post_meta( $product_id, '_mmi_src_' . str_replace( '+', '_', $source_field ), $raw_value );
+                $plan['src_meta'][ '_mmi_src_' . str_replace( '+', '_', $source_field ) ] = $raw_value;
             }
 
-            // Excluded from Taxonomy Mapping: no term from this value, in this
-            // taxonomy or a redirect, until it is restored.
-            if ( \MMI_Pipeline_Taxmap_Exclusions::is_excluded( $this->supplier_name, $source_field, (string) $wc_field, $raw_value ) ) {
-                continue;
-            }
-
-            // Bad supplier data: a value that belongs to another taxonomy
-            // (Xchange sends "BUNDLES" as a brand). Its row in the Taxonomy
-            // Mapping table was pointed at that taxonomy, so this field's own
-            // taxonomy is left untouched and the term is added over there.
-            $redirect = self::find_redirect(
-                $this->supplier_name,
-                $source_field,
-                $raw_value,
-                $own_taxonomies[ $source_field ],
-                $this->profile_id
-            );
-            if ( $redirect !== null ) {
-                if ( ! \MMI_Pipeline_Field_Locks::in_list( $redirect['wc_taxonomy'], $locked ) ) {
-                    $redirected[ $redirect['wc_taxonomy'] ][] = (int) $redirect['wc_term_id'];
+            // Toggle on: exclusions and redirects are Taxonomy Mapping's, so
+            // they only apply then. Toggle off goes straight to the field's
+            // own setting in resolve_taxonomy_terms() below.
+            if ( $this->taxonomy_mapping_enabled ) {
+                // Excluded from Taxonomy Mapping: no term from this value, in this
+                // taxonomy or a redirect, until it is restored.
+                if ( \MMI_Pipeline_Taxmap_Exclusions::is_excluded( $this->supplier_name, $source_field, (string) $wc_field, $raw_value ) ) {
+                    continue;
                 }
-                continue;
+
+                // Bad supplier data: a value that belongs to another taxonomy
+                // (Xchange sends "BUNDLES" as a brand). Its row in the Taxonomy
+                // Mapping table was pointed at that taxonomy, so this field's own
+                // taxonomy is left untouched and the term is added over there.
+                $redirect = self::find_redirect(
+                    $this->supplier_name,
+                    $source_field,
+                    $raw_value,
+                    $own_taxonomies[ $source_field ],
+                    $this->profile_id
+                );
+                if ( $redirect !== null ) {
+                    if ( ! \MMI_Pipeline_Field_Locks::in_list( $redirect['wc_taxonomy'], $locked ) ) {
+                        $plan['append'][ $redirect['wc_taxonomy'] ][] = (int) $redirect['wc_term_id'];
+                    }
+                    continue;
+                }
             }
             if ( $own_locked ) {
                 continue;
             }
 
-            // Resolve taxonomy mapping (this profile+supplier, then supplier
-            // global, then profile-any-supplier, then fully global — see
-            // MMI_DB::resolve_tax_mapping()'s tiering)
-            $term_id = \MMI_DB::resolve_tax_mapping(
+            // One resolution order for both import paths (2026-11-12): saved
+            // rows (profile+supplier, supplier, profile, global — see
+            // MMI_DB::resolve_tax_mapping()'s tiering), alias rules, then the
+            // field's "When a value isn't in Taxonomy Mapping" setting.
+            $mapping  = is_array( $this->field_mappings[ $wc_field ] ?? null ) ? $this->field_mappings[ $wc_field ] : [];
+            $term_ids = \MMI_Pipeline_Field_Resolver::resolve_taxonomy_terms(
                 $this->supplier_name,
-                $source_field,
+                (string) $wc_field,
+                $mapping,
                 $raw_value,
-                $wc_field,
-                $this->profile_id
+                [],
+                $this->profile_id,
+                false,
+                $source_field
             );
 
-            if ( $term_id && $term_id > 0 ) {
-                wp_set_object_terms( $product_id, [ $term_id ], $wc_field );
+            if ( $term_ids ) {
+                $plan['own'][ $wc_field ] = $term_ids;
+            }
+        }
+
+        foreach ( $plan['append'] as $taxonomy => $term_ids ) {
+            $plan['append'][ $taxonomy ] = array_values( array_unique( $term_ids ) );
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Store raw source values as postmeta and apply any saved taxonomy
+     * mappings (brand → product_brand, etc.) to the given product.
+     *
+     * Called after create_product() / update_product() for every processed item.
+     *
+     * @param int        $product_id   WC product post ID.
+     * @param array      $product_data Mapped product data (keyed by WC field name).
+     * @param array|null $plan         plan_taxonomy_terms() already worked out
+     *                                 for this product (saves resolving twice).
+     * @param string[]   $written      Taxonomies the product's own save already
+     *                                 gave their planned terms (own and appended):
+     *                                 left alone here, so they are written once.
+     */
+    public function apply_taxonomy_mappings( int $product_id, array $product_data, ?array $plan = null, array $written = [] ): void {
+        $plan = $plan ?? $this->plan_taxonomy_terms( $product_id, $product_data );
+
+        foreach ( $plan['src_meta'] as $meta_key => $raw_value ) {
+            update_post_meta( $product_id, $meta_key, $raw_value );
+        }
+
+        foreach ( $plan['own'] as $taxonomy => $term_ids ) {
+            if ( ! in_array( $taxonomy, $written, true ) ) {
+                wp_set_object_terms( $product_id, $term_ids, $taxonomy );
             }
         }
 
         // Appended, and only after every field's own replace above, so a
         // field that sets the same taxonomy can't wipe the redirected term.
-        foreach ( $redirected as $taxonomy => $term_ids ) {
-            wp_set_object_terms( $product_id, array_values( array_unique( $term_ids ) ), $taxonomy, true );
+        foreach ( $plan['append'] as $taxonomy => $term_ids ) {
+            if ( ! in_array( $taxonomy, $written, true ) ) {
+                wp_set_object_terms( $product_id, $term_ids, $taxonomy, true );
+            }
         }
     }
 

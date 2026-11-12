@@ -40,11 +40,11 @@ export class TitleRulesMock {
     const current = `${i % 3 ? "SYNTH" : "Synth"} Model ${i + 1} Perp Lic`;
     return {
       id, status, current, proposed: `${brand} Synth Model ${i + 1} (Perpetual License, Download)`, edited: null as string | null,
-      original: status === "applied" ? current : null, confidence: 95 - i, rules: i % 3 ? ["deshout", "tidy"] : ["tidy"], flags: i === 3 ? ["over_length"] : [],
+      original: status === "applied" ? current : null, confidence: 95 - i, rules: i % 3 ? ["deshout", "tidy"] : ["tidy"], flags: i === 3 ? ["over_length"] : i === 13 ? ["bundle_not_in_category"] : i === 11 ? ["no_brand"] : [],
       dupes: 0, brand, stock: "instock", post_status: "publish", sku: `SKU-${id}`, price: "$49.00",
       why: { tidy: { from: "", to: "(Download)", confidence: 95, source: "punctuation" }, deshout: { from: "SYNTH", to: "Synth", confidence: 85, source: "title was in capitals" } },
       renamed: null, error: "", edit_url: `post.php?post=${id}&action=edit`, view_url: "#",
-      cats: [{ id: 12, name: "Plug-ins" }], brands: [{ id: i % 2 ? 21 : 20, name: brand }], cat_locked: i === 1, brand_locked: false, missing: i === 6 ? ["sku"] : [] as string[],
+      cats: [{ id: 12, name: "Plug-ins" }], brands: i === 11 ? [] : [{ id: i % 2 ? 21 : 20, name: brand }], cat_locked: i === 1, brand_locked: false, missing: i === 6 ? ["sku"] : i === 11 ? ["brand"] : [] as string[],
     };
   });
   applyState = { phase: "idle", enabled: true, queue: 3, applied_today: 0, batch_size: 25, next_at: null as number | null, now: 1000, run: null as unknown };
@@ -84,6 +84,26 @@ export class TitleRulesMock {
 
   private openOf(s: string) { return ["proposed", "stale", "error"].includes(s); }
 
+  /** Issues::for_row(): live gaps, then the flags (a stored no_brand is dropped: the live check says it). */
+  issuesOf(r: { missing: string[]; flags: string[] }) {
+    const miss: Record<string, [string, string, string, string]> = {
+      brand: ["No brand", "The brand can’t be put first, the brand page doesn’t list it and Reverb won’t list it.", "brand", "Set the brand…"],
+      category: ["No category", "Only the default category.", "cats", "Set the category…"],
+      sku: ["No SKU", "Without a SKU the supplier’s data can’t be matched to it.", "sku", "Add a SKU…"],
+    };
+    const flags: Record<string, { label: string; help: string; fixes: { kind: string; label: string; action?: string; primary?: boolean }[] }> = {
+      over_length: { label: "Too long", help: "Longer than search results show.", fixes: [{ kind: "title", label: "Edit the title" }] },
+      bundle_not_in_category: { label: "Not in Software Bundles", help: "XChange files it as a bundle, but our category doesn’t say so.", fixes: [{ kind: "action", action: "add_cat:11", label: "Add to Software Bundles", primary: true }, { kind: "cats", label: "Change the category…" }, { kind: "title", label: "Not a bundle: edit the title" }] },
+    };
+    return [
+      ...r.missing.map((k) => ({ key: k, label: miss[k]![0], help: miss[k]![1], tone: "error", fixes: [{ kind: miss[k]![2], label: miss[k]![3], primary: true }] })),
+      ...r.flags.filter((f) => f !== "no_brand").map((f) => ({ key: f, tone: "warning", ...(flags[f] ?? { label: f, help: "", fixes: [{ kind: "title", label: "Edit the title" }] }) })),
+    ];
+  }
+  shaped<T extends { missing: string[]; flags: string[] }>(r: T) { return { ...r, issues: this.issuesOf(r) }; }
+  /** Brands created through the fix panel. */
+  createdBrands: { id: number; name: string }[] = [];
+
   private queue(u: URL) {
     const status = u.searchParams.get("status") ?? "open";
     const q = (u.searchParams.get("q") ?? "").toLowerCase();
@@ -98,7 +118,7 @@ export class TitleRulesMock {
     rows = [...rows].sort((a, b) => (key === "id" ? a.id - b.id : key === "brand" ? a.brand.localeCompare(b.brand) : a.confidence - b.confidence) * dir || a.id - b.id);
     const per = Number(u.searchParams.get("per_page")) || 25;
     const page = Number(u.searchParams.get("page")) || 1;
-    return { rows: rows.slice((page - 1) * per, page * per), total: rows.length, pages: Math.max(1, Math.ceil(rows.length / per)) };
+    return { rows: rows.slice((page - 1) * per, page * per).map((r) => this.shaped(r)), total: rows.length, pages: Math.max(1, Math.ceil(rows.length / per)) };
   }
 
   summary() {
@@ -197,6 +217,34 @@ export class TitleRulesMock {
       if (e[3] === "apply") { if (row.kind === "image" && !row.chosen.length) return this.json(route, { result: "error", message: "Pick the pictures for this product first." }); row.status = "applied"; return this.json(route, { result: "applied", message: "" }); }
       row.status = "reverted"; return this.json(route, { result: "reverted", message: "" });
     }
+    const fx = path.match(/^products\/(\d+)\/(fix-context|fix)$/);
+    if (fx) {
+      const id = Number(fx[1]);
+      const row = this.proposals.find((r) => r.id === id);
+      if (fx[2] === "fix-context") {
+        const kind = new URL(req.url()).searchParams.get("kind");
+        const base = { id, title: row?.current ?? "", can_create: true };
+        if (kind === "brand") return this.json(route, { ...base, feed: [{ supplier: "xchange", label: "Xchange", field: "brand", value: "Freqport", mapped: null, others: 2 }], similar: [], suggested: "Freqport" });
+        if (kind === "cats") return this.json(route, { ...base, feed: [{ supplier: "xchange", label: "Xchange", field: "master_category+sub_category", value: "Software / Effects", mapped: null, others: 4 }] });
+        return this.json(route, { ...base, blocks: [{ index: 0, type: "xchange_descript", label: "The XChange description", url: "", text: "True analog tube saturation plugin with optional hardware" }] });
+      }
+      const kind = String(body.kind);
+      if (kind === "brand" && (body.create as { name?: string } | undefined)?.name === "Acme Audio") {
+        return this.json(route, { code: "mmpt_exists", message: "A brand named “Acme Audio” already exists. Choose it instead." }, 409);
+      }
+      let message = "Done.";
+      if (kind === "brand") {
+        const made = body.create as { name: string } | undefined;
+        const b = made ? { id: 90 + this.createdBrands.length, name: made.name } : { id: (body.ids as number[])[0]!, name: (body.ids as number[])[0] === 20 ? "Acme Audio" : "Example Sound" };
+        if (made) this.createdBrands.push(b);
+        if (row) { row.brands = [b]; row.brand_locked = true; row.missing = row.missing.filter((k) => k !== "brand"); row.flags = row.flags.filter((f) => f !== "no_brand"); }
+        message = `${made ? "Created and set" : "Set"} brand ${b.name}.${(body.remember as string[]).length ? " Mapped Xchange “Freqport” to it; 2 other products got it too." : ""}`;
+      }
+      if (row && kind === "action") { row.cats = [...row.cats, { id: 11, name: "Bundles" }]; row.flags = row.flags.filter((f) => f !== "bundle_not_in_category"); message = "Added to Software Bundles."; }
+      if (row && kind === "sku") { row.sku = String(body.sku); row.missing = row.missing.filter((k) => k !== "sku"); message = `SKU set to ${String(body.sku)}.`; }
+      if (kind === "image") message = "Featured picture set.";
+      return this.json(route, { id, message, row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [], others: { updated: 2, locked: 0, queued: false } });
+    }
     const m = path.match(/^proposals\/(\d+)\/(suggest-rules|edit|apply|revert|categories|brands)$/);
     if (m) {
       const row = this.proposals.find((r) => r.id === Number(m[1]))!;
@@ -205,7 +253,7 @@ export class TitleRulesMock {
         const names: Record<number, string> = { 10: "Software", 12: "Plug-ins", 20: "Acme Audio", 21: "Example Sound" };
         if (m[2] === "categories") { row.cats = ids.map((i) => ({ id: i, name: names[i] ?? String(i) })); row.cat_locked = true; }
         else { row.brands = ids.map((i) => ({ id: i, name: names[i] ?? String(i) })); row.brand_locked = true; }
-        return this.json(route, row);
+        return this.json(route, this.shaped(row));
       }
       if (m[2] === "suggest-rules") {
         return this.json(route, { suggestions: [{ key: "a".repeat(32), kind: "replace", from: "Model", to: "Mk", label: '"Model" → "Mk"', brand: row.brand, reach: { brand: 14, all: 29 }, samples: {} }] });
@@ -297,7 +345,7 @@ export class TitleRulesMock {
       }
       case "proposals/bulk-terms": {
         const rows = this.proposals.filter((r) => (body.products as number[]).includes(r.id));
-        return this.json(route, { rows, removed: [], errors: {} });
+        return this.json(route, { rows: rows.map((r) => this.shaped(r)), removed: [], errors: {} });
       }
       case "apply-status": return this.json(route, this.applyState);
       case "apply-run":

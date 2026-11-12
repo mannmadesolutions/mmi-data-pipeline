@@ -23,7 +23,7 @@ function catalog(): Product[] {
       id, title: `${bundle ? "Synth Bundle" : "Test Plug-in"} ${i + 1}`, sku: `SKU-${id}`, status: i % 7 === 0 ? "draft" : "publish",
       stock: i % 5 === 0 ? "outofstock" : "instock",
       categories: [bundle ? { id: 11, name: "Bundles" } : { id: 12, name: "Plug-ins" }],
-      brands: [BRANDS[i % 2]!], health: i % 4 === 0 ? ["no_image"] : [], locked: [],
+      brands: i === 1 ? [] : [BRANDS[i % 2]!], health: i % 4 === 0 ? ["no_image"] : i === 1 ? ["no_brand"] : [], locked: [],
       regular: (19 + i).toFixed(2), meta: (i % 3 === 0 ? { _mmi_platforms: "mac,win" } : {}) as Record<string, string>,
     };
   });
@@ -177,6 +177,10 @@ export class MockBackend {
         if (field === "title") p.title = value;
         if (field === "regular") p.regular = value;
         if (field.startsWith("meta:")) p.meta[field.slice(5)] = value;
+        return this.reply(route, { row: this.row(p, body.getAll("meta_cols[]")) });
+      }
+      case "mmi_workbench_row": {
+        const p = this.products.find((x) => x.id === Number(body.get("product_id")))!;
         return this.reply(route, { row: this.row(p, body.getAll("meta_cols[]")) });
       }
       case "mmi_workbench_save_search":

@@ -430,9 +430,14 @@ class Custom_Rule_Actions {
      *                             record, when available (only
      *                             copy_source_field_to_meta uses this;
      *                             every other action ignores it).
+     * @param  bool   $force       A person's own change (Product Workbench row
+     *                             edit or job, which has its own skip-locked
+     *                             switch): writes a locked taxonomy too.
+     *                             Automated callers (standing rules, catalog
+     *                             runs) leave it false.
      * @return bool                True when the product was actually changed.
      */
-    public static function apply( int $product_id, string $action, array $params, array $raw_item = [] ): bool {
+    public static function apply( int $product_id, string $action, array $params, array $raw_item = [], bool $force = false ): bool {
         switch ( $action ) {
 
             case 'set_stock_status_backorder':
@@ -496,7 +501,7 @@ class Custom_Rule_Actions {
                 return true;
 
             case 'set_taxonomy_term':
-                return self::apply_taxonomy_term( $product_id, $params );
+                return self::apply_taxonomy_term( $product_id, $params, $force );
 
             case 'set_regular_price':
             case 'set_sale_price':
@@ -591,12 +596,19 @@ class Custom_Rule_Actions {
         return null;
     }
 
-    private static function apply_taxonomy_term( int $product_id, array $params ): bool {
+    private static function apply_taxonomy_term( int $product_id, array $params, bool $force = false ): bool {
         $taxonomy = $params['taxonomy'] ?? '';
         $term_id  = (int) ( $params['term_id'] ?? 0 );
         $mode     = $params['mode'] ?? 'replace';
 
         if ( $taxonomy === '' || $term_id <= 0 || ! taxonomy_exists( $taxonomy ) ) {
+            return false;
+        }
+
+        // A locked taxonomy was set by a person; a standing rule re-applied by
+        // every catalog run must not overwrite, add to or remove from it
+        // (2026-11-12: it did, in all three modes).
+        if ( ! $force && class_exists( '\\MMI_Pipeline_Field_Locks' ) && \MMI_Pipeline_Field_Locks::is_locked( $product_id, $taxonomy ) ) {
             return false;
         }
 

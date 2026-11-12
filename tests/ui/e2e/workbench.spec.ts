@@ -164,10 +164,13 @@ test("an ended WordPress session says so instead of a network error", async ({ p
   await expect(page.locator(".mmi-cb-notice")).toContainText("Your login has expired");
 });
 
-test("a health chip narrows to products failing that check", async ({ page }) => {
+test("a health chip opens its fix in the row; Show every product with this narrows to that check", async ({ page }) => {
   const { backend } = await open(page);
   await searchFor(page, "synth");
   await page.locator(".mmi-health-chip").first().click();
+  await expect(page.locator('.mmi-wb-issue-row .mmi-wb-issue-panel[data-issue="no_image"]')).toBeVisible();
+  await expect(page.locator(".mmi-wb-issue-row").getByRole("button", { name: "Choose the featured picture…" })).toBeVisible();
+  await page.locator(".mmi-wb-issue-all").click();
   await expect.poll(() => backend.callsTo("mmi_workbench_search").at(-1)?.body.getAll("filter[health][]")).toEqual(["no_image"]);
   await expect(page.locator("#mmi-wb-health-ms .mmi-ms-label")).toHaveText("Health: No featured image");
 });

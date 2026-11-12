@@ -61,6 +61,7 @@ export const MESSAGES = {
   CATEGORIES_TITLE: "How these results are categorized, most first. Pick one to narrow to it.",
   CATEGORIES_SEARCH:"Find a category…",
   HEALTH_CHIP:      "%label% — click to show only these",
+  HEALTH_CHIP_FIX:  "%label% — click to fix it here",
   CHANGE_TERMS:     "Change %label%",
   SELECT_ROW:       "Select %title%",
   SAVE_SEARCH_NAME: "Name this search…",

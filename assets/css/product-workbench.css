@@ -954,6 +954,145 @@ td.mmi-wb-col-thumb img,
     width: 16px;
     height: 16px;
 }
+.mmi-wb-pr-terms-create {
+    margin-left: 8px;
+}
+
+/* ── Issues fixed in their row (src/workbench/IssueFixes.tsx) ── */
+.mmi-wb-issues {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+button.mmi-wb-issue {
+    font-family: inherit;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+button.mmi-wb-issue .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    vertical-align: -2px;
+}
+button.mmi-wb-issue:hover,
+button.mmi-wb-issue:focus-visible,
+button.mmi-wb-issue.is-open {
+    border-color: currentColor;
+}
+button.mmi-health-chip.is-fixable::after {
+    content: " ›";
+}
+button.mmi-health-chip.is-open {
+    border-color: var(--mmi-warning-text);
+}
+.mmi-wb-issue-panel {
+    border: 1px solid var(--mmi-wb-border);
+    border-left: 3px solid var(--mmi-warning-text, #996800);
+    border-radius: 4px;
+    background: #fff;
+    padding: 10px 12px;
+    margin: 4px 0 8px;
+}
+.mmi-wb-issue-panel.is-error {
+    border-left-color: var(--mmi-wb-danger);
+}
+.mmi-wb-issue-panel.is-info {
+    border-left-color: var(--mmi-wb-accent);
+}
+.mmi-wb-issue-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding-right: 24px;
+    position: relative;
+}
+.mmi-wb-issue-close {
+    position: absolute;
+    right: 0;
+    top: -2px;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-issue-fixes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+.mmi-wb-issue-fixes .button.is-active {
+    border-color: var(--mmi-wb-accent);
+    color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+}
+.mmi-wb-issue-all {
+    margin-left: auto;
+}
+.mmi-wb-issue-form {
+    border-top: 1px solid var(--mmi-wb-border);
+    margin-top: 10px;
+    padding-top: 10px;
+}
+.mmi-wb-issue-feed,
+.mmi-wb-issue-similar {
+    margin: 0 0 8px;
+}
+.mmi-wb-issue-modes {
+    margin-bottom: 8px;
+}
+.mmi-wb-issue-remember {
+    margin: 8px 0;
+}
+.mmi-wb-issue-remember label {
+    display: block;
+    padding: 2px 0;
+}
+.mmi-wb-issue-create .mmi-wb-tr-fields {
+    align-items: flex-start;
+}
+.mmi-wb-issue-create textarea {
+    width: 100%;
+}
+.mmi-wb-issue-create-cat {
+    margin: 8px 0;
+}
+.mmi-wb-brand-logo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.mmi-wb-brand-logo-row img,
+.mmi-wb-brand-logo-none {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 3px;
+    background: #fff;
+}
+.mmi-wb-brand-logo-none {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-copy-block {
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 3px;
+    padding: 6px 8px;
+    margin: 6px 0;
+}
+.mmi-wb-copy-block.is-source {
+    border-color: var(--mmi-wb-accent);
+}
+.mmi-wb-copy-text {
+    max-height: 8em;
+    overflow-y: auto;
+    user-select: text;
+    -webkit-user-select: text;
+}
 
 /* ── Description and picture proposals (src/workbench/EnrichProposals.tsx) ── */
 #mmi-wb-en-table th {

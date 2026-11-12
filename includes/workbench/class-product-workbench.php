@@ -929,7 +929,8 @@ final class Product_Workbench {
                         continue;
                     }
                     $raw = $job['action'] === 'copy_source_field_to_meta' ? Stock_Override_Resolver::raw_feed_item( $id ) : [];
-                    Custom_Rule_Actions::apply( $id, $job['action'], $job['params'], $raw );
+                    // A person's job: its own skip-locked switch decides about locks (2026-11-12).
+                    Custom_Rule_Actions::apply( $id, $job['action'], $job['params'], $raw, true );
                     clean_post_cache( $id );
                     wp_cache_delete( $id, 'post_meta' );
                     $after = self::state( $id, $job['action'], $job['params'] );
@@ -1304,7 +1305,7 @@ final class Product_Workbench {
                 wp_update_post( [ 'ID' => $id, 'post_title' => $value ] );
             }
         } else {
-            Custom_Rule_Actions::apply( $id, $action, $params );
+            Custom_Rule_Actions::apply( $id, $action, $params, [], true ); // a person's row edit writes a locked field too
         }
         clean_post_cache( $id );
         wp_cache_delete( $id, 'post_meta' );

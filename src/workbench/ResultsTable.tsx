@@ -11,6 +11,35 @@ import { isSelected, orderTicked, termTree, type SelectionState, type TreeTerm }
 import { MESSAGES, STATUS_LABELS, STOCK_LABELS, fill } from "./messages";
 import type { EditableTaxonomy, ProductRow, SearchResult, SortDir } from "./types";
 import { Dashicon } from "./ui";
+import { IssuePanel, PictureFix, PropsFix } from "./IssueFixes";
+import type { FixResult, Issue } from "./issuesApi";
+import type { TitleRulesConfig } from "./titleRulesApi";
+
+/**
+ * How each health check is fixed in its row (owner 2026-11-12: every issue fixable from the Workbench). A chip
+ * opens its fix under the row; the fix panel also offers "show every product with this" (the chip's old click).
+ */
+type HealthFix =
+  | { kind: "panel"; fix: "brand" | "cats" | "sku"; label: string }
+  | { kind: "pictures"; gallery: boolean }
+  | { kind: "props"; fields: ("weight" | "length" | "width" | "height" | "gtin")[] }
+  | { kind: "cell"; field: "regular" | "sale"; label: string }
+  | { kind: "title" };
+const HEALTH_FIXES: Record<string, HealthFix> = {
+  no_brand: { kind: "panel", fix: "brand", label: "Set the brand…" },
+  no_category: { kind: "panel", fix: "cats", label: "Set the category…" },
+  no_sku: { kind: "panel", fix: "sku", label: "Add a SKU…" },
+  no_image: { kind: "pictures", gallery: false },
+  no_gallery: { kind: "pictures", gallery: true },
+  no_weight: { kind: "props", fields: ["weight"] },
+  no_dimensions: { kind: "props", fields: ["length", "width", "height"] },
+  no_identifier: { kind: "props", fields: ["gtin"] },
+  no_price: { kind: "cell", field: "regular", label: "Regular price" },
+  sale_below_cost: { kind: "cell", field: "sale", label: "Sale price" },
+  title_all_caps: { kind: "title" },
+  title_numeric: { kind: "title" },
+  title_brand_not_first: { kind: "title" },
+};
 
 // Taxonomies the table edits in place (Product_Workbench::EDITABLE_TAXONOMIES).
 const TERM_EDIT: Record<EditableTaxonomy, { label: string; hierarchical: boolean }> = {
@@ -222,7 +251,7 @@ function TermCell({ row, taxonomy, onEdit }: { row: ProductRow; taxonomy: Editab
   );
 }
 
-export function ResultsTable({ result, sort, dir, loading, selection, columns, reservedMeta, lockLabels, extraLabels = {}, onSort, onToggle, onHealthChip, onRowSaved }: {
+export function ResultsTable({ result, sort, dir, loading, selection, columns, reservedMeta, lockLabels, extraLabels = {}, fixCfg, onSort, onToggle, onHealthChip, onRowSaved }: {
   result: SearchResult | null;
   sort: string;
   dir: SortDir;
@@ -235,6 +264,8 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
   lockLabels: Record<string, string>;
   /** Labels of the modules' columns ("x:{key}"). */
   extraLabels?: Record<string, string>;
+  /** Product Data's REST settings: health chips open their fixes (without it they only filter). */
+  fixCfg?: TitleRulesConfig;
   onSort: (col: string) => void;
   onToggle: (ids: number[], on: boolean) => void;
   onHealthChip: (checkId: string) => void;
@@ -243,6 +274,8 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
   const table = useRef<HTMLTableElement>(null);
   const [editing, setEditing] = useState<{ id: number; taxonomy: EditableTaxonomy } | null>(null);
   const [cell, setCell] = useState<{ id: number; field: string } | null>(null);
+  /** The health check whose fix is open under its row. */
+  const [fixing, setFixing] = useState<{ id: number; check: string } | null>(null);
   const cols = useMemo(() => visibleColumns(columns, extraLabels), [columns, extraLabels]);
   // Sent with every row refresh: meta keys by name, modules' columns as "x:{key}".
   const metaCols = useMemo(() => [...columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), ...columns.filter((c) => c.startsWith("x:"))], [columns]);
@@ -284,7 +317,51 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
   }, [notice]);
 
   // A new page of results closes an open editor.
-  useEffect(() => { setEditing(null); setCell(null); }, [result]);
+  useEffect(() => { setEditing(null); setCell(null); setFixing(null); }, [result]);
+
+  /** A health chip: its fix under the row (a title check opens the title's own editor); unfixable here, it filters. */
+  const healthChip = (r: ProductRow, check: string) => {
+    const f = fixCfg ? HEALTH_FIXES[check] : undefined;
+    if (!f) { onHealthChip(check); return; }
+    setEditing(null);
+    if (f.kind === "title") { setFixing(null); setCell({ id: r.id, field: "title" }); return; }
+    setCell(null);
+    setFixing((cur) => (cur?.id === r.id && cur.check === check ? null : { id: r.id, check }));
+  };
+  /** A fix made in the row: its row again, and a note beside it. */
+  const fixDone = (res: FixResult) => {
+    setFixing(null);
+    setNotice({ id: res.id, text: res.message });
+    api.row(res.id, metaCols).then((d) => onRowSaved(d.row)).catch(() => {});
+  };
+  const fixRow = (r: ProductRow, check: string): ReactNode => {
+    const f = HEALTH_FIXES[check];
+    const c = result?.checks[check] ?? { chip: check, label: check };
+    if (!f || !fixCfg) return null;
+    const showAll = <button type="button" className="button-link mmi-wb-issue-all" onClick={() => onHealthChip(check)}>Show every product with this</button>;
+    const close = () => setFixing(null);
+    if (f.kind === "panel") {
+      const issue: Issue = { key: check, label: c.label, help: "", tone: "error", fixes: [{ kind: f.fix, label: f.label, primary: true }] };
+      return <IssuePanel cfg={fixCfg} productId={r.id} issue={issue} cats={r.categories.map((t) => t.id)} onDone={fixDone} onClose={close} extra={showAll} />;
+    }
+    return (
+      <div className="mmi-wb-issue-panel is-error" data-issue={check} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}>
+        <div className="mmi-wb-issue-head">
+          <strong>{c.label}</strong>
+          <button type="button" className="button-link mmi-wb-issue-close" aria-label="Close" onClick={close}><Dashicon name="no-alt" /></button>
+        </div>
+        {f.kind === "pictures" && <PictureFix cfg={fixCfg} productId={r.id} gallery={f.gallery} onDone={fixDone} />}
+        {f.kind === "props" && <PropsFix cfg={fixCfg} productId={r.id} fields={f.fields} onDone={fixDone} />}
+        {f.kind === "cell" && (
+          <div className="mmi-wb-issue-form">
+            <CellEditor row={r} field={f.field} value={f.field === "regular" ? r.regular : r.sale} label={f.label} lockLabel={lockLabels[lockKey(f.field)] ?? ""}
+              metaCols={metaCols} onSaved={(row) => { setFixing(null); cellSaved(row, f.label); }} onClose={close} />
+          </div>
+        )}
+        <div className="mmi-wb-issue-fixes">{showAll}</div>
+      </div>
+    );
+  };
 
   const sortKey = (e: KeyboardEvent, col: string) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortCol(col); }
@@ -381,9 +458,12 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
                 <td className="mmi-wb-col-health">
                   {r.health.length ? r.health.map((id) => {
                     const c = result?.checks[id] ?? { chip: id, label: id };
+                    const fixable = !!fixCfg && !!HEALTH_FIXES[id];
                     return (
-                      <button key={id} type="button" className="mmi-health-chip" title={fill(MESSAGES.HEALTH_CHIP, { label: c.label })}
-                        onClick={() => onHealthChip(id)}>{c.chip}</button>
+                      <button key={id} type="button" className={`mmi-health-chip${fixable ? " is-fixable" : ""}${fixing?.id === r.id && fixing.check === id ? " is-open" : ""}`}
+                        title={fill(fixable ? MESSAGES.HEALTH_CHIP_FIX : MESSAGES.HEALTH_CHIP, { label: c.label })} data-check={id}
+                        aria-expanded={fixable ? fixing?.id === r.id && fixing.check === id : undefined}
+                        onClick={() => healthChip(r, id)}>{c.chip}</button>
                     );
                   }) : <span className="mmi-wb-health-ok">OK</span>}
                 </td>
@@ -395,6 +475,9 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
                     setNotice({ id: saved.id, text: fill(MESSAGES.TERMS_SAVED, { label: TERM_EDIT[editing.taxonomy].label }) });
                     onRowSaved(saved);
                   }} />
+              )}
+              {fixing?.id === r.id && (
+                <tr className="mmi-wb-issue-row"><td colSpan={colspan}>{fixRow(r, fixing.check)}</td></tr>
               )}
               {notice?.id === r.id && (
                 <tr className="mmi-wb-row-notice"><td colSpan={colspan} role="status">{notice.text}</td></tr>

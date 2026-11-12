@@ -5,6 +5,8 @@
  * actions a row offers in each status. The REST client is titleRulesApi's.
  */
 
+import type { Issue } from "./issuesApi";
+
 export type ProposalStatus = "proposed" | "accepted" | "edited" | "rejected" | "applied" | "reverted" | "stale" | "error";
 
 export interface Why { from: string; to: string; confidence: number; source: string }
@@ -36,6 +38,8 @@ export interface ProposalRow {
   brand_locked: boolean;
   /** Composer inputs the product lacks: brand, category, sku. */
   missing: string[];
+  /** What is wrong and how to fix it in the row (Issues::for_row(): live gaps, then the composer's flags). */
+  issues: Issue[];
 }
 
 /** What a missing input costs the title (Store::MISSING_INPUTS). */

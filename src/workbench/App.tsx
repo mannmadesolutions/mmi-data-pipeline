@@ -504,7 +504,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
             </label>
           </div>
           <ResultsTable result={view.result} sort={view.sort} dir={view.dir} loading={view.loading} selection={selection}
-            columns={columns} reservedMeta={cfg.reservedMetaKeys} lockLabels={cfg.lockLabels} extraLabels={cfg.extraColumns ?? {}}
+            columns={columns} reservedMeta={cfg.reservedMetaKeys} lockLabels={cfg.lockLabels} extraLabels={cfg.extraColumns ?? {}} fixCfg={cfg.titleRules}
             onSort={search.sortBy} onToggle={(ids, on) => setSelection((s) => toggleRows(s, ids, on))} onHealthChip={onHealthChip}
             onRowSaved={(row) => { search.replaceRow(row); loadJobs(); }} />
           {view.result && <Pager pages={view.result.pages} current={view.page} onPage={(p) => search.refetch({ page: p })} />}

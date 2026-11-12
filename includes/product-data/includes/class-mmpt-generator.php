@@ -51,11 +51,78 @@ class Generator {
 	 */
 	private static $dropped_rule = null;
 
+	/**
+	 * Products recomposed by a person while a full run held the lock: the run loaded their old context
+	 * before the change, so it recomposes them again before it finishes (2026-11-12).
+	 */
+	const LATE_QUEUE = 'mmpt_recompose_late';
+
 	public static function register_hooks(): void {
 		add_action( self::HOOK, [ __CLASS__, 'run' ] );
 		add_action( self::DAILY_HOOK, [ __CLASS__, 'dispatch' ] );
 		add_action( 'set_object_terms', [ __CLASS__, 'on_terms_set' ], 10, 6 );
+		// wp_remove_object_terms() (a rule's "remove brand/category") fires this, not set_object_terms (2026-11-12).
+		add_action( 'deleted_term_relationships', [ __CLASS__, 'on_terms_removed' ], 10, 3 );
 		add_action( self::RECOMPOSE_HOOK, [ __CLASS__, 'run_recompose_queue' ] );
+	}
+
+	/** A brand or category taken off a product: recompose it like any other term change. */
+	public static function on_terms_removed( $object_id, $tt_ids, $taxonomy ): void {
+		if ( ( $taxonomy !== 'product_brand' && $taxonomy !== 'product_cat' ) || ! $tt_ids || get_post_type( (int) $object_id ) !== 'product' ) {
+			return;
+		}
+		self::queue( [ (int) $object_id ] );
+	}
+
+	/**
+	 * Read-modify-write of a queue option under a MySQL named lock: an import request adding ids
+	 * while the drain job takes a chunk lost one side's ids (2026-11-12). Returns $fn's result.
+	 */
+	private static function with_queue( string $option, callable $fn ) {
+		global $wpdb;
+		$name = $wpdb->prefix . $option;
+		$got  = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $name ) );
+		try {
+			// Read what another request wrote, not this request's (or Redis's) copy: a stale "no such
+			// option" in notoptions would make the queue look empty and drop its ids.
+			wp_cache_delete( $option, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+			$queue = get_option( $option, [] );
+			$queue = is_array( $queue ) ? $queue : [];
+			[ $queue, $out ] = $fn( $queue );
+			if ( $queue ) {
+				update_option( $option, $queue, false );
+			} else {
+				delete_option( $option );
+			}
+			return $out;
+		} finally {
+			if ( $got ) {
+				$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $name ) );
+			}
+		}
+	}
+
+	/** A full title run holds the lock right now. */
+	private static function running(): bool {
+		$at = (int) get_option( self::LOCK );
+		return $at > 0 && time() - $at < self::LOCK_TTL;
+	}
+
+	/** Remember ids a person recomposed during a full run, for the run to recompose again before it ends. */
+	private static function note_late( array $ids ): void {
+		if ( ! $ids || ! self::running() ) {
+			return;
+		}
+		self::with_queue(
+			self::LATE_QUEUE,
+			static function ( array $q ) use ( $ids ) {
+				foreach ( $ids as $id ) {
+					$q[ (int) $id ] = true;
+				}
+				return [ $q, null ];
+			}
+		);
 	}
 
 	/**
@@ -98,18 +165,30 @@ class Generator {
 		if ( ! self::$pending ) {
 			return;
 		}
-		$queue = get_option( self::RECOMPOSE_QUEUE, [] );
-		$queue = is_array( $queue ) ? $queue : [];
-		foreach ( array_keys( self::$pending ) as $id ) {
-			$queue[ $id ] = true;
-		}
+		$ids           = array_keys( self::$pending );
 		self::$pending = [];
-		update_option( self::RECOMPOSE_QUEUE, $queue, false );
+		self::with_queue(
+			self::RECOMPOSE_QUEUE,
+			static function ( array $q ) use ( $ids ) {
+				foreach ( $ids as $id ) {
+					$q[ (int) $id ] = true;
+				}
+				return [ $q, null ];
+			}
+		);
 		self::schedule_recompose( 0 );
 	}
 
+	/**
+	 * At most one waiting drain job. Only a *pending* job counts: as_has_scheduled_action() also counts
+	 * the in-progress one, so the running drain could never queue its own next step and ids waited for
+	 * an unrelated term change (2026-11-12, the Applier's 2026-09-29 bug again; see Applier::dispatch()).
+	 */
 	private static function schedule_recompose( int $delay ): void {
-		if ( ! function_exists( 'as_has_scheduled_action' ) || as_has_scheduled_action( self::RECOMPOSE_HOOK, [], self::GROUP ) ) {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return;
+		}
+		if ( as_get_scheduled_actions( [ 'hook' => self::RECOMPOSE_HOOK, 'group' => self::GROUP, 'status' => \ActionScheduler_Store::STATUS_PENDING, 'per_page' => 1 ], 'ids' ) ) {
 			return;
 		}
 		if ( $delay > 0 ) {
@@ -153,14 +232,17 @@ class Generator {
 			self::schedule_recompose( 120 );
 			return [ 'skipped' => 'locked' ];
 		}
-		$queue = get_option( self::RECOMPOSE_QUEUE, [] );
-		$queue = is_array( $queue ) ? $queue : [];
-		if ( ! $queue ) {
+		[ $ids, $rest ] = self::with_queue(
+			self::RECOMPOSE_QUEUE,
+			static function ( array $q ) {
+				$take = array_slice( array_keys( $q ), 0, self::CHUNK );
+				$left = array_diff_key( $q, array_flip( $take ) );
+				return [ $left, [ $take, $left ] ];
+			}
+		);
+		if ( ! $ids ) {
 			return [ 'products' => 0 ];
 		}
-		$ids  = array_slice( array_keys( $queue ), 0, self::CHUNK );
-		$rest = array_diff_key( $queue, array_flip( $ids ) );
-		update_option( self::RECOMPOSE_QUEUE, $rest, false );
 
 		$stats = self::recompose_many( $ids );
 		if ( $rest ) {
@@ -192,6 +274,7 @@ class Generator {
 				self::process( (int) $id, $ctx, $row, (string) ( $row['run_id'] ?? gmdate( 'Ymd-His' ) ), $now, $stats );
 			}
 		}
+		self::note_late( $ids );
 		return $stats;
 	}
 
@@ -264,6 +347,7 @@ class Generator {
 		$row   = Store::get( $id );
 		$stats = [ 'products' => 0, 'proposals' => 0, 'new' => 0, 'changed' => 0, 'reopened' => 0, 'kept_decisions' => 0, 'removed' => 0, 'unchanged_titles' => 0 ];
 		self::process( $id, $ctx, $row, (string) ( $row['run_id'] ?? gmdate( 'Ymd-His' ) ), current_time( 'mysql' ), $stats );
+		self::note_late( [ $id ] );
 		return Store::get( $id );
 	}
 
@@ -280,8 +364,11 @@ class Generator {
 		$t = Store::table();
 		$stats['products']++;
 		if ( $row && $row['status'] === 'reverted' ) {
-			$wpdb->update( $t, [ 'run_id' => $run_id ], [ 'product_id' => $id ] );
-			return; // a person put this title back — never propose it again
+			// A person put this title back — never propose it again. Its flags and brand still follow the
+			// product, so the row never shows "No brand" for a product that has one (2026-11-12).
+			$r = TitleRules::pack()->propose( $ctx );
+			$wpdb->update( $t, [ 'run_id' => $run_id, 'flags' => mb_substr( implode( ',', $r['flags'] ), 0, 500 ), 'brand' => mb_substr( (string) ( $ctx['brand'] ?? '' ), 0, 150 ) ], [ 'product_id' => $id ] );
+			return;
 		}
 		// The supplier's name is kept on the row. A product whose title we wrote is locked against imports, so
 		// when the supplier renames it ("Acme Synth 11" → "Acme Synth 12" under the same SKU) nothing else would notice:
@@ -321,7 +408,9 @@ class Generator {
 				$wpdb->delete( $t, [ 'product_id' => $id ] );
 				$stats['removed']++;
 			} elseif ( $row ) {
-				$wpdb->update( $t, [ 'run_id' => $run_id, 'feed_title' => $keep_feed ], [ 'product_id' => $id ] );
+				// A decided row whose title no longer changes still takes today's flags and brand: before
+				// this, Written rows kept a "No brand" flag from October after the brand was set (2026-11-12).
+				$wpdb->update( $t, [ 'run_id' => $run_id, 'feed_title' => $keep_feed, 'flags' => mb_substr( implode( ',', $c['flags'] ), 0, 500 ), 'brand' => mb_substr( (string) ( $ctx['brand'] ?? '' ), 0, 150 ) ], [ 'product_id' => $id ] );
 			}
 			return;
 		}
@@ -393,9 +482,20 @@ class Generator {
 		$stats = [ 'products' => 0, 'proposals' => 0, 'new' => 0, 'changed' => 0, 'reopened' => 0, 'kept_decisions' => 0, 'removed' => 0, 'unchanged_titles' => 0 ];
 
 		foreach ( array_chunk( Store::title_ids(), self::CHUNK ) as $chunk ) {
+			update_option( self::LOCK, time(), false ); // still running: a long run keeps its lock (2026-11-12)
 			$contexts = TitleRules::pack()->contexts( $chunk );
 			$existing = Store::get_many( $chunk );
 			foreach ( $contexts as $id => $ctx ) {
+				self::process( $id, $ctx, $existing[ $id ] ?? null, $run_id, $now, $stats );
+			}
+		}
+
+		// Products a person recomposed while this run worked (a brand set in the Workbench): this run
+		// composed them from the context it loaded before the change, so compose them once more, now.
+		$late = self::with_queue( self::LATE_QUEUE, static fn( array $q ) => [ [], array_keys( $q ) ] );
+		foreach ( array_chunk( $late, self::CHUNK ) as $chunk ) {
+			$existing = Store::get_many( $chunk );
+			foreach ( TitleRules::pack()->contexts( $chunk ) as $id => $ctx ) {
 				self::process( $id, $ctx, $existing[ $id ] ?? null, $run_id, $now, $stats );
 			}
 		}

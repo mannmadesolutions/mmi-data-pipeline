@@ -106,6 +106,19 @@ class TitleRules {
 	}
 
 	/**
+	 * What one of this pack's flags means and how a person fixes it in the row (Issues::for_row()).
+	 * Null leaves it to the engine's own wording; a flag nobody describes still offers "Edit title".
+	 *
+	 * @param string $flag   The flag's key ("bundle_not_in_category"), without its ":detail".
+	 * @param string $detail What followed the colon, if anything.
+	 * @param int    $id     The product.
+	 * @return array{label:string, help:string, tone?:string, fixes:array}|null Fixes as Issues::fix() describes them.
+	 */
+	public function issue( string $flag, string $detail, int $id ): ?array {
+		return null;
+	}
+
+	/**
 	 * What compose() reads about each product.
 	 *
 	 * @param int[] $ids
