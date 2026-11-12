@@ -511,12 +511,34 @@ class Rest {
 				'chosen'     => $row['kind'] === 'image' ? array_values( (array) json_decode( (string) ( $row['chosen'] ?? '' ), true ) ) : [],
 				'waiting'    => $row['kind'] === 'image' && strpos( (string) $row['detail'], 'avif_wait' ) !== false,
 				'low_res'    => $row['kind'] === 'image' ? (array) ( json_decode( (string) ( $row['detail'] ?? '' ), true )['low_res'] ?? [] ) : [],
+				// The maker site the pictures were read from, and whether its map tells the reader where they are.
+				'site'       => $row['kind'] === 'image' && $row['source'] === 'vendor_page' ? self::picture_site( (string) $row['source_url'] ) : null,
 				'edit_url'   => get_edit_post_link( (int) $row['product_id'], 'raw' ),
 				'view_url'   => get_permalink( (int) $row['product_id'] ),
 			],
 			$res['rows']
 		);
 		return rest_ensure_response( $res );
+	}
+
+	/**
+	 * A maker page's site for Pictures to pick (2026-11-12): its host (the site whose map serves the page), the map's
+	 * status (none, draft, confirmed…) and whether the map that reads this page has a Pictures part. Without one the
+	 * reader takes every picture it finds on the page, a "related products" strip's too.
+	 *
+	 * @return array{host:string, map:string, pictures:bool}|null
+	 */
+	private static function picture_site( string $url ): ?array {
+		static $status = [];
+		if ( ! preg_match( '#^https?://#i', $url ) ) {
+			return null;
+		}
+		$host = VendorMaps::site_of( $url );
+		if ( ! isset( $status[ $host ] ) ) {
+			$status[ $host ] = (string) ( VendorMaps::get( $host )['status'] ?? 'none' );
+		}
+		$fields = VendorMaps::fields_for( $url, '' ); // confirmed maps only, a layout's picks where one claims the page
+		return [ 'host' => $host, 'map' => $status[ $host ], 'pictures' => trim( (string) ( $fields['pictures']['sel'] ?? '' ) ) !== '' ];
 	}
 
 	public static function enrich_decide( \WP_REST_Request $r ) {

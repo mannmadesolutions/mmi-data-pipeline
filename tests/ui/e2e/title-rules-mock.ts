@@ -80,9 +80,25 @@ export class TitleRulesMock {
       current: "", proposed: "", chars: 0, images: ["/wp-includes/images/w-logo-blue.png", "/wp-includes/images/wpicons.png"],
       own: i === 0 ? [{ token: "att:77", url: "/wp-includes/images/arrow-pointer-blue.png" }] : [], chosen: [] as string[],
       waiting: false, low_res: i === 1 ? ["/wp-includes/images/wpicons.png"] : [], edit_url: "#", view_url: "#",
+      site: { host: "maker.example", map: "draft", pictures: false },
     })),
   ];
   constructor(private o: { staleOnce?: boolean; basic?: boolean } = {}) {}
+
+  /**
+   * The server's follow-up to a maker-page change (PageEvents): a cleared page drops the pictures proposed from it at
+   * once; a page set and read rebuilds them from the new page, here a moment later, as the background reader does.
+   */
+  private afterPageChange(path: string, body: Record<string, unknown>): void {
+    const one = path.match(/^urls\/(\d+)\/(set|clear|none)$/);
+    if (one && one[2] !== "set") {
+      this.enrich = this.enrich.filter((r) => !(r.id === Number(one[1]) && r.kind === "image" && r.source === "vendor_page"));
+      return;
+    }
+    const id = one ? Number(one[1]) : path === "pages/queue" ? Number((body.ids as number[] | undefined)?.[0] ?? 0) : 0;
+    const row = this.enrich.find((r) => r.id === id && r.kind === "image");
+    if (row) setTimeout(() => { row.images = ["/wp-includes/images/media/default.svg", ...row.images.slice(0, 1)]; if (one) row.source_url = String(body.url); }, 1500);
+  }
 
   private openOf(s: string) { return ["proposed", "stale", "error"].includes(s); }
 
@@ -362,7 +378,8 @@ export class TitleRulesMock {
         const kind = u.searchParams.get("kind") ?? "content";
         const status = u.searchParams.get("status") ?? "proposed";
         const source = u.searchParams.get("source") ?? "";
-        const rows = this.enrich.filter((r) => r.kind === kind && (status === "all" || r.status === status) && (!source || r.source === source));
+        const product = Number(u.searchParams.get("product") ?? 0);
+        const rows = this.enrich.filter((r) => r.kind === kind && (status === "all" || r.status === status) && (!source || r.source === source) && (!product || r.id === product));
         return this.json(route, { rows, total: rows.length, pages: 1 });
       }
       case "enrich/summary": return this.json(route, this.enrichSummary());
@@ -450,6 +467,7 @@ export class TitleRulesMock {
       }
     }
     const mp = this.makerPages.handle(req.method(), new URL(req.url()), path, body);
+    if (mp && (mp.status ?? 200) < 300) this.afterPageChange(path, body);
     if (mp) return this.json(route, mp.data, mp.status ?? 200);
     return this.json(route, { code: "rest_no_route", message: "No route" }, 404);
   }

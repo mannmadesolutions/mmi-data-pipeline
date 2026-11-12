@@ -33,7 +33,8 @@ const HINT: Partial<Record<PageAction, string>> = {
   reset: "Put this proposed page back with the pages to decide",
 };
 
-export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Promise<boolean | null>, onChanged?: () => void) {
+/** onChanged: after an action, with the product and the action (Pictures to pick waits for a page read's pictures). */
+export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Promise<boolean | null>, onChanged?: (id: number, action: PageAction) => void) {
   const [state, setState] = useState<Record<number, RowState>>({});
   const [busy, setBusy] = useState<number | "bulk" | null>(null);
   const [armed, setArmed] = useState<{ id: number | "bulk"; action: PageAction } | null>(null);
@@ -83,7 +84,7 @@ export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Prom
       setEvidence((m) => { const c = { ...m }; delete c[row.id]; return c; });
       const still = await refetch(row.id);
       setState((s) => ({ ...s, [row.id]: { notice: { text, kind: "ok" }, gone: still === false } }));
-      onChanged?.();
+      onChanged?.(row.id, a);
     } catch (e) {
       if (a === "set" && editing?.id === row.id) setEditing({ ...editing, error: msg(e) });
       else setState((s) => ({ ...s, [row.id]: { notice: { text: msg(e), kind: "error" } } }));

@@ -27,6 +27,8 @@ export interface EnrichRow {
   chosen: string[];
   waiting: boolean;
   low_res: string[];
+  /** Pictures read from a maker page: its site, the site map's status, and whether that map has a Pictures part. */
+  site?: { host: string; map: string; pictures: boolean } | null;
   edit_url: string;
   view_url: string;
 }

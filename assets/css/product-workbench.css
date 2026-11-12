@@ -1227,6 +1227,49 @@ button.mmi-health-chip.is-open {
     display: inline-flex;
     gap: 6px;
 }
+/* The maker page these pictures come from, decided in place: Maker pages' row (pageRows.tsx) in a panel. */
+.mmi-wb-en-maker-toggle .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+}
+.mmi-wb-en-maker {
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid var(--mmi-wb-border);
+    border-left: 3px solid var(--mmi-wb-accent);
+    border-radius: 4px;
+}
+.mmi-wb-en-maker-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.mmi-wb-en-maker-page {
+    flex: 1 1 420px;
+    min-width: 0;
+}
+.mmi-wb-en-maker-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+.mmi-wb-en-watch,
+.mmi-wb-en-site {
+    margin: 8px 0 0;
+}
+.mmi-wb-en-watch .mmi-loading {
+    width: 12px;
+    height: 12px;
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+}
+
 .mmi-wb-en-size {
     display: inline-flex;
     align-items: center;

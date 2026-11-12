@@ -104,6 +104,37 @@ test("pictures are picked under the row: own ones kept, the first is featured, o
   expect(api.callsTo("enrich/4002/image/choose").at(-1)!.body).toEqual({ images: ["/wp-includes/images/w-logo-blue.png", "/wp-includes/images/wpicons.png"] });
 });
 
+test("the maker page the pictures come from is checked and changed in place; a cleared page takes its row along", async ({ page }) => {
+  const { api, errors, sec } = await open(page);
+  await sec.locator('[data-kind="image"]').click();
+  // The row's "Maker's page" opens Maker pages' row for the product under it, with the site's map state.
+  const toggle = row(page, 4002).locator(".mmi-wb-en-maker-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  const panel = pics(page, 4002).locator(".mmi-wb-en-maker");
+  await expect(panel.locator(".mmi-wb-mp-now")).toContainText("https://maker.example/synths");
+  await expect(panel.locator(".mmi-wb-mp-proposed")).toContainText("https://maker.example/synth-2");
+  await expect(panel.locator(".mmi-wb-en-site")).toContainText("maker.example has no confirmed site map");
+  await expect(panel.locator(".mmi-wb-en-site a")).toHaveAttribute("href", /wb_sec=maps.*wb_site=maker\.example|wb_site=maker\.example.*wb_sec=maps/);
+  // A new address is saved and read; the product's pictures are read again from it, here without reloading.
+  await panel.getByRole("button", { name: "Change the page" }).click();
+  await panel.locator("#mmi-wb-mp-url-4002").fill("https://maker.example/synth-2-deluxe");
+  await panel.getByRole("button", { name: "Save" }).click();
+  expect(api.makerPages.pages.find((p) => p.id === 4002)!.current).toBe("https://maker.example/synth-2-deluxe");
+  await expect(panel.locator(".mmi-wb-en-watch")).toContainText("Reading the page");
+  await expect(pics(page, 4002).locator('.mmi-wb-en-pic[data-token="/wp-includes/images/media/default.svg"]')).toHaveCount(1, { timeout: 15000 });
+  await expect(pics(page, 4002).getByRole("status").filter({ hasText: "Pictures read again from the maker page." })).toBeVisible();
+  await expect(panel.locator(".mmi-wb-en-watch")).toHaveCount(0);
+  // "Maker doesn't publish it" clears the page: the pictures proposed from it go, and the row leaves.
+  await row(page, 4003).locator(".mmi-wb-en-maker-toggle").click();
+  const p3 = pics(page, 4003).locator(".mmi-wb-en-maker");
+  await p3.getByRole("button", { name: "Maker doesn't publish it" }).click();
+  await p3.getByRole("button", { name: "Click again: the maker doesn't publish it" }).click();
+  await expect(row(page, 4003)).toHaveCount(0);
+  await expect(page.locator("#mmi-wb-en-notice")).toContainText("#4003: its maker page was cleared");
+  expect(errors).toEqual([]);
+});
+
 test("a picture smaller than the standard is marked", async ({ page }) => {
   const { sec } = await open(page);
   await sec.locator('[data-kind="image"]').click();
