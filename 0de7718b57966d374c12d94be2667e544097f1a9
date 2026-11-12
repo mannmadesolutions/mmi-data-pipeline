@@ -1,2 +1,7 @@
-lint pass ship 8 files
-site-rules pass ship 8 files
+lint pass 305 files
+site-rules pass
+run-all pass 8 scenarios
+ui-check pass 132
+ui-e2e pass 238
+customer-site pass 26 ok on 0de7718 as installed
+page pass 8 features, 12 screenshots; 10 warnings
