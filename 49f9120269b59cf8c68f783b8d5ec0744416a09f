@@ -1,2 +1,7 @@
-lint pass ship 2 files
-site-rules pass ship 2 files
+lint pass 305 files
+site-rules pass
+run-all pass 8 scenarios
+ui-check fail exit 2
+ui-e2e pass 210
+customer-site pass 26 ok on 49f9120 as installed
+page pass 4 features, 12 screenshots; 10 warnings
