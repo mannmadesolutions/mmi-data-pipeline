@@ -128,6 +128,28 @@ class Enrichment {
 	public static function register_hooks(): void {
 		add_action( self::HOOK, [ __CLASS__, 'run_batch' ] );
 		add_action( self::DAILY_HOOK, [ __CLASS__, 'daily' ] );
+		add_filter( 'mmi_seo_product_data_coverage', [ __CLASS__, 'seo_coverage' ] );
+	}
+
+	/**
+	 * MMI SEO's question "how many products have product data good enough to write SEO from?" (its Meta
+	 * health accounting of AI sources): published products whose description is the maker's, written by this
+	 * module from the maker's page or the family copy, and still in use (applied, not reverted).
+	 *
+	 * @param array|null $answer Another plugin's answer, kept if given.
+	 * @return array{with:int, what:string}|null
+	 */
+	public static function seo_coverage( $answer ) {
+		if ( is_array( $answer ) ) {
+			return $answer;
+		}
+		global $wpdb;
+		$t = self::table();
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $t ) ) !== $t ) {
+			return $answer;
+		}
+		$with = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT e.product_id) FROM {$t} e JOIN {$wpdb->posts} p ON p.ID = e.product_id AND p.post_type = 'product' AND p.post_status = 'publish' WHERE e.kind = 'content' AND e.status = 'applied' AND e.source IN ('vendor_page','family_copy')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- table name only
+		return [ 'with' => $with, 'what' => __( "a description from the maker's page", 'mmi-data-pipeline' ) ];
 	}
 
 	public static function schedule_daily(): void {
