@@ -15,6 +15,7 @@ import {
   selectAllMatching, selectedCount, selectionPayload, targetText, toggleRows, type QuickFilters, type SelectionState,
 } from "./logic";
 import { CatalogUpkeep } from "./CatalogUpkeep";
+import { Decide } from "./Decide";
 import { LABELS, MESSAGES, fill, num, plural } from "./messages";
 import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
@@ -513,11 +514,12 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   /* ── The menu: every section, one on screen (Shell.tsx) ───────────────── */
 
   const tr = cfg.titleRules;
-  const n0 = (v: number | undefined, kind: "" | "info" = "info") => (v ? { text: num(v), kind } : null);
+  const n0 = (v: number | undefined, kind: "" | "info" | "warning" = "info") => (v ? { text: num(v), kind } : null);
   const enrich = (entry: string) => tr
     ? <EnrichProposals cfg={tr} kind={entry === "picks" ? "image" : "content"} onKind={(k) => openSection(k === "image" ? "picks" : "descriptions", true)} />
     : null;
   const entries: MenuEntry[] = [
+    ...(tr ? [{ key: "decide", label: "Needs a decision", group: "work", render: () => <Decide cfg={tr} />, badge: (c: WorkbenchCounts) => n0(c.decide, "warning") }] as MenuEntry[] : []),
     { key: "data", label: "Find and change", group: "work", eager: true, render: () => findAndChange, badge: (c) => ({ text: num(c.catalog), title: "Draft and published products: what Find and change browses before a search" }) },
     ...(tr ? [
       { key: "titles", label: "Title proposals", group: "review", render: () => <TitleProposals cfg={tr} />, badge: (c: WorkbenchCounts) => n0(c.titles) },

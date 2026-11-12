@@ -47,7 +47,7 @@ export interface MenuEntry {
 }
 
 const COUNTS_DEBOUNCE_MS = 2000;
-const LANDING_PARAMS = ["wb_sec", "wb_q", "wb_brand", "wb_site", "wb_bundle"];
+const LANDING_PARAMS = ["wb_sec", "wb_q", "wb_brand", "wb_site", "wb_bundle", "wb_product"];
 
 /** This page's address with wb_sec set to the key and the other landing parameters dropped. */
 export function hrefFor(key: string): string {

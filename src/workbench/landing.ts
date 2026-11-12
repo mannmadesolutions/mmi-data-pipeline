@@ -8,15 +8,17 @@
  *   wb_brand   Brands & sites opens this brand (term ID)
  *   wb_site    Site maps opens this maker site (host)
  *   wb_bundle  the Bundles panel shows this bundle (a store's own panel reads it)
+ *   wb_product Needs a decision opens the product drawer on this product (product ID)
  *
  * A link without wb_sec opens the section its other parameter belongs to
  * (wb_brand → Brands & sites, …). An older link's #section-id hash (e.g.
  * #mmi-wb-rules from the rule-efficacy alert) opens that section too.
  */
-export interface Landing { sec: string; q: string; brand: number; site: string; bundle: number }
+export interface Landing { sec: string; q: string; brand: number; site: string; bundle: number; product: number }
 
 /** Menu key → the section's element id (its Section id, unchanged from the stacked page). */
 export const SECTION_IDS: Record<string, string> = {
+  decide: "mmi-wb-decide",
   data: "mmi-wb-results-section",
   standing: "mmi-wb-rules",
   upkeep: "mmi-wb-upkeep",
@@ -66,8 +68,9 @@ export function readLanding(search: string, hash = ""): Landing {
     brand: int("wb_brand"),
     site: (p.get("wb_site") ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").slice(0, 120),
     bundle: int("wb_bundle"),
+    product: int("wb_product"),
   };
-  if (!l.sec) l.sec = keyForHash(hash) || (l.brand ? "sites" : l.site ? "maps" : l.bundle ? "bundles" : l.q ? "data" : "");
+  if (!l.sec) l.sec = keyForHash(hash) || (l.product ? "decide" : l.brand ? "sites" : l.site ? "maps" : l.bundle ? "bundles" : l.q ? "data" : "");
   return l;
 }
 

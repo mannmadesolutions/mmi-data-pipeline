@@ -153,6 +153,8 @@ export interface WorkbenchCounts {
   catalog: number;
   standing: { on: number; total: number; alerts: number };
   upkeep: { enabled: boolean; frequency: string; running: boolean };
+  /** Products something waits on (Needs a decision): its last full count, at most 5 minutes old. */
+  decide?: number;
   /** Title proposals to review (proposed, stale, error). */
   titles?: number;
   /** Description and picture proposals waiting. */

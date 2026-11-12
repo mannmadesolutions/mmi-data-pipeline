@@ -147,7 +147,7 @@ class PageList {
 		$why     = in_array( $group, [ 'approved', 'rejected', 'every' ], true ) ? array_fill_keys( $sets[ $group ], $group ) : array_fill_keys( $sets['open'], 'open' ) + array_fill_keys( $sets['broken'], 'broken' ) + array_fill_keys( $sets['none'], 'none' ) + array_fill_keys( $sets['wrong'], 'wrong' );
 		$counts  = array_map( 'count', $sets );
 		if ( ! $brand && $site === '' && $q === '' ) { // every product: the side menu's Maker pages badge (WorkbenchCounts)
-			WorkbenchCounts::store( $counts['open'] + $counts['broken'] + $counts['none'] + $counts['wrong'] );
+			WorkbenchCounts::store( array_merge( $sets['open'], $sets['broken'], $sets['none'], $sets['wrong'] ) );
 		}
 		$results = PageReview::result_counts( $list ); // the result filter's counts, over the group shown
 		$reasons = [];

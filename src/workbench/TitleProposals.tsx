@@ -19,6 +19,7 @@ import { BusyButton, Dashicon, Section } from "./ui";
 import { TitleWriting } from "./WritingSettings";
 import { landing } from "./landing";
 import { useSectionVisible } from "./nav";
+import { PRODUCT_CHANGED } from "./waitingApi";
 
 const COLS: { key: QueueSort; label: string }[] = [
   { key: "id", label: "ID" },
@@ -175,6 +176,14 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   }, [apply?.phase, visible]);
 
   const refresh = () => { void load(filter); loadSummary(); void pollApply(); };
+  // A product decided in the drawer (Needs a decision): this list shows it as it is now.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const on = () => refreshRef.current();
+    window.addEventListener(PRODUCT_CHANGED, on);
+    return () => window.removeEventListener(PRODUCT_CHANGED, on);
+  }, []);
 
   const decide = async (action: "accept" | "reject" | "reset", ids: number[]) => {
     setBusy(ids.length === 1 ? ids[0]! : "bulk");

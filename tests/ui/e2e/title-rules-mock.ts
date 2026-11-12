@@ -47,6 +47,8 @@ export class TitleRulesMock {
       cats: [{ id: 12, name: "Plug-ins" }], brands: i === 11 ? [] : [{ id: i % 2 ? 21 : 20, name: brand }], cat_locked: i === 1, brand_locked: false, missing: i === 6 ? ["sku"] : i === 11 ? ["brand"] : [] as string[],
     };
   });
+  /** Needs a decision (GET waiting): off, the list is empty and the Workbench opens on Find and change. */
+  waitingOn = false;
   applyState = { phase: "idle", enabled: true, queue: 3, applied_today: 0, batch_size: 25, next_at: null as number | null, now: 1000, run: null as unknown };
   /** Store::apply_settings(), and Enrichment's settings and sources (Writing settings). */
   applySettings = { enabled: false, auto: false, batch_size: 25, min_confidence: 85 };
@@ -101,6 +103,34 @@ export class TitleRulesMock {
     ];
   }
   shaped<T extends { missing: string[]; flags: string[] }>(r: T) { return { ...r, issues: this.issuesOf(r) }; }
+
+  /** What waits on a proposal's product, as Waiting::badges() gives it: gaps, then an open title. */
+  waitingOf(r: { status: string; missing: string[] }) {
+    const out: { key: string; label: string; tone: string }[] = [];
+    if (r.missing.includes("brand")) out.push({ key: "no_brand", label: "No brand", tone: "error" });
+    if (r.missing.includes("sku")) out.push({ key: "no_sku", label: "No SKU", tone: "warning" });
+    if (["proposed", "stale", "error"].includes(r.status)) out.push({ key: "title", label: "Title", tone: "success" });
+    return out;
+  }
+
+  /** GET waiting: the proposals something waits on, errors (no brand) first, then by ID; chips, search and the ID heading. */
+  waiting(u: URL) {
+    const all = this.waitingOn ? this.proposals.map((r) => ({ r, w: this.waitingOf(r) })).filter((x) => x.w.length) : [];
+    const q = (u.searchParams.get("q") ?? "").toLowerCase();
+    const found = all.filter((x) => !q || String(x.r.id) === q || x.r.current.toLowerCase().includes(q));
+    const has = (x: { w: { key: string }[] }, keys: string[]) => x.w.some((b) => keys.includes(b.key));
+    const counts = { all: found.length, titles: found.filter((x) => has(x, ["title"])).length, descriptions: 0, pictures: 0, pages: 0, data: found.filter((x) => has(x, ["no_brand", "no_sku"])).length, picture_errors: 0 };
+    const kind = u.searchParams.get("kind") ?? "";
+    let rows = kind === "titles" ? found.filter((x) => has(x, ["title"])) : kind === "data" ? found.filter((x) => has(x, ["no_brand", "no_sku"])) : kind ? [] : found;
+    const err = (x: { w: { key: string }[] }) => (has(x, ["no_brand"]) ? 0 : 1);
+    rows = [...rows].sort((a, b) => err(a) - err(b) || a.r.id - b.r.id);
+    if (u.searchParams.get("orderby") === "id") rows.sort((a, b) => (a.r.id - b.r.id) * (u.searchParams.get("order") === "asc" ? 1 : -1));
+    const page = Number(u.searchParams.get("page") ?? 1);
+    return {
+      rows: rows.slice((page - 1) * 25, page * 25).map((x) => ({ id: x.r.id, title: x.r.current, status: "publish", sku: x.r.sku, cats: x.r.cats, brands: x.r.brands, waiting: x.w })),
+      total: rows.length, pages: Math.max(1, Math.ceil(rows.length / 25)), page, counts,
+    };
+  }
   /** Brands created through the fix panel. */
   createdBrands: { id: number; name: string }[] = [];
 
@@ -217,6 +247,17 @@ export class TitleRulesMock {
       if (e[3] === "apply") { if (row.kind === "image" && !row.chosen.length) return this.json(route, { result: "error", message: "Pick the pictures for this product first." }); row.status = "applied"; return this.json(route, { result: "applied", message: "" }); }
       row.status = "reverted"; return this.json(route, { result: "reverted", message: "" });
     }
+    const pw = path.match(/^products\/(\d+)\/workbench$/);
+    if (pw) {
+      const row = this.proposals.find((r) => r.id === Number(pw[1]));
+      if (!row) return this.json(route, { code: "mmpt_not_found", message: "There is no such product." }, 404);
+      return this.json(route, {
+        id: row.id, title: row.current, status: "publish", stock: "instock", sku: row.sku, edit_url: row.edit_url, view_url: row.view_url,
+        waiting: this.waitingOf(row), issues: this.issuesOf(row), proposal: this.shaped(row), cats: row.cats, brands: row.brands,
+        locks: { cats: row.cat_locked, brands: row.brand_locked },
+        feed: { brands: row.brands.length ? [] : [{ supplier: "xchange", label: "Xchange", field: "brand", value: "Freqport", mapped: null, others: 2 }], cats: [] },
+      });
+    }
     const fx = path.match(/^products\/(\d+)\/(fix-context|fix)$/);
     if (fx) {
       const id = Number(fx[1]);
@@ -299,6 +340,7 @@ export class TitleRulesMock {
         this.enrichRules[String(body.rule)]!.approved = !!body.approved;
         return this.json(route, this.enrichSummary());
       case "proposals": return this.json(route, this.queue(new URL(req.url())));
+      case "waiting": return this.json(route, this.waiting(new URL(req.url())));
       case "decide": {
         const to = { accept: "accepted", reject: "rejected", reset: "proposed" }[String(body.action)];
         let n = 0;

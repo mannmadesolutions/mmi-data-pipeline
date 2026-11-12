@@ -105,7 +105,8 @@ final class Issues {
 		return $out;
 	}
 
-	private static function describe_flag( string $flag, string $detail, int $id ): array {
+	/** A flag as an issue (label, help, tone, fixes): the pack's words first, then the engine's (also Waiting). */
+	public static function describe_flag( string $flag, string $detail, int $id ): array {
 		$pack = TitleRules::pack()->issue( $flag, $detail, $id );
 		if ( $pack ) {
 			return $pack;
@@ -129,7 +130,7 @@ final class Issues {
 		return [ 'kind' => 'title', 'label' => $label ];
 	}
 
-	private static function normalize( array $i ): array {
+	public static function normalize( array $i ): array {
 		$i['tone']  = in_array( $i['tone'] ?? '', [ 'error', 'warning', 'info' ], true ) ? $i['tone'] : 'warning';
 		$i['help']  = (string) ( $i['help'] ?? '' );
 		$i['fixes'] = array_values(

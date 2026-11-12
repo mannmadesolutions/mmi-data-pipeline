@@ -8,6 +8,7 @@
  *   picks         picture proposals waiting, as its Pictures pill
  *   pictures      the picture runner: products queued, products still failed from its last run, running or not
  *   pages         products whose maker page waits, as Maker pages' "Waiting"
+ *   decide        products something waits on (Needs a decision, Waiting::total(): its last full count, ≤ 5 minutes old)
  *
  * Every count but the last is one aggregate query. Maker pages' count is PageList's four waiting groups, which take
  * about 2 s to work out, so it is kept in an option: every unscoped page-list request (the Maker pages section
@@ -68,9 +69,11 @@ final class WorkbenchCounts {
 			'running' => Pictures::runner_alive(),
 		];
 
+		$out['decide'] = Waiting::total();
+
 		$c     = get_option( self::OPTION );
 		$c     = is_array( $c ) ? $c : [];
-		$stale = ! isset( $c['n'] ) || ! empty( $c['dirty'] ) || time() - (int) ( $c['at'] ?? 0 ) > self::MAX_AGE;
+		$stale = ! isset( $c['ids'] ) || ! empty( $c['dirty'] ) || time() - (int) ( $c['at'] ?? 0 ) > self::MAX_AGE;
 		$out['pages'] = [
 			'n'          => isset( $c['n'] ) ? (int) $c['n'] : null,
 			'at'         => (int) ( $c['at'] ?? 0 ),
@@ -79,10 +82,22 @@ final class WorkbenchCounts {
 		return $out;
 	}
 
-	/** PageList worked out the four waiting groups for every product: keep their total for the menu. */
-	public static function store( int $waiting ): void {
+	/**
+	 * PageList worked out the four waiting groups for every product: keep their total for the menu, and their ids
+	 * for Needs a decision (Waiting).
+	 *
+	 * @param int[] $ids
+	 */
+	public static function store( array $ids ): void {
 		self::$dirty = false; // counted after this request's own changes
-		update_option( self::OPTION, [ 'n' => $waiting, 'at' => time(), 'dirty' => false ], false );
+		$ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
+		update_option( self::OPTION, [ 'n' => count( $ids ), 'ids' => $ids, 'at' => time(), 'dirty' => false ], false );
+	}
+
+	/** The products whose maker page waited at the last count (Waiting's "page" key). @return int[] */
+	public static function page_ids(): array {
+		$c = get_option( self::OPTION );
+		return is_array( $c ) && isset( $c['ids'] ) ? array_map( 'intval', (array) $c['ids'] ) : [];
 	}
 
 	/** The background rebuild: an unscoped, counts-only page-list request, which stores the count itself. */
