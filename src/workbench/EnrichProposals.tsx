@@ -27,8 +27,13 @@ const COLS: { key: SortKey; label: string }[] = [
 
 interface Notice { text: string; kind: "ok" | "error" }
 
-export function EnrichProposals({ cfg }: { cfg: TitleRulesConfig }) {
-  const [filter, setFilter] = useState<EnrichFilter>(EMPTY_ENRICH);
+/**
+ * kind: the kind shown, given by the side menu (Descriptions, Pictures to pick); the section's own pills
+ * switch it through onKind, so the menu follows. Without them the section keeps its own choice.
+ */
+export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; kind?: EnrichKind; onKind?: (k: EnrichKind) => void }) {
+  const [filter, setFilter] = useState<EnrichFilter>(() => (kind ? { ...EMPTY_ENRICH, kind } : EMPTY_ENRICH));
+  useEffect(() => { if (kind) setFilter((f) => (f.kind === kind ? f : { ...EMPTY_ENRICH, kind })); }, [kind]);
   const [page, setPage] = useState<EnrichPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<EnrichSummary | null>(null);
@@ -115,7 +120,7 @@ export function EnrichProposals({ cfg }: { cfg: TitleRulesConfig }) {
   const sourceLabel = (src: string) => sources.find((s) => s.value === src)?.label ?? src;
   const ticked = selected.filter((id) => enrichActions(rows.find((r) => r.id === id)?.status ?? "applied").includes("accept"));
   const allTicked = rows.length > 0 && rows.every((r) => selected.includes(r.id));
-  const setKind = (kind: EnrichKind) => setFilter({ ...EMPTY_ENRICH, kind });
+  const setKind = (k: EnrichKind) => { setFilter({ ...EMPTY_ENRICH, kind: k }); onKind?.(k); };
 
   const button = (row: EnrichRow, a: EnrichAction) => {
     const none = row.kind === "image" && shown(row).length === 0 && (a === "accept" || a === "apply");

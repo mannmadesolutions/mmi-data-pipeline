@@ -15,16 +15,43 @@ async function open(page: Page, query: string) {
   return { backend, errors };
 }
 
-test("wb_q starts the search; wb_brand opens the brand; wb_site opens the site's map", async ({ page }) => {
-  const { backend, errors } = await open(page, "?wb_q=Synth&wb_brand=20&wb_site=acme.example");
+const current = (page: Page) => page.locator("#mmi-wb-menu [aria-current=page]");
+
+test("wb_q opens Find and change on the search", async ({ page }) => {
+  const { backend, errors } = await open(page, "?wb_q=Synth");
+  await expect(current(page)).toHaveAttribute("data-sec", "data");
   await expect(page.locator("#mmi-wb-q")).toHaveValue("Synth");
   await expect.poll(() => backend.callsTo("mmi_workbench_search").some((c) => c.body.get("filter[q]") === "Synth")).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("wb_brand alone opens Brands & sites on the brand", async ({ page }) => {
+  const { errors } = await open(page, "?wb_brand=20");
+  await expect(current(page)).toHaveAttribute("data-sec", "sites");
   await expect(page.locator("#mmi-wb-bs-drawer")).toHaveAttribute("data-brand", "20");
+  expect(errors).toEqual([]);
+});
+
+test("wb_site alone opens Site maps on the site", async ({ page }) => {
+  const { errors } = await open(page, "?wb_site=acme.example");
+  await expect(current(page)).toHaveAttribute("data-sec", "maps");
   await expect(page.locator("#mmi-wb-sm-panel")).toHaveAttribute("data-host", "acme.example");
   expect(errors).toEqual([]);
 });
 
-test("wb_sec scrolls to its section once it is drawn", async ({ page }) => {
+test("wb_sec opens its section alone; sections not opened yet aren't drawn", async ({ page }) => {
   await open(page, "?wb_sec=maps");
-  await expect(page.locator("#mmi-wb-site-maps")).toBeInViewport();
+  await expect(current(page)).toHaveAttribute("data-sec", "maps");
+  await expect(page.locator("#mmi-wb-site-maps")).toBeVisible();
+  await expect(page.locator("#mmi-wb-find")).toBeHidden(); // mounted with the page (it hosts the shared components), hidden
+  await expect(page.locator("#mmi-wb-proposals")).toHaveCount(0);
+  await expect(page.locator("#mmi-wb-maker-pages")).toHaveCount(0);
+});
+
+test("older keys and section hashes still land: proposals, parts, #mmi-wb-rules", async ({ page }) => {
+  await open(page, "?wb_sec=proposals");
+  await expect(current(page)).toHaveAttribute("data-sec", "descriptions");
+  await open(page, "?page=x#mmi-wb-rules");
+  await expect(current(page)).toHaveAttribute("data-sec", "standing");
+  await expect(page.locator("#mmi-wb-rules")).toBeVisible();
 });

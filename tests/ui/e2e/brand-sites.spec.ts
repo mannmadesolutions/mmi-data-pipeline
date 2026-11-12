@@ -4,9 +4,10 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
+import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page) {
+async function open(page: Page, key = "sites") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -15,6 +16,7 @@ async function open(page: Page) {
   const api = new TitleRulesMock();
   await api.attach(page);
   await page.goto("/");
+  await openSection(page, key);
   const sec = page.locator("#mmi-wb-brand-sites");
   await expect(sec.locator("#mmi-wb-bs-rows tr[data-brand]")).toHaveCount(2);
   return { api, errors, sec };

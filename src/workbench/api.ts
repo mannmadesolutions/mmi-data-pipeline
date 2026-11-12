@@ -9,7 +9,7 @@
 import { NONCE_ACTION, page } from "./globals";
 import { MESSAGES } from "./messages";
 import type {
-  BatchResponse, Efficacy, Filter, HoldResult, Job, PhaseResult, Preview, ProductRow, RunPhase, SearchResult, Selection, SortDir, StandingRule, Upkeep,
+  BatchResponse, Efficacy, Filter, HoldResult, Job, PhaseResult, Preview, ProductRow, RunPhase, SearchResult, Selection, SortDir, StandingRule, Upkeep, WorkbenchCounts,
 } from "./types";
 
 export type ApiErrorKind = "server" | "network" | "auth" | "abort";
@@ -110,6 +110,8 @@ export const api = {
   undo: (jobId: string) => post<BatchResponse>("mmi_workbench_undo", { job_id: jobId }),
   stop: (jobId: string) => post<{ job: Job }>("mmi_workbench_stop", { job_id: jobId }),
   jobs: () => post<{ jobs: Job[] }>("mmi_workbench_jobs"),
+  /** The side menu's badges. */
+  counts: () => post<WorkbenchCounts>("mmi_workbench_counts"),
 
   terms: (taxonomy: string) =>
     post<{ terms: { id: number; name: string; parent?: number }[] }>("mmi_pipeline_get_taxonomy_terms", { taxonomy }),

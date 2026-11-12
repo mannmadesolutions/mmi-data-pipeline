@@ -13,14 +13,19 @@
  *   mmi_workbench_set_field — set one product's title, price, stock quantity or a meta column from the results table
  *   mmi_workbench_save_search   — save the conditions as a named search (condition library "wb:")
  *   mmi_workbench_delete_search — delete one (from the library's Delete)
+ *   mmi_workbench_counts  — the side menu's badges (Product Data adds its own: mmi_pipeline_workbench_counts)
  *
  * All share the Import tab's nonce and manage_woocommerce capability.
  *
  * @package MannMade\DataPipeline
  */
 
+use MannMade\DataPipeline\Catalog\Catalog_Phase_Runner;
+use MannMade\DataPipeline\Catalog\Catalog_Run_State;
 use MannMade\DataPipeline\Stock_Override_Resolver;
 use MannMade\DataPipeline\Workbench\Product_Workbench;
+use MannMade\DataPipeline\Workbench\Rule_Efficacy;
+use MannMade\DataPipeline\Workbench\Standing_Rules;
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
@@ -211,4 +216,34 @@ add_action( 'wp_ajax_mmi_workbench_set_field', function () {
     );
     // phpcs:enable
     is_wp_error( $row ) ? wp_send_json_error( [ 'message' => $row->get_error_message() ] ) : wp_send_json_success( [ 'row' => $row ] );
+} );
+
+// The side menu's badges, asked for once the menu is drawn and again (debounced) when a section opens or a job
+// finishes; never polled. Only stored counts and single aggregate queries: Product Data's slow maker-pages count
+// is served from its cache (ProductData\WorkbenchCounts). 2026-11-12.
+add_action( 'wp_ajax_mmi_workbench_counts', function () {
+    mmi_workbench_ajax_guard();
+    $rules = Standing_Rules::all();
+    $freq  = (string) MMI_DB::get_setting( 'mmi_schedule_catalog_update', 'sixhourly' );
+    $short = [ 'disabled' => 'Off', 'hourly' => 'Hourly', 'sixhourly' => 'Every 6 h', 'twicedaily' => 'Twice a day', 'daily' => 'Daily' ];
+    $posts = wp_count_posts( 'product' );
+    $out   = [
+        // What Find and change browses before a search: its Status filter starts on draft and published (logic.ts DEFAULT_STATUSES).
+        'catalog'  => (int) ( $posts->publish ?? 0 ) + (int) ( $posts->draft ?? 0 ),
+        'standing' => [
+            'on'     => count( array_filter( $rules, static fn( $r ) => ! empty( $r['enabled'] ) ) ),
+            'total'  => count( $rules ),
+            'alerts' => count( Rule_Efficacy::alerts() ), // stored grades, as the header's chip
+        ],
+        'upkeep'   => [
+            'enabled'   => Catalog_Phase_Runner::is_enabled() && $freq !== 'disabled',
+            'frequency' => $short[ $freq ] ?? $freq,
+            'running'   => Catalog_Run_State::is_locked(),
+        ],
+    ];
+    /**
+     * Badges a module adds to the Workbench's side menu (keys the app knows: titles, descriptions, picks,
+     * pictures, pages). Each must be a stored count or one aggregate query: the menu waits for this reply.
+     */
+    wp_send_json_success( apply_filters( 'mmi_pipeline_workbench_counts', $out ) );
 } );

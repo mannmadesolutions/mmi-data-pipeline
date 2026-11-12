@@ -30,6 +30,9 @@
         VIEW_SOURCE:    '.mmi-run-insights-view-source',
         NOTICE:         '.mmi-process-notice',
         NOTICE_DISMISS: '.mmi-process-notice-dismiss',
+        // Product Workbench tab: the notices wait behind a header chip (main.php's compact header).
+        NOTICE_CHIP:    '.mmi-process-notice-chip',
+        NOTICE_BOX:     '#mmi-process-notices',
     };
 
     const URL_PARAMS = {
@@ -300,7 +303,15 @@
         $.post(CONFIG.ajaxUrl, { action: 'mmi_pipeline_dismiss_process_error', nonce: CONFIG.nonce, error_key: $btn.data('error-key') })
             .done((res) => {
                 if (res && res.success) {
-                    $notice.slideUp(200, () => $notice.remove());
+                    $notice.slideUp(200, () => {
+                        $notice.remove();
+                        // The last one behind the header chip: the chip and its box go too.
+                        const $box = $(SELECTORS.NOTICE_BOX);
+                        if ($box.length && !$box.find(SELECTORS.NOTICE).length) {
+                            $box.remove();
+                            $(SELECTORS.NOTICE_CHIP).remove();
+                        }
+                    });
                     return;
                 }
                 $btn.prop('disabled', false).removeClass('mmi-is-loading').html(label)
@@ -309,6 +320,13 @@
             .fail(() => {
                 $btn.prop('disabled', false).removeClass('mmi-is-loading').html(label).attr('title', MESSAGES.DISMISS_FAILED);
             });
+    });
+
+    $(document).on('click', SELECTORS.NOTICE_CHIP, function () {
+        const $box = $(SELECTORS.NOTICE_BOX);
+        const open = $box.prop('hidden');
+        $box.prop('hidden', !open);
+        $(this).attr('aria-expanded', open ? 'true' : 'false');
     });
 
     window.MMIRunInsights = { open: open };

@@ -5,9 +5,10 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
+import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page) {
+async function open(page: Page, key = "titles") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -16,7 +17,8 @@ async function open(page: Page) {
   const api = new TitleRulesMock();
   await api.attach(page);
   await page.goto("/");
-  await expect(page.locator("#mmi-wb-settings-titles")).toBeAttached();
+  await openSection(page, key);
+  if (key === "titles") await expect(page.locator("#mmi-wb-settings-titles")).toBeAttached();
   return { api, errors };
 }
 
@@ -64,7 +66,7 @@ test("titles: Show the ones that would auto-apply opens that view", async ({ pag
 });
 
 test("descriptions and pictures: write to products asks first; a source switches on its own", async ({ page }) => {
-  const { api, errors } = await open(page);
+  const { api, errors } = await open(page, "descriptions");
   const box = page.locator("#mmi-wb-settings-enrich");
   await expect(box.locator("summary")).toContainText("Writing to products Off · 1 source writes without review");
   await box.locator("summary").click();
@@ -80,7 +82,7 @@ test("descriptions and pictures: write to products asks first; a source switches
 });
 
 test("Product Data runs lists what ran", async ({ page }) => {
-  await open(page);
+  await open(page, "writing");
   const t = page.locator("#mmi-wb-pd-runs-table");
   await expect(t.locator("tr", { hasText: "Last composition" })).toContainText("complete 2026-11-10 09:09:24");
   await expect(t.locator("tr", { hasText: "Titles written in total" })).toContainText("7,142");

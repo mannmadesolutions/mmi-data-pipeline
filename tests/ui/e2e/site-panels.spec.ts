@@ -5,6 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
+import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
 const PANELS = [
@@ -33,16 +34,23 @@ async function open(page: Page) {
   return { errors };
 }
 
-test("each panel gets a section; scripts mount early or late; a missing one says so", async ({ page }) => {
+test("each panel gets a menu entry under This store; it mounts on first open, early or late; a missing one says so", async ({ page }) => {
   const { errors } = await open(page);
+  await expect(page.locator('#mmi-wb-menu [data-group="store"] [data-sec]')).toHaveText(["Early panel", "Late panel", "Missing panel"]);
+  await expect(page.locator("#mmi-wb-panel-early")).toHaveCount(0); // not drawn until opened
+  await openSection(page, "early");
   await expect(page.locator("#mmi-wb-panel-early h3")).toContainText("Early panel");
   await expect(page.locator("#early-body")).toHaveText("Drawn early");
+  await openSection(page, "late");
   await page.clock.runFor(1000);
   await expect(page.locator("#late-body")).toHaveText("Drawn late");
   await expect(page.locator("#mmi-wb-panel-late .mmi-wb-panel-wait")).toHaveCount(0);
+  await openSection(page, "missing");
   await expect(page.locator("#mmi-wb-panel-missing .mmi-wb-panel-wait")).toBeVisible();
   await page.clock.runFor(16000);
   await expect(page.locator("#mmi-wb-panel-missing")).toContainText("This panel’s script didn’t load");
+  await openSection(page, "early");
+  await expect(page.locator("#early-body")).toHaveText("Drawn early"); // kept, not drawn again
   await expect(page.locator("#mmi-wb-panel-early")).not.toContainText("didn’t load");
   expect(errors).toEqual([]);
 });

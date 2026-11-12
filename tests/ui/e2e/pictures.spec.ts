@@ -1,9 +1,10 @@
 /** Product pictures in the Workbench, and queueing from Maker pages (migration phase 8), REST mocked. */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
+import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page) {
+async function open(page: Page, key = "pictures") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -12,7 +13,8 @@ async function open(page: Page) {
   const api = new TitleRulesMock();
   await api.attach(page);
   await page.goto("/");
-  await expect(page.locator("#mmi-wb-px-rows tr[data-id]")).toHaveCount(50);
+  await openSection(page, key);
+  if (key === "pictures") await expect(page.locator("#mmi-wb-px-rows tr[data-id]")).toHaveCount(50);
   return { api, errors };
 }
 
@@ -44,12 +46,13 @@ test("Show them filters the ledger; pages; Put back a product", async ({ page })
 });
 
 test("Pictures on ticked Maker pages rows queues them; the section follows and can stop", async ({ page }) => {
-  const { api } = await open(page);
+  const { api } = await open(page, "pages");
   api.pxWaiting = 2;
   await page.locator('#mmi-wb-mp-rows tr[data-id="4003"]').getByRole("checkbox").check();
   await page.locator("#mmi-wb-mp-pictures-ticked").click();
   await expect(page.locator("#mmi-wb-mp-notice")).toHaveText("1 product queued for new pictures. Product pictures shows how it goes.");
   expect(api.callsTo("pages/queue")[0]!.body).toEqual({ ids: [4003], mode: "pictures" });
+  await openSection(page, "pictures");
   await expect(page.locator("#mmi-wb-px-status")).toContainText("Runner working.");
   await expect(page.locator("#mmi-wb-px-status")).toContainText("2 waiting.");
   await page.locator("#mmi-wb-px-stop").click();
@@ -58,7 +61,7 @@ test("Pictures on ticked Maker pages rows queues them; the section follows and c
 });
 
 test("Scrape again on ticked Maker pages rows", async ({ page }) => {
-  const { api } = await open(page);
+  const { api } = await open(page, "pages");
   await page.locator('#mmi-wb-mp-rows tr[data-id="4003"]').getByRole("checkbox").check();
   await page.locator("#mmi-wb-mp-scrape-ticked").click();
   await expect(page.locator("#mmi-wb-mp-notice")).toHaveText("1 product queued to scrape again.");

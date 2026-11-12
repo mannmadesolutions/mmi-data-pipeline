@@ -127,7 +127,7 @@ export function CatalogUpkeep({ onRunFinished }: { onRunFinished: () => void }) 
 
   return (
     <Section id="mmi-wb-upkeep" icon="admin-tools" title="Catalog upkeep"
-      desc="The steps every catalog run takes, in this order, on its schedule and 5 minutes after each data fetch. Feed sync steps come from the data sources (Import tab); Apply standing rules runs the rules above"
+      desc="The steps every catalog run takes, in this order, on its schedule and 5 minutes after each data fetch. Feed sync steps come from the data sources (Import tab); Apply standing rules runs the standing rules, in their order"
       actions={up && <>
         <label className="mmi-wb-upkeep-switch" title="Off: the schedule and Run upkeep now both leave the catalog alone">
           <span className="mmi-toggle-switch">

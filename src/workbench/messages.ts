@@ -62,6 +62,13 @@ export const MESSAGES = {
   CATEGORIES_SEARCH:"Find a category…",
   HEALTH_CHIP:      "%label% — click to show only these",
   HEALTH_CHIP_FIX:  "%label% — click to fix it here",
+  // Side menu badges (Shell.tsx).
+  MENU_RULES_ON:    "%count% on",
+  MENU_RULE_ALERTS: "%count% need a look",
+  MENU_RUNNING:     "Running",
+  MENU_OFF:         "Off",
+  MENU_FAILED:      "%count% failed",
+  MENU_WAITING:     "%count% waiting",
   CHANGE_TERMS:     "Change %label%",
   SELECT_ROW:       "Select %title%",
   SAVE_SEARCH_NAME: "Name this search…",

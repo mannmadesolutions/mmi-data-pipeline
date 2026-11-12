@@ -52,7 +52,7 @@ if ( isset( $_GET['pipeline_tab'] ) && 'duplicates' === $_GET['pipeline_tab'] ) 
 // Product Workbench as Standing rules + Catalog upkeep. Links made for it
 // (?open_catalog=1, e.g. the rule alert's) land on Standing rules.
 if ( isset( $_GET['open_catalog'] ) ) {
-    wp_redirect( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench#mmi-wb-rules' ) );
+    wp_redirect( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=standing' ) );
     exit;
 }
 
@@ -98,6 +98,26 @@ $_mmi_tab_url = function ( string $tab ): string {
     return admin_url( 'admin.php?' . http_build_query( $args ) );
 };
 
+$_mmi_render_tabs = function () use ( $_mmi_tab_labels, $_mmi_current_tab, $_mmi_tab_url ): void {
+    ?>
+    <h2 class="nav-tab-wrapper mmi-pipeline-nav-tabs">
+        <?php foreach ( $_mmi_tab_labels as $_mmi_tab_key => $_mmi_tab_meta ) :
+            $_mmi_is_active = ( $_mmi_current_tab === $_mmi_tab_key );
+        ?>
+            <a href="<?php echo esc_url( $_mmi_tab_url( $_mmi_tab_key ) ); ?>"
+               class="nav-tab<?php echo $_mmi_is_active ? ' nav-tab-active' : ''; ?>">
+                <span class="dashicons <?php echo esc_attr( $_mmi_tab_meta['icon'] ); ?>"></span>
+                <?php echo esc_html( $_mmi_tab_meta['label'] ); ?>
+            </a>
+        <?php endforeach; ?>
+    </h2>
+    <?php
+};
+
+// The Product Workbench has its own side menu, so its header is one row: title, tabs, alert chips, next run. The
+// process notices wait behind a chip there, opened in place under the header (2026-11-12, Workbench layout scope).
+$_mmi_compact = 'workbench' === $_mmi_current_tab;
+
 // Soonest upcoming run across Data Fetch + every Import/Export profile schedule —
 // surfaced here (rather than only inside each tab's own Schedules panel) so a user
 // on Duplicate Products can still see and reach it.
@@ -112,8 +132,9 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
 ?>
 
 <div class="wrap">
-    <div class="mmi-header">
+    <div class="mmi-header<?php echo $_mmi_compact ? ' mmi-header--compact' : ''; ?>">
         <h1><span class="dashicons dashicons-database-import"></span> Data Pipeline</h1>
+        <?php if ( $_mmi_compact ) { $_mmi_render_tabs(); } ?>
         <?php if ( class_exists( 'MMI_License_UI' ) ) : ?>
             <div class="mmi-header-actions">
                 <?php echo MMI_License_UI::render_header_badge( 'mmi-data-pipeline' ); // phpcs:ignore -- already escaped ?>
@@ -132,22 +153,46 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
                 </a>
             </div>
         <?php endif; ?>
+        <?php if ( ! $_mmi_compact ) : ?>
         <p class="mmi-header-description">Unified product data workflow — import from supplier feeds or export your catalog, with profiles and a live preview for both directions</p>
         <?php if ( class_exists( 'MMI_Feature_Gate' ) ) { MMI_Feature_Gate::render_works_with( 'mmi-data-pipeline' ); } ?>
+        <?php endif; ?>
         <?php
         $_mmi_no_sale = function_exists( 'mmi_canonical_candidates_nothing_on_sale_counts' ) ? mmi_canonical_candidates_nothing_on_sale_counts()['count'] : 0;
         // Stored grades only; a stale one is worked out in the background.
         \MannMade\DataPipeline\Workbench\Rule_Efficacy::refresh_later_if_stale();
         $_mmi_rule_alerts = \MannMade\DataPipeline\Workbench\Rule_Efficacy::alerts();
-        if ( $_mmi_no_sale || $_mmi_rule_alerts ) : ?>
+        $_mmi_notice_chip = null;
+        if ( $_mmi_compact && $_mmi_pipeline_errors ) {
+            $_mmi_chip_errs   = array_values( $_mmi_pipeline_errors );
+            $_mmi_chip_failed = array_filter( $_mmi_chip_errs, static fn( $e ) => empty( $e['partial'] ) );
+            if ( count( $_mmi_chip_errs ) > 1 ) {
+                $_mmi_chip_text = sprintf( 'Pipeline: %d problems', count( $_mmi_chip_errs ) );
+            } else {
+                $_mmi_chip_one  = $_mmi_chip_errs[0];
+                $_mmi_chip_n    = (int) ( $_mmi_chip_one['counts']['errors'] ?? 0 );
+                $_mmi_chip_text = ( ( $_mmi_chip_one['kind'] ?? '' ) === 'fetch' ? 'Fetch' : 'Import' ) . ': '
+                    . ( ! empty( $_mmi_chip_one['partial'] ) && $_mmi_chip_n ? sprintf( '%s record%s skipped', number_format( $_mmi_chip_n ), 1 === $_mmi_chip_n ? '' : 's' ) : 'failed' );
+            }
+            $_mmi_notice_chip = [
+                'text'  => $_mmi_chip_text,
+                'class' => $_mmi_chip_failed ? 'error' : 'warning',
+                'title' => implode( "\n", array_map( static fn( $e ) => (string) ( $e['process'] ?? 'Pipeline Process' ), $_mmi_chip_errs ) ),
+            ];
+        }
+        if ( $_mmi_no_sale || $_mmi_rule_alerts || $_mmi_notice_chip ) : ?>
             <div class="mmi-header-alerts">
+                <?php if ( $_mmi_notice_chip ) : ?>
+                <button type="button" class="mmi-badge <?php echo esc_attr( $_mmi_notice_chip['class'] ); ?> mmi-process-notice-chip" aria-expanded="false" aria-controls="mmi-process-notices"
+                        title="<?php echo esc_attr( $_mmi_notice_chip['title'] ); ?>"><?php echo esc_html( $_mmi_notice_chip['text'] ); ?></button>
+                <?php endif; ?>
                 <?php if ( $_mmi_no_sale ) : ?>
                 <a class="mmi-badge warning" href="<?php echo esc_url( mmi_canonical_candidates_nothing_on_sale_url() ); ?>"
                    title="<?php esc_attr_e( 'Linked duplicates whose canonical listing is out of stock: customers can buy none of their listings', 'mmi-data-pipeline' ); ?>"><?php echo esc_html( 'Duplicates: ' . mmi_canonical_candidates_nothing_on_sale_label( $_mmi_no_sale ) ); ?></a>
                 <?php endif; ?>
                 <?php if ( $_mmi_rule_alerts ) : ?>
                 <a class="mmi-badge warning" id="mmi-rule-efficacy-alert"
-                   href="<?php echo esc_url( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench#mmi-wb-rules' ) ); ?>"
+                   href="<?php echo esc_url( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=standing' ) ); ?>"
                    title="<?php echo esc_attr( implode( "\n", array_map( static fn( $a ) => $a['name'] . ': ' . $a['text'], $_mmi_rule_alerts ) ) ); ?>"><?php
                     echo esc_html( 'Rules: ' . count( $_mmi_rule_alerts ) . ( count( $_mmi_rule_alerts ) === 1 ? ' needs' : ' need' ) . ' a look' );
                 ?></a>
@@ -176,6 +221,9 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
     // source's preview (file age + Fetch Now). A run where most records
     // imported is a warning, not an error. Dismiss clears the stored notice;
     // the next run sets it again if the problem is still there.
+    if ( $_mmi_compact && $_mmi_pipeline_errors ) {
+        echo '<div class="mmi-process-notices" id="mmi-process-notices" hidden>';
+    }
     foreach ( $_mmi_pipeline_errors as $_mmi_err_key => $_mmi_err ) :
         $_mmi_err_kind    = $_mmi_err['kind'] ?? 'global';
         $_mmi_err_partial = ! empty( $_mmi_err['partial'] );
@@ -185,7 +233,8 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
             ? admin_url( 'admin.php?' . http_build_query( [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'run_insights' => (int) $_mmi_err['history_id'] ] ) )
             : '';
     ?>
-        <div class="notice <?php echo $_mmi_err_partial ? 'notice-warning' : 'notice-error'; ?> mmi-process-notice" data-error-key="<?php echo esc_attr( $_mmi_err_key ); ?>">
+        <?php // In the compact header's box the notices are .inline, or WordPress's common.js moves them out of it, above the page. ?>
+        <div class="notice <?php echo $_mmi_err_partial ? 'notice-warning' : 'notice-error'; ?><?php echo $_mmi_compact ? ' inline' : ''; ?> mmi-process-notice" data-error-key="<?php echo esc_attr( $_mmi_err_key ); ?>">
             <p>
                 <strong><?php echo esc_html( $_mmi_err['process'] ?? 'Pipeline Process' ); ?></strong>
                 <?php if ( $_mmi_err_partial && $_mmi_err_counts ) : ?>
@@ -222,18 +271,9 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
             </p>
         </div>
     <?php endforeach; ?>
+    <?php if ( $_mmi_compact && $_mmi_pipeline_errors ) { echo '</div>'; } ?>
 
-    <h2 class="nav-tab-wrapper mmi-pipeline-nav-tabs">
-        <?php foreach ( $_mmi_tab_labels as $_mmi_tab_key => $_mmi_tab_meta ) :
-            $_mmi_is_active = ( $_mmi_current_tab === $_mmi_tab_key );
-        ?>
-            <a href="<?php echo esc_url( $_mmi_tab_url( $_mmi_tab_key ) ); ?>"
-               class="nav-tab<?php echo $_mmi_is_active ? ' nav-tab-active' : ''; ?>">
-                <span class="dashicons <?php echo esc_attr( $_mmi_tab_meta['icon'] ); ?>"></span>
-                <?php echo esc_html( $_mmi_tab_meta['label'] ); ?>
-            </a>
-        <?php endforeach; ?>
-    </h2>
+    <?php if ( ! $_mmi_compact ) { $_mmi_render_tabs(); } ?>
 
     <?php
     switch ( $_mmi_current_tab ) {

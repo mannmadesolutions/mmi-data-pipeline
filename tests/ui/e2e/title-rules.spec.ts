@@ -5,9 +5,10 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
+import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page, o: { staleOnce?: boolean; basic?: boolean } = {}) {
+async function open(page: Page, o: { staleOnce?: boolean; basic?: boolean } = {}, key = "rules") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -18,6 +19,7 @@ async function open(page: Page, o: { staleOnce?: boolean; basic?: boolean } = {}
   const rules = new TitleRulesMock(o);
   await rules.attach(page);
   await page.goto("/");
+  await openSection(page, key);
   await expect(page.locator("#mmi-wb-title-rules")).toBeVisible();
   await expect(page.locator("#mmi-wb-tr-rows tr[data-rule-id]")).toHaveCount(2);
   return { rules, errors };

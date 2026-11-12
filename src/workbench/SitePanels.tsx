@@ -1,7 +1,8 @@
 /**
  * A store's own panels in the Product Workbench (filter
- * mmi_pipeline_product_data_panels): a page section each, whose body the
- * store's script draws. The script registers itself as
+ * mmi_pipeline_product_data_panels): a menu entry each, under This store,
+ * whose body the store's script draws. A panel mounts the first time it is
+ * opened and reads only its own element. The script registers itself as
  *   window.mmiWorkbenchPanels[id] = { mount(element) { … } }
  * and, if it loads after the Workbench, dispatches the window event
  * PANEL_READY_EVENT with the id. Each panel is mounted once; a panel whose
@@ -18,7 +19,7 @@ type Registry = Record<string, PanelApi | undefined>;
 
 const registry = (): Registry => ((window as unknown as { mmiWorkbenchPanels?: Registry }).mmiWorkbenchPanels ?? {});
 
-function SitePanel({ panel }: { panel: PanelConfig }) {
+export function SitePanel({ panel }: { panel: PanelConfig }) {
   const body = useRef<HTMLDivElement>(null);
   const done = useRef(false);
   const [state, setState] = useState<"waiting" | "mounted" | "missing" | "failed">("waiting");
@@ -46,8 +47,4 @@ function SitePanel({ panel }: { panel: PanelConfig }) {
       <div ref={body} className="mmi-wb-panel-body" data-panel={panel.id} />
     </Section>
   );
-}
-
-export function SitePanels({ panels }: { panels: PanelConfig[] }) {
-  return <>{panels.map((p) => <SitePanel key={p.id} panel={p} />)}</>;
 }

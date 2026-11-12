@@ -12,6 +12,7 @@ import {
   type PictureRow, type PictureRows, type PictureSort, type PicturesSummary,
 } from "./picturesApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
+import { useSectionVisible } from "./nav";
 import { Dashicon, Section } from "./ui";
 
 export const QUEUED_EVENT = "mmi-wb:pictures-queued";
@@ -39,6 +40,8 @@ export function ProductPictures({ cfg }: { cfg: TitleRulesConfig }) {
   const [rowSaid, setRowSaid] = useState<{ id: number; text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState<number | "stop" | null>(null);
   const timer = useRef(0);
+  const visible = useSectionVisible();
+  const visibleRef = useRef(visible);
   const view = useRef({ show, page, sort });
   view.current = { show, page, sort };
 
@@ -53,10 +56,15 @@ export function ProductPictures({ cfg }: { cfg: TitleRulesConfig }) {
     try { d = d ?? await rest<PicturesSummary>(cfg, "GET", "pictures"); } catch (e) { setSaid({ text: msg(e), ok: false }); return; }
     setSum(d);
     await loadRows(); // one request at a time
-    if (d.running || d.waiting) timer.current = window.setTimeout(() => void refresh(), POLL_MS);
+    // While another section is on screen the runner isn't watched; it is looked at again when this one is back.
+    if ((d.running || d.waiting) && visibleRef.current) timer.current = window.setTimeout(() => void refresh(), POLL_MS);
   }, [cfg, loadRows]);
 
-  useEffect(() => { void refresh(); return () => window.clearTimeout(timer.current); }, [refresh]);
+  useEffect(() => {
+    visibleRef.current = visible;
+    if (visible) void refresh(); // the first look, and again on coming back
+    return () => window.clearTimeout(timer.current);
+  }, [refresh, visible]);
   useEffect(() => { void loadRows(); }, [show, page, sort, loadRows]);
   useEffect(() => {
     const on = (e: Event) => void refresh((e as CustomEvent<PicturesSummary | null>).detail ?? undefined);

@@ -144,6 +144,26 @@ export interface WorkbenchConfig {
 
 export interface PanelConfig { id: string; title: string; desc: string; icon: string }
 
+/**
+ * The side menu's badges, from mmi_workbench_counts. The Workbench's own parts are always there;
+ * Product Data adds the rest (filter mmi_pipeline_workbench_counts) where it runs.
+ */
+export interface WorkbenchCounts {
+  /** Draft and published products: what Find and change browses before a search. */
+  catalog: number;
+  standing: { on: number; total: number; alerts: number };
+  upkeep: { enabled: boolean; frequency: string; running: boolean };
+  /** Title proposals to review (proposed, stale, error). */
+  titles?: number;
+  /** Description and picture proposals waiting. */
+  descriptions?: number;
+  picks?: number;
+  /** The picture runner: products queued, and outcomes that failed. */
+  pictures?: { waiting: number; errors: number; running: boolean };
+  /** Products whose maker page waits; n is null until first worked out, then the last count while a new one is. */
+  pages?: { n: number | null; at: number; rebuilding: boolean };
+}
+
 /** The shared action picker's current choice, read from its markup. */
 export interface ActionChoice {
   action: string;

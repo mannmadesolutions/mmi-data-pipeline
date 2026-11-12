@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { landing } from "./landing";
+import { openSection } from "./nav";
 import {
   adds, CELL_ACTION_LABEL, cellActions, CODES, FIELDS, fillDone, fillLabel, fillRows, gainOf, gainProducts, idsWith, LEGEND, SITE_VIEWS, siteViewCount, sitesIn, STATUS,
   PART_LABEL, proposalHosts, type CellAction, type FillRunRow, type Proposal, type Gaps, type TextSkips, type MapsReply, type Reading, type SiteRow, type SiteView,
@@ -213,7 +214,7 @@ function SitePanel({ cfg, site, proposals, onChanged, onClose }: { cfg: TitleRul
             <li><strong>{gaps.ready.read}</strong> readable</li>
             {gaps.ready.unread > 0 && <li><strong>{gaps.ready.unread}</strong> not read yet <button type="button" className="button button-small" disabled={busy !== null} onClick={() => void readThem(idsWith(gaps, "unread"))}>Read them</button></li>}
             {gaps.ready.blocked > 0 && <li className="mmi-wb-mp-warn"><strong>{gaps.ready.blocked}</strong> blocked by the site: send them from your browser with the Chrome extension</li>}
-            {gaps.ready.broken > 0 && <li className="mmi-wb-mp-warn"><strong>{gaps.ready.broken}</strong> gone or moved: decide their pages in Maker pages above</li>}
+            {gaps.ready.broken > 0 && <li className="mmi-wb-mp-warn"><strong>{gaps.ready.broken}</strong> gone or moved: decide their pages in <button type="button" className="button-link" onClick={() => openSection("pages")}>Maker pages</button></li>}
             {gaps.pending > 0 && <li className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> {gaps.pending} page{gaps.pending === 1 ? " is" : "s are"} being checked with the map as it is now</li>}
             {reading?.r && <li className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Reading: {reading.r.done} done, {reading.r.working} now, {reading.r.waiting} waiting</li>}
           </ul>

@@ -5,12 +5,14 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend, type MockOptions } from "./mock-backend";
+import { openSection } from "./shell";
 
 async function open(page: Page, o: MockOptions = {}) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[03]/.test(m.text())) errors.push(m.text()); });
   page.on("dialog", (d) => d.accept());
+  await page.route("**/mmi-data-pipeline/build/workbench.js*", (r) => r.fulfill({ path: "build/workbench.js", contentType: "text/javascript" }));
   const backend = new MockBackend(o);
   await backend.attach(page);
   await page.goto("/");
@@ -110,10 +112,12 @@ test("select all matching, preview, then apply to all with progress and undo", a
   expect(start.getAll("selection[exclude][]")).toHaveLength(1);
   await expect(page.locator("#mmi-wb-selected")).toHaveText(""); // selection cleared after a finished run
 
+  await openSection(page, "changes");
   const undo = page.locator("#mmi-wb-jobs-rows .mmi-wb-job-undo");
   await expect(undo).toBeVisible();
   await undo.click();
-  await expect(page.locator("#mmi-wb-message")).toHaveText("Undone: 79 restored.");
+  // Undone from Recent changes: the outcome shows above it, not only back in Find and change.
+  await expect(page.locator("#mmi-wb-strip-message")).toContainText("Undone: 79 restored.");
   await expect(page.locator("#mmi-wb-jobs-rows")).toContainText("Undone");
 });
 
@@ -124,9 +128,10 @@ test("Stop ends a run where it is and it can be resumed", async ({ page }) => {
   await expect(page.locator("#mmi-wb-progress")).toBeVisible();
   await page.locator(".mmi-wb-stop").click();
   await expect(page.locator("#mmi-wb-message")).toHaveText(/^Stopped after \d+ of 80\. Resume it from Recent changes\.$/);
+  await openSection(page, "changes");
   await expect(page.locator("#mmi-wb-jobs-rows .mmi-wb-job-resume")).toBeVisible();
   await page.locator("#mmi-wb-jobs-rows .mmi-wb-job-resume").click();
-  await expect(page.locator("#mmi-wb-message")).toHaveText(/^Done: 80 changed/);
+  await expect(page.locator("#mmi-wb-strip-message")).toContainText(/^Done: 80 changed/);
 });
 
 test("edit a product's categories in the row", async ({ page }) => {
@@ -149,10 +154,10 @@ test("edit a product's categories in the row", async ({ page }) => {
 test("a stale nonce is refreshed and the request resent, unseen", async ({ page }) => {
   const { backend } = await open(page, { staleNonce: 1 });
   await searchFor(page, "synth");
-  // The page opens with four Workbench calls (Recent changes, Standing rules, Catalog upkeep, the browse-all search);
+  // The page opens with four Workbench calls (Recent changes, Standing rules, the menu's counts, the browse-all search);
   // the one that met the stale nonce was refreshed once and resent, and every later call uses the new one.
   expect(backend.callsTo("mmi_refresh_nonces")).toHaveLength(1);
-  const opening = ["mmi_workbench_jobs", "mmi_workbench_rules", "mmi_workbench_upkeep", "mmi_workbench_search"].flatMap((a) => backend.callsTo(a));
+  const opening = ["mmi_workbench_jobs", "mmi_workbench_rules", "mmi_workbench_counts", "mmi_workbench_search"].flatMap((a) => backend.callsTo(a));
   expect(opening.filter((c) => c.body.get("nonce") === "nonce-2").length).toBeGreaterThanOrEqual(1);
   expect(backend.callsTo("mmi_workbench_search").at(-1)!.body.get("nonce")).toBe("nonce-2");
   await expect(page.locator(".mmi-cb-notice")).not.toContainText("expired");
@@ -239,6 +244,7 @@ test("Keep applying checks the rule first, and saves after Save anyway", async (
   expect(backend.callsTo("mmi_workbench_rule_save")).toHaveLength(0);
   await page.locator("#mmi-wb-rule-save-anyway").click();
   await expect(page.locator("#mmi-wb-message")).toContainText("Saved the standing rule “Synths out”");
+  await openSection(page, "standing");
   const row = page.locator("#mmi-wb-rules-rows tr", { hasText: "Synths out" });
   await expect(row).toBeVisible();
   await expect(row).toContainText("Works against itself");
@@ -255,12 +261,17 @@ test("a rule that checks out saves straight away; Open loads it to edit, and sav
   await searchFor(page, "bundle");
   await page.locator("#mmi-wb-rule-name").fill("Bundles");
   await page.locator("#mmi-wb-rule-save").click();
+  await openSection(page, "standing");
   await expect(page.locator("#mmi-wb-rules-rows tr", { hasText: "Bundles" })).toBeVisible();
+  await openSection(page, "data");
   await page.locator("#mmi-wb-editing button").click(); // stop editing
   await page.locator("#mmi-wb-lifetime-once").click();
   await page.locator("#mmi-wb-q").fill("");
 
+  await openSection(page, "standing");
   await page.locator("#mmi-wb-rules-rows tr", { hasText: "Bundles" }).getByRole("button", { name: "Open" }).click();
+  // Open loads the rule into Find and change, which comes on screen.
+  await expect(page.locator('#mmi-wb-menu [aria-current="page"]')).toHaveAttribute("data-sec", "data");
   await expect(page.locator("#mmi-wb-q")).toHaveValue("bundle");
   await expect(page.locator("#mmi-wb-lifetime-keep")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#mmi-wb-rule-name")).toHaveValue("Bundles");
@@ -282,6 +293,7 @@ test("rule rows switch off, move, run and delete in place", async ({ page }) => 
       efficacy: null, last_run: null },
   ];
   await page.reload();
+  await openSection(page, "standing");
   const second = page.locator("#mmi-wb-rules-rows tr", { hasText: "Second" });
   await second.getByRole("button", { name: "Move Second earlier" }).click();
   await expect(page.locator("#mmi-wb-rules-rows tr").first()).toContainText("Second");
@@ -302,17 +314,20 @@ test("a non-stock rule's Run now is an undoable Workbench job", async ({ page })
     search: "Title contains \"synth\"", filter: { stock: [], health: [], health_mode: "any", q: "synth", q_case: 0, q_in: "title_sku", supplier: "all", match_logic: "all", statuses: ["publish", "draft"], conditions: [] },
     efficacy: { grade: "ok", matched: 40, will_change: 40, findings: [] }, last_run: null }];
   await page.reload();
+  await openSection(page, "standing");
   await page.locator("#mmi-wb-rules-rows tr", { hasText: "Drafts" }).getByRole("button", { name: "Run now" }).click();
-  await expect(page.locator("#mmi-wb-message")).toContainText("Done:");
+  await expect(page.locator("#mmi-wb-strip-message")).toContainText("Done:"); // the outcome shows above Standing rules
   const start = backend.callsTo("mmi_workbench_start")[0]!.body;
   expect(start.get("selection[mode]")).toBe("filter");
   expect(start.get("selection[filter][q]")).toBe("synth");
   expect(start.get("wb_action")).toBe("set_status_draft");
+  await openSection(page, "changes");
   await expect(page.locator("#mmi-wb-jobs-rows .mmi-wb-job-undo")).toBeVisible();
 });
 
 test("catalog upkeep runs every step in order and saves its switches and schedule", async ({ page }) => {
   const { backend, errors } = await open(page);
+  await openSection(page, "upkeep");
   const up = page.locator("#mmi-wb-upkeep");
   await expect(up.locator("#mmi-wb-upkeep-steps tbody tr")).toHaveCount(3);
   await up.locator("#mmi-wb-upkeep-steps").getByRole("checkbox").uncheck();

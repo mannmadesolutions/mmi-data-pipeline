@@ -29,10 +29,12 @@ import { TitleRules } from "./TitleRules";
 import { ProductDataRuns } from "./WritingSettings";
 import { LeftAlone } from "./LeftAlone";
 import { ProductPictures } from "./ProductPictures";
-import { SitePanels } from "./SitePanels";
-import { landing, scrollToLanding } from "./landing";
+import { SitePanel } from "./SitePanels";
+import { landing } from "./landing";
+import { openSection, refreshCounts } from "./nav";
+import { Shell, type MenuEntry } from "./Shell";
 import { OPTIONAL_COLUMNS, ResultsTable } from "./ResultsTable";
-import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig } from "./types";
+import type { ActionChoice, ConditionsState, Efficacy, Facet, Job, Preview, StandingRule, WorkbenchConfig, WorkbenchCounts } from "./types";
 import { jobStub, useJobRunner } from "./useJobRunner";
 import { SEARCH_DEBOUNCE_MS, useSearch } from "./useSearch";
 import { BusyButton, Dashicon, Island, MenuButton, MultiSelect, Pager, Section } from "./ui";
@@ -71,6 +73,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [applying, setApplying] = useState<"selected" | "all" | null>(null);
   const [message, setMessage] = useState<Message>({ text: "", kind: "" });
+  /** A finished job's outcome, also shown above the other sections (a rule's Run now, an Undo from Recent changes). */
+  const [jobNote, setJobNote] = useState<Message | null>(null);
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [columns, setColumnsState] = useState<string[]>(storedColumns);
   const metaCols = useMemo(() => [...columns.filter((c) => c.startsWith("meta:")).map((c) => c.slice(5)), ...columns.filter((c) => c.startsWith("x:"))], [columns]);
@@ -109,6 +113,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     setApplying(null);
     setPreview(null);
     setMessage({ text: r.text, kind: r.ok ? "ok" : "error" });
+    setJobNote({ text: r.text, kind: r.ok ? "ok" : "error" });
+    refreshCounts();
     loadJobs();
     // The job is finished with these products: drop the selection, or ones that no
     // longer match stay selected out of sight. A failed run keeps it for a retry.
@@ -152,7 +158,6 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
   // Force In/Out of Stock is offered only for Keep applying; a check is for one search + change.
   useEffect(() => { bridge.allowActions(cfg.stockActions, keep); }, [keep, cfg.stockActions]);
-  useEffect(() => scrollToLanding(), []); // a link's section (wb_sec), once it is drawn
   const actionKey = `${action.action}|${JSON.stringify(action.params)}`;
   useEffect(() => { setCheck(null); }, [key, actionKey]);
 
@@ -290,7 +295,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     setPreview(null);
     setMessage({ text: skipped.length ? fill(MESSAGES.RULE_SKIPPED_FIELDS, { fields: skipped.join(", ") }) : fill(MESSAGES.RULE_OPENED, { name: r.name }), kind: skipped.length ? "error" : "ok" });
     searchNow();
-    document.getElementById("mmi-wb-find")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openSection("data");
   };
 
   const rowDo = (r: StandingRule, call: Promise<unknown>, ok: string) => {
@@ -349,7 +354,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
   const healthOptions = Object.fromEntries(cfg.healthChecks.map((c) => [c.id, c.label]));
   const slot = document.getElementById(IDS.SAVE_SEARCH_SLOT);
 
-  return (
+  const findAndChange = (
     <>
       <Section id="mmi-wb-find" icon="search" title="Find products"
         desc="Search titles and SKUs, then narrow with conditions on supplier feed fields, categories and other taxonomies, post fields and meta. Results update as you type">
@@ -464,16 +469,7 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
           <p className="mmi-wb-target" id="mmi-wb-target">
             {keep ? (view.filter ? fill(MESSAGES.KEEP_TARGET, { count: num(total), s: plural(total) }) : MESSAGES.KEEP_EMPTY) : targetText(selection, total, haveResults, browsing)}
           </p>
-          {runner.progress && (
-            <div className="mmi-wb-progress" id="mmi-wb-progress">
-              <div className="mmi-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={runner.progress.pct}
-                aria-label={runner.progress.text}>
-                <div className="mmi-progress-fill" style={{ "--pct": `${runner.progress.pct}%` } as CSSProperties} />
-              </div>
-              <span className="mmi-wb-progress-text">{runner.progress.text}</span>
-              {runner.progress.kind === "apply" && <button type="button" className="button-link mmi-wb-stop" onClick={runner.stop}>Stop</button>}
-            </div>
-          )}
+          {runner.progress && <JobProgress progress={runner.progress} onStop={runner.stop} id="mmi-wb-progress" />}
           <div className={`mmi-wb-message${message.kind === "error" ? " is-error" : message.kind === "ok" ? " is-success" : ""}`} id="mmi-wb-message" role="status">
             {message.text}
           </div>
@@ -511,23 +507,89 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
         </div>
       </Section>
 
-      <StandingRules rules={rules} busy={busy || ruleBusy !== null} editingId={keep && editing ? editing.id : ""} notice={ruleNotice}
-        onOpen={openRule} onRun={runRule} onToggle={toggleRule} onMove={moveRule} onDelete={deleteRule} />
-
-      {cfg.titleRules ? <TitleProposals cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <EnrichProposals cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <ProductPictures cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <MakerPages cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <BrandSites cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <SiteMaps cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <TitleRules cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <LeftAlone cfg={cfg.titleRules} /> : null}
-      {cfg.titleRules ? <ProductDataRuns cfg={cfg.titleRules} /> : null}
-      {cfg.panels?.length ? <SitePanels panels={cfg.panels} /> : null}
-      <CatalogUpkeep onRunFinished={loadRules} />
-
-      <RecentChanges jobs={jobs} busy={runner.running !== null} onUndo={onUndo} onResume={onResume} />
     </>
+  );
+
+  /* ── The menu: every section, one on screen (Shell.tsx) ───────────────── */
+
+  const tr = cfg.titleRules;
+  const n0 = (v: number | undefined, kind: "" | "info" = "info") => (v ? { text: num(v), kind } : null);
+  const enrich = (entry: string) => tr
+    ? <EnrichProposals cfg={tr} kind={entry === "picks" ? "image" : "content"} onKind={(k) => openSection(k === "image" ? "picks" : "descriptions", true)} />
+    : null;
+  const entries: MenuEntry[] = [
+    { key: "data", label: "Find and change", group: "work", eager: true, render: () => findAndChange, badge: (c) => ({ text: num(c.catalog), title: "Draft and published products: what Find and change browses before a search" }) },
+    ...(tr ? [
+      { key: "titles", label: "Title proposals", group: "review", render: () => <TitleProposals cfg={tr} />, badge: (c: WorkbenchCounts) => n0(c.titles) },
+      { key: "descriptions", label: "Descriptions", group: "review", pane: "enrich", render: enrich, badge: (c: WorkbenchCounts) => n0(c.descriptions) },
+      { key: "picks", label: "Pictures to pick", group: "review", pane: "enrich", render: enrich, badge: (c: WorkbenchCounts) => n0(c.picks) },
+      { key: "pages", label: "Maker pages", group: "review", render: () => <MakerPages cfg={tr} />, badge: pagesBadge },
+      { key: "sites", label: "Brands & sites", group: "maker", render: () => <BrandSites cfg={tr} /> },
+      { key: "maps", label: "Site maps", group: "maker", render: () => <SiteMaps cfg={tr} /> },
+      { key: "rules", label: "Title rules", group: "maker", render: () => <TitleRules cfg={tr} /> },
+      { key: "left", label: "Left alone", group: "maker", render: () => <LeftAlone cfg={tr} /> },
+    ] as MenuEntry[] : []),
+    { key: "standing", label: "Standing rules", group: "automation", render: () => standing, badge: standingBadge },
+    { key: "upkeep", label: "Catalog upkeep", group: "automation", render: () => <CatalogUpkeep onRunFinished={() => { loadRules(); refreshCounts(); }} />, badge: upkeepBadge },
+    ...(tr ? [
+      { key: "pictures", label: "Product pictures", group: "automation", render: () => <ProductPictures cfg={tr} />, badge: picturesBadge },
+      { key: "writing", label: "Product Data runs", group: "automation", render: () => <ProductDataRuns cfg={tr} /> },
+    ] as MenuEntry[] : []),
+    { key: "changes", label: "Recent changes", group: "history", render: () => <RecentChanges jobs={jobs} busy={runner.running !== null} onUndo={onUndo} onResume={onResume} /> },
+  ];
+  // A store's own panels, under This store; an id the Workbench uses itself gets its own key.
+  const builtIn = new Set(entries.map((e) => e.key));
+  entries.splice(entries.length - 1, 0, ...(cfg.panels ?? []).map((p): MenuEntry => ({
+    key: builtIn.has(p.id) ? `panel-${p.id}` : p.id, label: p.title, group: "store", render: () => <SitePanel panel={p} />,
+  })));
+  const standing = (
+    <StandingRules rules={rules} busy={busy || ruleBusy !== null} editingId={keep && editing ? editing.id : ""} notice={ruleNotice}
+      onOpen={openRule} onRun={runRule} onToggle={toggleRule} onMove={moveRule} onDelete={deleteRule} />
+  );
+
+  // A job started from another section (a rule's Run now, an Undo) shows its progress and outcome above that section too.
+  const strip = runner.progress
+    ? <JobProgress progress={runner.progress} onStop={runner.stop} />
+    : jobNote
+      ? <div className={`mmi-wb-message${jobNote.kind === "error" ? " is-error" : " is-success"}`} id="mmi-wb-strip-message" role="status">
+          {jobNote.text} <button type="button" className="button-link" onClick={() => setJobNote(null)}>Dismiss</button>
+        </div>
+      : null;
+
+  return <Shell entries={entries} strip={strip} stripExcept="data" />;
+}
+
+/* ── Menu badges ──────────────────────────────────────────────────────────── */
+
+function pagesBadge(c: WorkbenchCounts) {
+  if (!c.pages) return null;
+  if (c.pages.n === null) return c.pages.rebuilding ? "loading" as const : null;
+  return c.pages.n ? { text: num(c.pages.n), kind: "info" as const, title: c.pages.rebuilding ? "Last count; a new one is being worked out" : undefined } : null;
+}
+function standingBadge(c: WorkbenchCounts) {
+  if (c.standing.alerts) return { text: fill(MESSAGES.MENU_RULE_ALERTS, { count: num(c.standing.alerts) }), kind: "warning" as const };
+  return c.standing.total ? { text: fill(MESSAGES.MENU_RULES_ON, { count: num(c.standing.on) }) } : null;
+}
+function upkeepBadge(c: WorkbenchCounts) {
+  if (c.upkeep.running) return { text: MESSAGES.MENU_RUNNING, kind: "info" as const };
+  return c.upkeep.enabled ? { text: c.upkeep.frequency } : { text: MESSAGES.MENU_OFF, kind: "warning" as const };
+}
+function picturesBadge(c: WorkbenchCounts) {
+  if (!c.pictures) return null;
+  if (c.pictures.errors) return { text: fill(MESSAGES.MENU_FAILED, { count: num(c.pictures.errors) }), kind: "error" as const };
+  return c.pictures.waiting ? { text: fill(MESSAGES.MENU_WAITING, { count: num(c.pictures.waiting) }), kind: "info" as const } : null;
+}
+
+/** A Workbench job's progress bar, with Stop for an apply. */
+function JobProgress({ progress, onStop, id = "mmi-wb-strip-progress" }: { progress: { pct: number; text: string; kind: string }; onStop: () => void; id?: string }) {
+  return (
+    <div className="mmi-wb-progress" id={id}>
+      <div className="mmi-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.pct} aria-label={progress.text}>
+        <div className="mmi-progress-fill" style={{ "--pct": `${progress.pct}%` } as CSSProperties} />
+      </div>
+      <span className="mmi-wb-progress-text">{progress.text}</span>
+      {progress.kind === "apply" && <button type="button" className="button-link mmi-wb-stop" onClick={onStop}>Stop</button>}
+    </div>
   );
 }
 

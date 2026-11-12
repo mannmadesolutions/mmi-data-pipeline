@@ -18,6 +18,7 @@ import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, Section } from "./ui";
 import { TitleWriting } from "./WritingSettings";
 import { landing } from "./landing";
+import { useSectionVisible } from "./nav";
 
 const COLS: { key: QueueSort; label: string }[] = [
   { key: "id", label: "ID" },
@@ -157,17 +158,21 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
       if (before && (before.applied_today !== s.applied_today || before.queue !== s.queue)) { void load(filter); loadSummary(); }
     } catch { /* the bar keeps its last state */ }
   }, [cfg, filter, load, loadSummary]);
+  // Both pause while another section is on screen, and look again as soon as this one is back.
+  const visible = useSectionVisible();
   useEffect(() => {
+    if (!visible) return;
     void pollApply();
     const active = apply && (apply.phase === "running" || apply.phase === "waiting");
     const t = window.setInterval(() => void pollApply(), active ? 5000 : 30000);
     return () => window.clearInterval(t);
-  }, [pollApply, apply?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pollApply, apply?.phase, visible]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (apply?.phase !== "waiting") return;
+    if (apply?.phase !== "waiting" || !visible) return;
+    setNow(Date.now() / 1000 - skew.current);
     const t = window.setInterval(() => setNow(Date.now() / 1000 - skew.current), 1000);
     return () => window.clearInterval(t);
-  }, [apply?.phase]);
+  }, [apply?.phase, visible]);
 
   const refresh = () => { void load(filter); loadSummary(); void pollApply(); };
 

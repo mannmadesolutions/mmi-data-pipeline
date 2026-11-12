@@ -1,9 +1,10 @@
 /** Left alone by Product Data in the Workbench (migration phase 8), REST mocked. */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
+import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page) {
+async function open(page: Page, key = "left") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -12,6 +13,7 @@ async function open(page: Page) {
   const api = new TitleRulesMock();
   await api.attach(page);
   await page.goto("/");
+  await openSection(page, key);
   await expect(page.locator("#mmi-wb-la-table tbody tr[data-key]")).toHaveCount(3);
   return { api, errors };
 }

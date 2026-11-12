@@ -58,6 +58,11 @@ export class MockBackend {
     running: null,
   };
   nonce = "nonce-1";
+  /** The side menu's badges (mmi_workbench_counts); a spec may change them before the page loads. */
+  counts: Record<string, unknown> = {
+    catalog: 0, standing: { on: 0, total: 0, alerts: 0 }, upkeep: { enabled: true, frequency: "Hourly", running: false },
+    titles: 3, descriptions: 2, picks: 1, pictures: { waiting: 0, errors: 0, running: false }, pages: { n: 4, at: 0, rebuilding: false },
+  };
 
   constructor(private o: MockOptions = {}) {}
 
@@ -99,6 +104,10 @@ export class MockBackend {
         return this.reply(route, { values: [] });
       case "mmi_workbench_jobs":
         return this.reply(route, { jobs: this.jobs });
+      case "mmi_workbench_counts": {
+        const on = this.rules.filter((r) => r.enabled).length;
+        return this.reply(route, { ...this.counts, catalog: this.products.filter((p) => p.status === "publish" || p.status === "draft").length, standing: { on, total: this.rules.length, alerts: 0 } });
+      }
       case "mmi_workbench_search": {
         if (this.o.searchDelayMs) await new Promise((r) => setTimeout(r, this.o.searchDelayMs));
         const ids = this.match(body, "filter");

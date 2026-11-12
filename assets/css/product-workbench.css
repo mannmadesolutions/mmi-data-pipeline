@@ -1687,3 +1687,227 @@ tr.mmi-wb-mp-gone .notice {
     margin: 4px 0 0 18px;
     list-style: disc;
 }
+
+/* ── The shell: side menu + one section (Shell.tsx, 2026-11-12) ─────────── */
+/* The menu card has the page section's look (.mmi-process-section); its
+   active item has the suite's nav-tab active wash; badges are .mmi-badge. */
+
+.mmi-wb-shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.mmi-wb-menu {
+    position: sticky;
+    top: 46px; /* below the admin bar */
+    max-height: calc(100vh - 66px);
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    padding: 8px 0 12px;
+    box-sizing: border-box;
+}
+
+.mmi-wb-menu-group + .mmi-wb-menu-group {
+    border-top: 1px solid var(--mmi-wb-border);
+    margin-top: 6px;
+    padding-top: 6px;
+}
+
+.mmi-wb-menu-heading {
+    margin: 6px 16px 4px;
+    padding: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--mmi-wb-muted);
+}
+
+.mmi-wb-menu ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mmi-wb-menu li {
+    margin: 0;
+}
+
+.mmi-wb-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 6px 12px 6px 13px;
+    border-left: 3px solid transparent;
+    color: var(--mmi-gray-800, #1d2327);
+    font-size: 13px;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+.mmi-wb-menu-item:hover,
+.mmi-wb-menu-item:focus {
+    background: rgba(69, 133, 44, 0.05);
+    color: var(--mmi-primary, #45852c);
+}
+
+.mmi-wb-menu-item:focus {
+    outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+    outline-offset: -2px;
+    box-shadow: none;
+}
+
+.mmi-wb-menu-item.is-active,
+.mmi-wb-menu-item.is-active:hover {
+    background: rgba(69, 133, 44, 0.1);
+    border-left-color: var(--mmi-primary, #45852c);
+    color: var(--mmi-primary, #45852c);
+    font-weight: 600;
+}
+
+.mmi-wb-menu-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.mmi-wb-menu-badge {
+    flex: 0 0 auto;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.mmi-wb-menu-badge.is-loading {
+    display: inline-flex;
+    align-items: center;
+}
+
+.mmi-wb-menu-badge.is-loading .mmi-loading {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+}
+
+/* Narrow screens: a <select> above the section instead of the menu. */
+.mmi-wb-menu-select {
+    display: none;
+}
+
+.mmi-wb-menu-select-label {
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.mmi-wb-main {
+    min-width: 0;
+}
+
+.mmi-wb-pane[hidden] {
+    display: none !important; /* a pane's sections set display themselves */
+}
+
+/* A job started from another section: its progress or outcome above the section on screen. */
+.mmi-wb-strip {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    padding: 10px 16px;
+    margin-bottom: 20px;
+}
+
+.mmi-wb-strip .mmi-wb-progress,
+.mmi-wb-strip .mmi-wb-message {
+    margin: 0;
+}
+
+@media (max-width: 960px) {
+    .mmi-wb-shell {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .mmi-wb-menu {
+        display: none;
+    }
+
+    .mmi-wb-menu-select {
+        display: flex;
+        align-items: center;
+    }
+
+    .mmi-wb-menu-select select {
+        flex: 1 1 auto;
+        max-width: 100%;
+    }
+}
+
+/* ── The Data Pipeline header on this tab: one row (main.php's compact header) ── */
+/* Title, the Import / Export / Product Workbench tabs, alert chips, next run.
+   The tabs keep the suite's nav-tab colors, without the bar's own card. */
+
+.wrap .mmi-header.mmi-header--compact {
+    --mmi-header-padding: 10px 20px;
+    --mmi-header-margin: 16px 0;
+    flex-wrap: wrap !important;
+    gap: 8px 12px !important;
+}
+
+.mmi-header--compact > h1 { order: 0; }
+.mmi-header--compact > .nav-tab-wrapper { order: 1; }
+.mmi-header--compact > .mmi-header-alerts { order: 2; }
+.mmi-header--compact > .mmi-header-actions { order: 3; }
+
+.wrap .mmi-header.mmi-header--compact .nav-tab-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0 0 0 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.wrap .mmi-header.mmi-header--compact .nav-tab-wrapper .nav-tab {
+    margin: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.4;
+    float: none;
+}
+
+.wrap .mmi-header.mmi-header--compact .nav-tab-wrapper .nav-tab-active {
+    background: rgba(69, 133, 44, 0.1);
+}
+
+.wrap .mmi-header.mmi-header--compact .mmi-header-alerts {
+    width: auto;
+    margin-left: auto;
+    gap: 8px;
+}
+
+/* With chips, they take the free space and the next-run link sits after them. */
+.wrap .mmi-header.mmi-header--compact:has(> .mmi-header-alerts) > .mmi-header-actions {
+    margin-left: 0 !important;
+}
+
+.mmi-process-notice-chip {
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.mmi-process-notice-chip[aria-expanded="true"] {
+    box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.mmi-process-notices {
+    margin: 0 0 16px;
+}
