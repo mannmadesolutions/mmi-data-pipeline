@@ -69,11 +69,11 @@ export class MockBackend {
   async attach(page: Page): Promise<void> {
     await page.route("**/wp-admin/admin-ajax.php", (route) => this.handle(route));
     // Pictures on the mocks' made-up maker sites (https://acme.example/img/…):
-    // a 1×1 GIF, since those hosts don't resolve. Lists run at full height in
+    // a 1×1 SVG, since those hosts don't resolve. Lists run at full height in
     // the page now (no capped box), so their lazy pictures are on screen and load.
     await page.route(/^https?:\/\/[^/]*\.example\//, (route) => route.fulfill({
-      contentType: "image/gif",
-      body: Buffer.from("R0lGODlhAQABAAAAACw=", "base64"),
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
     }));
     // The Title rules section's REST routes (a spec that attaches its own TitleRulesMock afterwards overrides these).
     await new TitleRulesMock().attach(page);
