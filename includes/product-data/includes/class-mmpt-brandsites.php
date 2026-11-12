@@ -104,6 +104,7 @@ class BrandSites {
 
 	public static function register_hooks(): void {
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
+		add_filter( 'mmi_seo_fetch_page', [ __CLASS__, 'seo_fetch' ], 10, 2 );
 		// A product's vendor URL changed (set, approved, cleared, adopted by the finder): the picture is stale.
 		foreach ( [ 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ] as $hook ) {
 			add_action( $hook, [ __CLASS__, 'url_changed' ], 10, 3 );
@@ -273,6 +274,44 @@ class BrandSites {
 		}
 		self::$links = Module::set_state( self::LINKS, [ $website => [ 'at' => current_time( 'mysql' ), 'hosts' => array_slice( array_keys( $hosts ), 0, 200 ), 'ok' => $html !== null ] ] );
 		return true;
+	}
+
+	/**
+	 * MMI SEO reads each Brand website's home page to write the brand page's SEO from (its Brand_Source). It
+	 * asks through `mmi_seo_fetch_page`; this answers with the reader the home page is already read with for its
+	 * links (read_links()): the same browser identity, per-site pacing and robots.txt answer. Nothing is stored here.
+	 *
+	 * @param array|null $page Another plugin's answer, kept if given.
+	 * @return array{status:string, html:string}|null
+	 */
+	public static function seo_fetch( $page, $url ) {
+		if ( is_array( $page ) ) {
+			return $page;
+		}
+		$url  = (string) $url;
+		$host = self::host( $url );
+		if ( $host === '' ) {
+			return $page;
+		}
+		if ( ! VendorFetcher::robots_allows( $url, $host ) ) {
+			return [ 'status' => 'robots', 'html' => '' ];
+		}
+		$html = VendorCatalog::text( $url, $host, 20, 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' );
+		if ( $html !== null && ! PageStore::is_wall( $html ) ) {
+			return [ 'status' => 'ok', 'html' => $html ];
+		}
+		// Refused (most often a firewall's 403): a good copy of the home page already in the page store, read by
+		// the server or sent from the owner's browser with the extension, is read instead. Looked up only.
+		foreach ( array_unique( [ $url, trailingslashit( $url ), untrailingslashit( $url ) ] ) as $u ) {
+			$row = PageStore::row( $u );
+			if ( $row && ( $row['status'] ?? '' ) === 'ok' && (string) ( $row['html_file'] ?? '' ) !== '' ) {
+				$stored = PageStore::read( (string) $row['html_file'] );
+				if ( $stored !== '' && ! PageStore::is_wall( $stored ) ) {
+					return [ 'status' => 'ok', 'html' => $stored, 'final_url' => (string) ( $row['final_url'] ?? '' ) ];
+				}
+			}
+		}
+		return [ 'status' => 'error', 'html' => '', 'note' => __( 'the site refused this server. Open its home page in your browser and use Store this page in the MMI Product Data extension; it is read from that copy.', 'mmi-data-pipeline' ) ];
 	}
 
 	/** Does any of the product's brands say this site is not theirs? (Then it is never proposed for it.) */

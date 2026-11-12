@@ -129,6 +129,7 @@ class Enrichment {
 		add_action( self::HOOK, [ __CLASS__, 'run_batch' ] );
 		add_action( self::DAILY_HOOK, [ __CLASS__, 'daily' ] );
 		add_filter( 'mmi_seo_product_data_coverage', [ __CLASS__, 'seo_coverage' ] );
+		add_filter( 'mmi_seo_product_data_ready_ids', [ __CLASS__, 'seo_ready_ids' ] );
 	}
 
 	/**
@@ -143,13 +144,32 @@ class Enrichment {
 		if ( is_array( $answer ) ) {
 			return $answer;
 		}
+		$ids = self::seo_ready_ids( null );
+		return $ids === null ? $answer : [ 'with' => count( $ids ), 'what' => __( "a description from the maker's page", 'mmi-data-pipeline' ) ];
+	}
+
+	/**
+	 * The same products by ID, for MMI SEO to write AI drafts only for products with their maker's description
+	 * (`mmi_seo_product_data_ready_ids`). One query, kept for the request.
+	 *
+	 * @param int[]|null $answer Another plugin's answer, kept if given.
+	 * @return int[]|null
+	 */
+	public static function seo_ready_ids( $answer ) {
+		static $memo = null;
+		if ( is_array( $answer ) ) {
+			return $answer;
+		}
+		if ( $memo !== null ) {
+			return $memo;
+		}
 		global $wpdb;
 		$t = self::table();
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $t ) ) !== $t ) {
 			return $answer;
 		}
-		$with = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT e.product_id) FROM {$t} e JOIN {$wpdb->posts} p ON p.ID = e.product_id AND p.post_type = 'product' AND p.post_status = 'publish' WHERE e.kind = 'content' AND e.status = 'applied' AND e.source IN ('vendor_page','family_copy')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- table name only
-		return [ 'with' => $with, 'what' => __( "a description from the maker's page", 'mmi-data-pipeline' ) ];
+		$memo = array_map( 'intval', (array) $wpdb->get_col( "SELECT DISTINCT e.product_id FROM {$t} e JOIN {$wpdb->posts} p ON p.ID = e.product_id AND p.post_type = 'product' AND p.post_status = 'publish' WHERE e.kind = 'content' AND e.status = 'applied' AND e.source IN ('vendor_page','family_copy')" ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- table name only
+		return $memo;
 	}
 
 	public static function schedule_daily(): void {
