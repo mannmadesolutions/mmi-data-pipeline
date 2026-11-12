@@ -13,11 +13,30 @@ import {
 } from "./picturesApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
 import { useSectionVisible } from "./nav";
-import { Dashicon, Section } from "./ui";
+import { Dashicon, Section, SortTh, useColumnResize } from "./ui";
 
 export const QUEUED_EVENT = "mmi-wb:pictures-queued";
 const POLL_MS = 15000;
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
+
+/** The summary's columns; "" keeps the outcome order the summary comes in. */
+type GroupSort = "" | "outcome" | "reason" | "n" | "pics" | "bb" | "ba" | "saved";
+const GROUP_COLS: [Exclude<GroupSort, "">, string, boolean][] = [
+  ["outcome", "Outcome", false], ["reason", "Why", false], ["n", "Products", true], ["pics", "Pictures before → after", true],
+  ["bb", "Size before", true], ["ba", "Size after", true], ["saved", "Saved", true],
+];
+type GroupRow = ReturnType<typeof groupTable>["rows"][number];
+/** A summary row's value for a column: numbers for the figures (rows that changed nothing sort below every figure). */
+function groupValue(g: GroupRow, by: Exclude<GroupSort, "">): number | string {
+  if (by === "outcome") return g.outcome;
+  if (by === "reason") return g.reason ? g.reason_label : "";
+  if (by === "n") return g.n;
+  if (!g.changed) return -Infinity;
+  if (by === "pics") return g.pics_after - g.pics_before;
+  if (by === "bb") return g.bytes_before;
+  if (by === "ba") return g.bytes_after;
+  return g.bytes_before - g.bytes_after;
+}
 
 const COLS: [PictureSort, string, boolean][] = [
   ["id", "ID", false], ["title", "Product", false], ["outcome", "Outcome", false], ["reason", "Why", false],
@@ -93,6 +112,17 @@ export function ProductPictures({ cfg }: { cfg: TitleRulesConfig }) {
 
   const sortBy = (by: PictureSort) => { setSort((s) => ({ by, order: s.by === by && s.order === "desc" ? "asc" : "desc" })); setPage(1); };
   const table = sum ? groupTable(sum) : null;
+  const [gSort, setGSort] = useState<{ by: GroupSort; order: "asc" | "desc" }>({ by: "", order: "asc" });
+  const gSortBy = (by: Exclude<GroupSort, "">) => setGSort((s) => ({ by, order: s.by === by && s.order === "desc" ? "asc" : "desc" }));
+  const groupRows = !table ? [] : gSort.by === "" ? table.rows : [...table.rows].sort((a, b) => {
+    const x = groupValue(a, gSort.by as Exclude<GroupSort, "">);
+    const y = groupValue(b, gSort.by as Exclude<GroupSort, "">);
+    return (typeof x === "number" && typeof y === "number" ? (x === y ? 0 : x < y ? -1 : 1) : String(x).localeCompare(String(y))) * (gSort.order === "desc" ? -1 : 1);
+  });
+  const groupsRef = useRef<HTMLTableElement>(null);
+  const listRef = useRef<HTMLTableElement>(null);
+  useColumnResize(groupsRef, groupRows.length > 0);
+  useColumnResize(listRef, (list?.rows.length ?? 0) > 0);
   const own = sum ? inPlaceCount(sum) : 0;
   const paused = !!(sum?.activity?.manual && sum.running);
   const pages = list ? Math.max(1, Math.ceil(list.total / (list.per_page || 50))) : 1;
@@ -111,12 +141,16 @@ export function ProductPictures({ cfg }: { cfg: TitleRulesConfig }) {
           <button type="button" className="button-link" onClick={() => { setShow("in_place"); setPage(1); }}>Show them</button>
         </p></div>
       )}
-      <div className="mmi-wb-px-groupwrap">
-        <table className="wp-list-table widefat striped mmi-wb-px-groups" id="mmi-wb-px-groups">
-          <thead><tr><th>Outcome</th><th>Why</th><th className="mmi-wb-num">Products</th><th className="mmi-wb-num">Pictures before → after</th><th className="mmi-wb-num">Size before</th><th className="mmi-wb-num">Size after</th><th className="mmi-wb-num">Saved</th></tr></thead>
+      <div className="mmi-table-scroll-wrapper mmi-wb-px-groupwrap">
+        <table ref={groupsRef} className="wp-list-table widefat striped mmi-wb-px-groups" id="mmi-wb-px-groups">
+          <thead><tr>
+            {GROUP_COLS.map(([k, label, n]) => (
+              <SortTh key={k} col={k} label={label} className={n ? "mmi-wb-num" : undefined} active={gSort.by === k} desc={gSort.order === "desc"} onSort={gSortBy} />
+            ))}
+          </tr></thead>
           <tbody>
             {table && !table.rows.length && <tr><td colSpan={7} className="mmi-wb-empty-cell">Nothing yet. Queue products with Pictures in Maker pages.</td></tr>}
-            {table?.rows.map((g, i) => (
+            {groupRows.map((g, i) => (
               <tr key={i} data-outcome={g.outcome}>
                 <td><Badge outcome={g.outcome} /></td>
                 <td>{g.reason ? g.reason_label : "—"}</td>
@@ -127,12 +161,14 @@ export function ProductPictures({ cfg }: { cfg: TitleRulesConfig }) {
                 <td className="mmi-wb-num">{g.changed ? saved(g.bytes_before, g.bytes_after) : "—"}</td>
               </tr>
             ))}
-            {table && table.rows.length > 0 && (
+          </tbody>
+          {table && table.rows.length > 0 && (
+            <tfoot>
               <tr className="mmi-wb-px-total"><th>Total</th><td /><td className="mmi-wb-num">{table.total.n.toLocaleString("en-US")}</td>
                 <td className="mmi-wb-num">{`${table.total.pb.toLocaleString("en-US")} → ${table.total.pa.toLocaleString("en-US")}`}</td>
                 <td className="mmi-wb-num">{size(table.total.bb)}</td><td className="mmi-wb-num">{size(table.total.ba)}</td><td className="mmi-wb-num">{saved(table.total.bb, table.total.ba)}</td></tr>
-            )}
-          </tbody>
+            </tfoot>
+          )}
         </table>
       </div>
       {sum && <p className="description" id="mmi-wb-px-release">{releaseLine(sum)}</p>}
@@ -150,16 +186,12 @@ export function ProductPictures({ cfg }: { cfg: TitleRulesConfig }) {
         <span className="mmi-wb-count" id="mmi-wb-px-count">{list ? `${list.total.toLocaleString("en-US")} products` : ""}</span>
       </div>
       <div className="mmi-table-scroll-wrapper">
-        <table className="wp-list-table widefat striped" id="mmi-wb-px-table">
+        <table ref={listRef} className="wp-list-table widefat striped" id="mmi-wb-px-table">
           <thead><tr>
             {COLS.map(([k, label, n]) => (
-              <th key={k} data-col={k} tabIndex={0} className={`mmi-wb-job-sortable${sort.by === k ? " is-active" : ""}${sort.by === k && sort.order === "desc" ? " is-desc" : ""}${n ? " mmi-wb-num" : ""}`}
-                aria-sort={sort.by === k ? (sort.order === "desc" ? "descending" : "ascending") : "none"}
-                onClick={() => sortBy(k)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(k); } }}>
-                {label} <span className="sort-icon" />
-              </th>
+              <SortTh key={k} col={k} label={label} className={n ? "mmi-wb-num" : undefined} active={sort.by === k} desc={sort.order === "desc"} onSort={sortBy} />
             ))}
-            <th><span className="screen-reader-text">Actions</span></th>
+            <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
           </tr></thead>
           <tbody id="mmi-wb-px-rows">
             {!list && <tr><td colSpan={9} className="mmi-wb-empty-cell">Loading…</td></tr>}

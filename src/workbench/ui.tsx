@@ -4,7 +4,7 @@
  * filters, the shared pager, and Island, which hosts server-rendered jQuery
  * markup inside the React tree.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { page } from "./globals";
 
 export const Dashicon = ({ name }: { name: string }) => <span className={`dashicons dashicons-${name}`} aria-hidden="true" />;
@@ -134,6 +134,154 @@ export function Island({ sourceId, className }: { sourceId: string; className?: 
     return () => { home.appendChild(node); };
   }, [sourceId]);
   return <div ref={slot} className={className} />;
+}
+
+/**
+ * A sortable column heading, the same on every Workbench table: the label,
+ * then ↕ (unsorted), ↑ or ↓. Enter and Space sort like a click. The column's
+ * key names it for the shared resizer's saved widths too.
+ */
+export function SortTh<K extends string>({ col, label, title, active, desc, onSort, className }: {
+  col: K;
+  label: ReactNode;
+  title?: string;
+  active: boolean;
+  desc: boolean;
+  onSort: (col: K) => void;
+  className?: string;
+}) {
+  return (
+    <th data-col={col} data-resize-col={col} tabIndex={0} title={title}
+      className={`mmi-wb-job-sortable${active ? " is-active" : ""}${active && desc ? " is-desc" : ""}${className ? ` ${className}` : ""}`}
+      aria-sort={active ? (desc ? "descending" : "ascending") : "none"}
+      onClick={() => onSort(col)}
+      onKeyDown={(e: ReactKeyboardEvent<HTMLTableCellElement>) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSort(col); } }}>
+      {label} <span className="sort-icon" />
+    </th>
+  );
+}
+
+/**
+ * Writes each visible heading's width as its share of the table, so a fixed
+ * layout keeps the widths and they still scale when the box narrows (Needs a
+ * decision's drawer). Hidden headings keep what they have.
+ *
+ * A column whose cells can't wrap (a row's buttons) keeps the width its widest
+ * cell needs, and the other columns share what is left; otherwise the buttons
+ * spill past the table's edge (Chromium sized Standing rules' five buttons
+ * 24px short). After a drag, the dragged column (keep) keeps its new width too,
+ * and the others share what is left of the box.
+ */
+function widthsAsShares(table: HTMLTableElement, heads: HTMLElement[], widths = heads.map((h) => h.getBoundingClientRect().width), keep?: HTMLElement): number[] | null {
+  const sumOf = widths.reduce((a, b) => a + b, 0);
+  const total = keep ? (table.parentElement?.clientWidth || sumOf) : sumOf;
+  if (total <= 0) return null;
+  const need = heads.map(() => 0);
+  for (const row of Array.from(table.tBodies[0]?.rows ?? []).slice(0, 100)) {
+    if (row.cells.length !== heads.length) continue; // a notice or empty row spanning the table
+    Array.from(row.cells).forEach((c, i) => { if (c.scrollWidth > c.clientWidth) need[i] = Math.max(need[i]!, c.scrollWidth + 1); });
+  }
+  heads.forEach((h, i) => { if (h === keep) need[i] = Math.max(need[i]!, widths[i]!); });
+  const fixed = widths.map((w, i) => need[i]! > w || heads[i] === keep);
+  const kept = widths.reduce((sum, _w, i) => sum + (fixed[i] ? need[i]! : 0), 0);
+  const rest = widths.reduce((sum, w, i) => sum + (fixed[i] ? 0 : w), 0);
+  const scale = kept < total && rest > 0 ? (total - kept) / rest : 1;
+  const px = widths.map((w, i) => (fixed[i] && kept < total ? need[i]! : w * scale));
+  const sum = px.reduce((a, b) => a + b, 0);
+  // Border-box widths: Chromium adds a content-box cell's padding on top of a percentage and WebKit
+  // doesn't, so only border-box reads the same in both. It is also what the resizer measures and saves (outerWidth).
+  heads.forEach((h, i) => {
+    if (widths[i]! <= 0) return;
+    h.style.boxSizing = "border-box";
+    h.style.width = `${((px[i]! / sum) * 100).toFixed(3)}%`;
+  });
+  return px.map((x, i) => (widths[i]! > 0 ? x / sum : 0));
+}
+
+/**
+ * Column resizing for a Workbench table, through the shared column-resizer.js
+ * (widths kept per column name in this browser). Starts once the table has
+ * rows, so the widths it starts from are the ones its content gave it; a saved
+ * width wins over those. After a drag the widths become shares of the table
+ * again, so the table always fits its box. A table in a hidden section has no
+ * widths to start from, so it starts when it is first shown.
+ *
+ * During a drag the other columns hold their widths in pixels and the table
+ * follows the drag: with the others as shares, Chromium gave the space a
+ * narrowing column let go straight back to it, so no column could be narrowed.
+ *
+ * When the box changes width (Needs a decision's drawer opens), the columns
+ * take their chosen shares of the new width again, and a column whose cells
+ * can't wrap (IDs, row buttons) keeps what they need.
+ */
+export function useColumnResize(table: RefObject<HTMLTableElement>, ready: boolean): void {
+  const started = useRef<HTMLTableElement | null>(null);
+  useLayoutEffect(() => {
+    const el = table.current;
+    const w = page();
+    if (!el || !ready || started.current === el || !w.jQuery || !w.MMI_ColumnResizer) return;
+    const $ = w.jQuery;
+    const resizer = w.MMI_ColumnResizer;
+    let base: number[] | null = null; // the chosen shares: from the content, a saved width or the last drag
+    let dragging = false;
+    const onDown = (e: MouseEvent) => {
+      const dragged = (e.target as Element | null)?.closest(".mmi-resize-handle")?.closest("th, td") as HTMLElement | null | undefined;
+      if (!dragged) return;
+      dragging = true;
+      const shown = heads.filter((h) => h.getBoundingClientRect().width > 0);
+      shown.forEach((h) => { h.style.width = `${h.getBoundingClientRect().width}px`; });
+      // The resizer's own document handlers were bound first, so the dragged width is set when this runs.
+      const follow = () => { el.style.width = `${shown.reduce((sum, h) => sum + h.getBoundingClientRect().width, 0)}px`; };
+      follow();
+      document.addEventListener("mousemove", follow);
+      document.addEventListener("mouseup", () => {
+        document.removeEventListener("mousemove", follow);
+        window.setTimeout(() => {
+          const widths = heads.map((h) => h.getBoundingClientRect().width);
+          el.style.width = "";
+          base = widthsAsShares(el, heads, widths, dragged) ?? base;
+          dragging = false;
+          // The resizer saved on release, before the other columns made room; save what the table shows now.
+          const id = resizer.getTableId?.($(el));
+          if (id) resizer.saveColumnWidths?.($(el), `mmi_column_widths_${id}`);
+        }, 0);
+      }, { once: true });
+    };
+    const heads = Array.from(el.tHead?.rows[0]?.cells ?? []) as HTMLElement[];
+    const start = () => {
+      started.current = el;
+      widthsAsShares(el, heads);
+      el.style.tableLayout = "fixed";
+      const $t = $(el);
+      const id = resizer.getTableId?.($t);
+      if (id) $(document).off(`.mmi-resizer-${id}`);
+      resizer.initTable($t);
+      base = widthsAsShares(el, heads);
+      el.addEventListener("mousedown", onDown);
+      const box = el.parentElement;
+      if (!box) return;
+      let last = box.clientWidth;
+      new ResizeObserver(() => {
+        const W = box.clientWidth;
+        if (dragging || !base || !W || W === last) return;
+        last = W;
+        const visible = heads.map((h) => h.getBoundingClientRect().width > 0);
+        const known = base.filter((f, i) => visible[i] && f > 0);
+        const fill = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 1; // a column first seen now
+        const f = base.map((x, i) => (visible[i] ? x || fill : 0));
+        const sum = f.reduce((a, b) => a + b, 0);
+        if (sum > 0) widthsAsShares(el, heads, f.map((x) => (x / sum) * W));
+      }).observe(box);
+    };
+    let shown: ResizeObserver | null = null;
+    if (el.getClientRects().length) start();
+    else {
+      shown = new ResizeObserver(() => { if (el.getClientRects().length) { shown?.disconnect(); start(); } });
+      shown.observe(el);
+    }
+    // The drag and box listeners stay for the table's life: a reload toggles ready, and the table keeps its handles.
+    return () => shown?.disconnect();
+  }, [table, ready]);
 }
 
 /** The shared prev/next pager (mmi-pagination.js), kept in step with the search. */

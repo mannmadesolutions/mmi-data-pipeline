@@ -15,7 +15,7 @@ import {
 import { QUEUED_EVENT } from "./ProductPictures";
 import { msg, usePageRows, type Notice } from "./pageRows";
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
-import { Section } from "./ui";
+import { Section, useColumnResize } from "./ui";
 
 
 export function MakerPages({ cfg }: { cfg: TitleRulesConfig }) {
@@ -96,6 +96,8 @@ export function MakerPages({ cfg }: { cfg: TitleRulesConfig }) {
   };
 
   const live = rows.filter((r) => !state[r.id]?.gone);
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   const allTicked = live.length > 0 && live.every((r) => selected.includes(r.id));
   const tickedOpen = rows.filter((r) => selected.includes(r.id) && r.status === "candidate" && r.proposed && !state[r.id]?.gone).length;
   const showConf = filter.group === "" || WAITING.includes(filter.group as never);
@@ -157,14 +159,14 @@ export function MakerPages({ cfg }: { cfg: TitleRulesConfig }) {
       </div>
 
       <div className="mmi-table-scroll-wrapper">
-        <table className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-mp-table">
+        <table ref={tableRef} className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-mp-table">
           <thead>
             <tr>
               <td className="check-column"><input type="checkbox" aria-label="Tick every row on this page" checked={allTicked} onChange={(e) => setSelected(e.target.checked ? live.map((r) => r.id) : [])} /></td>
-              <th className="mmi-wb-col-id">ID</th>
-              <th>Product</th>
-              <th>Maker page</th>
-              <th><span className="screen-reader-text">Actions</span></th>
+              <th className="mmi-wb-col-id" data-resize-col="id">ID</th>
+              <th data-resize-col="product">Product</th>
+              <th data-resize-col="page">Maker page</th>
+              <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
             </tr>
           </thead>
           <tbody id="mmi-wb-mp-rows">

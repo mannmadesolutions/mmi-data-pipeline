@@ -4,11 +4,11 @@
  * (GET/POST /exclusions). Leaving a brand alone asks first, since its open
  * proposals are removed; taking one back is a second click on the same button.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./api";
 import { brandChoices, leftRows, leftState, saveBody, savedText, type LeftAloneSaved, type LeftAloneSummary, type LeftRow } from "./leftAloneApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { BusyButton, Dashicon, Section } from "./ui";
+import { BusyButton, Dashicon, Section, useColumnResize } from "./ui";
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 
@@ -46,6 +46,8 @@ export function LeftAlone({ cfg }: { cfg: TitleRulesConfig }) {
 
   const brandName = s?.all_brands.find((b) => String(b.id) === brand)?.name ?? "";
   const rows = s ? leftRows(s) : [];
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   return (
     <Section id="mmi-wb-left-alone" icon="hidden" title="Left alone by Product Data"
       desc="Brands and products that get no title proposals, no maker-page reads and no description or picture proposals, and are never written to. Taking one back makes its products eligible again">
@@ -70,8 +72,8 @@ export function LeftAlone({ cfg }: { cfg: TitleRulesConfig }) {
       )}
       <p className="description" id="mmi-wb-la-state">{s ? leftState(s) : "Loading…"}</p>
       <div className="mmi-table-scroll-wrapper">
-        <table className="wp-list-table widefat striped" id="mmi-wb-la-table">
-          <thead><tr><th>Left alone</th><th>Type</th><th>Products</th><th><span className="screen-reader-text">Actions</span></th></tr></thead>
+        <table ref={tableRef} className="wp-list-table widefat striped" id="mmi-wb-la-table">
+          <thead><tr><th data-resize-col="name">Left alone</th><th data-resize-col="type">Type</th><th data-resize-col="products">Products</th><th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th></tr></thead>
           <tbody>
             {s && !rows.length && <tr><td colSpan={4} className="mmi-wb-empty-cell">Nothing is left alone.</td></tr>}
             {rows.map((r) => (

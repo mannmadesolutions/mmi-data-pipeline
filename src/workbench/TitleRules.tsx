@@ -6,15 +6,17 @@
  * brand, some categories or some suppliers. The form shows, as you type, how
  * many titles the rule would change, with examples, before anything is saved.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./api";
 import {
   builtinRules, categoryOptions, draftReady, draftToBody, EMPTY_DRAFT, KINDS, moved, previewSummary, rest, ruleToDraft, textToWords, unstableNote, WORD_LISTS, wordsToText,
   type BuiltinRule, type OwnRule, type RuleDraft, type RulePreview, type TermOption, type TitleRulesConfig, type TitleWords,
 } from "./titleRulesApi";
-import { BusyButton, Dashicon, MultiSelect, Section } from "./ui";
+import { BusyButton, Dashicon, MultiSelect, Section, SortTh, useColumnResize } from "./ui";
 
 type SortKey = "position" | "label" | "brand" | "scope" | "at";
+type BuiltinSortKey = "pack" | "label" | "count" | "enabled" | "approved";
+const BUILTIN_COLS: [BuiltinSortKey, string][] = [["pack", "#"], ["label", "Rule"], ["count", "Proposals"], ["enabled", "In use"], ["approved", "May auto-apply"]];
 const COLS: { key: SortKey; label: string; title?: string }[] = [
   { key: "position", label: "#", title: "Order: each rule works on the title the one before it left" },
   { key: "label", label: "Rule" },
@@ -63,7 +65,7 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
   const seq = useRef(0);
   const [builtin, setBuiltin] = useState<BuiltinRule[] | null>(null);
   const [ruleBusy, setRuleBusy] = useState("");
-  const [bSort, setBSort] = useState<{ key: "pack" | "label" | "count"; dir: "asc" | "desc" }>({ key: "pack", dir: "asc" });
+  const [bSort, setBSort] = useState<{ key: BuiltinSortKey; dir: "asc" | "desc" }>({ key: "pack", dir: "asc" });
   const [words, setWords] = useState<Record<string, string> | null>(null);
   const [wordsBusy, setWordsBusy] = useState(false);
 
@@ -175,13 +177,23 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
     } catch (e) { fail(e); } finally { setWordsBusy(false); }
   };
 
-  const bSortBy = (key: "pack" | "label" | "count") => setBSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
+  const bSortBy = (key: BuiltinSortKey) => setBSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
+  // Switches sort on before off; ties keep the rules' own order.
+  const bValue = (r: BuiltinRule): number | string => (bSort.key === "count" ? r.count : bSort.key === "label" ? r.label
+    : bSort.key === "enabled" ? Number(!r.enabled) : Number(!r.approved));
   const bRows = builtin ? (bSort.key === "pack" ? (bSort.dir === "asc" ? builtin : [...builtin].reverse())
-    : [...builtin].sort((a, b) => (bSort.key === "count" ? a.count - b.count : a.label.localeCompare(b.label)) * (bSort.dir === "desc" ? -1 : 1))) : [];
+    : [...builtin].sort((a, b) => {
+      const x = bValue(a);
+      const y = bValue(b);
+      return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (bSort.dir === "desc" ? -1 : 1);
+    })) : [];
 
   const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
-  const onKey = (e: KeyboardEvent, key: SortKey) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); } };
   const rows = rules ? sortRules(rules, sort.key, sort.dir) : [];
+  const builtinRef = useRef<HTMLTableElement>(null);
+  const ownRef = useRef<HTMLTableElement>(null);
+  useColumnResize(builtinRef, bRows.length > 0);
+  useColumnResize(ownRef, rows.length > 0);
   const last = rules?.length ?? 0;
   const kind = KINDS.find((k) => k.value === draft.kind) ?? KINDS[0]!;
   const supplierOptions = Object.fromEntries(Object.entries(suppliers).map(([k, n]) => [k, `${k} (${n})`]));
@@ -202,19 +214,12 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
       <h4 className="mmi-wb-tr-sub">Built-in rules{pack ? `: ${pack}` : ""}</h4>
       <p className="description mmi-wb-tr-desc">In use: the rule takes part in proposals (switching it recomposes them now). May auto-apply: a proposal made only of rules that may auto-apply is written without review when automatic writing is on.</p>
       <div className="mmi-table-scroll-wrapper">
-        <table className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-tr-builtin">
+        <table ref={builtinRef} className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-tr-builtin">
           <thead>
             <tr>
-              {([["pack", "#"], ["label", "Rule"], ["count", "Proposals"]] as const).map(([key, text]) => (
-                <th key={key} data-col={key} tabIndex={0}
-                  className={`mmi-wb-job-sortable${bSort.key === key ? " is-active" : ""}${bSort.key === key && bSort.dir === "desc" ? " is-desc" : ""}`}
-                  aria-sort={bSort.key === key ? (bSort.dir === "desc" ? "descending" : "ascending") : "none"}
-                  onClick={() => bSortBy(key)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); bSortBy(key); } }}>
-                  {text} <span className="sort-icon" />
-                </th>
+              {BUILTIN_COLS.map(([key, text]) => (
+                <SortTh key={key} col={key} label={text} active={bSort.key === key} desc={bSort.dir === "desc"} onSort={bSortBy} />
               ))}
-              <th>In use</th>
-              <th>May auto-apply</th>
             </tr>
           </thead>
           <tbody id="mmi-wb-tr-builtin-rows">
@@ -348,18 +353,13 @@ export function TitleRules({ cfg }: { cfg: TitleRulesConfig }) {
       )}
 
       <div className="mmi-table-scroll-wrapper">
-        <table className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-tr-table">
+        <table ref={ownRef} className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-tr-table">
           <thead>
             <tr>
               {COLS.map((c) => (
-                <th key={c.key} data-col={c.key} tabIndex={0} title={c.title}
-                  className={`mmi-wb-job-sortable${sort.key === c.key ? " is-active" : ""}${sort.key === c.key && sort.dir === "desc" ? " is-desc" : ""}`}
-                  aria-sort={sort.key === c.key ? (sort.dir === "desc" ? "descending" : "ascending") : "none"}
-                  onClick={() => sortBy(c.key)} onKeyDown={(e) => onKey(e, c.key)}>
-                  {c.label} <span className="sort-icon" />
-                </th>
+                <SortTh key={c.key} col={c.key} label={c.label} title={c.title} active={sort.key === c.key} desc={sort.dir === "desc"} onSort={sortBy} />
               ))}
-              <th><span className="screen-reader-text">Actions</span></th>
+              <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
             </tr>
           </thead>
           <tbody id="mmi-wb-tr-rows">

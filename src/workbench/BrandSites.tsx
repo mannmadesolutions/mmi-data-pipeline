@@ -14,7 +14,7 @@ import {
 import { msg, usePageRows, type Notice } from "./pageRows";
 import type { PageListReply, PageRow } from "./pagesApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section } from "./ui";
+import { Dashicon, Section, useColumnResize } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 const POLL = { ms: 3000, tries: 40 };
@@ -29,6 +29,8 @@ export function BrandSites({ cfg }: { cfg: TitleRulesConfig }) {
     rest<{ brands: Brand[] }>(cfg, "GET", "brand-sites").then((d) => setBrands(d.brands)).catch((e) => { setBrands([]); setNotice({ text: msg(e), kind: "error" }); });
   }, [cfg]);
   const list = brands ? brandsIn(brands, view, q) : [];
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, list.length > 0);
   const brand = brands?.find((b) => b.id === open) ?? null;
   const replace = (b: Brand) => setBrands((bs) => (bs ? bs.map((x) => (x.id === b.id ? b : x)) : bs));
 
@@ -48,8 +50,8 @@ export function BrandSites({ cfg }: { cfg: TitleRulesConfig }) {
         <span className="mmi-wb-count" id="mmi-wb-bs-count">{brands ? `${list.length} brand${list.length === 1 ? "" : "s"}` : ""}</span>
       </div>
       <div className="mmi-table-scroll-wrapper mmi-wb-bs-list">
-        <table className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-bs-table">
-          <thead><tr><th>Brand</th><th>Maker sites</th><th>Products</th><th>To do</th></tr></thead>
+        <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-bs-table">
+          <thead><tr><th data-resize-col="brand">Brand</th><th data-resize-col="sites">Maker sites</th><th data-resize-col="products">Products</th><th data-resize-col="todo">To do</th></tr></thead>
           <tbody id="mmi-wb-bs-rows">
             {!brands && <tr><td colSpan={4} className="mmi-wb-empty-cell">Loading brands…</td></tr>}
             {brands && !list.length && <tr><td colSpan={4} className="mmi-wb-empty-cell">Nothing here.</td></tr>}

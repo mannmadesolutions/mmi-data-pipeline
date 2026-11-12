@@ -5,11 +5,11 @@
  * check) and what its last run did. Open loads it into Find products to
  * edit; Run now applies it straight away.
  */
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState } from "react";
 import { findingsToShow, gradeBadge, lastRunText, sortRules, type RuleSortKey } from "./logic";
 import { MESSAGES } from "./messages";
 import type { StandingRule } from "./types";
-import { Dashicon, Section } from "./ui";
+import { Dashicon, Section, SortTh, useColumnResize } from "./ui";
 
 const COLS: { key: RuleSortKey; label: string; title?: string }[] = [
   { key: "position", label: "#", title: "Run order: the first matching stock rule wins a product" },
@@ -36,10 +36,9 @@ export function StandingRules({ rules, busy, editingId, notice, onOpen, onRun, o
 }) {
   const [sort, setSort] = useState<{ key: RuleSortKey; dir: "asc" | "desc" }>({ key: "position", dir: "asc" });
   const sortBy = (key: RuleSortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
-  const onKey = (e: KeyboardEvent, key: RuleSortKey) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); }
-  };
   const rows = rules ? sortRules(rules, sort.key, sort.dir) : [];
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   const last = rules ? rules.length : 0;
 
   return (
@@ -49,18 +48,13 @@ export function StandingRules({ rules, busy, editingId, notice, onOpen, onRun, o
         <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status"><p>{notice.text}</p></div>
       )}
       <div className="mmi-table-scroll-wrapper">
-        <table className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-rules-table">
+        <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-rules-table" id="mmi-wb-rules-table">
           <thead>
             <tr>
               {COLS.map((c) => (
-                <th key={c.key} data-col={c.key} tabIndex={0} title={c.title}
-                  className={`mmi-wb-job-sortable${sort.key === c.key ? " is-active" : ""}${sort.key === c.key && sort.dir === "desc" ? " is-desc" : ""}`}
-                  aria-sort={sort.key === c.key ? (sort.dir === "desc" ? "descending" : "ascending") : "none"}
-                  onClick={() => sortBy(c.key)} onKeyDown={(e) => onKey(e, c.key)}>
-                  {c.label} <span className="sort-icon" />
-                </th>
+                <SortTh key={c.key} col={c.key} label={c.label} title={c.title} active={sort.key === c.key} desc={sort.dir === "desc"} onSort={sortBy} />
               ))}
-              <th><span className="screen-reader-text">Actions</span></th>
+              <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
             </tr>
           </thead>
           <tbody id="mmi-wb-rules-rows">

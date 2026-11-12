@@ -12,7 +12,7 @@ import { ApiError, api } from "./api";
 import { page } from "./globals";
 import { MESSAGES, fill, num, plural } from "./messages";
 import type { PhaseResult, RunPhase, Upkeep } from "./types";
-import { BusyButton, Section } from "./ui";
+import { BusyButton, Section, useColumnResize } from "./ui";
 
 type StepState = { state: "pending" | "running" | "done" | "skipped" | "error"; detail: string };
 
@@ -124,6 +124,8 @@ export function CatalogUpkeep({ onRunFinished }: { onRunFinished: () => void }) 
 
   const freq = up?.schedule.frequency ?? "";
   const busyElsewhere = up?.running && !run;
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, !!up);
 
   return (
     <Section id="mmi-wb-upkeep" icon="admin-tools" title="Catalog upkeep"
@@ -177,8 +179,8 @@ export function CatalogUpkeep({ onRunFinished }: { onRunFinished: () => void }) 
           )}
           {busyElsewhere && <div className="notice notice-info inline"><p>{fill(MESSAGES.UPKEEP_BUSY, { when: up.running!.started_at })}</p></div>}
           <div className="mmi-table-scroll-wrapper">
-            <table className="wp-list-table widefat striped mmi-wb-upkeep-table" id="mmi-wb-upkeep-steps">
-              <thead><tr><th>Step</th><th>Kind</th><th>{run ? "This run" : "Status"}</th></tr></thead>
+            <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-upkeep-table" id="mmi-wb-upkeep-steps">
+              <thead><tr><th data-resize-col="step">Step</th><th data-resize-col="kind">Kind</th><th data-resize-col="status">{run ? "This run" : "Status"}</th></tr></thead>
               <tbody>
                 {(run ? run.phases.map((p, i) => ({ p, s: run.steps[i]! })) : up.steps.map((p) => ({ p, s: null }))).map(({ p, s }, i) => {
                   const step = up.steps.find((u) => u.label === p.label);

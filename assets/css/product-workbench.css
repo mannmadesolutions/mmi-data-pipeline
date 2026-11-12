@@ -566,10 +566,6 @@ td.mmi-wb-col-thumb img,
     margin: 4px 0;
 }
 
-.mmi-wb-rule-actions .button + .button {
-    margin-left: 4px;
-}
-
 .mmi-wb-icon-btn {
     padding-inline: 4px !important;
 }
@@ -1287,12 +1283,6 @@ button.mmi-health-chip.is-open {
 }
 .mmi-wb-mp-actions {
     min-width: 150px;
-}
-.mmi-wb-mp-actions .button {
-    display: block;
-    width: 100%;
-    margin: 0 0 4px;
-    text-align: center;
 }
 .mmi-wb-mp-danger.is-armed {
     border-color: var(--mmi-wb-danger);
@@ -2168,4 +2158,90 @@ tr.mmi-wb-mp-gone .notice {
         position: static;
         max-height: none;
     }
+}
+
+/* ── Workbench tables: one look (owner, 2026-11-12) ───────────────────────
+   Every table in the Workbench looks like Needs a decision's: the same
+   heading and cell padding, the label then its sort arrow, the same row
+   buttons. Tables the shared sorter (mmi-table-sort.js) sorts had
+   WordPress core's `.widefat th.sortable { padding: 0 }` (it expects a link
+   inside the heading to carry the padding) and the shared arrow pinned to
+   the cell's right edge, so their headings were 21px tall against 37px. */
+.mmi-workbench .widefat thead th,
+.mmi-workbench .widefat thead td:not(.check-column) {
+    padding: 8px 10px;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmi-workbench .widefat thead th:is(.sortable, .mmi-wb-job-sortable, .mmi-wb-sortable) {
+    cursor: pointer;
+    user-select: none;
+}
+
+.mmi-workbench .widefat thead th:is(.sortable, .mmi-wb-job-sortable, .mmi-wb-sortable):hover {
+    background-color: var(--mmi-gray-200, #f0f0f1);
+}
+
+/* The shared sorter's arrow drawn like .sort-icon: after the label, ↕ ↑ ↓. */
+.mmi-workbench .widefat thead th.sortable::after {
+    content: "\2195";
+    position: static;
+    transform: none;
+    margin-left: 3px;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+    opacity: 0.35;
+}
+
+.mmi-workbench .widefat thead th.sorted-asc::after {
+    content: "\2191";
+    opacity: 1;
+}
+
+.mmi-workbench .widefat thead th.sorted-desc::after {
+    content: "\2193";
+    opacity: 1;
+}
+
+/* IDs never wrap: a narrowed column keeps the width its IDs need (useColumnResize). */
+.mmi-workbench .widefat :is(td.mmi-wb-dc-id, td.mmi-wb-col-id) {
+    white-space: nowrap;
+}
+
+/* Row buttons: one row, right-aligned, 4px apart, tops level with the row's text. */
+.mmi-workbench .widefat td.mmi-wb-job-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+.mmi-workbench .widefat td.mmi-wb-job-actions .button {
+    vertical-align: top;
+}
+
+.mmi-workbench .widefat td.mmi-wb-job-actions:not(.mmi-wb-mp-actions) > * + * {
+    margin-left: 4px;
+}
+
+/* Maker pages' four decisions stack, one width, none offset (Change the page
+   has an icon, which made it inline-flex beside the others' block). */
+.mmi-workbench .widefat td.mmi-wb-mp-actions {
+    white-space: normal;
+}
+
+.mmi-workbench .widefat td.mmi-wb-mp-actions .button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0 0 4px;
+}
+
+.mmi-workbench .widefat td.mmi-wb-mp-actions .button:last-child {
+    margin-bottom: 0;
 }

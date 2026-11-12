@@ -15,7 +15,7 @@ import {
 import { msg, type Notice } from "./pageRows";
 import { ProductPictures, SitePicturesPanel } from "./SitePictures";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section } from "./ui";
+import { Dashicon, Section, useColumnResize } from "./ui";
 
 const POLL_MS = 8000;
 const enc = encodeURIComponent;
@@ -36,6 +36,8 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
   }, [cfg]);
   useEffect(() => { loadList(); }, [loadList]);
   const rows = reply ? sitesIn(reply.rows, onlyProposals ? "all" : view, q).filter((r) => !onlyProposals || withProposals.has(r.host)) : [];
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   const site = reply?.rows.find((r) => r.host === open) ?? null;
 
   return (
@@ -59,8 +61,8 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
         {reply?.runner.running && <span className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Checking maps{reply.runner.note ? `: ${reply.runner.note}` : ""}</span>}
       </div>
       <div className="mmi-table-scroll-wrapper mmi-wb-bs-list">
-        <table className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-sm-table">
-          <thead><tr><th>Site</th><th>Map</th><th>Products</th><th>Pages read</th><th>Gaps to fill</th></tr></thead>
+        <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-sm-table">
+          <thead><tr><th data-resize-col="site">Site</th><th data-resize-col="map">Map</th><th data-resize-col="products">Products</th><th data-resize-col="read">Pages read</th><th data-resize-col="gaps">Gaps to fill</th></tr></thead>
           <tbody id="mmi-wb-sm-rows">
             {!reply && <tr><td colSpan={5} className="mmi-wb-empty-cell">Loading sites…</td></tr>}
             {reply && !rows.length && <tr><td colSpan={5} className="mmi-wb-empty-cell">Nothing here.</td></tr>}

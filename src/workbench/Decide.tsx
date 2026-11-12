@@ -17,7 +17,7 @@ import { landing } from "./landing";
 import { openSection, useSectionVisible } from "./nav";
 import { ProductDrawer } from "./ProductDrawer";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section } from "./ui";
+import { Dashicon, Section, SortTh, useColumnResize } from "./ui";
 import {
   EMPTY_WAIT, nextSort, step, waitingQuery, WAIT_KINDS, type DrawerProduct, type WaitFilter, type WaitingPage, type WaitSort,
 } from "./waitingApi";
@@ -91,8 +91,9 @@ export function Decide({ cfg }: { cfg: TitleRulesConfig }) {
   };
 
   const rows = page?.rows ?? [];
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   const sortBy = (col: Exclude<WaitSort, "">) => setFilter((f) => ({ ...f, ...nextSort(f, col), page: 1 }));
-  const onHeadKey = (e: KeyboardEvent, col: Exclude<WaitSort, "">) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(col); } };
   const onRowKey = (e: KeyboardEvent, id: number) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(id); } };
 
   return (
@@ -114,18 +115,14 @@ export function Decide({ cfg }: { cfg: TitleRulesConfig }) {
       <div className={`mmi-wb-dc${open !== null ? " has-drawer" : ""}`}>
         <div className="mmi-wb-dc-list">
           <div className="mmi-table-scroll-wrapper">
-            <table className={`wp-list-table widefat striped mmi-wb-dc-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-dc-table">
+            <table ref={tableRef} className={`wp-list-table widefat striped mmi-wb-dc-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-dc-table">
               <thead>
                 <tr>
                   {COLS.map((c) => {
                     const on = filter.orderby === c.key;
                     return (
-                      <th key={c.key} data-col={c.key} tabIndex={0} title={on ? "Sorted by this; click to flip, a third click goes back to errors first" : "Sort by this"}
-                        className={`mmi-wb-job-sortable${on ? " is-active" : ""}${on && filter.order === "desc" ? " is-desc" : ""}`}
-                        aria-sort={on ? (filter.order === "desc" ? "descending" : "ascending") : "none"}
-                        onClick={() => sortBy(c.key)} onKeyDown={(e) => onHeadKey(e, c.key)}>
-                        {c.label} <span className="sort-icon" />
-                      </th>
+                      <SortTh key={c.key} col={c.key} label={c.label} active={on} desc={filter.order === "desc"} onSort={sortBy}
+                        title={on ? "Sorted by this; click to flip, a third click goes back to errors first" : "Sort by this"} />
                     );
                   })}
                 </tr>

@@ -6,7 +6,7 @@
  * save a rule from your change; Apply now writes one at once; Revert puts a
  * written title back. "Write accepted titles" runs the throttled writer.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "./api";
 import {
   actionsFor, applyLine, confKind, EMPTY_FILTER, filterQuery, filterTerms, STATUS_LABEL, STATUS_VIEWS, target, viewCount, wordDiff,
@@ -15,7 +15,7 @@ import {
 import { IssueChips, IssuePanel } from "./IssueFixes";
 import type { FixResult, Issue } from "./issuesApi";
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
-import { BusyButton, Dashicon, Section } from "./ui";
+import { BusyButton, Dashicon, Section, SortTh, useColumnResize } from "./ui";
 import { TitleWriting } from "./WritingSettings";
 import { landing } from "./landing";
 import { useSectionVisible } from "./nav";
@@ -310,8 +310,9 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   };
 
   const sortBy = (key: QueueSort) => setFilter((f) => ({ ...f, orderby: key, order: f.orderby === key && f.order === "desc" ? "asc" : "desc", page: 1 }));
-  const onKey = (e: KeyboardEvent, key: QueueSort) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); } };
   const rows = page?.rows ?? [];
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   const allTicked = rows.length > 0 && rows.every((r) => selected.includes(r.id));
   const ruleLabel = (id: string) => summary?.rules[id]?.label ?? id;
   const openTicked = selected.filter((id) => actionsFor(rows.find((r) => r.id === id)?.status ?? "applied").includes("accept"));
@@ -379,20 +380,15 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
           onMode={(m) => setTerms({ ...terms, mode: m })} onSave={saveTerms} onCancel={() => setTerms(null)} />
       )}
       <div className="mmi-table-scroll-wrapper">
-        <table className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-pr-table">
+        <table ref={tableRef} className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-pr-table">
           <thead>
             <tr>
               <td className="check-column"><input type="checkbox" aria-label="Tick every row on this page" checked={allTicked}
                 onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])} /></td>
               {COLS.map((c) => (
-                <th key={c.key} data-col={c.key} tabIndex={0}
-                  className={`mmi-wb-job-sortable${filter.orderby === c.key ? " is-active" : ""}${filter.orderby === c.key && filter.order === "desc" ? " is-desc" : ""}`}
-                  aria-sort={filter.orderby === c.key ? (filter.order === "desc" ? "descending" : "ascending") : "none"}
-                  onClick={() => sortBy(c.key)} onKeyDown={(e) => onKey(e, c.key)}>
-                  {c.label} <span className="sort-icon" />
-                </th>
+                <SortTh key={c.key} col={c.key} label={c.label} active={filter.orderby === c.key} desc={filter.order === "desc"} onSort={sortBy} />
               ))}
-              <th><span className="screen-reader-text">Actions</span></th>
+              <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
             </tr>
           </thead>
           <tbody id="mmi-wb-pr-rows">

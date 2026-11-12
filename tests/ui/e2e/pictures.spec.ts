@@ -21,9 +21,21 @@ async function open(page: Page, key = "pictures") {
 test("the runner's state, outcomes with totals, own pictures called out", async ({ page }) => {
   const { errors } = await open(page);
   await expect(page.locator("#mmi-wb-px-status")).toContainText("Runner idle. 12 of 300 products changed in the last 24 hours.");
-  await expect(page.locator("#mmi-wb-px-groups tbody tr")).toHaveCount(4);
+  await expect(page.locator("#mmi-wb-px-groups tbody tr")).toHaveCount(3);
   await expect(page.locator("#mmi-wb-px-groups tbody tr").first()).toContainText("Vendor pictures");
-  await expect(page.locator(".mmi-wb-px-total")).toContainText("60");
+  await expect(page.locator("#mmi-wb-px-groups tfoot .mmi-wb-px-total")).toContainText("60");
+  // Every heading sorts, by the figures (not their text); the total stays at the foot.
+  const products = page.locator('#mmi-wb-px-groups th[data-col="n"]');
+  const counts = () => page.locator("#mmi-wb-px-groups tbody tr td:nth-child(3)").allInnerTexts().then((t) => t.map((x) => Number(x.replace(/,/g, ""))));
+  await products.click();
+  await expect(products).toHaveAttribute("aria-sort", "descending");
+  const down = await counts();
+  expect(down).toEqual([...down].sort((a, b) => b - a));
+  await products.click();
+  await expect(products).toHaveAttribute("aria-sort", "ascending");
+  const up = await counts();
+  expect(up).toEqual([...up].sort((a, b) => a - b));
+  await expect(page.locator("#mmi-wb-px-groups tfoot tr")).toHaveCount(1);
   await expect(page.locator("#mmi-wb-px-own")).toContainText("9 products did not get vendor pictures");
   await expect(page.locator("#mmi-wb-px-stop")).toBeDisabled();
   await expect(page.locator("#mmi-wb-px-count")).toHaveText("60 products");

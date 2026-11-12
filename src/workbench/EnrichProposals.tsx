@@ -7,17 +7,17 @@
  * makes one the featured picture; the pick is saved as you click, and Accept
  * or Write now imports exactly that.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./api";
 import {
   effectivePick, EMPTY_ENRICH, ENRICH_STATUS, ENRICH_VIEWS, enrichActions, enrichCount, enrichQuery, enrichSources, makeFeatured, pickable, sourceShort, togglePick, writeResult,
   type EnrichAction, type EnrichFilter, type EnrichKind, type EnrichPage, type EnrichRow, type EnrichSummary,
 } from "./enrichApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section } from "./ui";
+import { Dashicon, Section, SortTh, useColumnResize } from "./ui";
 import { EnrichWriting } from "./WritingSettings";
 
-type SortKey = "id" | "title" | "source" | "status";
+type SortKey = "id" | "title" | "source" | "status" | "value";
 const COLS: { key: SortKey; label: string }[] = [
   { key: "id", label: "ID" },
   { key: "title", label: "Product" },
@@ -110,12 +110,15 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
   };
 
   const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
-  const onKey = (e: KeyboardEvent, key: SortKey) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(key); } };
+  // The proposal column sorts by its size: a description's length, or how many pictures are proposed.
+  const sortValue = (r: EnrichRow) => (sort.key === "value" ? (r.kind === "content" ? r.chars : r.images.length) : r[sort.key]);
   const rows = [...(page?.rows ?? [])].sort((a, b) => {
-    const x = a[sort.key];
-    const y = b[sort.key];
+    const x = sortValue(a);
+    const y = sortValue(b);
     return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (sort.dir === "desc" ? -1 : 1);
   });
+  const tableRef = useRef<HTMLTableElement>(null);
+  useColumnResize(tableRef, rows.length > 0);
   const sources = summary ? enrichSources(summary, filter.kind) : [];
   const sourceLabel = (src: string) => sources.find((s) => s.value === src)?.label ?? src;
   const ticked = selected.filter((id) => enrichActions(rows.find((r) => r.id === id)?.status ?? "applied").includes("accept"));
@@ -207,20 +210,17 @@ export function EnrichProposals({ cfg, kind, onKind }: { cfg: TitleRulesConfig; 
       </div>
 
       <div className="mmi-table-scroll-wrapper">
-        <table className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-en-table">
+        <table ref={tableRef} className={`wp-list-table widefat striped mmi-wb-pr-table${loading ? " mmi-wb-loading" : ""}`} id="mmi-wb-en-table">
           <thead>
             <tr>
               <td className="check-column"><input type="checkbox" aria-label="Tick every row on this page" checked={allTicked} onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])} /></td>
               {COLS.map((c) => (
-                <th key={c.key} data-col={c.key} tabIndex={0} title="Sorts this page"
-                  className={`mmi-wb-job-sortable${sort.key === c.key ? " is-active" : ""}${sort.key === c.key && sort.dir === "desc" ? " is-desc" : ""}`}
-                  aria-sort={sort.key === c.key ? (sort.dir === "desc" ? "descending" : "ascending") : "none"}
-                  onClick={() => sortBy(c.key)} onKeyDown={(e) => onKey(e, c.key)}>
-                  {c.label} <span className="sort-icon" />
-                </th>
+                <SortTh key={c.key} col={c.key} label={c.label} title="Sorts this page" active={sort.key === c.key} desc={sort.dir === "desc"} onSort={sortBy} />
               ))}
-              <th>{filter.kind === "content" ? "Description: now → proposed" : "Pictures: click to use or leave out"}</th>
-              <th><span className="screen-reader-text">Actions</span></th>
+              <SortTh col="value" active={sort.key === "value"} desc={sort.dir === "desc"} onSort={sortBy}
+                label={filter.kind === "content" ? "Description: now → proposed" : "Pictures: click to use or leave out"}
+                title={filter.kind === "content" ? "Sorts this page by the proposed description's length" : "Sorts this page by how many pictures are proposed"} />
+              <th data-resize-col="actions"><span className="screen-reader-text">Actions</span></th>
             </tr>
           </thead>
           <tbody id="mmi-wb-en-rows">
