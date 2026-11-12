@@ -1,2 +1,7 @@
-lint pass ship 40 files
-site-rules pass ship 40 files
+lint pass 304 files
+site-rules pass
+run-all pass 8 scenarios
+ui-check pass 123
+ui-e2e pass 194
+customer-site pass 26 ok on 7c95a40 as installed
+page pass 4 features, 12 screenshots; 10 warnings
