@@ -1821,9 +1821,40 @@ tr.mmi-wb-mp-gone .notice {
     flex-direction: column;
 }
 
-/* The open section's last card fills what is left of the column. */
+/* Uniform heights (2026-11-12, second pass). Every section is the same
+   template — .mmi-wb-pane > .mmi-process-section > header + .mmi-section-content
+   — so these rules hold for all of them, without naming any:
+   - each container fills the one around it (pane → last card → its
+     content), so none ends short of the column;
+   - the last card has no bottom margin, so its edge meets the menu's
+     instead of stopping 20px above it;
+   - a section's list runs at full height in the page, the way Find and
+     change's results do, instead of in a box of its own capped at 70% of
+     the window (shared .mmi-table-scroll-wrapper) or 420px (Brands & sites,
+     Site maps). Lists are paged, none loads on scroll; the Needs a decision
+     drawer is sticky to the page already. */
 .mmi-wb-pane > :last-child {
     flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+}
+
+.mmi-wb-pane > :last-child > .mmi-section-content {
+    flex: 1 0 auto;
+}
+
+.mmi-wb-pane .mmi-table-scroll-wrapper,
+.mmi-wb-pane .mmi-wb-bs-list {
+    max-height: none;
+}
+
+/* The shared card's overflow: hidden (for its rounded corners) made it the
+   box sticky children stick to, so with the list at full height the Needs a
+   decision drawer scrolled away with the card. clip trims the same corners
+   without that, and the drawer sticks to the window again. */
+.mmi-wb-pane .mmi-process-section {
+    overflow: clip;
 }
 
 .mmi-wb-pane[hidden] {
