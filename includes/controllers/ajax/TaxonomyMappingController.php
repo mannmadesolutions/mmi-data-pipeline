@@ -187,6 +187,7 @@ add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
         $applied = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::apply_saved_mapping(
             $supplier, $source_field, $source_value, $wc_taxonomy, $wc_term_id, $own ?: [ $wc_taxonomy ]
         );
+        unset( $applied['ids'] ); // counts only, for the audit log and the reply
         // More products than the on-save limit: finish in the background
         // instead of asking for Apply All.
         if ( $applied['too_many'] > 0 ) {

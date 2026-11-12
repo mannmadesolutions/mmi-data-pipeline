@@ -131,6 +131,8 @@ export class TitleRulesMock {
       total: rows.length, pages: Math.max(1, Math.ceil(rows.length / 25)), page, counts,
     };
   }
+  /** Other products sending Xchange's "Freqport": a brand fix that maps it gives them the brand too (Issues::fix_terms()). */
+  freqportSiblings: number[] = [];
   /** Brands created through the fix panel. */
   createdBrands: { id: number; name: string }[] = [];
 
@@ -280,6 +282,13 @@ export class TitleRulesMock {
         if (made) this.createdBrands.push(b);
         if (row) { row.brands = [b]; row.brand_locked = true; row.missing = row.missing.filter((k) => k !== "brand"); row.flags = row.flags.filter((f) => f !== "no_brand"); }
         message = `${made ? "Created and set" : "Set"} brand ${b.name}.${(body.remember as string[]).length ? " Mapped Xchange “Freqport” to it; 2 other products got it too." : ""}`;
+        if ((body.remember as string[]).length && this.freqportSiblings.length) {
+          for (const s of this.proposals.filter((r) => this.freqportSiblings.includes(r.id))) {
+            s.brands = [b]; s.missing = s.missing.filter((k) => k !== "brand"); s.flags = s.flags.filter((f) => f !== "no_brand");
+          }
+          const others = { updated: this.freqportSiblings.length, locked: 0, queued: false, ids: this.freqportSiblings };
+          return this.json(route, { id, message, row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [], others });
+        }
       }
       if (row && kind === "action") { row.cats = [...row.cats, { id: 11, name: "Bundles" }]; row.flags = row.flags.filter((f) => f !== "bundle_not_in_category"); message = "Added to Software Bundles."; }
       if (row && kind === "sku") { row.sku = String(body.sku); row.missing = row.missing.filter((k) => k !== "sku"); message = `SKU set to ${String(body.sku)}.`; }

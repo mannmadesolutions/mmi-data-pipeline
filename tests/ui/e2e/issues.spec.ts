@@ -67,6 +67,17 @@ test("a missing brand is created in the row: name, logo, website, and mapped for
   expect(errors).toEqual([]);
 });
 
+test("a brand created and mapped from one proposal shows on the supplier's other proposals at once", async ({ page }) => {
+  const { api, errors } = await open(page);
+  api.freqportSiblings = [2004];
+  await expect(row(page, 2004).locator(".mmi-wb-pr-termcell").first()).not.toContainText("Freqport");
+  await row(page, 2012).locator(".mmi-wb-issue", { hasText: "No brand" }).click();
+  await panel(page).getByRole("button", { name: "Create Freqport and set it" }).click();
+  await expect(page.locator(".mmi-wb-pr-row-notice")).toContainText("Created and set brand Freqport.");
+  await expect(row(page, 2004).locator(".mmi-wb-pr-termcell").first()).toContainText("Freqport");
+  expect(errors).toEqual([]);
+});
+
 test("a brand that exists already says so; choosing one instead sets it", async ({ page }) => {
   const { api } = await open(page);
   await row(page, 2012).locator(".mmi-wb-issue").click();

@@ -26,7 +26,8 @@ export interface FixResult {
   row: ProposalRow | null;
   removed: boolean;
   missing: string[];
-  others?: { updated: number; locked: number; queued: boolean };
+  /** The supplier's other products a mapping gave the term; ids: those whose rows to redraw (their proposals are recomposed already). */
+  others?: { updated: number; locked: number; queued: boolean; ids?: number[] };
 }
 
 export interface NewBrand { name: string; slug: string; description: string; logo_id: number; website: string }

@@ -352,7 +352,8 @@ class Taxonomy_Mapping_Handler {
         int $limit = 2000
     ): array {
         global $wpdb;
-        $out = [ 'updated' => 0, 'already' => 0, 'locked' => 0, 'too_many' => 0 ];
+        // 'ids': the products given the term, for a caller that redraws them (2026-11-12).
+        $out = [ 'updated' => 0, 'already' => 0, 'locked' => 0, 'too_many' => 0, 'ids' => [] ];
 
         $term = get_term( $term_id, $wc_taxonomy );
         if ( $term_id <= 0 || $source_value === '' || ! $term || is_wp_error( $term ) ) {
@@ -404,6 +405,7 @@ class Taxonomy_Mapping_Handler {
             }
             wp_set_object_terms( $pid, [ $term_id ], $wc_taxonomy, $append );
             $out['updated']++;
+            $out['ids'][] = $pid;
         }
 
         return $out;
@@ -467,6 +469,7 @@ class Taxonomy_Mapping_Handler {
                 $own ?: [ (string) ( $args['wc_taxonomy'] ?? '' ) ],
                 PHP_INT_MAX
             );
+            unset( $out['ids'] ); // counts are the record; the id list can run to thousands
             self::log_heal( 'value', $out, $args );
             return;
         }

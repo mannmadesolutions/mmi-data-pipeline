@@ -333,6 +333,11 @@ export function ResultsTable({ result, sort, dir, loading, selection, columns, r
     setFixing(null);
     setNotice({ id: res.id, text: res.message });
     api.row(res.id, metaCols).then((d) => onRowSaved(d.row)).catch(() => {});
+    // Other products on this page the fix gave the same brand or category (a supplier value mapped).
+    const shown = new Set((result?.rows ?? []).map((x) => x.id));
+    for (const o of res.others?.ids ?? []) {
+      if (o !== res.id && shown.has(o)) api.row(o, metaCols).then((d) => onRowSaved(d.row)).catch(() => {});
+    }
   };
   const fixRow = (r: ProductRow, check: string): ReactNode => {
     const f = HEALTH_FIXES[check];

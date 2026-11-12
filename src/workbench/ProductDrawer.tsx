@@ -87,7 +87,11 @@ export function ProductDrawer({ cfg, id, prev, next, onStep, onClose, onChanged 
     announceChanged(id);
     refreshCounts();
   };
-  const fixed = (r: FixResult) => void changed({ text: r.message, kind: "ok" });
+  const fixed = (r: FixResult) => {
+    // The supplier's other products the fix gave the same brand or category: the list redraws them too.
+    if (r.others?.ids?.length) announceChanged(r.others.ids);
+    void changed({ text: r.message, kind: "ok" });
+  };
 
   const decide = async (action: "accept" | "reject") => {
     setBusy(action);

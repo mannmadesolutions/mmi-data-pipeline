@@ -95,6 +95,20 @@ test("a brand created in the drawer redraws that row only", async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
+test("a brand created and mapped in the drawer redraws the supplier's other products on the page", async ({ page }) => {
+  const { api, errors } = await open(page);
+  api.freqportSiblings = [2004];
+  await expect(row(page, 2004).locator("td").nth(2)).not.toContainText("Freqport");
+  await row(page, 2012).click();
+  await drawer(page).locator(".mmi-wb-issue", { hasText: "No brand" }).click();
+  await expect(drawer(page).locator(".mmi-wb-issue-remember input")).toBeChecked();
+  await drawer(page).getByRole("button", { name: "Create Freqport and set it" }).click();
+  await expect(drawer(page).locator(".mmi-wb-dr-note")).toContainText("Created and set brand Freqport.");
+  await expect(row(page, 2004).locator("td").nth(2)).toContainText("Freqport"); // read again: it is on this page
+  expect(api.callsTo("waiting")).toHaveLength(2);
+  expect(errors).toEqual([]);
+});
+
 test("accepting the title in the drawer: nothing else waits, so the row leaves the list", async ({ page }) => {
   const { api } = await open(page);
   await row(page, 2001).click();

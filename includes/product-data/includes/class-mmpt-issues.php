@@ -303,6 +303,23 @@ final class Issues {
 		}
 		wc_delete_product_transients( $id );
 		$row = Generator::recompose_one( $id );
+		// The supplier's other products the mapping just gave the brand or category: their title
+		// proposals were composed without it ("No brand", no "Brand first"). Recomposed now, in this
+		// request, so the person sees them change with this one; the term-change hook had only queued
+		// them for a background job that can wait behind a busy queue (2026-11-12: five Synapse Audio
+		// proposals still read "No brand" an hour after the brand was created from the first).
+		$others = array_values( array_diff( array_unique( (array) ( $done['others']['ids'] ?? [] ) ), [ $id ] ) );
+		if ( $others ) {
+			foreach ( $others as $o ) {
+				wc_delete_product_transients( (int) $o );
+			}
+			$re = Generator::recompose_now( $others );
+			$done['others']['ids'] = $others;
+			$n  = (int) ( $re['changed'] ?? 0 ) + (int) ( $re['new'] ?? 0 ) + (int) ( $re['reopened'] ?? 0 );
+			if ( $n ) {
+				$done['message'] .= ' ' . sprintf( _n( '%d other title proposal was updated.', '%d other title proposals were updated.', $n, 'mmi-data-pipeline' ), $n );
+			}
+		}
 		Module::info( 'Product issue fixed from the Workbench', [ 'product' => $id, 'kind' => $kind, 'by' => get_current_user_id() ] + array_diff_key( $done, [ 'message' => 1 ] ) );
 		return rest_ensure_response(
 			$done + [
@@ -352,7 +369,7 @@ final class Issues {
 
 		// Map the supplier's values the person ticked (only values this product really carries).
 		$mapped = [];
-		$others = [ 'updated' => 0, 'locked' => 0, 'queued' => false ];
+		$others = [ 'updated' => 0, 'locked' => 0, 'queued' => false, 'ids' => [] ];
 		$want   = array_map( 'strval', (array) $r->get_param( 'remember' ) );
 		if ( $want ) {
 			$term = $ids[0]; // the new term, or the first one chosen
@@ -367,6 +384,7 @@ final class Issues {
 				if ( class_exists( '\MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler' ) ) {
 					$a = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::apply_saved_mapping( $fv['supplier'], $fv['field'], $fv['value'], $taxonomy, $term, [ $taxonomy ] );
 					$others['updated'] += (int) $a['updated'];
+					$others['ids']      = array_merge( $others['ids'], array_map( 'intval', (array) ( $a['ids'] ?? [] ) ) );
 					// This product sends the value too and was locked by the write above: it isn't one of the others.
 					$others['locked'] += max( 0, (int) $a['locked'] - 1 );
 					if ( (int) $a['too_many'] > 0 ) {

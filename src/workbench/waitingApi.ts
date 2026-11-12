@@ -92,4 +92,7 @@ export const POST_STATUS_LABEL: Record<string, string> = { publish: "Published",
 
 /** The window event a product's change is announced with, so a list showing it can redraw that row. */
 export const PRODUCT_CHANGED = "mmi-wb:product-changed";
-export const announceChanged = (id: number): void => { window.dispatchEvent(new CustomEvent<number>(PRODUCT_CHANGED, { detail: id })); };
+/** One event for one product or several (a brand made from one product and mapped to its siblings). */
+export const announceChanged = (ids: number | number[]): void => {
+  window.dispatchEvent(new CustomEvent<number[]>(PRODUCT_CHANGED, { detail: Array.isArray(ids) ? ids : [ids] }));
+};

@@ -19,7 +19,7 @@ import { ProductDrawer } from "./ProductDrawer";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
 import { Dashicon, Section, SortTh, useColumnResize } from "./ui";
 import {
-  EMPTY_WAIT, nextSort, step, waitingQuery, WAIT_KINDS, type DrawerProduct, type WaitFilter, type WaitingPage, type WaitSort,
+  EMPTY_WAIT, nextSort, PRODUCT_CHANGED, step, waitingQuery, WAIT_KINDS, type DrawerProduct, type WaitFilter, type WaitingPage, type WaitSort,
 } from "./waitingApi";
 
 const COLS: { key: Exclude<WaitSort, "">; label: string }[] = [
@@ -89,6 +89,21 @@ export function Decide({ cfg }: { cfg: TitleRulesConfig }) {
       return { ...pg, rows };
     });
   };
+
+  // Other products a decision changed (a brand created in the drawer and mapped to the supplier's other
+  // products): when any is on this page, the page is read again so their rows show it.
+  const pageRef = useRef({ page, filter, open });
+  pageRef.current = { page, filter, open };
+  useEffect(() => {
+    const on = (e: Event) => {
+      const ids = (e as CustomEvent<number[] | number>).detail;
+      const { page: pg, filter: f, open: o } = pageRef.current;
+      const shown = new Set((pg?.rows ?? []).map((r) => r.id));
+      if ((Array.isArray(ids) ? ids : [ids]).some((id) => id !== o && shown.has(id))) void load(f);
+    };
+    window.addEventListener(PRODUCT_CHANGED, on);
+    return () => window.removeEventListener(PRODUCT_CHANGED, on);
+  }, [load]);
 
   const rows = page?.rows ?? [];
   const tableRef = useRef<HTMLTableElement>(null);
