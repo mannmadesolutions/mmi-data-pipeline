@@ -1,8 +1,8 @@
 {
     "product": 195183,
     "name": "MMI Data Pipeline",
-    "excerpt": "Import and export any WordPress or WooCommerce data on a schedule, with a review step before anything changes.",
-    "intro": "MMI Data Pipeline moves data into and out of WordPress in three steps: fetch it, review exactly what would change, then import. It handles products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies. The same engine exports in CSV, JSON or XML.",
+    "excerpt": "Import and export any WordPress or WooCommerce data on a schedule. Product imports show every change for review first.",
+    "intro": "MMI Data Pipeline moves data into and out of WordPress in three steps: fetch it, review it, then import. For products you see exactly what would change, row by row, before anything is written. It also handles orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies. The same engine exports in CSV, JSON or XML.",
     "features": [
         {
             "id": "field-mapping",
@@ -18,19 +18,43 @@
         },
         {
             "id": "workbench",
-            "text": "Product Workbench: search the catalog and make bulk changes with undo",
+            "text": "Product Workbench: browse or search the whole catalog, edit in the table, and make bulk changes with undo",
             "anchor": "class:Product_Workbench",
-            "since": ""
+            "since": "2.64.0"
         },
         {
             "id": "catalog-rules",
-            "text": "Catalog Maintenance rules for stock and pricing",
+            "text": "Make a change once, or keep applying it on every catalog run (stock, prices, status, categories and more)",
             "anchor": "class:Standing_Rules",
+            "since": "2.62.0"
+        },
+        {
+            "id": "fill-when-empty",
+            "text": "Only fill when empty: an import never overwrites a value a product already has",
+            "anchor": "function:filled_fields",
+            "since": "2.65.5"
+        },
+        {
+            "id": "supplier-promotions",
+            "text": "Supplier promotions: sale dates, promotion costs and a check for sales below cost",
+            "anchor": "function:record_sale_below_cost",
+            "since": "3.0.1"
+        },
+        {
+            "id": "duplicates",
+            "text": "Duplicate finder: link the same product from different suppliers and choose the main listing",
+            "anchor": "file:includes/controllers/ajax/CanonicalCandidatesController.php",
             "since": ""
+        },
+        {
+            "id": "product-content",
+            "text": "Product content: suggested titles, descriptions and pictures from the maker's own pages, reviewed before they're written",
+            "anchor": "file:includes/product-data/boot.php",
+            "since": "2.65.6"
         }
     ],
     "sections": [],
-    "requirements": "WordPress with WooCommerce, PHP 7.4+.",
+    "requirements": "WordPress with WooCommerce, PHP 8.0+. Title and description suggestions use your store's AI connection.",
     "suite_line": "scheduled imports and exports of any WordPress or WooCommerce data, with review",
     "screenshots": [
         {
@@ -211,13 +235,13 @@
         {
             "slug": "data-pipeline-catalog-maintenance",
             "attachment": 214127,
-            "title": "Catalog maintenance",
-            "caption": "Rules that keep the whole catalog consistent.",
+            "title": "Catalog upkeep",
+            "caption": "The steps every catalog run takes, in order.",
             "features": [
-                "Built-in clean-up of duplicate stock data and canonical-product rules",
-                "Feed sync marks products out of stock when a supplier drops them, and back when they return",
-                "Assign categories and brands to products that have none",
-                "Rules run in order, manually or on a schedule, and switch on or off one at a time"
+                "Clean up duplicate stock data and apply main-listing rules",
+                "Feed sync marks XChange and SkuPort products out of stock when they leave the feed, and back when they return",
+                "Assign categories to products that have none",
+                "Runs on a schedule or now; switch each step on or off"
             ],
             "screen": [
                 "admin/views/partials/panel-catalog-maintenance.php",
@@ -235,13 +259,13 @@
         {
             "slug": "data-pipeline-custom-rules",
             "attachment": 214128,
-            "title": "Custom rules",
-            "caption": "Build your own rules from conditions, without code.",
+            "title": "Standing rules",
+            "caption": "Changes that keep applying to every product that matches.",
             "features": [
-                "Conditions on product fields, supplier feed data or taxonomies",
-                "Combine conditions with AND or OR and see how many products match before saving",
-                "Per-condition match counts show which condition narrows the set",
-                "Save conditions and load them into other rules"
+                "Start from any Workbench search and pick a change",
+                "A check before saving warns when a rule would undo itself or fight feed sync",
+                "Each rule shows what it changed on the last run",
+                "Save a search and load it into any other rule"
             ],
             "screen": [
                 "admin/views/partials/panel-catalog-maintenance.php",
@@ -262,9 +286,9 @@
             "title": "Duplicate finder",
             "caption": "The same product from different suppliers, grouped together.",
             "features": [
-                "Groups found by matching brand and product name across live feeds",
+                "Groups found across your XChange, SkuPort and Plugivery feeds, by maker and name, plus older listings of the same product",
                 "Each group's members and the cost spread between suppliers",
-                "Choose which listing customers see; the rest stay out of the shop",
+                "Choose the main listing. The others are marked out of stock, left out of search and point search engines at the main one",
                 "New groups to review are counted apart from groups already linked"
             ],
             "screen": [
