@@ -78,6 +78,46 @@ test("a brand created and mapped from one proposal shows on the supplier's other
   expect(errors).toEqual([]);
 });
 
+test("alerts alike are fixed all at once from the strip above the list", async ({ page }) => {
+  const { api, errors } = await open(page);
+  // Two more bundles filed by XChange but not in the bundles category, and one more title too long.
+  for (const id of [2005, 2008]) api.proposals.find((r) => r.id === id)!.flags.push("bundle_not_in_category");
+  api.proposals.find((r) => r.id === 2009)!.flags.push("over_length");
+  await page.locator('#mmi-wb-proposals [data-view="open"]').click();
+  const strip = page.locator("#mmi-wb-alert-groups");
+  const bundles = strip.locator('[data-group="bundle_not_in_category"]');
+  await expect(bundles).toContainText("Not in Software Bundles");
+  await expect(bundles.locator(".mmi-wb-alert-n")).toHaveText("3");
+  await expect(strip.locator(".mmi-wb-alert-group").first()).toHaveAttribute("data-group", "brand"); // errors first
+  // The one-click fix runs for all three after a second click, and the alert leaves the strip.
+  await bundles.click();
+  const panel = strip.locator('[data-group-panel="bundle_not_in_category"]');
+  await expect(panel).toContainText("3 products on this page");
+  const add = panel.locator('[data-fix="add_cat:11"]');
+  await expect(add).toHaveText("Add to Software Bundles (all 3)");
+  await add.click();
+  await expect(add).toHaveText("Click again: add to Software Bundles for all 3");
+  expect(api.callsTo("products/2005/fix")).toHaveLength(0);
+  await add.click();
+  await expect(page.locator("#mmi-wb-pr-notice")).toHaveText("Add to Software Bundles: done for 3 of 3 products; their titles were recomposed.");
+  for (const id of [2005, 2008, 2014]) expect(api.callsTo(`products/${id}/fix`).at(-1)!.body).toEqual({ kind: "action", action: "add_cat:11" });
+  await expect(bundles).toHaveCount(0);
+  // A fix done product by product: show only those rows, then every row again.
+  await strip.locator('[data-group="over_length"]').click();
+  await expect(strip.locator('[data-group-panel="over_length"]')).toContainText("“Edit the title” is done product by product");
+  await strip.locator('[data-group-panel="over_length"] [data-fix="only"]').click();
+  await expect(page.locator("#mmi-wb-pr-rows tr[data-id]")).toHaveCount(2);
+  await expect(strip.locator(".mmi-wb-alert-only")).toContainText("Showing only the 2 products with “Too long”");
+  await page.locator("#mmi-wb-alert-show-all").click();
+  await expect(page.locator("#mmi-wb-pr-rows tr[data-id]")).toHaveCount(22);
+  // A brand or category fix opens the list's bulk picker with those products ticked.
+  await strip.locator('[data-group="brand"]').click();
+  await strip.locator('[data-group-panel="brand"] [data-fix="brand"]').click();
+  await expect(page.locator(".mmi-wb-pr-bulk .mmi-wb-selected")).toHaveText("1 ticked");
+  await expect(page.locator('#mmi-wb-pr-rows tr[data-id="2012"] input[type="checkbox"]').first()).toBeChecked();
+  expect(errors).toEqual([]);
+});
+
 test("a brand that exists already says so; choosing one instead sets it", async ({ page }) => {
   const { api } = await open(page);
   await row(page, 2012).locator(".mmi-wb-issue").click();

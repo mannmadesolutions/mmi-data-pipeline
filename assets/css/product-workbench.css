@@ -2355,3 +2355,54 @@ tr.mmi-wb-mp-gone .notice {
 .mmi-workbench .widefat td.mmi-wb-mp-actions .button:last-child {
     margin-bottom: 0;
 }
+
+/* ── Alerts fixed alike (src/workbench/IssueGroups.tsx, 2026-11-12) ── */
+.mmi-wb-alert-groups {
+    margin: 0 0 12px;
+}
+.mmi-wb-alert-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+.mmi-wb-alert-lead {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--mmi-wb-muted);
+    margin-right: 2px;
+}
+.mmi-wb-alert-n {
+    display: inline-block;
+    min-width: 1.4em;
+    padding: 0 5px;
+    margin-left: 2px;
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.08);
+    text-align: center;
+}
+.mmi-wb-alert-only {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-alert-panel {
+    margin-top: 8px;
+}
+.mmi-wb-alert-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+.mmi-wb-alert-actions .button.is-armed {
+    background: var(--mmi-wb-danger);
+    border-color: var(--mmi-wb-danger);
+    color: #fff;
+}
+.mmi-wb-alert-progress .mmi-loading {
+    width: 12px;
+    height: 12px;
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+}

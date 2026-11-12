@@ -13,12 +13,13 @@ import {
   type ApplyStatus, type DiffPart, type ProposalPage, type ProposalRow, type QueueFilter, type QueueSort, type QueueSummary, type RowAction, type Suggestion, type TermKind,
 } from "./proposalsApi";
 import { IssueChips, IssuePanel } from "./IssueFixes";
-import type { FixResult, Issue } from "./issuesApi";
+import { IssueGroups } from "./IssueGroups";
+import { groupIssues, groupMode, runFix, type Fix, type FixResult, type Issue, type IssueGroup } from "./issuesApi";
 import { rest, type TermOption, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, Section, SortTh, useColumnResize } from "./ui";
 import { TitleWriting } from "./WritingSettings";
 import { landing } from "./landing";
-import { useSectionVisible } from "./nav";
+import { refreshCounts, useSectionVisible } from "./nav";
 import { PRODUCT_CHANGED } from "./waitingApi";
 
 const COLS: { key: QueueSort; label: string }[] = [
@@ -118,6 +119,10 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   const [termLists, setTermLists] = useState<Record<TermKind, TermOption[] | null>>({ cats: null, brands: null });
   /** The issue whose fixes are open under its row. */
   const [issueOpen, setIssueOpen] = useState<{ id: number; key: string } | null>(null);
+  /** Alerts fixed alike: the alert open above the list, the one whose rows alone are shown, and a fix's progress. */
+  const [groupOpen, setGroupOpen] = useState<string | null>(null);
+  const [only, setOnly] = useState<string | null>(null);
+  const [groupProgress, setGroupProgress] = useState("");
 
   const msg = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 
@@ -139,7 +144,7 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   }, [cfg]);
 
   useEffect(() => { loadSummary(); }, [loadSummary]);
-  useEffect(() => { void load(filter); setSelected([]); }, [filter, load]);
+  useEffect(() => { void load(filter); setSelected([]); setGroupOpen(null); setOnly(null); }, [filter, load]);
   // The search waits for typing to pause.
   useEffect(() => {
     if (q === filter.q) return;
@@ -311,6 +316,39 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
 
   const sortBy = (key: QueueSort) => setFilter((f) => ({ ...f, orderby: key, order: f.orderby === key && f.order === "desc" ? "asc" : "desc", page: 1 }));
   const rows = page?.rows ?? [];
+  // Alerts on this page, alike ones together; "only" shows the rows with one of them (it ends once none is left).
+  const groups = groupIssues(rows);
+  const onlyKey = only && groups.some((g) => g.key === only) ? only : null;
+  const listed = onlyKey ? rows.filter((r) => (r.issues ?? []).some((i) => i.key === onlyKey)) : rows;
+
+  /** An alert's fix for every product on the page that carries it. */
+  const fixGroup = async (g: IssueGroup, f: Fix) => {
+    const mode = groupMode(f);
+    if (mode === "terms") {
+      setGroupOpen(null);
+      setSelected(g.ids);
+      openTerms({ target: "bulk", kind: f.kind === "cats" ? "cats" : "brands", mode: "replace" });
+      return;
+    }
+    if (mode !== "each" || !f.action) return;
+    setBusy("bulk");
+    setNotice(null);
+    const failed: string[] = [];
+    let done = 0;
+    for (const [i, id] of g.ids.entries()) {
+      setGroupProgress(`${f.label}: ${i + 1} of ${g.ids.length}…`);
+      try { await runFix(cfg, id, { kind: "action", action: f.action }); done++; } catch (e) { failed.push(`#${id}: ${msg(e)}`); }
+    }
+    setGroupProgress("");
+    setBusy(null);
+    setGroupOpen(null);
+    setNotice({
+      text: `${f.label}: done for ${done} of ${g.ids.length} product${g.ids.length === 1 ? "" : "s"}; their titles were recomposed.${failed.length ? ` Not done: ${failed.join("; ")}` : ""}`,
+      kind: failed.length ? "error" : "ok",
+    });
+    refresh();
+    refreshCounts();
+  };
   const tableRef = useRef<HTMLTableElement>(null);
   useColumnResize(tableRef, rows.length > 0);
   const allTicked = rows.length > 0 && rows.every((r) => selected.includes(r.id));
@@ -375,6 +413,8 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
         )}
       </div>
 
+      <IssueGroups groups={groups} open={groupOpen} onOpen={(k) => { setGroupOpen(k); if (k) { setIssueOpen(null); setEditing(null); } }}
+        only={onlyKey} onOnly={(k) => { setOnly(k); if (k) setGroupOpen(null); }} busy={busy !== null} progress={groupProgress} onFix={(g, f) => void fixGroup(g, f)} />
       {terms && terms.target === "bulk" && (
         <TermPicker key={`bulk-${terms.kind}`} terms={termLists[terms.kind]} chosen={[]} kind={terms.kind} bulk={selected.length} mode={terms.mode} busy={busy === "bulk"}
           onMode={(m) => setTerms({ ...terms, mode: m })} onSave={saveTerms} onCancel={() => setTerms(null)} />
@@ -394,7 +434,7 @@ export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
           <tbody id="mmi-wb-pr-rows">
             {!page && <tr><td colSpan={10} className="mmi-wb-empty-cell">Loading proposals…</td></tr>}
             {page && !rows.length && <tr><td colSpan={10} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
-            {rows.map((row) => {
+            {listed.map((row) => {
               const shown = row.status === "applied" || row.status === "reverted" ? wordDiff(row.original ?? "", row.current) : wordDiff(row.current, target(row));
               const [statusText, statusKind] = STATUS_LABEL[row.status] ?? [row.status, ""];
               const mine = rowNotice && rowNotice.id === row.id ? rowNotice : null;

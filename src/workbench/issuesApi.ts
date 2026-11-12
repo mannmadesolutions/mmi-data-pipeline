@@ -67,3 +67,30 @@ export const runFix = (cfg: TitleRulesConfig, id: number, body: Record<string, u
 
 /** The Workbench's health checks that have a fix panel, and which. */
 export const HEALTH_FIX: Record<string, FixKind> = { no_brand: "brand", no_category: "cats", no_sku: "sku" };
+
+/** One alert across the rows shown: what it is, its fixes, and the products that carry it. */
+export interface IssueGroup extends Issue { ids: number[] }
+
+/**
+ * The alerts on a page, alike ones together, for fixing them all at once (2026-11-12): errors first, then
+ * warnings, then notes; within a tone the commonest first. A row's own wording of an alert can differ (a store
+ * names its bundles category); the first row's is shown.
+ */
+export function groupIssues(rows: { id: number; issues?: Issue[] }[]): IssueGroup[] {
+  const by = new Map<string, IssueGroup>();
+  for (const r of rows) {
+    for (const i of r.issues ?? []) {
+      const g = by.get(i.key);
+      if (g) { if (!g.ids.includes(r.id)) g.ids.push(r.id); } else by.set(i.key, { ...i, ids: [r.id] });
+    }
+  }
+  const rank = { error: 0, warning: 1, info: 2 } as const;
+  return [...by.values()].sort((a, b) => rank[a.tone] - rank[b.tone] || b.ids.length - a.ids.length || a.label.localeCompare(b.label));
+}
+
+/** What a fix does for every product in a group: run it for each, open the bulk picker on them, or show them to do one by one. */
+export function groupMode(f: Fix): "each" | "terms" | "one-by-one" {
+  if (f.kind === "action" && f.action) return "each";
+  if (f.kind === "cats" || f.kind === "brand") return "terms";
+  return "one-by-one";
+}
