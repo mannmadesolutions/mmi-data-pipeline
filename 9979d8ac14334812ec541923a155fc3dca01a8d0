@@ -4,5 +4,5 @@ site-rules pass
 run-all pass 8 scenarios
 ui-check pass 134
 ui-e2e pass 246
-customer-site fail exit 1 on 9979d8a as installed
+customer-site pass 26 ok on 9979d8a as installed dirty:67
 page pass 8 features, 12 screenshots; 10 warnings
