@@ -66,7 +66,7 @@ export function IssuePanel({ cfg, productId, issue, cats, onTitle, onDone, onClo
   /** More under the fixes (the results table's "show every product with this"). */
   extra?: ReactNode;
 }) {
-  const panelKinds: FixKind[] = ["brand", "cats", "sku", "describe"];
+  const panelKinds: FixKind[] = ["brand", "cats", "sku", "describe", "image"];
   const first = issue.fixes[0];
   // A gap with one obvious fix opens on it: no extra click to get to the form.
   const [kind, setKind] = useState<FixKind | null>(first && first.primary && panelKinds.includes(first.kind) ? first.kind : null);
@@ -108,6 +108,7 @@ export function IssuePanel({ cfg, productId, issue, cats, onTitle, onDone, onClo
       {kind === "cats" && <CategoryFix cfg={cfg} productId={productId} current={cats} onDone={onDone} />}
       {kind === "sku" && <SkuFix cfg={cfg} productId={productId} onDone={onDone} />}
       {kind === "describe" && <DescribeFix cfg={cfg} productId={productId} onDone={onDone} />}
+      {kind === "image" && <PictureFix cfg={cfg} productId={productId} gallery={false} onDone={onDone} />}
     </div>
   );
 }

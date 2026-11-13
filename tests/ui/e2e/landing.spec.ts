@@ -49,8 +49,10 @@ test("wb_sec opens its section alone; sections not opened yet aren't drawn", asy
 });
 
 test("older keys and section hashes still land: proposals, parts, #mmi-wb-rules", async ({ page }) => {
-  await open(page, "?wb_sec=proposals");
-  await expect(current(page)).toHaveAttribute("data-sec", "descriptions");
+  await open(page, "?wb_sec=proposals"); // the review queues are Needs a decision's pills now
+  await expect(current(page)).toHaveAttribute("data-sec", "decide");
+  await expect(page.locator('#mmi-wb-decide .mmi-wb-dc-pills [data-kind="descriptions"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#mmi-wb-decide #mmi-wb-enrich")).toBeVisible();
   await open(page, "?page=x#mmi-wb-rules");
   await expect(current(page)).toHaveAttribute("data-sec", "standing");
   await expect(page.locator("#mmi-wb-rules")).toBeVisible();

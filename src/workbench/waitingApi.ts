@@ -7,6 +7,10 @@ import type { ProposalRow } from "./proposalsApi";
 
 export interface WaitBadge { key: string; label: string; tone: "error" | "warning" | "success" | "info" }
 export interface TermRef { id: number; name: string }
+/** A product's picture for its row: the featured picture's small copy, or its first gallery picture's (featured false). */
+export interface Thumb { url: string; featured: boolean; count: number }
+/** A waiting key on the listed products, with how many carry it: one pill each. issue: the Issue key that fixes it. */
+export interface WaitKey extends WaitBadge { n: number; issue: string }
 
 export interface WaitingRow {
   id: number;
@@ -16,9 +20,14 @@ export interface WaitingRow {
   cats: TermRef[];
   brands: TermRef[];
   waiting: WaitBadge[];
+  thumb: Thumb | null;
+  /** Its issues with their fixes (as the drawer shows them), for Alerts on this page. */
+  issues: Issue[];
 }
 
-export type WaitKind = "" | "titles" | "descriptions" | "pictures" | "pages" | "data" | "picture_errors";
+/** A pill: every product (""), a review queue, or key:{one waiting key}. */
+export type QueueKind = "titles" | "descriptions" | "pictures" | "pages";
+export type WaitKind = "" | QueueKind | `key:${string}`;
 export type WaitSort = "" | "id" | "title" | "brand" | "waiting";
 
 export interface WaitingPage {
@@ -26,22 +35,43 @@ export interface WaitingPage {
   total: number;
   pages: number;
   page: number;
-  counts: Record<Exclude<WaitKind, ""> | "all", number>;
+  counts: Record<QueueKind | "data" | "picture_errors" | "all", number>;
+  keys: WaitKey[];
 }
 
 export interface WaitFilter { kind: WaitKind; q: string; page: number; orderby: WaitSort; order: "asc" | "desc" }
 export const EMPTY_WAIT: WaitFilter = { kind: "", q: "", page: 1, orderby: "", order: "desc" };
 
-/** The chips, in order: the list's kinds and what each says. */
-export const WAIT_KINDS: { value: WaitKind; label: string; count: keyof WaitingPage["counts"]; hint: string }[] = [
-  { value: "", label: "All waiting", count: "all", hint: "Every product something waits on" },
-  { value: "titles", label: "Titles", count: "titles", hint: "Title proposals to review" },
-  { value: "descriptions", label: "Descriptions", count: "descriptions", hint: "Description proposals" },
-  { value: "pictures", label: "Pictures", count: "pictures", hint: "Picture proposals to pick" },
-  { value: "pages", label: "Maker pages", count: "pages", hint: "Maker pages to decide" },
-  { value: "data", label: "Data issues", count: "data", hint: "No brand, no category, no SKU, or a flag that still holds" },
-  { value: "picture_errors", label: "Picture errors", count: "picture_errors", hint: "The picture runner failed on them in its last run" },
+/**
+ * The first pills, in order: every product, then the review queues (owner 2026-11-13: the Review menu's sections are
+ * subsets of Needs a decision, so they are its pills). Each queue shows its own tools under the pill. After them, one
+ * pill per alert on the listed products (alertKeys()).
+ */
+export const WAIT_KINDS: { value: "" | QueueKind; label: string; count: "all" | QueueKind; hint: string }[] = [
+  { value: "", label: "All waiting", count: "all", hint: "Every product something waits on, in one table" },
+  { value: "titles", label: "Title proposals", count: "titles", hint: "Titles the rules would change: accept, edit or reject them, and write the accepted ones" },
+  { value: "descriptions", label: "Descriptions", count: "descriptions", hint: "Description proposals from maker pages and suppliers" },
+  { value: "pictures", label: "Pictures to pick", count: "pictures", hint: "Picture proposals: pick and order a product's pictures" },
+  { value: "pages", label: "Maker pages", count: "pages", hint: "Products whose maker page waits on a decision" },
 ];
+
+/** The waiting keys the queue pills stand for (they get no alert pill of their own). */
+export const QUEUE_KEYS: Record<string, QueueKind> = { title: "titles", description: "descriptions", pictures: "pictures", page: "pages" };
+
+export const isQueue = (k: WaitKind): k is QueueKind => k === "titles" || k === "descriptions" || k === "pictures" || k === "pages";
+
+/**
+ * One pill per alert on the listed products (errors, then warnings, then notes; commonest first), the active one kept
+ * with 0 when fixing it emptied it, so the pill a person is on never disappears under them.
+ */
+export function alertKeys(keys: WaitKey[], active: WaitKind): WaitKey[] {
+  const list = keys.filter((k) => !QUEUE_KEYS[k.key]);
+  if (active.startsWith("key:") && !list.some((k) => `key:${k.key}` === active)) {
+    const key = active.slice(4);
+    list.push({ key, label: key.replace(/^flag:/, "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), tone: "warning", n: 0, issue: key.replace(/^flag:/, "") });
+  }
+  return list;
+}
 
 /** GET /waiting query string. The default order (no orderby) is the server's: errors first, most waiting, newest. */
 export function waitingQuery(f: WaitFilter): string {
@@ -70,6 +100,7 @@ export interface DrawerProduct {
   view_url: string;
   waiting: WaitBadge[];
   issues: Issue[];
+  thumb: Thumb | null;
   /** Its title proposal row, as Title proposals shows it (null: the titles engine has no row for it). */
   proposal: ProposalRow | null;
   cats: TermRef[];

@@ -33,13 +33,11 @@ const current = (page: Page) => page.locator('#mmi-wb-menu [aria-current="page"]
 
 test("every section in groups, Find and change first; badges arrive from one counts call", async ({ page }) => {
   const { backend, errors } = await open(page);
-  await expect(page.locator(".mmi-wb-menu-heading")).toHaveText(["Work", "Review", "Maker data", "Automation", "History"]);
-  await expect(page.locator('[data-group="review"] [data-sec]')).toHaveText([/Title proposals/, /Descriptions/, /Pictures to pick/, /Maker pages/]);
+  // The review queues are Needs a decision's pills (2026-11-13): no Review group.
+  await expect(page.locator(".mmi-wb-menu-heading")).toHaveText(["Work", "Maker data", "Automation", "History"]);
+  await expect(page.locator('[data-group="work"] [data-sec]')).toHaveText([/Needs a decision/, /Find and change/]);
   await expect(current(page)).toHaveAttribute("data-sec", "data");
   await expect(page.locator("#mmi-wb-find")).toBeVisible();
-  await expect(item(page, "titles").locator(".mmi-wb-menu-badge")).toHaveText("3");
-  await expect(item(page, "descriptions").locator(".mmi-wb-menu-badge")).toHaveText("2");
-  await expect(item(page, "pages").locator(".mmi-wb-menu-badge")).toHaveText("4");
   await expect(item(page, "data").locator(".mmi-wb-menu-badge")).toHaveText("120"); // draft and published, as Find and change browses
   await expect(item(page, "upkeep").locator(".mmi-wb-menu-badge")).toHaveText("Hourly");
   expect(backend.callsTo("mmi_workbench_counts")).toHaveLength(1);
@@ -48,27 +46,33 @@ test("every section in groups, Find and change first; badges arrive from one cou
 
 test("a slow count shows a spinner in its badge, never a blank menu", async ({ page }) => {
   await open(page, { countsDelayMs: 1500 });
-  await expect(item(page, "titles")).toBeVisible();
-  await expect(item(page, "titles").locator(".mmi-wb-menu-badge.is-loading")).toBeVisible();
-  await expect(item(page, "titles").locator(".mmi-wb-menu-badge")).toHaveText("3");
+  await expect(item(page, "upkeep")).toBeVisible();
+  await expect(item(page, "upkeep").locator(".mmi-wb-menu-badge.is-loading")).toBeVisible();
+  await expect(item(page, "upkeep").locator(".mmi-wb-menu-badge")).toHaveText("Hourly");
 });
 
 test("a menu click adds a history entry: Back returns, reload keeps the place, Cmd-click has a real address", async ({ page }) => {
   await open(page);
-  await expect(item(page, "pages")).toHaveAttribute("href", /[?&]wb_sec=pages(&|$)/);
-  await openSection(page, "titles");
-  expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("titles");
-  await expect(page.locator("#mmi-wb-proposals")).toBeVisible();
+  await expect(item(page, "maps")).toHaveAttribute("href", /[?&]wb_sec=maps(&|$)/);
+  await openSection(page, "rules");
+  expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("rules");
+  await expect(page.locator("#mmi-wb-title-rules")).toBeVisible();
   await expect(page.locator("#mmi-wb-find")).toBeHidden();
-  await openSection(page, "pages");
+  await openSection(page, "maps");
   await page.goBack();
-  await expect(current(page)).toHaveAttribute("data-sec", "titles");
-  await expect(page.locator("#mmi-wb-proposals")).toBeVisible();
+  await expect(current(page)).toHaveAttribute("data-sec", "rules");
+  await expect(page.locator("#mmi-wb-title-rules")).toBeVisible();
   await page.reload();
-  await expect(current(page)).toHaveAttribute("data-sec", "titles");
+  await expect(current(page)).toHaveAttribute("data-sec", "rules");
+  // A review queue's pill is in the address too: a reload opens Needs a decision on it.
+  await openSection(page, "titles");
+  expect(new URL(page.url()).searchParams.get("wb_kind")).toBe("titles");
+  await page.reload();
+  await expect(current(page)).toHaveAttribute("data-sec", "decide");
+  await expect(page.locator("#mmi-wb-proposals")).toBeVisible();
 });
 
-test("a section is drawn on first open and keeps its state; Descriptions and Pictures to pick share one", async ({ page }) => {
+test("a queue is drawn on first open of its pill and keeps its state; Descriptions and Pictures to pick share one", async ({ page }) => {
   const { api } = await open(page);
   await expect(page.locator("#mmi-wb-proposals")).toHaveCount(0);
   await openSection(page, "titles");
@@ -78,9 +82,10 @@ test("a section is drawn on first open and keeps its state; Descriptions and Pic
   await expect(page.locator("#mmi-wb-pr-q")).toHaveValue("Synth"); // not drawn again
   await openSection(page, "picks");
   await expect(page.locator('#mmi-wb-enrich [data-kind="image"]')).toHaveAttribute("aria-pressed", "true");
-  await page.locator('#mmi-wb-enrich [data-kind="content"]').click(); // the section's own pill: the menu follows
-  await expect(current(page)).toHaveAttribute("data-sec", "descriptions");
-  expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("descriptions");
+  await page.locator('#mmi-wb-enrich [data-kind="content"]').click(); // the queue's own pill: Needs a decision's follows
+  await expect(page.locator('#mmi-wb-decide .mmi-wb-dc-pills [data-kind="descriptions"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(current(page)).toHaveAttribute("data-sec", "decide");
+  await expect.poll(() => new URL(page.url()).searchParams.get("wb_kind")).toBe("descriptions");
   expect(api.callsTo("enrich/summary").length).toBeGreaterThanOrEqual(1);
 });
 
@@ -115,7 +120,7 @@ test("under 960 px the menu is a select above the section", async ({ page }) => 
   await expect(page.locator("#mmi-wb-menu")).toBeHidden();
   const select = page.locator("#mmi-wb-menu-select");
   await expect(select).toBeVisible();
-  await expect(select.locator("option", { hasText: "Title proposals" })).toHaveText(/\(3\)/);
+  await expect(select.locator("option", { hasText: "Find and change" })).toHaveText(/\(120\)/);
   await select.selectOption("maps");
   await expect(page.locator("#mmi-wb-site-maps")).toBeVisible();
   expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("maps");

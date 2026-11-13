@@ -2128,6 +2128,110 @@ tr.mmi-wb-mp-gone .notice {
     margin-top: 8px;
 }
 
+/* Pills (2026-11-13): the review queues after All waiting, then one pill per alert, marked with its tone. */
+.mmi-wb-dc-alert-pills {
+    flex-basis: 100%;
+    align-items: center;
+}
+
+.mmi-wb-dc-pills-lead {
+    font-size: 12px;
+    font-weight: 600;
+    color: #50575e;
+    margin-right: 2px;
+}
+
+.mmi-wb-dc-tone {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: 1px;
+    background: #dba617;
+}
+
+.mmi-wb-dc-alert-pill.is-error .mmi-wb-dc-tone { background: #d63638; }
+.mmi-wb-dc-alert-pill.is-info .mmi-wb-dc-tone { background: #2271b1; }
+.mmi-wb-dc-alert-pill.is-success .mmi-wb-dc-tone { background: #00a32a; }
+
+/* A review queue under its pill: the queue's own tools, without a card or title of their own (Section embedded). */
+.mmi-wb-dc-queue[hidden],
+.mmi-wb-dc-all[hidden] {
+    display: none !important;
+}
+
+.mmi-wb-embedded-head {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin: 0 0 12px;
+}
+
+.mmi-wb-embedded-head > .description {
+    margin: 0;
+    flex: 1 1 auto;
+}
+
+.mmi-wb-embedded-head > .mmi-wb-section-actions {
+    flex: 0 0 auto;
+}
+
+/* The product's picture at the front of its row (and in the drawer's head). */
+.mmi-wb-dc-prod {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.mmi-wb-dc-prod-text {
+    min-width: 0;
+}
+
+.mmi-wb-thumb {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid var(--mmi-wb-border, #dcdcde);
+    border-radius: 4px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.mmi-wb-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.mmi-wb-thumb.is-none {
+    border-style: dashed;
+    border-color: #dba617;
+    background: #fcf9e8;
+    color: #996800;
+}
+
+.mmi-wb-thumb.is-unfeatured {
+    border: 2px dashed #dba617;
+}
+
+.mmi-wb-thumb-n {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    padding: 0 3px;
+    font-size: 10px;
+    line-height: 14px;
+    color: #fff;
+    background: rgba(29, 35, 39, 0.72);
+    border-top-left-radius: 3px;
+}
+
 .mmi-wb-drawer {
     position: sticky;
     top: 46px;

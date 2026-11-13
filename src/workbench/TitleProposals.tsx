@@ -46,7 +46,7 @@ interface TermEdit { target: number | "bulk"; kind: TermKind; mode: "replace" | 
 const NEW_BRAND: Issue = { key: "brand", label: "Brand", help: "Choose another brand, or create the maker as a new brand.", tone: "info", fixes: [{ kind: "brand", label: "Choose or create a brand", primary: true }] };
 
 /** A searchable checkbox list of categories or brands, with the chosen ones as chips. */
-function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onCancel, onCreate }: {
+export function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onCancel, onCreate }: {
   terms: TermOption[] | null; chosen: number[]; kind: TermKind; bulk: number; mode: "replace" | "add"; busy: boolean;
   onMode: (m: "replace" | "add") => void; onSave: (ids: number[]) => void; onCancel: () => void;
   /** One product's brand: open the brand panel, where a new brand is created. */
@@ -98,7 +98,7 @@ function TermPicker({ terms, chosen, kind, bulk, mode, busy, onMode, onSave, onC
 
 export function TitleProposals({ cfg }: { cfg: TitleRulesConfig }) {
   // A link to a product's title (wb_sec=titles&wb_q=…) opens the queue on it, any status.
-  const landed = landing().sec === "titles" && landing().q ? landing().q : "";
+  const landed = landing().kind === "titles" && landing().q ? landing().q : "";
   const [filter, setFilter] = useState<QueueFilter>(() => (landed ? { ...EMPTY_FILTER, q: landed, status: "any" } : EMPTY_FILTER));
   const [q, setQ] = useState(landed);
   const [page, setPage] = useState<ProposalPage | null>(null);

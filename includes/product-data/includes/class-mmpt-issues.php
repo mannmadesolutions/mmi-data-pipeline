@@ -12,9 +12,15 @@
  *   sku      type a SKU
  *   describe pick the descriptor phrase from the maker's or supplier's copy (word for word)
  *   title    edit the title (the Review table's editor)
+ *   image    choose the featured picture in the media library
  *   action   one click, done on the server: `virtual:yes|no`, `add_cat:{term id}`, and
  *            `move_cat:{term id}:{within}`, which puts the product in that category and takes it out of every
- *            other category under {within} (owner 2026-11-13: moved to Software Bundles, not kept in Plug-Ins too)
+ *            other category under {within} (owner 2026-11-13: moved to Software Bundles, not kept in Plug-Ins too),
+ *            and `pictures:find`, which queues the product for the picture runner (its suppliers' pictures, then its
+ *            maker page's)
+ *
+ * Picture issues (owner 2026-11-13, "identify products without images"): `no_picture` (no featured picture and no
+ * gallery) and `picture_error` (the runner failed on it last run), worded from the runner's own record of it.
  *
  * Routes (mmpt/v1, manage_woocommerce): GET /products/{id}/fix-context?kind=brand|cats|describe
  * and POST /products/{id}/fix. An `action` is only run when the product's own issues offer it.
@@ -132,13 +138,79 @@ final class Issues {
 		return [ 'kind' => 'title', 'label' => $label ];
 	}
 
+	/**
+	 * Picture issues for products, read now: `no_picture` (neither a featured picture nor a gallery) and `picture_error`
+	 * (the runner failed on it in its last pass), each worded from the runner's record of the product.
+	 *
+	 * @param int[] $ids
+	 * @return array<int,array<int,array>> product id → issues
+	 */
+	public static function picture_issues( array $ids ): array {
+		global $wpdb;
+		$ids = array_values( array_filter( array_map( 'intval', $ids ) ) );
+		if ( ! $ids ) {
+			return [];
+		}
+		Pictures::maybe_install();
+		$in    = implode( ',', $ids );
+		$since = (string) ( Module::state( Pictures::STATE )['started_at'] ?? '' );
+		$rows  = $wpdb->get_results(
+			"SELECT p.ID id, p.post_status st, a.ID att, COALESCE( g.meta_value, '' ) gal, l.status ls, l.reason lr, l.note ln, l.run_at lat
+			 FROM {$wpdb->posts} p
+			 LEFT JOIN {$wpdb->postmeta} t ON t.post_id = p.ID AND t.meta_key = '_thumbnail_id'
+			 LEFT JOIN {$wpdb->posts} a ON a.ID = t.meta_value AND a.post_type = 'attachment'
+			 LEFT JOIN {$wpdb->postmeta} g ON g.post_id = p.ID AND g.meta_key = '_product_image_gallery'
+			 LEFT JOIN " . Pictures::table() . " l ON l.product_id = p.ID
+			 WHERE p.ID IN ({$in})", // phpcs:ignore WordPress.DB.PreparedSQL -- ints and table names
+			ARRAY_A
+		);
+		$out = [];
+		foreach ( $rows as $r ) {
+			$id      = (int) $r['id'];
+			$gallery = trim( (string) $r['gal'] ) !== '';
+			$queued  = in_array( (string) $r['ls'], [ 'queued', 'working' ], true );
+			$when    = $r['lat'] ? wp_date( get_option( 'date_format' ), strtotime( $r['lat'] . ' UTC' ) ) : '';
+			$find    = $r['st'] === 'publish' && ! $queued ? [ [ 'kind' => 'action', 'action' => 'pictures:find', 'label' => 'Find pictures', 'primary' => true ] ] : [];
+			if ( ! $r['att'] ) {
+				if ( $queued ) {
+					$why = 'It is queued for the picture runner, which tries its suppliers’ pictures, then its maker page’s.';
+				} elseif ( $r['ls'] === 'skipped' && isset( Pictures::REASONS[ (string) $r['lr'] ] ) ) {
+					$why = sprintf( 'The picture runner looked on %1$s: %2$s.', $when, lcfirst( Pictures::REASONS[ (string) $r['lr'] ] ) );
+				} elseif ( $r['ls'] === 'error' ) {
+					$why = sprintf( 'The picture runner failed on %1$s%2$s.', $when, $r['ln'] ? ': ' . $r['ln'] : '' );
+				} elseif ( $r['st'] !== 'publish' ) {
+					$why = 'The picture runner only looks for published products: choose one from the media library.';
+				} else {
+					$why = 'The picture runner hasn’t looked for it yet.';
+				}
+				$out[ $id ][] = [
+					'key'   => 'no_picture',
+					'label' => 'No picture',
+					'help'  => ( $gallery ? 'Its gallery has pictures but none is featured, so the shop shows a placeholder. ' : 'No featured picture and no gallery: the shop shows a placeholder and Reverb and Google won’t list it. ' ) . $why,
+					'tone'  => 'warning',
+					'fixes' => array_merge( $find, [ [ 'kind' => 'image', 'label' => 'Choose from the media library…', 'primary' => ! $find ] ] ),
+				];
+			}
+			if ( $r['ls'] === 'error' && $since !== '' && (string) $r['lat'] >= $since ) {
+				$out[ $id ][] = [
+					'key'   => 'picture_error',
+					'label' => 'Pictures failed',
+					'help'  => sprintf( 'The picture runner failed on it on %1$s%2$s.', $when, $r['ln'] ? ': ' . $r['ln'] : ( isset( Pictures::REASONS[ (string) $r['lr'] ] ) ? ': ' . lcfirst( Pictures::REASONS[ (string) $r['lr'] ] ) : '' ) ),
+					'tone'  => 'error',
+					'fixes' => $r['st'] === 'publish' ? [ [ 'kind' => 'action', 'action' => 'pictures:find', 'label' => 'Try again', 'primary' => true ] ] : [ [ 'kind' => 'image', 'label' => 'Choose from the media library…', 'primary' => true ] ],
+				];
+			}
+		}
+		return array_map( static fn( $list ) => array_map( [ __CLASS__, 'normalize' ], $list ), $out );
+	}
+
 	public static function normalize( array $i ): array {
 		$i['tone']  = in_array( $i['tone'] ?? '', [ 'error', 'warning', 'info' ], true ) ? $i['tone'] : 'warning';
 		$i['help']  = (string) ( $i['help'] ?? '' );
 		$i['fixes'] = array_values(
 			array_filter(
 				(array) ( $i['fixes'] ?? [] ),
-				static fn( $f ) => is_array( $f ) && in_array( $f['kind'] ?? '', [ 'brand', 'cats', 'sku', 'describe', 'title', 'action' ], true ) && ( ( $f['kind'] ?? '' ) !== 'action' || ! empty( $f['action'] ) )
+				static fn( $f ) => is_array( $f ) && in_array( $f['kind'] ?? '', [ 'brand', 'cats', 'sku', 'describe', 'title', 'image', 'action' ], true ) && ( ( $f['kind'] ?? '' ) !== 'action' || ! empty( $f['action'] ) )
 			)
 		);
 		if ( ! $i['fixes'] ) {
@@ -569,7 +641,11 @@ final class Issues {
 	private static function fix_action( int $id, string $action ) {
 		$row     = Store::get( $id );
 		$offered = [];
-		foreach ( $row ? self::for_row( $row, Store::missing_for( [ $id ] )[ $id ] ?? [] ) : [] as $issue ) {
+		$issues  = array_merge( $row ? self::for_row( $row, Store::missing_for( [ $id ] )[ $id ] ?? [] ) : [], self::picture_issues( [ $id ] )[ $id ] ?? [] );
+		foreach ( (array) ( apply_filters( 'mmi_pipeline_waiting_flags', [], [ $id ] )[ $id ] ?? [] ) as $flag => $detail ) {
+			$issues[] = self::normalize( self::describe_flag( (string) $flag, (string) $detail, $id ) + [ 'key' => (string) $flag ] );
+		}
+		foreach ( $issues as $issue ) {
 			foreach ( $issue['fixes'] as $f ) {
 				if ( $f['kind'] === 'action' ) {
 					$offered[] = (string) $f['action'];
@@ -578,6 +654,14 @@ final class Issues {
 		}
 		if ( ! in_array( $action, $offered, true ) ) {
 			return new \WP_Error( 'mmpt_bad', __( 'That fix isn’t offered for this product any more. Reload the list.', 'mmi-data-pipeline' ), [ 'status' => 409 ] );
+		}
+		if ( $action === 'pictures:find' ) {
+			$n = Pictures::enqueue( [ $id ], 'manual', true );
+			if ( ! $n ) {
+				return new \WP_Error( 'mmpt_bad', __( 'The picture runner won’t take this product (it is left alone or not published).', 'mmi-data-pipeline' ), [ 'status' => 409 ] );
+			}
+			Pictures::kick();
+			return [ 'message' => 'Queued for the picture runner: it tries the suppliers’ pictures first, then the maker page’s, and adds what it finds (Product pictures can put back what it adds).' ];
 		}
 		if ( $action === 'virtual:yes' || $action === 'virtual:no' ) {
 			$product = wc_get_product( $id );

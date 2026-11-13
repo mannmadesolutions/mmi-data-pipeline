@@ -6,7 +6,7 @@
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
 import type { ProposalRow } from "./proposalsApi";
 
-export type FixKind = "brand" | "cats" | "sku" | "describe" | "title" | "action";
+export type FixKind = "brand" | "cats" | "sku" | "describe" | "title" | "image" | "action";
 
 export interface Fix { kind: FixKind; label: string; action?: string; primary?: boolean }
 

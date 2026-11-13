@@ -21,11 +21,8 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
-import { EnrichProposals } from "./EnrichProposals";
-import { MakerPages } from "./MakerPages";
 import { BrandSites } from "./BrandSites";
 import { SiteMaps } from "./SiteMaps";
-import { TitleProposals } from "./TitleProposals";
 import { TitleRules } from "./TitleRules";
 import { ProductDataRuns } from "./WritingSettings";
 import { LeftAlone } from "./LeftAlone";
@@ -515,17 +512,12 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
   const tr = cfg.titleRules;
   const n0 = (v: number | undefined, kind: "" | "info" | "warning" = "info") => (v ? { text: num(v), kind } : null);
-  const enrich = (entry: string) => tr
-    ? <EnrichProposals cfg={tr} kind={entry === "picks" ? "image" : "content"} onKind={(k) => openSection(k === "image" ? "picks" : "descriptions", true)} />
-    : null;
   const entries: MenuEntry[] = [
     ...(tr ? [{ key: "decide", label: "Needs a decision", group: "work", render: () => <Decide cfg={tr} />, badge: (c: WorkbenchCounts) => n0(c.decide, "warning") }] as MenuEntry[] : []),
     { key: "data", label: "Find and change", group: "work", eager: true, render: () => findAndChange, badge: (c) => ({ text: num(c.catalog), title: "Draft and published products: what Find and change browses before a search" }) },
     ...(tr ? [
-      { key: "titles", label: "Title proposals", group: "review", render: () => <TitleProposals cfg={tr} />, badge: (c: WorkbenchCounts) => n0(c.titles) },
-      { key: "descriptions", label: "Descriptions", group: "review", pane: "enrich", render: enrich, badge: (c: WorkbenchCounts) => n0(c.descriptions) },
-      { key: "picks", label: "Pictures to pick", group: "review", pane: "enrich", render: enrich, badge: (c: WorkbenchCounts) => n0(c.picks) },
-      { key: "pages", label: "Maker pages", group: "review", render: () => <MakerPages cfg={tr} />, badge: pagesBadge },
+      // The review queues (Title proposals, Descriptions, Pictures to pick, Maker pages) are Needs a decision's pills
+      // (owner 2026-11-13); links to their old keys open it on the pill (landing.ts QUEUE_PILLS).
       { key: "sites", label: "Brands & sites", group: "maker", render: () => <BrandSites cfg={tr} /> },
       { key: "maps", label: "Site maps", group: "maker", render: () => <SiteMaps cfg={tr} /> },
       { key: "rules", label: "Title rules", group: "maker", render: () => <TitleRules cfg={tr} /> },
@@ -563,11 +555,6 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 
 /* ── Menu badges ──────────────────────────────────────────────────────────── */
 
-function pagesBadge(c: WorkbenchCounts) {
-  if (!c.pages) return null;
-  if (c.pages.n === null) return c.pages.rebuilding ? "loading" as const : null;
-  return c.pages.n ? { text: num(c.pages.n), kind: "info" as const, title: c.pages.rebuilding ? "Last count; a new one is being worked out" : undefined } : null;
-}
 function standingBadge(c: WorkbenchCounts) {
   if (c.standing.alerts) return { text: fill(MESSAGES.MENU_RULE_ALERTS, { count: num(c.standing.alerts) }), kind: "warning" as const };
   return c.standing.total ? { text: fill(MESSAGES.MENU_RULES_ON, { count: num(c.standing.on) }) } : null;

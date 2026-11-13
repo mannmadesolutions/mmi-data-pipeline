@@ -16,7 +16,7 @@ import type { FixResult } from "./issuesApi";
 import { refreshCounts } from "./nav";
 import { STATUS_LABEL, confKind, target, wordDiff, type DiffPart } from "./proposalsApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { BusyButton, Dashicon } from "./ui";
+import { BusyButton, Dashicon, ProductThumb } from "./ui";
 import { announceChanged, OPEN_TITLE, POST_STATUS_LABEL, STOCK_LABEL, type DrawerProduct } from "./waitingApi";
 
 interface Note { text: string; kind: "ok" | "error" }
@@ -133,6 +133,7 @@ export function ProductDrawer({ cfg, id, prev, next, onStep, onClose, onChanged 
   return (
     <aside className="mmi-wb-drawer" id="mmi-wb-drawer" data-id={id} aria-label={p ? `Product ${id}: ${p.title}` : `Product ${id}`} tabIndex={-1} ref={box}>
       <div className="mmi-wb-dr-head">
+        {p && <ProductThumb thumb={p.thumb} size={64} />}
         <div className="mmi-wb-dr-title">
           <div className="description">
             #{id}

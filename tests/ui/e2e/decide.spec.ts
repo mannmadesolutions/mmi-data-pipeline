@@ -41,10 +41,14 @@ test("opens on Needs a decision when something waits: errors first, counts per c
   await expect(rows(page).first()).toHaveAttribute("data-id", "2012"); // no brand: an error, so first
   await expect(row(page, 2012).locator("[data-wait]")).toHaveText(["No brand", "Title"]);
   await expect(page.locator('#mmi-wb-decide [data-kind="all"] .mmi-pill-count')).toHaveText("22");
-  await expect(page.locator('#mmi-wb-decide [data-kind="data"] .mmi-pill-count')).toHaveText("2");
-  await page.locator('#mmi-wb-decide [data-kind="data"]').click();
-  await expect(rows(page)).toHaveCount(2);
-  await expect(rows(page).nth(1)).toHaveAttribute("data-id", "2007");
+  // One pill per alert, errors first: No brand, then the warnings, commonest first.
+  await expect(page.locator("#mmi-wb-decide .mmi-wb-dc-alert-pill")).toHaveText(["No brand 1", "No picture 2", "No SKU 1"]);
+  await page.locator('#mmi-wb-decide [data-kind="key:no_sku"]').click();
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toHaveAttribute("data-id", "2007");
+  expect(new URL(page.url()).searchParams.get("wb_kind")).toBe("key:no_sku");
+  await page.locator('#mmi-wb-decide [data-kind="key:no_sku"]').click(); // a second click goes back to every product
+  await expect(rows(page)).toHaveCount(22);
   await page.locator("#mmi-wb-dc-q").fill("Model 12");
   await expect(rows(page)).toHaveCount(1);
   expect(errors).toEqual([]);
@@ -146,4 +150,72 @@ test("below 1200 px the drawer opens under the list", async ({ page }) => {
   const list = await page.locator(".mmi-wb-dc-list").boundingBox();
   const box = await drawer(page).boundingBox();
   expect(box!.y).toBeGreaterThan(list!.y + list!.height - 1);
+});
+
+test("each row starts with the product's picture; one with none shows an empty box", async ({ page }) => {
+  const { errors } = await open(page);
+  await expect(row(page, 2001).locator(".mmi-wb-dc-product .mmi-wb-thumb img")).toHaveAttribute("src", "/wp-includes/images/w-logo-blue.png");
+  await expect(row(page, 2002).locator(".mmi-wb-thumb-n")).toHaveText("3");
+  await expect(row(page, 2003).locator(".mmi-wb-thumb.is-none")).toHaveAttribute("title", /No picture/);
+  await expect(row(page, 2003).locator("[data-wait]")).toHaveText(["No picture", "Title"]);
+  // The picture sits before the title and its line, in the Product cell.
+  const thumb = await row(page, 2001).locator(".mmi-wb-thumb").boundingBox();
+  const title = await row(page, 2001).locator(".mmi-wb-dc-title").boundingBox();
+  expect(thumb!.x + thumb!.width).toBeLessThanOrEqual(title!.x);
+  expect(errors).toEqual([]);
+});
+
+test("an alert's pill lists its products and opens its fixes for all of them: Find pictures for both", async ({ page }) => {
+  const { api, errors } = await open(page);
+  await page.locator('#mmi-wb-decide [data-kind="key:no_picture"]').click();
+  await expect(rows(page)).toHaveCount(2);
+  const panel = page.locator('[data-group-panel="no_picture"]');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("2 products on this page");
+  const find = panel.getByRole("button", { name: "Find pictures (all 2)" });
+  await find.click();
+  await expect(panel.getByRole("button", { name: "Click again: find pictures for all 2" })).toBeVisible();
+  await panel.getByRole("button", { name: "Click again: find pictures for all 2" }).click();
+  await expect(page.locator("#mmi-wb-dc-notice")).toContainText("Find pictures: done for 2 of 2 products.");
+  expect(api.callsTo("products/2003/fix")[0]!.body).toEqual({ kind: "action", action: "pictures:find" });
+  expect(api.callsTo("products/2009/fix")).toHaveLength(1);
+  // Queued, so the alert stays and offers the media library, product by product, in the drawer.
+  await expect(page.locator('[data-group="no_picture"]')).toBeVisible();
+  await row(page, 2009).click();
+  await drawer(page).locator(".mmi-wb-issue", { hasText: "No picture" }).click();
+  await expect(drawer(page).locator('.mmi-wb-issue-panel[data-issue="no_picture"]')).toContainText("queued for the picture runner");
+  // Queued, the media library is its first fix, so the panel opens on it.
+  await expect(drawer(page).getByRole("button", { name: "Choose from the media library…" })).toHaveAttribute("aria-pressed", "true");
+  await drawer(page).getByRole("button", { name: "Choose the featured picture…" }).click();
+  await expect(drawer(page).locator(".mmi-wb-dr-note")).toContainText("Featured picture set.");
+  expect(api.callsTo("products/2009/fix").at(-1)!.body).toEqual({ kind: "image", attachments: [99] });
+  await expect(drawer(page).locator(".mmi-wb-dr-head .mmi-wb-thumb img")).toBeVisible();
+  // It has a picture now, so it leaves the No picture list when the list is read again, and the pill counts one.
+  await expect(row(page, 2009)).toHaveCount(0);
+  await expect(page.locator('#mmi-wb-decide [data-kind="key:no_picture"] .mmi-pill-count')).toHaveText("1");
+  expect(errors).toEqual([]);
+});
+
+test("the review queues are pills: Title proposals' own tools open under its pill; old links land there", async ({ page }) => {
+  const { errors } = await open(page);
+  await expect(page.locator("#mmi-wb-menu")).not.toContainText("Title proposals");
+  await expect(page.locator('#mmi-wb-menu [data-sec="titles"]')).toHaveCount(0);
+  await page.locator('#mmi-wb-decide .mmi-wb-dc-pills [data-kind="titles"]').click();
+  const queue = page.locator("#mmi-wb-decide #mmi-wb-proposals");
+  await expect(queue).toBeVisible();
+  await expect(queue.locator("#mmi-wb-pr-write")).toBeVisible(); // its writer, beside its description
+  await expect(page.locator("#mmi-wb-dc-table")).toBeHidden();
+  await expect(page.locator("#mmi-wb-dc-q")).toHaveCount(0); // the queue has its own search
+  expect(new URL(page.url()).searchParams.get("wb_kind")).toBe("titles");
+  await page.locator('#mmi-wb-decide .mmi-wb-dc-pills [data-kind="all"]').click();
+  await expect(page.locator("#mmi-wb-dc-table")).toBeVisible();
+  await expect(queue).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("a link to an old review section opens Needs a decision on that pill", async ({ page }) => {
+  await open(page, { query: "?wb_sec=titles" });
+  await expect(current(page)).toHaveAttribute("data-sec", "decide");
+  await expect(page.locator('#mmi-wb-decide .mmi-wb-dc-pills [data-kind="titles"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#mmi-wb-decide #mmi-wb-proposals")).toBeVisible();
 });

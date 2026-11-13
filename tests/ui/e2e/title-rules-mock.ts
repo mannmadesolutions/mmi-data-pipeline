@@ -49,6 +49,9 @@ export class TitleRulesMock {
   });
   /** Needs a decision (GET waiting): off, the list is empty and the Workbench opens on Find and change. */
   waitingOn = false;
+  /** Products with no picture (Waiting's no_picture), and those queued for the picture runner by Find pictures. */
+  noPicture = [2003, 2009];
+  picturesQueued: number[] = [];
   applyState = { phase: "idle", enabled: true, queue: 3, applied_today: 0, batch_size: 25, next_at: null as number | null, now: 1000, run: null as unknown };
   /** Store::apply_settings(), and Enrichment's settings and sources (Writing settings). */
   applySettings = { enabled: false, auto: false, batch_size: 25, min_confidence: 85 };
@@ -120,11 +123,25 @@ export class TitleRulesMock {
   }
   shaped<T extends { missing: string[]; flags: string[] }>(r: T) { return { ...r, issues: this.issuesOf(r) }; }
 
+  /** Issues::picture_issues(): no picture, with Find pictures until it is queued, and the media library. */
+  pictureIssues(id: number) {
+    if (!this.noPicture.includes(id)) return [];
+    const queued = this.picturesQueued.includes(id);
+    return [{
+      key: "no_picture", label: "No picture", tone: "warning",
+      help: `No featured picture and no gallery. ${queued ? "It is queued for the picture runner." : "The picture runner hasn’t looked for it yet."}`,
+      fixes: [...(queued ? [] : [{ kind: "action", action: "pictures:find", label: "Find pictures", primary: true }]), { kind: "image", label: "Choose from the media library…", primary: queued }],
+    }];
+  }
+  /** Waiting::thumbs(): a featured picture, or none. */
+  thumbOf(id: number) { return this.noPicture.includes(id) ? null : { url: "/wp-includes/images/w-logo-blue.png", featured: true, count: id % 2 ? 1 : 3 }; }
+
   /** What waits on a proposal's product, as Waiting::badges() gives it: gaps, then an open title. */
-  waitingOf(r: { status: string; missing: string[] }) {
+  waitingOf(r: { id: number; status: string; missing: string[] }) {
     const out: { key: string; label: string; tone: string }[] = [];
     if (r.missing.includes("brand")) out.push({ key: "no_brand", label: "No brand", tone: "error" });
     if (r.missing.includes("sku")) out.push({ key: "no_sku", label: "No SKU", tone: "warning" });
+    if (this.noPicture.includes(r.id)) out.push({ key: "no_picture", label: "No picture", tone: "warning" });
     if (["proposed", "stale", "error"].includes(r.status)) out.push({ key: "title", label: "Title", tone: "success" });
     return out;
   }
@@ -135,16 +152,25 @@ export class TitleRulesMock {
     const q = (u.searchParams.get("q") ?? "").toLowerCase();
     const found = all.filter((x) => !q || String(x.r.id) === q || x.r.current.toLowerCase().includes(q));
     const has = (x: { w: { key: string }[] }, keys: string[]) => x.w.some((b) => keys.includes(b.key));
-    const counts = { all: found.length, titles: found.filter((x) => has(x, ["title"])).length, descriptions: 0, pictures: 0, pages: 0, data: found.filter((x) => has(x, ["no_brand", "no_sku"])).length, picture_errors: 0 };
+    const counts = { all: found.length, titles: found.filter((x) => has(x, ["title"])).length, descriptions: 0, pictures: 0, pages: 0, data: found.filter((x) => has(x, ["no_brand", "no_sku", "no_picture"])).length, picture_errors: 0 };
     const kind = u.searchParams.get("kind") ?? "";
-    let rows = kind === "titles" ? found.filter((x) => has(x, ["title"])) : kind === "data" ? found.filter((x) => has(x, ["no_brand", "no_sku"])) : kind ? [] : found;
+    let rows = kind === "titles" ? found.filter((x) => has(x, ["title"])) : kind.startsWith("key:") ? found.filter((x) => has(x, [kind.slice(4)])) : kind ? [] : found;
+    // Every key on the listed products: one pill each (Waiting::list() `keys`).
+    const issueOf: Record<string, string> = { no_brand: "brand", no_sku: "sku" };
+    const seen = new Map<string, { key: string; label: string; tone: string; n: number; issue: string }>();
+    for (const x of found) for (const b of x.w) { const k = seen.get(b.key); if (k) k.n++; else seen.set(b.key, { ...b, n: 1, issue: issueOf[b.key] ?? b.key }); }
+    const rank: Record<string, number> = { error: 0, warning: 1, success: 2, info: 3 };
+    const keys = [...seen.values()].sort((a, b) => rank[a.tone]! - rank[b.tone]! || b.n - a.n);
     const err = (x: { w: { key: string }[] }) => (has(x, ["no_brand"]) ? 0 : 1);
     rows = [...rows].sort((a, b) => err(a) - err(b) || a.r.id - b.r.id);
     if (u.searchParams.get("orderby") === "id") rows.sort((a, b) => (a.r.id - b.r.id) * (u.searchParams.get("order") === "asc" ? 1 : -1));
     const page = Number(u.searchParams.get("page") ?? 1);
     return {
-      rows: rows.slice((page - 1) * 25, page * 25).map((x) => ({ id: x.r.id, title: x.r.current, status: "publish", sku: x.r.sku, cats: x.r.cats, brands: x.r.brands, waiting: x.w })),
-      total: rows.length, pages: Math.max(1, Math.ceil(rows.length / 25)), page, counts,
+      rows: rows.slice((page - 1) * 25, page * 25).map((x) => ({
+        id: x.r.id, title: x.r.current, status: "publish", sku: x.r.sku, cats: x.r.cats, brands: x.r.brands, waiting: x.w,
+        thumb: this.thumbOf(x.r.id), issues: [...this.issuesOf(x.r), ...this.pictureIssues(x.r.id)],
+      })),
+      total: rows.length, pages: Math.max(1, Math.ceil(rows.length / 25)), page, counts, keys,
     };
   }
   /** Other products sending Xchange's "Freqport": a brand fix that maps it gives them the brand too (Issues::fix_terms()). */
@@ -271,7 +297,8 @@ export class TitleRulesMock {
       if (!row) return this.json(route, { code: "mmpt_not_found", message: "There is no such product." }, 404);
       return this.json(route, {
         id: row.id, title: row.current, status: "publish", stock: "instock", sku: row.sku, edit_url: row.edit_url, view_url: row.view_url,
-        waiting: this.waitingOf(row), issues: this.issuesOf(row), proposal: this.shaped(row), cats: row.cats, brands: row.brands,
+        waiting: this.waitingOf(row), issues: [...this.issuesOf(row), ...this.pictureIssues(row.id)], proposal: this.shaped(row), cats: row.cats, brands: row.brands,
+        thumb: this.thumbOf(row.id),
         locks: { cats: row.cat_locked, brands: row.brand_locked },
         feed: { brands: row.brands.length ? [] : [{ supplier: "xchange", label: "Xchange", field: "brand", value: "Freqport", mapped: null, others: 2 }], cats: [] },
       });
@@ -306,9 +333,13 @@ export class TitleRulesMock {
           return this.json(route, { id, message, row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [], others });
         }
       }
+      if (kind === "action" && body.action === "pictures:find") {
+        this.picturesQueued.push(id);
+        return this.json(route, { id, message: "Queued for the picture runner.", row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [] });
+      }
       if (row && kind === "action") { row.cats = [{ id: 11, name: "Bundles" }]; row.flags = row.flags.filter((f) => f !== "bundle_not_in_category"); message = "Moved to Software Bundles, out of Virtual Processor Plug-Ins."; }
       if (row && kind === "sku") { row.sku = String(body.sku); row.missing = row.missing.filter((k) => k !== "sku"); message = `SKU set to ${String(body.sku)}.`; }
-      if (kind === "image") message = "Featured picture set.";
+      if (kind === "image") { message = "Featured picture set."; this.noPicture = this.noPicture.filter((x) => x !== id); }
       return this.json(route, { id, message, row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [], others: { updated: 2, locked: 0, queued: false } });
     }
     const m = path.match(/^proposals\/(\d+)\/(suggest-rules|edit|apply|revert|categories|brands)$/);

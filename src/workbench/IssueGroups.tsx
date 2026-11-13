@@ -21,7 +21,7 @@ export function groupFixLabel(f: Fix, n: number): string {
   return groupMode(f) === "each" ? `${f.label} (all ${n})` : `${f.label.replace(/…$/, "")} of all ${n}…`;
 }
 
-export function IssueGroups({ groups, open, onOpen, only, onOnly, busy, progress, onFix }: {
+export function IssueGroups({ groups, open, onOpen, only, onOnly, busy, progress, onFix, oneByOneHint = "open the alert in each row" }: {
   groups: IssueGroup[];
   open: string | null;
   onOpen: (key: string | null) => void;
@@ -32,6 +32,8 @@ export function IssueGroups({ groups, open, onOpen, only, onOnly, busy, progress
   /** "Move to Software Bundles: 3 of 7…" while a fix runs. */
   progress: string;
   onFix: (group: IssueGroup, fix: Fix) => void;
+  /** How a fix made product by product is done in this list, after "show only these, then …". */
+  oneByOneHint?: string;
 }) {
   // A fix run for every product asks for a second click on the same button (no dialog): "Click again: …".
   const [armed, setArmed] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export function IssueGroups({ groups, open, onOpen, only, onOnly, busy, progress
           </div>
           {oneByOne.length > 0 && (
             <p className="description">
-              {oneByOne.map((f) => `“${f.label}”`).join(" and ")} {oneByOne.length === 1 ? "is" : "are"} done product by product: show only these, then open the alert in each row.
+              {oneByOne.map((f) => `“${f.label}”`).join(" and ")} {oneByOne.length === 1 ? "is" : "are"} done product by product: show only these, then {oneByOneHint}.
             </p>
           )}
           {progress && <p className="mmi-wb-alert-progress" role="status"><span className="mmi-loading" aria-hidden="true" /> {progress}</p>}

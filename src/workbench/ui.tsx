@@ -4,8 +4,10 @@
  * filters, the shared pager, and Island, which hosts server-rendered jQuery
  * markup inside the React tree.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { page } from "./globals";
+import { SectionEmbedContext } from "./nav";
+import type { Thumb } from "./waitingApi";
 
 export const Dashicon = ({ name }: { name: string }) => <span className={`dashicons dashicons-${name}`} aria-hidden="true" />;
 
@@ -25,6 +27,18 @@ export function BusyButton({ busy, icon, label, busyLabel, className = "button",
 /** A page section's header band (the suite's Page Section standard). */
 export function Section({ id, icon, title, desc, actions, children }:
   { id: string; icon: string; title: string; desc: string; actions?: ReactNode; children: ReactNode }) {
+  // Shown inside another section (a review queue under Needs a decision's pill): no card, no title, the pill names it.
+  if (useContext(SectionEmbedContext)) {
+    return (
+      <div className="mmi-wb-embedded" id={id} aria-label={title}>
+        <div className="mmi-wb-embedded-head">
+          <p className="description">{desc}</p>
+          {actions ? <div className="mmi-wb-section-actions">{actions}</div> : null}
+        </div>
+        {children}
+      </div>
+    );
+  }
   return (
     <div className="mmi-process-section" id={id}>
       <div className="mmi-section-header">
@@ -300,4 +314,22 @@ export function Pager({ pages, current, onPage }: { pages: number; current: numb
     }
   }, [pages, current]);
   return <div ref={box} id="mmi-wb-pager" />;
+}
+
+const pics = (n: number) => `${n} picture${n === 1 ? "" : "s"}`;
+
+/** The product's picture at the front of its row. */
+export function ProductThumb({ thumb, size = 40 }: { thumb: Thumb | null; size?: number }) {
+  if (!thumb) {
+    return <span className="mmi-wb-thumb is-none" style={{ width: size, height: size }} title="No picture: the shop shows a placeholder"><Dashicon name="format-image" /></span>;
+  }
+  const title = thumb.featured
+    ? pics(thumb.count)
+    : `No featured picture: the shop shows a placeholder. Its gallery has ${pics(thumb.count)}.`;
+  return (
+    <span className={`mmi-wb-thumb${thumb.featured ? "" : " is-unfeatured"}`} style={{ width: size, height: size }} title={title}>
+      <img src={thumb.url} alt="" loading="lazy" width={size} height={size} />
+      {thumb.count > 1 && <span className="mmi-wb-thumb-n" aria-label={pics(thumb.count)}>{thumb.count}</span>}
+    </span>
+  );
 }

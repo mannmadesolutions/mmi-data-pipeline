@@ -12,9 +12,14 @@
  *   pictures       a picture proposal (Enrichment, image)
  *   page           its maker page waits (Maker pages' four waiting groups; WorkbenchCounts keeps their ids)
  *   no_brand, no_category, no_sku   a gap the title rules need, read live (title rows only, as Title proposals)
+ *   no_picture     no featured picture (a gallery without one shows the shop's placeholder too), read live
  *   flag:{name}    a flag on a written title the store says still holds (filter mmi_pipeline_waiting_flags):
  *                  stored flags on written titles aren't recomputed, so only a live check may list them
  *   picture_error  the picture runner failed on it in its last run
+ *
+ * The list filters by a chip (kind=titles…) or by one key (kind=key:{key}); its `keys` say every key on the listed
+ * products with its label, tone and count, so each has its own filter pill (owner 2026-11-13). A row carries its
+ * featured picture's thumbnail and its issues with their fixes (Issues), for the list's "Alerts on this page".
  *
  * Products Product Data leaves alone (Exclusions, the not-sold rule) are never listed. Order: errors first (a
  * failed picture download, no brand), then the most things waiting, then the newest product.
@@ -40,7 +45,7 @@ final class Waiting {
 		'descriptions'   => [ 'description' ],
 		'pictures'       => [ 'pictures' ],
 		'pages'          => [ 'page' ],
-		'data'           => [ 'no_brand', 'no_category', 'no_sku', 'flag:' ],
+		'data'           => [ 'no_brand', 'no_category', 'no_sku', 'no_picture', 'flag:' ],
 		'picture_errors' => [ 'picture_error' ],
 	];
 	/** Keys that put a product at the top. */
@@ -54,6 +59,7 @@ final class Waiting {
 		'no_brand'      => [ 'No brand', 'error' ],
 		'no_category'   => [ 'No category', 'error' ],
 		'no_sku'        => [ 'No SKU', 'warning' ],
+		'no_picture'    => [ 'No picture', 'warning' ],
 		'picture_error' => [ 'Pictures failed', 'error' ],
 	];
 	const TOTAL_CACHE = 'mmpt_wb_waiting_total';
@@ -117,6 +123,15 @@ final class Waiting {
 		foreach ( $wpdb->get_col( "SELECT s.product_id FROM {$t} s LEFT JOIN {$wpdb->wc_product_meta_lookup} l ON l.product_id = s.product_id WHERE ( l.product_id IS NULL OR l.sku IS NULL OR l.sku = '' )" . $in( 's.product_id' ) ) as $id ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			$add( $id, 'no_sku' );
 		}
+		// No featured picture: none set, or one whose attachment is gone (Issues::picture_issues() words it).
+		foreach ( $wpdb->get_col(
+			"SELECT s.product_id FROM {$t} s
+			 LEFT JOIN {$wpdb->postmeta} th ON th.post_id = s.product_id AND th.meta_key = '_thumbnail_id'
+			 LEFT JOIN {$wpdb->posts} a ON a.ID = CAST( th.meta_value AS UNSIGNED ) AND a.post_type = 'attachment'
+			 WHERE a.ID IS NULL" . $in( 's.product_id' )
+		) as $id ) { // phpcs:ignore WordPress.DB.PreparedSQL
+			$add( $id, 'no_picture' );
+		}
 		foreach ( (array) apply_filters( 'mmi_pipeline_waiting_flags', [], $only ) as $id => $flags ) {
 			foreach ( (array) $flags as $flag => $detail ) {
 				$add( $id, 'flag:' . $flag );
@@ -152,8 +167,22 @@ final class Waiting {
 		return $n === false ? count( self::map() ) : (int) $n;
 	}
 
-	/** Does a product's key list match a chip? */
+	/** A kind the list takes: a chip, or key:{one waiting key}. */
+	private static function kind( string $raw ): string {
+		return array_key_exists( $raw, self::KINDS ) || preg_match( '/^key:[a-z0-9_:+-]{1,80}$/', $raw ) ? $raw : '';
+	}
+
+	/** The issue key (Issues) a waiting key is fixed by: no_brand → brand, flag:{name} → {name}. */
+	public static function issue_key( string $key ): string {
+		$map = [ 'no_brand' => 'brand', 'no_category' => 'category', 'no_sku' => 'sku' ];
+		return $map[ $key ] ?? ( str_starts_with( $key, 'flag:' ) ? substr( $key, 5 ) : $key );
+	}
+
+	/** Does a product's key list match a chip, or a key:{key} filter? */
 	private static function matches( array $keys, string $kind ): bool {
+		if ( str_starts_with( $kind, 'key:' ) ) {
+			return in_array( substr( $kind, 4 ), $keys, true );
+		}
 		$want = self::KINDS[ $kind ] ?? [];
 		if ( ! $want ) {
 			return true;
@@ -172,7 +201,7 @@ final class Waiting {
 
 	public static function list( \WP_REST_Request $r ): \WP_REST_Response {
 		global $wpdb;
-		$kind  = array_key_exists( (string) $r->get_param( 'kind' ), self::KINDS ) ? (string) $r->get_param( 'kind' ) : '';
+		$kind  = self::kind( (string) $r->get_param( 'kind' ) );
 		$q     = trim( sanitize_text_field( (string) $r->get_param( 'q' ) ) );
 		$page  = max( 1, absint( $r->get_param( 'page' ) ) );
 		$per   = max( 10, min( 100, absint( $r->get_param( 'per_page' ) ) ?: self::PER_PAGE ) );
@@ -202,6 +231,22 @@ final class Waiting {
 		}
 		$counts['all'] = $counts[''];
 		unset( $counts[''] );
+		// Every key on the listed products, with how many carry it: one filter pill each.
+		$seen = [];
+		foreach ( $map as $id => $keys ) {
+			foreach ( $keys as $k ) {
+				$seen[ $k ] = isset( $seen[ $k ] ) ? [ $seen[ $k ][0] + 1, $seen[ $k ][1] ] : [ 1, (int) $id ];
+			}
+		}
+		$key_list = [];
+		foreach ( $seen as $k => [ $n, $first ] ) {
+			$b = self::badges( $first, [ (string) $k ] )[0] ?? null;
+			if ( $b ) {
+				$key_list[] = $b + [ 'n' => $n, 'issue' => self::issue_key( (string) $k ) ];
+			}
+		}
+		$rank = [ 'error' => 0, 'warning' => 1, 'success' => 2, 'info' => 3 ];
+		usort( $key_list, static fn( $a, $b ) => ( $rank[ $a['tone'] ] ?? 4 ) <=> ( $rank[ $b['tone'] ] ?? 4 ) ?: $b['n'] <=> $a['n'] ?: strcmp( $a['label'], $b['label'] ) );
 		$map = array_filter( $map, static fn( $keys ) => self::matches( $keys, $kind ) );
 
 		// Sort keys for every listed product, then one page of rows.
@@ -246,6 +291,7 @@ final class Waiting {
 				'pages'  => max( 1, (int) ceil( $total / $per ) ),
 				'page'   => $page,
 				'counts' => $counts,
+				'keys'   => $key_list,
 			]
 		);
 	}
@@ -256,8 +302,10 @@ final class Waiting {
 			return [];
 		}
 		_prime_post_caches( $ids, true, false );
-		$terms = Store::row_terms( $ids );
-		$out   = [];
+		$terms  = Store::row_terms( $ids );
+		$thumbs = self::thumbs( $ids );
+		$issues = self::issues( $ids );
+		$out    = [];
 		foreach ( $ids as $id ) {
 			$out[] = [
 				'id'       => $id,
@@ -267,7 +315,58 @@ final class Waiting {
 				'cats'     => $terms['cats'][ $id ] ?? [],
 				'brands'   => $terms['brands'][ $id ] ?? [],
 				'waiting'  => self::badges( $id, $map[ $id ] ),
+				'thumb'    => $thumbs[ $id ] ?? null,
+				'issues'   => $issues[ $id ] ?? [],
 			];
+		}
+		return $out;
+	}
+
+	/**
+	 * Each product's picture for the row: its featured picture's small copy, or else its first gallery picture's
+	 * (featured false: the shop shows a placeholder), with how many pictures it has. Null: none.
+	 *
+	 * @param int[] $ids
+	 * @return array<int,array{url:string,featured:bool,count:int}|null>
+	 */
+	public static function thumbs( array $ids ): array {
+		$out = [];
+		foreach ( $ids as $id ) {
+			$feat    = (int) get_post_thumbnail_id( $id );
+			$gallery = array_values( array_filter( array_map( 'intval', explode( ',', (string) get_post_meta( $id, '_product_image_gallery', true ) ) ) ) );
+			$url     = $feat ? wp_get_attachment_image_url( $feat, 'woocommerce_gallery_thumbnail' ) : false;
+			$first   = $url ? 0 : ( $gallery[0] ?? 0 );
+			if ( ! $url && $first ) {
+				$url = wp_get_attachment_image_url( $first, 'woocommerce_gallery_thumbnail' );
+			}
+			$out[ $id ] = $url ? [ 'url' => (string) $url, 'featured' => (bool) $feat && ! $first, 'count' => count( array_unique( array_merge( $feat ? [ $feat ] : [], $gallery ) ) ) ] : null;
+		}
+		return $out;
+	}
+
+	/**
+	 * Each product's issues with their fixes, as the drawer shows them: an open title proposal's own (composed now),
+	 * else the live gaps and the flags the store says still hold; then its picture issues.
+	 *
+	 * @param int[] $ids
+	 * @return array<int,array<int,array>>
+	 */
+	public static function issues( array $ids ): array {
+		$ids     = array_values( array_filter( array_map( 'intval', $ids ) ) );
+		$missing = Store::missing_for( $ids );
+		$flags   = (array) apply_filters( 'mmi_pipeline_waiting_flags', [], $ids );
+		$pics    = Issues::picture_issues( $ids );
+		$out     = [];
+		foreach ( $ids as $id ) {
+			$row  = Store::get( $id );
+			$open = $row && in_array( (string) ( $row['status'] ?? '' ), [ 'proposed', 'stale', 'error' ], true );
+			$list = $open ? Issues::for_row( $row, $missing[ $id ] ?? [] ) : Issues::for_missing( $missing[ $id ] ?? [] );
+			if ( ! $open ) {
+				foreach ( (array) ( $flags[ $id ] ?? [] ) as $flag => $detail ) {
+					$list[] = Issues::describe_flag( (string) $flag, (string) $detail, $id ) + [ 'key' => (string) $flag ];
+				}
+			}
+			$out[ $id ] = array_values( array_map( [ Issues::class, 'normalize' ], array_merge( $list, $pics[ $id ] ?? [] ) ) );
 		}
 		return $out;
 	}
@@ -301,15 +400,9 @@ final class Waiting {
 		$row     = Store::get( $id );
 		$terms   = Store::row_terms( [ $id ] );
 		$title   = $row ? Rest::shape( $row, Store::stock_statuses( [ $id ] ), $terms, $missing ) : null;
-		$open    = $title && in_array( $title['status'], [ 'proposed', 'stale', 'error' ], true );
 		// An open proposal's issues are its own (its flags were composed now); a written title's stored flags may be
 		// out of date, so only live gaps and the flags the store confirms (mmi_pipeline_waiting_flags) are shown.
-		$issues = $open ? $title['issues'] : Issues::for_missing( $missing[ $id ] ?? [] );
-		if ( ! $open ) {
-			foreach ( (array) ( apply_filters( 'mmi_pipeline_waiting_flags', [], [ $id ] )[ $id ] ?? [] ) as $flag => $detail ) {
-				$issues[] = Issues::describe_flag( (string) $flag, (string) $detail, $id ) + [ 'key' => (string) $flag ];
-			}
-		}
+		$issues = self::issues( [ $id ] )[ $id ] ?? [];
 		$locked = static fn( string $tax ) => class_exists( '\MMI_Pipeline_Field_Locks' ) && \MMI_Pipeline_Field_Locks::is_locked( $id, $tax );
 		$stock  = (string) ( Store::stock_statuses( [ $id ] )[ $id ] ?? '' );
 		return rest_ensure_response(
@@ -322,7 +415,8 @@ final class Waiting {
 				'edit_url' => get_edit_post_link( $id, 'raw' ),
 				'view_url' => get_permalink( $id ),
 				'waiting'  => self::badges( $id, $keys ),
-				'issues'   => array_values( array_map( [ Issues::class, 'normalize' ], $issues ) ),
+				'issues'   => $issues,
+				'thumb'    => self::thumbs( [ $id ] )[ $id ] ?? null,
 				'proposal' => $title,
 				'cats'     => $terms['cats'][ $id ] ?? [],
 				'brands'   => $terms['brands'][ $id ] ?? [],
