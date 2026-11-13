@@ -1,3 +1,8 @@
-lint pass ship 2 files
+lint pass 305 files
 audit pass ship 2 files
-site-rules pass ship 2 files
+site-rules pass
+run-all pass 8 scenarios
+ui-check pass 134
+ui-e2e pass 246
+customer-site fail exit 1 on 9979d8a as installed
+page pass 8 features, 12 screenshots; 10 warnings
