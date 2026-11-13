@@ -12,7 +12,9 @@
  *   sku      type a SKU
  *   describe pick the descriptor phrase from the maker's or supplier's copy (word for word)
  *   title    edit the title (the Review table's editor)
- *   action   one click, done on the server: `virtual:yes|no`, `add_cat:{term id}`
+ *   action   one click, done on the server: `virtual:yes|no`, `add_cat:{term id}`, and
+ *            `move_cat:{term id}:{within}`, which puts the product in that category and takes it out of every
+ *            other category under {within} (owner 2026-11-13: moved to Software Bundles, not kept in Plug-Ins too)
  *
  * Routes (mmpt/v1, manage_woocommerce): GET /products/{id}/fix-context?kind=brand|cats|describe
  * and POST /products/{id}/fix. An `action` is only run when the product's own issues offer it.
@@ -598,6 +600,25 @@ final class Issues {
 				return $set;
 			}
 			return [ 'message' => sprintf( 'Added to %s.', html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' ) ) ];
+		}
+		if ( preg_match( '/^move_cat:(\d+):(\d+)$/', $action, $m ) ) {
+			$term   = get_term( (int) $m[1], 'product_cat' );
+			$within = get_term( (int) $m[2], 'product_cat' );
+			if ( ! $term || is_wp_error( $term ) || ! $within || is_wp_error( $within ) ) {
+				return new \WP_Error( 'mmpt_bad', __( 'That category no longer exists.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
+			}
+			$tree   = array_merge( [ (int) $within->term_id ], array_map( 'intval', (array) get_term_children( (int) $within->term_id, 'product_cat' ) ) );
+			$before = wp_get_object_terms( $id, 'product_cat', [ 'fields' => 'ids' ] );
+			$before = is_wp_error( $before ) ? [] : array_map( 'intval', $before );
+			$left   = array_values( array_diff( array_intersect( $before, $tree ), [ (int) $term->term_id ] ) );
+			// Categories outside {within} (a sale, a collection) stay; WooCommerce's default ("Uncategorized") doesn't.
+			$keep   = array_values( array_diff( $before, $tree, [ (int) get_option( 'default_product_cat', 0 ) ] ) );
+			$set    = Rest::write_terms( $id, 'product_cat', array_merge( [ (int) $term->term_id ], $keep ), false );
+			if ( is_wp_error( $set ) ) {
+				return $set;
+			}
+			$names = array_map( static fn( int $t ) => html_entity_decode( (string) get_term_field( 'name', $t, 'product_cat' ), ENT_QUOTES, 'UTF-8' ), $left );
+			return [ 'message' => $names ? sprintf( 'Moved to %1$s, out of %2$s.', html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' ), implode( ', ', $names ) ) : sprintf( 'Moved to %s.', html_entity_decode( $term->name, ENT_QUOTES, 'UTF-8' ) ) ];
 		}
 		return new \WP_Error( 'mmpt_bad', __( 'Unknown fix.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 	}
