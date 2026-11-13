@@ -1490,6 +1490,7 @@ class MMI_Pipeline_Field_Resolver {
                        AND pm.meta_value != ''
                      GROUP BY pm.meta_value
                     HAVING COUNT(*) > 1";
+            // audit-ok: one prepared GROUP BY query per configured supplier (a handful)
             $colliding_values = $wpdb->get_col( $wpdb->prepare( $sql, $meta_key ) );
 
             if ( empty( $colliding_values ) ) {
@@ -1497,7 +1498,7 @@ class MMI_Pipeline_Field_Resolver {
             }
 
             $placeholders = implode( ',', array_fill( 0, count( $colliding_values ), '%s' ) );
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- audit-ok: 2 batched queries per configured supplier (a handful)
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT pm.post_id, pm.meta_value

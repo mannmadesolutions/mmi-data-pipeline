@@ -386,6 +386,7 @@ $status_badge_map = [
                     $active_profile_sources = isset( $profiles, $current_profile )
                         ? ( $profiles[ $current_profile ]['sources'] ?? [] )
                         : [];
+                    // audit-ok: haystack is the active profile's source IDs, a handful of suppliers
                     $in_active_profile = in_array( $sid, $active_profile_sources, true );
                     $row_context_class = $in_active_profile ? 'mmi-source-in-profile' : '';
                     $type_label  = $source_type_labels[$src_type] ?? ucfirst($src_type);
@@ -1214,6 +1215,7 @@ $status_badge_map = [
                     <select id="add-api-integration">
                         <option value="" disabled selected>— Select an integration —</option>
                         <?php foreach ( ( function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_get_preconfigured_templates' ) ? \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_get_preconfigured_templates() : [] ) as $mmi_tpl_id => $mmi_tpl ) :
+                            // audit-ok: haystack is the configured data-source IDs, a handful of suppliers
                             $mmi_tpl_added = in_array( $mmi_tpl['supplier_id'], $mmi_added_source_ids, true );
                         ?>
                             <option value="<?php echo esc_attr( $mmi_tpl_id ); ?>"<?php disabled( $mmi_tpl_added ); ?>>

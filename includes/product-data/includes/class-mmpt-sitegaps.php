@@ -158,6 +158,7 @@ class SiteGaps {
 		$have     = [];
 		if ( $units ) {
 			$in = "'" . implode( "','", array_keys( $units ) ) . "'";
+			// audit-ok: $in is md5 hex page keys from SiteGaps::key()
 			foreach ( $wpdb->get_results( 'SELECT page_key, content_hash, stamp FROM ' . self::table() . " WHERE page_key IN ({$in})", ARRAY_A ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL -- md5 hex only
 				$have[ $r['page_key'] ] = $r['stamp'] . '|' . $r['content_hash'];
 			}
@@ -515,6 +516,7 @@ class SiteGaps {
 		$out = [];
 		foreach ( $groups as $i => $g ) {
 			$in = "'" . implode( "','", $g['keys'] ) . "'";
+			// audit-ok: one UPDATE per layout group of one site (a few), not per page; keys are md5 hex
 			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::table() . " SET layout = %d WHERE page_key IN ({$in})", $i ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- md5 hex only
 			$cards = "'" . implode( "','", array_map( 'esc_sql', $g['urls'] ) ) . "'";
 			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::table() . " SET layout = %d WHERE host = %s AND product_id > 0 AND url IN ({$cards})", $i, $host ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- esc_sql on each URL
@@ -784,6 +786,7 @@ class SiteGaps {
 		$same = $card( $mine ) ? [ $mine ] : array_values( array_filter( $products, static fn( $p ) => (string) $p['url'] === $url && ! $card( $p ) ) );
 		$ids  = [];
 		foreach ( self::site_rows( $host, $row, $same, true )['rows'] as $r ) {
+			// audit-ok: haystacks are one row's decided fields and the fixed EMPTY cell states
 			if ( $undo ? in_array( $f, $r['none'], true ) : in_array( $r['cells'][ $f ][0], self::EMPTY, true ) ) {
 				$ids[] = (int) $r['id'];
 			}

@@ -87,8 +87,11 @@ final class PageEvents {
 		$removed = 0;
 		foreach ( array_chunk( array_values( array_filter( array_map( 'intval', $ids ) ) ), 500 ) as $chunk ) {
 			$in       = implode( ',', $chunk );
+			// audit-ok: $in is implode of an array_map('intval') chunk
 			$removed += (int) $wpdb->query( 'DELETE FROM ' . Store::table() . " WHERE product_id IN ({$in}) AND status IN ('proposed','accepted','stale','error')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints
+			// audit-ok: $in is implode of an array_map('intval') chunk
 			$removed += (int) $wpdb->query( 'DELETE FROM ' . Enrichment::table() . " WHERE product_id IN ({$in}) AND status IN ('proposed','accepted')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints
+			// audit-ok: $in is implode of an array_map('intval') chunk
 			$wpdb->query( 'UPDATE ' . Descriptions::table() . " SET status = 'skipped', note = 'excluded from Product Titles' WHERE product_id IN ({$in}) AND status NOT IN ('approved','rejected','skipped')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints
 		}
 		return $removed;

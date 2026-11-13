@@ -95,6 +95,7 @@ function mmi_canonical_candidates_listing_map(): array {
     global $wpdb;
     $ids = [];
     foreach ( array_keys( mmi_canonical_candidates_feed_configs() ) as $supplier ) {
+        // audit-ok: one prepared query per supplier in the fixed 3-feed config
         foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT pm.meta_value sku, pm.post_id id FROM {$wpdb->postmeta} pm JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type IN ('product','product_variation') AND p.post_status <> 'trash' WHERE pm.meta_key = %s AND pm.meta_value <> '' ORDER BY pm.post_id", '_mmi_supplier_sku_' . $supplier ), ARRAY_A ) as $r ) {
             $ids[ $supplier ][ (string) $r['sku'] ] = $ids[ $supplier ][ (string) $r['sku'] ] ?? (int) $r['id'];
         }
@@ -871,6 +872,7 @@ add_action( 'wp_ajax_mmi_approve_duplicate_group', function () {
         $winners = [];
         foreach ( $field_winners_raw as $field => $donor_id ) {
             $donor_id = (int) $donor_id;
+            // audit-ok: haystack is one duplicate group's member IDs, a handful of listings
             if ( in_array( $donor_id, $allowed_donor_ids, true ) ) {
                 $winners[ (string) $field ] = $donor_id;
             }
@@ -1007,6 +1009,7 @@ add_action( 'wp_ajax_mmi_canonical_apply_field_winners', function () {
     $winners = [];
     foreach ( $field_winners_raw as $field => $donor_id ) {
         $donor_id = (int) $donor_id;
+        // audit-ok: haystack is one canonical's associated listing IDs, a handful
         if ( in_array( $donor_id, $allowed, true ) ) {
             $winners[ (string) $field ] = $donor_id;
         }

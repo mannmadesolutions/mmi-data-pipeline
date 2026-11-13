@@ -67,6 +67,7 @@ add_action('wp_ajax_mmi_autosave_field_property', function () {
     
     $field_name = sanitize_text_field($_POST['field_name'] ?? '');
     $property = sanitize_text_field($_POST['property'] ?? '');
+    // audit-ok: every property case below sanitizes, casts to bool or whitelists $value before storing
     $value = $_POST['value'] ?? '';
     $supplier = sanitize_text_field($_POST['supplier'] ?? '');
     $profile = sanitize_text_field($_POST['profile'] ?? 'default');
@@ -134,6 +135,7 @@ add_action('wp_ajax_mmi_autosave_field_property', function () {
                 continue;
             }
             $op = sanitize_text_field( $cond['operator'] ?? 'is_not_empty' );
+            // audit-ok: haystack is the 8 fixed condition operators
             if ( ! in_array( $op, $allowed_ops, true ) ) {
                 $op = 'is_not_empty';
             }
@@ -892,11 +894,13 @@ add_action('wp_ajax_mmi_save_import_profile', function () {
     if (!empty($_POST['mode_settings'])) {
         $decoded = json_decode(stripslashes($_POST['mode_settings']), true);
         if (is_array($decoded)) {
-            $mode_settings = $decoded;
+            // The one mode setting the screen sends (import-settings.js); nothing else is kept.
+            $mode_settings = ['availability_action' => sanitize_key($decoded['availability_action'] ?? 'none')];
         }
     }
 
     if (!empty($_POST['product_identifier'])) {
+        // audit-ok: decoded JSON is reduced to 4 known keys, each sanitized or cast just below
         $decoded = json_decode(stripslashes($_POST['product_identifier']), true);
         if (is_array($decoded)) {
             // Allow only the known keys; sanitize each string value.
@@ -911,8 +915,11 @@ add_action('wp_ajax_mmi_save_import_profile', function () {
 
     $sources = [];
     if (!empty($_POST['sources'])) {
+        // audit-ok: decoded list goes through array_map('sanitize_text_field') two lines below
         $raw = is_array($_POST['sources'])
+            // audit-ok: element values sanitized by array_map('sanitize_text_field') below
             ? $_POST['sources']
+            // audit-ok: decoded list sanitized by array_map('sanitize_text_field') below
             : json_decode(stripslashes($_POST['sources']), true);
         if (is_array($raw)) {
             $sources = array_values(array_map('sanitize_text_field', $raw));
@@ -1306,6 +1313,7 @@ add_action('wp_ajax_mmi_autosave_import_rule', function () {
     }
     
     $setting = sanitize_text_field($_POST['setting'] ?? '');
+    // audit-ok: below, $value is either sanitize_text_field'd or reduced to a boolean
     $value = $_POST['value'] ?? '';
     
     if (empty($setting)) {
@@ -1600,11 +1608,13 @@ add_action('wp_ajax_mmi_update_import_profile', function () {
     if (!empty($_POST['mode_settings'])) {
         $decoded = json_decode(stripslashes($_POST['mode_settings']), true);
         if (is_array($decoded)) {
-            $mode_settings = $decoded;
+            // The one mode setting the screen sends (import-settings.js); nothing else is kept.
+            $mode_settings = ['availability_action' => sanitize_key($decoded['availability_action'] ?? 'none')];
         }
     }
 
     if (!empty($_POST['product_identifier'])) {
+        // audit-ok: decoded JSON is reduced to 4 known keys, each sanitized or cast just below
         $decoded = json_decode(stripslashes($_POST['product_identifier']), true);
         if (is_array($decoded)) {
             $product_identifier = [
@@ -1630,8 +1640,11 @@ add_action('wp_ajax_mmi_update_import_profile', function () {
     // Preserve existing sources unless caller explicitly supplies new ones.
     $sources = $profiles[$profile_id]['sources'] ?? [];
     if (isset($_POST['sources'])) {
+        // audit-ok: decoded list goes through array_map('sanitize_text_field') two lines below
         $raw = is_array($_POST['sources'])
+            // audit-ok: element values sanitized by array_map('sanitize_text_field') below
             ? $_POST['sources']
+            // audit-ok: decoded list sanitized by array_map('sanitize_text_field') below
             : json_decode(stripslashes($_POST['sources']), true);
         if (is_array($raw)) {
             $sources = array_values(array_map('sanitize_text_field', $raw));
@@ -1839,6 +1852,7 @@ function mmi_pipeline_jetengine_product_meta_fields(): array {
     $fields = [];
     foreach ($boxes as $box) {
         $allowed = $box['args']['allowed_post_type'] ?? [];
+        // audit-ok: haystack is one JetEngine meta box's allowed post types, a few names
         if (!is_array($allowed) || (!in_array('product', $allowed, true) && !in_array('product_variation', $allowed, true))) {
             continue;
         }
@@ -1910,6 +1924,7 @@ add_action('wp_ajax_mmi_get_product_meta_keys', function () {
     // defined on the meta box but never saved) wouldn't appear in $raw_keys
     // at all — surface them too, since they're just as legitimate a target.
     foreach ($jetengine_fields as $key => $label) {
+        // audit-ok: loop is JetEngine product fields (0 today, a few at most); haystack capped at 1000
         if (!isset($wc_keys[$key]) && !in_array($key, $raw_keys ?: [], true)) {
             $meta_keys[] = ['key' => $key, 'label' => $label, 'source' => 'JetEngine'];
         }
@@ -1930,6 +1945,7 @@ add_action('wp_ajax_mmi_get_product_meta_keys', function () {
     $tax_objects   = get_object_taxonomies('product', 'objects');
     $taxonomies    = [];
     foreach ($tax_objects as $tax_name => $tax_obj) {
+        // audit-ok: haystack is the ~6 fixed excluded taxonomies plus OBSOLETE_FIELDS
         if (!in_array($tax_name, $excluded_tax, true)) {
             $taxonomies[] = [
                 'key'   => $tax_name,
@@ -2035,6 +2051,7 @@ add_action('wp_ajax_mmi_save_field_mapping_preset', function () {
     }
     $sources = array_values(array_filter(array_map(
         'sanitize_text_field',
+        // audit-ok: each element passes through the sanitize_text_field array_map above
         (array) ($_POST['sources'] ?? [])
     )));
 

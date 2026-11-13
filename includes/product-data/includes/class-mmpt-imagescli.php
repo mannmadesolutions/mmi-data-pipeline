@@ -321,6 +321,7 @@ class ImagesCli {
 			imagestring( $im, 3, 4, $y + 2, '#' . $r['id'] . ' ' . mb_substr( html_entity_decode( get_the_title( $r['id'] ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ), 0, 90 ), 0 );
 			$files = array_map( static fn( $a ) => [ (string) get_attached_file( $a ), false ], Pictures::current( $r['id'] ) );
 			foreach ( $r['gone'] as $g ) {
+				// audit-ok: haystack is one product's lost attachment ids (WP-CLI report)
 				if ( in_array( $g['att'], $r['lost'], true ) ) {
 					$files[] = [ $g['file'], true ];
 				}

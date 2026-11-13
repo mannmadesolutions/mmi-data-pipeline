@@ -164,6 +164,7 @@ class UrlFinder {
 			if ( isset( $excluded[ (int) $r['id'] ] ) || isset( $gone[ (int) $r['term_id'] ] ) ) {
 				continue;
 			}
+			// audit-ok: $only_brands is the caller's brand filter (one brand, or CLI-named brands)
 			if ( $only_brands && ! in_array( strtolower( $r['brand'] ), $only_brands, true ) ) {
 				continue;
 			}
@@ -926,6 +927,7 @@ class UrlFinder {
 		$seen  = 0;
 		while ( $queue && $seen < self::MAX_SITEMAPS && count( $pages ) < self::MAX_URLS ) {
 			$url = array_shift( $queue );
+			// audit-ok: haystack is the <= 6 fallback sitemap URLs
 			if ( $pages && in_array( $url, $fallbacks, true ) ) {
 				continue;
 			}

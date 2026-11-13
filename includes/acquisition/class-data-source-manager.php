@@ -138,6 +138,7 @@ class Data_Source_Manager {
      * rather than reimplemented so a source's real fetch and its "Test
      * Connection" check can never silently diverge on auth handling.
      */
+    // audit-ok: private, only reached via fetch_from_supplier() which throttles data-source-{id} first
     private function download_http( string $supplier_id, array $source ): string {
         $configuration = json_decode( (string) ( $source['configuration'] ?? '{}' ), true ) ?: [];
         $auth_config   = json_decode( (string) ( $source['auth_config'] ?? '{}' ), true ) ?: [];
@@ -207,6 +208,7 @@ class Data_Source_Manager {
      * download endpoint, so this is the first real content fetch for a
      * Dropbox source.
      */
+    // audit-ok: private, only reached via fetch_from_supplier() which throttles data-source-{id} first
     private function download_dropbox( string $supplier_id, array $source ): string {
         $configuration = json_decode( (string) ( $source['configuration'] ?? '{}' ), true ) ?: [];
         $path          = $configuration['dropbox_file_path'] ?? '';
@@ -249,6 +251,7 @@ class Data_Source_Manager {
      * carrying a one-time `confirm=` token is re-requested with that token
      * to get the real file content.
      */
+    // audit-ok: private, only reached via fetch_from_supplier() which throttles data-source-{id} first
     private function download_gdrive( array $source ): string {
         $configuration = json_decode( (string) ( $source['configuration'] ?? '{}' ), true ) ?: [];
         $file_id       = $configuration['gdrive_file_id'] ?? '';

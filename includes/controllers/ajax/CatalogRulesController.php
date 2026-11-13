@@ -28,6 +28,7 @@ add_action( 'wp_ajax_mmi_save_catalog_rules', function () {
     }
 
     // Sanitise toggles
+    // audit-ok: only read as ! empty() for 4 fixed keys below, stored as booleans
     $raw_toggles = $_POST['toggles'] ?? [];
     if ( ! is_array( $raw_toggles ) ) {
         $raw_toggles = [];

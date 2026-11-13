@@ -172,11 +172,13 @@ class SharedPages {
 		$pv  = [];
 		$pp  = [];
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . 'mmpv_members' ) ) ) {
+			// audit-ok: $in is implode of (int)-cast product ids
 			foreach ( $wpdb->get_results( "SELECT product_id, family_id, axes FROM {$wpdb->prefix}mmpv_members WHERE product_id IN ({$in})", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL -- ints
 				$pv[ (int) $x['product_id'] ] = [ (int) $x['family_id'], (array) json_decode( (string) $x['axes'], true ) ];
 			}
 		}
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . 'mmpp_offers' ) ) ) {
+			// audit-ok: $in is implode of (int)-cast product ids
 			foreach ( $wpdb->get_results( "SELECT product_id, family_id, tier, version FROM {$wpdb->prefix}mmpp_offers WHERE product_id IN ({$in})", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL -- ints
 				$pp[ (int) $x['product_id'] ] = $x;
 			}
@@ -323,6 +325,7 @@ class SharedPages {
 		$same = count( array_unique( array_map( static fn( $i ) => $m[ $i ]['edition'] . '|' . $m[ $i ]['version'], $main ) ) ) <= 1;
 		$out  = [];
 		foreach ( $m as $i => $x ) {
+			// audit-ok: loop is the products sharing one page (dozens); haystack is its main family
 			$out[ $x['id'] ] = in_array( $i, $main, true ) ? ( $same ? 'one' : 'editions' ) : 'several';
 		}
 		return $out;

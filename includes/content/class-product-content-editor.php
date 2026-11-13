@@ -202,6 +202,7 @@ class MMI_Product_Content_Editor {
             <legend><?php echo esc_html( $label ); ?></legend>
             <?php foreach ( $choices as $value => $text ) : ?>
                 <label class="mmi-specs-editor__check">
+                    <?php // audit-ok: haystack is one product's checked values for one spec field, a handful ?>
                     <input type="checkbox" name="<?php echo esc_attr( self::field_name( $path ) ); ?>[]" value="<?php echo esc_attr( $value ); ?>" <?php checked( in_array( $value, $checked, true ) ); ?>>
                     <?php echo esc_html( $text ); ?>
                 </label>

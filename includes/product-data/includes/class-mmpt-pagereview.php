@@ -288,10 +288,12 @@ class PageReview {
 		$from              = self::from();
 		[ $where, $args ]  = self::filters( $r );
 		$prep              = static fn( string $sql ) => $args ? $wpdb->prepare( $sql, $args ) : $sql; // phpcs:ignore WordPress.DB.PreparedSQL
+		// audit-ok: $from is self::from(); $where is filters(): %-placeholders run through prepare
 		$total             = (int) $wpdb->get_var( $prep( "SELECT COUNT(*) {$from}{$where}" ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 
 		if ( $orderby === 'coverage' ) {
 			// Most missing first: every matching product scored (cached 15 min), then one page read.
+			// audit-ok: $from is self::from(); $where is filters(): %-placeholders run through prepare
 			$all    = array_map( 'intval', $wpdb->get_col( $prep( "SELECT p.ID {$from}{$where}" ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 			$scores = Coverage::scores( $all );
 			usort( $all, static fn( $a, $b ) => ( $order === 'ASC' ? $scores[ $a ] <=> $scores[ $b ] : $scores[ $b ] <=> $scores[ $a ] ) ?: $b <=> $a );
@@ -322,6 +324,7 @@ class PageReview {
 			'total' => $total,
 			'pages' => max( 1, (int) ceil( $total / $per_page ) ),
 			'queue' => Scraper::status(),
+			// audit-ok: $from is self::from(): table names, fixed SQL and Exclusions' int id list
 			'open'  => (int) $wpdb->get_var( "SELECT COUNT(*) {$from} AND c.status = 'candidate'" ), // phpcs:ignore WordPress.DB.PreparedSQL -- the tab label's count
 		];
 		if ( $r->get_param( 'facets' ) ) {
@@ -340,6 +343,7 @@ class PageReview {
 		global $wpdb;
 		$res = self::result_sql();
 		$n   = [];
+		// audit-ok: $res is the fixed result_sql() CASE; $from is self::from() (tables, ints)
 		foreach ( $wpdb->get_results( "SELECT ( {$res} ) k, COUNT(*) n {$from} GROUP BY k", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			$n[ $x['k'] ] = (int) $x['n'];
 		}
@@ -347,13 +351,16 @@ class PageReview {
 		foreach ( self::RESULTS as $key => [ $label ] ) {
 			$results[] = [ 'key' => $key, 'label' => $label, 'n' => $n[ $key ] ?? 0 ];
 		}
+		// audit-ok: $from is self::from() and not_stored_sql() is fixed SQL with table names
 		$results[] = [ 'key' => self::NOT_STORED[0], 'label' => self::NOT_STORED[1], 'n' => (int) $wpdb->get_var( "SELECT COUNT(*) {$from} AND " . self::not_stored_sql() ) ]; // phpcs:ignore WordPress.DB.PreparedSQL
 		$dec = [];
+		// audit-ok: $from is self::from(): table names, fixed SQL and Exclusions' int id list
 		foreach ( $wpdb->get_results( "SELECT c.status k, COUNT(*) n {$from} AND c.status IS NOT NULL GROUP BY k", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			$dec[ $x['k'] ] = (int) $x['n'];
 		}
 		$reasons = [];
 		$open    = [];
+		// audit-ok: $from is self::from(): table names, fixed SQL and Exclusions' int id list
 		foreach ( $wpdb->get_results( "SELECT c.reason k, COUNT(*) n {$from} AND c.status = 'candidate' GROUP BY k", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			$open[ $x['k'] ] = (int) $x['n'];
 		}
@@ -448,6 +455,7 @@ class PageReview {
 		$keep             = [];
 		foreach ( count( $ids ) > self::IN_MAX ? [ null ] : array_chunk( array_map( 'intval', $ids ), 1000 ) as $chunk ) {
 			$sql = 'SELECT p.ID ' . self::from( false, true ) . $where . ( $chunk ? ' AND p.ID IN (' . implode( ',', $chunk ) . ')' : '' );
+			// audit-ok: already batched: at most 2 chunked IN queries (IN_MAX 1500, chunks of 1000)
 			foreach ( $wpdb->get_col( $args ? $wpdb->prepare( $sql, $args ) : $sql ) as $id ) { // phpcs:ignore WordPress.DB.PreparedSQL -- integers and prepared filters only
 				$keep[ (int) $id ] = true;
 			}
@@ -461,6 +469,7 @@ class PageReview {
 		$want = array_flip( array_map( 'intval', $ids ) );
 		$n    = [];
 		foreach ( count( $ids ) > self::IN_MAX ? [ null ] : array_chunk( array_keys( $want ), 1000 ) as $chunk ) {
+			// audit-ok: already batched: at most 2 chunked IN queries (IN_MAX 1500, chunks of 1000)
 			foreach ( $wpdb->get_results( 'SELECT p.ID, ( ' . self::result_sql() . ' ) ' . self::from( false, true ) . ( $chunk ? ' AND p.ID IN (' . implode( ',', $chunk ) . ')' : '' ), ARRAY_N ) as [ $id, $k ] ) { // phpcs:ignore WordPress.DB.PreparedSQL -- integers only
 				if ( isset( $want[ (int) $id ] ) ) {
 					$n[ $k ] = ( $n[ $k ] ?? 0 ) + 1;
@@ -503,6 +512,7 @@ class PageReview {
 		$flags = [];
 		if ( $rows ) {
 			$pids = implode( ',', array_unique( array_map( static fn( $x ) => (int) $x['id'], $rows ) ) );
+			// audit-ok: $pids is implode of (int)-cast product ids
 			foreach ( $wpdb->get_results( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = 'vendor_product_url_verified' AND post_id IN ({$pids})", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL
 				$flags[ (int) $x['post_id'] ] = strtoupper( (string) $x['meta_value'] ); // SQL compares it case-blind ('true' is stored too)
 			}

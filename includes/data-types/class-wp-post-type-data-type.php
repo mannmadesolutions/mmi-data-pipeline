@@ -240,6 +240,7 @@ class MMI_WP_Post_Type_Data_Type implements MMI_Data_Type_Handler {
                 wp_set_object_terms( $post_id, $term_ids, $m[1] );
             } elseif ( strpos( $field, 'tax:' ) === 0 ) {
                 $taxonomy = substr( $field, 4 );
+                // audit-ok: haystack is the tax:*:id columns of one import row, a few taxonomies
                 if ( in_array( $taxonomy, $tax_id_taxonomies, true ) ) {
                     continue;
                 }

@@ -107,6 +107,7 @@ class ImageConvert {
 	public static function url_needs_browser( string $url ): bool {
 		$ext = strtolower( (string) pathinfo( (string) wp_parse_url( $url, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
 		foreach ( self::BROWSER_ONLY as $mime => $exts ) {
+			// audit-ok: haystack is a 1-2 item extension list from the BROWSER_ONLY constant
 			if ( in_array( $ext, $exts, true ) && self::needs_browser( $mime ) ) {
 				return true;
 			}

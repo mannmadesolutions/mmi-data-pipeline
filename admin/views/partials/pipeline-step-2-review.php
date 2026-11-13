@@ -86,6 +86,7 @@ $current_data_type     = $current_data_type     ?? 'product';
                 <span class="mmi-toolbar-mode-info">
                     <span class="mmi-toolbar-label">Mode:</span>
                     <span class="mmi-toolbar-mode-badge" id="mmi-toolbar-mode-badge" style="--mmi-mode-color:<?php echo esc_attr($mode_info['color']); ?>">
+                        <?php // audit-ok: icon/label come from tab-pipeline.php's hard-coded $mode_labels map ?>
                         <?php echo $mode_info['icon']; ?> <strong><?php echo $mode_info['label']; ?></strong>
                     </span>
                     <span class="mmi-toolbar-mode-hint" id="mmi-toolbar-mode-hint"><?php

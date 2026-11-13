@@ -606,6 +606,7 @@ class PageStore {
 	}
 
 	/** A stylesheet as kept, else fetched and kept; '' when it can't be had now, null when the site no longer has it. */
+	// audit-ok: one-off fetch per sheet, kept on disk after; <= CSS_MAX (8) per page a person opens
 	private static function sheet( string $dir, string $href ): ?string {
 		$path = $dir . md5( $href ) . '.css.gz';
 		if ( is_readable( $path ) ) {

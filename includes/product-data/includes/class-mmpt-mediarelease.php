@@ -295,7 +295,9 @@ class MediaRelease {
 				$record = [
 					'id'       => $att,
 					'post'     => get_post( $att, ARRAY_A ),
+					// audit-ok: WP-CLI, <= 200 rows; exact backup read just before this attachment's delete
 					'meta'     => $wpdb->get_results( $wpdb->prepare( "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d", $att ), ARRAY_A ),
+					// audit-ok: WP-CLI, <= 200 rows; exact backup read just before this attachment's delete
 					'trim'     => $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}mmi_image_trim WHERE attachment_id = %d", $att ), ARRAY_A ),
 					'products' => json_decode( (string) $r['products'], true ),
 				];

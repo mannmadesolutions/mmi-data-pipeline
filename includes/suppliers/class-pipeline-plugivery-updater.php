@@ -408,6 +408,7 @@ class MMI_Pipeline_Plugivery_Updater {
      *
      * @return array|WP_Error
      */
+    // audit-ok: only caller request() runs MMI_API_Throttler::throttle(THROTTLE_KEY) right before it
     protected static function get_over_ipv4(string $url)
     {
         $ipv4 = static function ($handle): void {

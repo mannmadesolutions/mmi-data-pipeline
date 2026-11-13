@@ -136,6 +136,7 @@ class Store {
 		$fixed = $pack->always_on();
 		foreach ( array_keys( $pack->all_rules() ) as $id ) {
 			$r          = is_array( $saved[ $id ] ?? null ) ? $saved[ $id ] : [];
+			// audit-ok: loop and haystack are the title-rule pack's few rule ids (always-on subset)
 			$always     = in_array( $id, $fixed, true );
 			$out[ $id ] = [
 				'enabled'    => $always || ! array_key_exists( 'enabled', $r ) || ! empty( $r['enabled'] ),
@@ -600,6 +601,7 @@ class Store {
 		// Products Product Data leaves alone keep their history rows; every count leaves them out, as the lists do,
 		// so a count always matches the list it opens (11-09: Written said 7,107, its list 6,725).
 		$x      = Exclusions::sql_not_excluded();
+		// audit-ok: $x is Exclusions::sql_not_excluded(), an int id list; $t is the table name
 		$status = $wpdb->get_results( "SELECT status, COUNT(*) n FROM {$t} WHERE 1=1{$x} GROUP BY status", ARRAY_A );
 		$by     = [];
 		foreach ( $status as $s ) {
@@ -611,6 +613,7 @@ class Store {
 			$sums[] = $wpdb->prepare( 'SUM(FIND_IN_SET(%s, rules) > 0) AS %i', $id, 'r_' . $id );
 			$sums[] = $wpdb->prepare( 'SUM(rules = %s) AS %i', $id, 'o_' . $id );
 		}
+		// audit-ok: $sums are $wpdb->prepare() outputs; $x is Exclusions' int id list
 		$rule_row = $wpdb->get_row( 'SELECT ' . implode( ', ', $sums ) . " FROM {$t} WHERE status IN ('proposed','accepted','edited','stale'){$x}", ARRAY_A ) ?: [];
 		$rules    = [];
 		foreach ( self::rules() as $id => $r ) {
@@ -625,6 +628,7 @@ class Store {
 		$known = TitleRules::pack()->flags();
 		foreach ( array_merge( $known['blocking'], $known['shown'] ) as $flag ) {
 			$flags[ $flag ] = $flag === 'duplicate_title'
+				// audit-ok: loops the few fixed title flags; $x is Exclusions' int id list
 				? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE dupes > 0 AND status IN ('proposed','accepted','edited','stale'){$x}" )
 				: (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE flags LIKE %s AND status IN ('proposed','accepted','edited','stale'){$x}", '%' . $wpdb->esc_like( $flag ) . '%' ) );
 		}
@@ -633,6 +637,7 @@ class Store {
 
 		return [
 			'by_status' => $by,
+			// audit-ok: $x is Exclusions::sql_not_excluded(), an int id list; $t is the table name
 			'changed'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE status = 'proposed' AND reviewed_at IS NOT NULL{$x}" ),
 			'rules'     => $rules,
 			'flags'     => $flags,

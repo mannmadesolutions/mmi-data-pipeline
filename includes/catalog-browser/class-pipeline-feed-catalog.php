@@ -667,7 +667,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
         $meta = [];
         foreach ( array_chunk( $ids, 500 ) as $chunk ) {
             $in = implode( ',', $chunk );
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- integers only
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- integers only. audit-ok: $in is implode of array_map('intval') ids, 500-id chunks
             foreach ( $wpdb->get_results( "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ({$in}) AND meta_key IN ('_price','_stock_status')", ARRAY_A ) as $m ) {
                 $meta[ (int) $m['post_id'] ][ $m['meta_key'] ] ??= (string) $m['meta_value'];
             }
@@ -706,6 +706,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
     /** Whether a row passes the search box and every filter. */
     protected function matches( array $row, array $args ): bool {
         foreach ( $args['filters'] as $key => $values ) {
+            // audit-ok: haystack is the filter values the user ticked for one column, a handful
             if ( $values && ! in_array( (string) ( $row[ $key ] ?? '' ), $values, true ) ) {
                 return false;
             }

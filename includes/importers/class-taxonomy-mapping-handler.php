@@ -311,6 +311,7 @@ class Taxonomy_Mapping_Handler {
         }
 
         foreach ( $plan['own'] as $taxonomy => $term_ids ) {
+            // audit-ok: haystack is the few taxonomies this product's save already wrote
             if ( ! in_array( $taxonomy, $written, true ) ) {
                 wp_set_object_terms( $product_id, $term_ids, $taxonomy );
             }
@@ -319,6 +320,7 @@ class Taxonomy_Mapping_Handler {
         // Appended, and only after every field's own replace above, so a
         // field that sets the same taxonomy can't wipe the redirected term.
         foreach ( $plan['append'] as $taxonomy => $term_ids ) {
+            // audit-ok: haystack is the few taxonomies this product's save already wrote
             if ( ! in_array( $taxonomy, $written, true ) ) {
                 wp_set_object_terms( $product_id, $term_ids, $taxonomy, true );
             }
@@ -340,7 +342,7 @@ class Taxonomy_Mapping_Handler {
      * redirect) it is appended.
      *
      * @param string[] $own_taxonomies Taxonomies this source field feeds directly.
-     * @return array{updated:int, already:int, locked:int, too_many:int}
+     * @return array{updated:int, already:int, locked:int, too_many:int, ids:int[]}
      */
     public static function apply_saved_mapping(
         string $supplier_id,
@@ -399,6 +401,7 @@ class Taxonomy_Mapping_Handler {
             }
             $current = wp_get_object_terms( $pid, $wc_taxonomy, [ 'fields' => 'ids' ] );
             $current = is_wp_error( $current ) ? [] : array_map( 'intval', $current );
+            // audit-ok: haystack is one product's term IDs in one taxonomy, a handful
             if ( $append ? in_array( $term_id, $current, true ) : $current === [ $term_id ] ) {
                 $out['already']++;
                 continue;
@@ -531,6 +534,7 @@ class Taxonomy_Mapping_Handler {
             }
             $seen[ $key ] = true;
 
+            // audit-ok: one prepared query per distinct taxonomy source field (supplier x field, a handful)
             $values = $wpdb->get_col( $wpdb->prepare(
                 "SELECT DISTINCT m.meta_value FROM {$wpdb->postmeta} m
                  JOIN {$wpdb->postmeta} s ON s.post_id = m.post_id AND s.meta_key = %s
@@ -647,6 +651,7 @@ class Taxonomy_Mapping_Handler {
 
         $tiers = [];
         foreach ( [ [ $supplier_id, $profile_id ], [ $supplier_id, '' ], [ '', $profile_id ], [ '', '' ] ] as $pair ) {
+            // audit-ok: loop and haystack are at most the 4 fixed lookup tiers
             if ( ! in_array( $pair, $tiers, true ) ) {
                 $tiers[] = $pair;
             }
@@ -659,6 +664,7 @@ class Taxonomy_Mapping_Handler {
                     continue;
                 }
                 $tid = (int) $row['wc_term_id'];
+                // audit-ok: haystack is the 1-2 taxonomies this source field feeds directly
                 if ( in_array( $row['wc_taxonomy'], $own_taxonomies, true ) ) {
                     if ( $tid !== 0 || ! empty( $row['auto_create'] ) ) {
                         return null; // The field's own mapping wins.

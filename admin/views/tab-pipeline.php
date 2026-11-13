@@ -403,6 +403,7 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
                     </td>
                     <td class="mmi-pgc-col-mode">
                         <span class="mmi-pgc-mode-badge" style="--badge-raw-color:<?php echo esc_attr( $p_mode_info['color'] ); ?>">
+                            <?php // audit-ok: icon/label come from the hard-coded $mode_labels map, never user data ?>
                             <?php echo $p_mode_info['icon']; ?> <?php echo $p_mode_info['label']; ?>
                         </span>
                     </td>
@@ -799,6 +800,7 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
 
     <?php /* ── Import Profile section — rendered here, between Data Sources and
          Review & Compare. See ob_start() capture near the top of this file. ── */ ?>
+    <?php // audit-ok: ob_get_clean() of this template's own markup, escaped at each of its echo sites ?>
     <?php echo $mmi_profile_section_html; ?>
 
     <?php /* ── Import Profile Wizard — inline section, new sibling directly below

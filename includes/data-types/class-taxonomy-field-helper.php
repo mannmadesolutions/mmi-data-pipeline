@@ -31,6 +31,7 @@ class MMI_Taxonomy_Field_Helper {
     public static function schema_fields( string $post_type, array $exclude = [] ): array {
         $fields = [];
         foreach ( get_object_taxonomies( $post_type, 'objects' ) as $tax ) {
+            // audit-ok: haystack is the caller's few excluded taxonomy names (e.g. product_cat/tag)
             if ( in_array( $tax->name, $exclude, true ) ) {
                 continue;
             }
@@ -70,6 +71,7 @@ class MMI_Taxonomy_Field_Helper {
     public static function resolve_fields( int $post_id, string $post_type, array $exclude = [] ): array {
         $flat = [];
         foreach ( get_object_taxonomies( $post_type ) as $tax ) {
+            // audit-ok: haystack is the caller's few excluded taxonomy names (e.g. product_cat/tag)
             if ( in_array( $tax, $exclude, true ) ) {
                 continue;
             }

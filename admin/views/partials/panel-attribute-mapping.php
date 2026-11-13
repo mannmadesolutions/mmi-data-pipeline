@@ -331,10 +331,12 @@ function mmi_render_wc_attr_select( string $row_id, string $current_slug, array 
                                     <?php
                                     $row_id = esc_attr( $attr['id'] ?? uniqid( 'attr_', false ) );
                                     ?>
+                                    <?php // audit-ok: $row_id was built with esc_attr() on the line above ?>
                                     <tr data-attr-id="<?php echo $row_id; ?>" class="mmi-attr-def-row">
                                         <td class="col-label">
                                             <input type="text"
                                                    class="mmi-attr-label-input"
+                                                   <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                    data-row="<?php echo $row_id; ?>"
                                                    value="<?php echo esc_attr( $attr['label'] ?? '' ); ?>"
                                                    placeholder="e.g. Color">
@@ -346,10 +348,13 @@ function mmi_render_wc_attr_select( string $row_id, string $current_slug, array 
                                             <div class="mmi-source-field-wrap">
                                                 <input type="text"
                                                        class="mmi-attr-source-input"
+                                                       <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                        data-row="<?php echo $row_id; ?>"
                                                        value="<?php echo esc_attr( $attr['source_field'] ?? '' ); ?>"
                                                        placeholder="e.g. color"
+                                                       <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                        list="attr-fields-<?php echo $row_id; ?>">
+                                                <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                 <datalist id="attr-fields-<?php echo $row_id; ?>" class="mmi-attr-source-datalist"></datalist>
                                             </div>
                                         </td>
@@ -360,6 +365,7 @@ function mmi_render_wc_attr_select( string $row_id, string $current_slug, array 
                                                     <label class="mmi-toggle-switch">
                                                         <input type="checkbox"
                                                                class="mmi-attr-for-var"
+                                                               <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                                data-row="<?php echo $row_id; ?>"
                                                                value="1"
                                                                <?php checked( ! empty( $attr['for_variations'] ) ); ?>>
@@ -372,6 +378,7 @@ function mmi_render_wc_attr_select( string $row_id, string $current_slug, array 
                                                     <label class="mmi-toggle-switch">
                                                         <input type="checkbox"
                                                                class="mmi-attr-visible"
+                                                               <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                                data-row="<?php echo $row_id; ?>"
                                                                value="1"
                                                                <?php checked( isset( $attr['visible'] ) ? $attr['visible'] : true ); ?>>
@@ -384,6 +391,7 @@ function mmi_render_wc_attr_select( string $row_id, string $current_slug, array 
                                                     <label class="mmi-toggle-switch">
                                                         <input type="checkbox"
                                                                class="mmi-attr-filterable"
+                                                               <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                                data-row="<?php echo $row_id; ?>"
                                                                value="1"
                                                                <?php checked( ! empty( $attr['filterable'] ) ); ?>>
@@ -396,6 +404,7 @@ function mmi_render_wc_attr_select( string $row_id, string $current_slug, array 
                                         <td class="col-delete">
                                             <button type="button"
                                                     class="button button-link-delete mmi-attr-delete-row"
+                                                    <?php // audit-ok: $row_id was built with esc_attr() above the row ?>
                                                     data-row="<?php echo $row_id; ?>"
                                                     title="Remove this attribute">
                                                 🗑️

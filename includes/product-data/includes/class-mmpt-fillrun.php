@@ -86,13 +86,15 @@ class FillRun {
 			// A product a newer Fill takes over stops waiting in the older one.
 			$wpdb->query( "UPDATE {$t} SET state = 'superseded' WHERE state = 'queued' AND product_id IN (" . implode( ',', $ids ) . ')' ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints only
 		}
+		$in_scrape = array_flip( array_map( 'intval', $scrape ) ); // a Fill can hold a whole maker site: look up, don't scan
+		$in_pics   = array_flip( array_map( 'intval', $pictures ) );
 		foreach ( $ids as $id ) {
 			$wpdb->insert( $t, [
 				'run'         => $run,
 				'host'        => VendorMaps::host( $host ),
 				'product_id'  => $id,
-				'scrape'      => in_array( $id, $scrape, true ) ? 1 : 0,
-				'pictures'    => in_array( $id, $pictures, true ) ? 1 : 0,
+				'scrape'      => isset( $in_scrape[ $id ] ) ? 1 : 0,
+				'pictures'    => isset( $in_pics[ $id ] ) ? 1 : 0,
 				'state'       => 'queued',
 				'before_json' => (string) wp_json_encode( ProductPreview::snapshot( $id ) ),
 				'created_at'  => $now,
@@ -213,12 +215,12 @@ class FillRun {
 		global $wpdb;
 		$t    = self::table();
 		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT id, run, product_id, scrape, pictures, state, rec, undo_json, created_at FROM {$t} WHERE run = %s AND host = %s AND state <> 'undone'", $run, VendorMaps::host( $host ) ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL
-		$ids  = array_map( 'intval', $ids );
+		$want = array_flip( array_map( 'intval', $ids ) );
 		$pics = self::ledger( array_map( 'intval', array_column( $rows, 'product_id' ) ) );
 		$out  = [ 'undone' => 0, 'kept' => 0, 'queued' => 0, 'items' => [] ];
 		foreach ( $rows as $r ) {
 			$id = (int) $r['product_id'];
-			if ( $ids && ! in_array( $id, $ids, true ) ) {
+			if ( $want && ! isset( $want[ $id ] ) ) {
 				continue;
 			}
 			$rec = (array) json_decode( (string) $r['rec'], true ) + [ 'meta' => [], 'locks' => [], 'enrich' => [], 'pictures' => false ];

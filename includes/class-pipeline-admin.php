@@ -651,6 +651,7 @@ class MMI_Pipeline_Admin {
         $taxes    = get_object_taxonomies( 'product', 'objects' );
         $product_taxonomies = [];
         foreach ( $taxes as $tax ) {
+            // audit-ok: haystack is the 5 fixed WC built-in taxonomy names
             if ( in_array( $tax->name, $built_in, true ) ) {
                 continue;
             }

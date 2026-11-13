@@ -814,7 +814,7 @@ class ProductImportController {
                 MMI_Logger::info( sprintf(
                     'MMI VIP Import: process_import_batch_cron() early return — status="%s" (not running). Context: %s',
                     $progress['status'] ?? 'null',
-                    defined('DOING_AJAX') && DOING_AJAX ? 'ajax' : 'cli/cron'
+                    wp_doing_ajax() ? 'ajax' : 'cli/cron'
                 ), [], 'general', 'MMI_Pipeline_Product_Import_Controller' );
             }
             return;
@@ -1557,6 +1557,7 @@ class ProductImportController {
      * NOTE: This will have no effect when DISABLE_WP_CRON is true (the default on
      * this server). Import batching is now JS-driven via handle_process_import_batch.
      */
+    // audit-ok: target is this site's own wp-cron.php (no rate limit); method has no callers
     private function spawn_import_cron(): void {
         if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
             return; // wp-cron.php immediately dies when this constant is true

@@ -196,6 +196,7 @@ class CustomRules {
 		if ( $sups ) {
 			$known = array_keys( self::suppliers() );
 			foreach ( $sups as $v ) {
+				// audit-ok: haystack is the store's few supplier sources (distinct import source values)
 				if ( ! in_array( $v, $known, true ) ) {
 					/* translators: %s: supplier source */
 					return new \WP_Error( 'mmpt_rule_supplier', sprintf( __( 'No product was imported from "%s".', 'mmi-data-pipeline' ), $v ), [ 'status' => 400 ] );
@@ -592,6 +593,7 @@ class CustomRules {
 			}
 			$ids = array_merge(
 				$ids,
+				// audit-ok: loops the few rules saved from one title edit; each query is prepared and LIMITed
 				$wpdb->get_col( $wpdb->prepare( "SELECT product_id FROM {$t} WHERE status IN ('proposed','accepted','stale','error') AND ( proposed_title LIKE %s OR current_title LIKE %s ) LIMIT %d", $like, $like, self::SCAN_LIMIT ) ),
 				$wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND post_title LIKE %s LIMIT %d", $like, self::SCAN_LIMIT ) )
 			);

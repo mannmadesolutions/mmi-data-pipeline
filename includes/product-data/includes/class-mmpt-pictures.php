@@ -1239,6 +1239,7 @@ class Pictures {
 				continue;
 			}
 			// A dropped size whose file is also a kept size's file (same dimensions) stays.
+			// audit-ok: haystack is one attachment's few kept size files
 			$files = array_values( array_unique( array_map( static fn( $s ) => $dir . $s['file'], array_filter( $drop, static fn( $s ) => ! in_array( $s['file'], $kept, true ) ) ) ) );
 			$out['pictures']++;
 			$out['files'] += count( $files );
@@ -1302,6 +1303,7 @@ class Pictures {
 	 * The product page as cached for visitors goes (2026-10-31): RunCloud's nginx copy through the loopback purge path
 	 * (RunCache never clears it: memory, 2026-10-30), then RunCache's own purge hooks (Cloudflare and the rest).
 	 */
+	// audit-ok: one loopback GET to this server's own nginx purge path (127.0.0.1); no rate limit
 	public static function purge_page( int $id ): void {
 		$url = (string) get_permalink( $id );
 		if ( $url === '' ) {

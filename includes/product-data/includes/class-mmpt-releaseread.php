@@ -30,6 +30,7 @@ final class ReleaseRead {
 	/** A hold ended: the reads are booked. */
 	public static function released( $id ): void {
 		foreach ( self::AFTER as $s ) {
+			// audit-ok: loop is the 3 fixed AFTER delays for one released product, not per item
 			wp_schedule_single_event( time() + $s, self::HOOK, [ (int) $id, $s ] );
 		}
 	}

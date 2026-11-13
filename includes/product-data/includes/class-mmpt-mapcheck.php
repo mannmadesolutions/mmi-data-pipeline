@@ -392,6 +392,7 @@ class MapCheck {
 						$stems[ $st ]['picks'][ $i ]   = 1;
 						$stems[ $st ]['url']           = $stems[ $st ]['url'] ?? $u;
 						$stems[ $st ]['width']         = max( (int) ( $stems[ $st ]['width'] ?? 0 ), (int) $img['width'] );
+						// audit-ok: haystack capped at 10 samples (count checked before in_array)
 						if ( count( $pick_at[ $i ]['sample'] ) < 10 && ! in_array( $st, $pick_at[ $i ]['sample'], true ) ) {
 							$pick_at[ $i ]['sample'][] = $st;
 						}

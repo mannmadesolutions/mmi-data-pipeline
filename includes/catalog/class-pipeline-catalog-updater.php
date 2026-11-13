@@ -360,6 +360,7 @@ class MMI_Pipeline_Catalog_Updater
                 $products = [ $canonId ];
                 foreach ( $pending_groups[ $canonId ] ?? [] as $id ) {
                     $info = $post_info[ $id ] ?? null;
+                    // audit-ok: haystack is the 2 fixed statuses publish/private
                     if ( $info && $info['type'] === 'product' && in_array( $info['status'], $valid_statuses, true ) ) {
                         $products[] = $id;
                     } else {
@@ -501,6 +502,7 @@ class MMI_Pipeline_Catalog_Updater
             $term_slug = $cfg['term_slug'];
             // Get term_id for this distribution term slug
             $this->log("[{$dist}] Looking up term slug '{$term_slug}'");
+            // audit-ok: one prepared query per supplier feed in the fixed $feeds list (~4 feeds)
             $term_id = $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT t.term_id
@@ -516,6 +518,7 @@ class MMI_Pipeline_Catalog_Updater
                 continue;
             }
             // Fetch all SKUs for products in this distribution
+            // audit-ok: one prepared query per supplier feed in the fixed $feeds list (~4 feeds)
             $SKUs = $wpdb->get_col(
                 $wpdb->prepare(
                     "SELECT pm.meta_value
@@ -595,6 +598,7 @@ class MMI_Pipeline_Catalog_Updater
                 ");
                 foreach ($back_rows as $row) {
                     $canonical = $row->canonical;
+                    // audit-ok: haystack is the 7 fixed "canonical is false" literals
                     if (!in_array($canonical, $false_values, true)) {
                         $eligibleSkusBack[] = $row->sku;
                         $this->log("[{$dist}] SKU '{$row->sku}' eligible for in-stock (canonical=" . var_export($canonical, true) . ")");
@@ -839,6 +843,7 @@ class MMI_Pipeline_Catalog_Updater
             $found_skus[$row->sku] = true;
             $canonical = $row->canonical;
             // Check against all possible "false" values - only exclude if explicitly FALSE
+            // audit-ok: haystack is the 11 fixed "canonical is false" literals
             if (!in_array($canonical, $false_values, true)) {
                 $filtered_skus[] = $row->sku;
                 $this->log("[stock] Marking SKU '{$row->sku}' out of stock (canonical=" . var_export($canonical, true) . ")");
@@ -1492,6 +1497,7 @@ class MMI_Pipeline_Catalog_Updater
             " );
             foreach ( $back_rows as $row ) {
                 $canonical = $row->canonical;
+                // audit-ok: haystack is the 7 fixed "canonical is false" literals
                 if ( ! in_array( $canonical, $false_values, true ) ) {
                     $eligibleBack[] = $row->sku;
                 } else {

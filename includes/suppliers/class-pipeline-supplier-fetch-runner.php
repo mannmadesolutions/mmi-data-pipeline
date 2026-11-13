@@ -85,6 +85,7 @@ class MMI_Pipeline_Supplier_Fetch_Runner {
         // Build updater list based on enabled suppliers
         $updaters = [];
         foreach (self::SUPPORTED_SUPPLIERS as $supplierId) {
+            // audit-ok: loop and haystack are the 3 fixed legacy supplier IDs
             if (in_array($supplierId, $enabled_suppliers)) {
                 $updaters = array_merge($updaters, $this->updatersFor($supplierId, $plugiveryFull));
             }

@@ -209,6 +209,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                  title="Sets every field's file selector across this WHOLE profile to the chosen file — a convenience default only. It does not change which file the import actually reads; it only changes which file's fields get suggested when mapping a Source box.">
                 <span class="mmi-default-file-toolbar-label">Default file:</span>
                 <?php foreach ($mmi_multi_file_suppliers as $mmi_dfs_sid => $mmi_dfs_sinfo):
+                    // audit-ok: haystack is the profile's assigned source IDs, a handful of suppliers
                     $mmi_dfs_not_assigned = $mmi_restrict_to_assigned_sources && !in_array($mmi_dfs_sid, $profile_assigned_sources, true);
                 ?>
                     <select class="profile-file-default<?php echo $mmi_dfs_not_assigned ? ' mmi-supplier-not-in-profile' : ''; ?>" data-supplier="<?php echo esc_attr($mmi_dfs_sid); ?>">
@@ -348,6 +349,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                 $curated_fields = ['post_title', '_sku', '_regular_price', '_price', 'product_cat', '_stock', 'post_content'];
                 $group_has_curated_field = [];
                 foreach ($default_mappings as $fn => $m) {
+                    // audit-ok: haystack is the 7 fixed curated field names
                     if (in_array($fn, $curated_fields, true)) {
                         $group_has_curated_field[$m['group']] = true;
                     }
@@ -431,6 +433,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                             . '</th>'
                             . '</tr>';
                     }
+                    // audit-ok: haystack is the 7 fixed curated field names
                     $row_advanced_class = in_array($field_name, $curated_fields, true) ? '' : ' mmi-field-advanced';
                 ?>
                     <tr data-field="<?php echo esc_attr($field_name); ?>" data-field-type="<?php echo esc_attr($mapping['type'] ?? ''); ?>" class="field-mapping-row<?php echo $row_advanced_class; ?>">
@@ -525,10 +528,12 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                         // source/file concept at all — see $mmi_taxonomy_mapping_only_fields
                         // above) or for a legacy single-source/custom field (no per-supplier
                         // file to pick).
+                        // audit-ok: haystack is the 2 fixed taxonomy-mapping-only fields
                         if (!in_array($field_name, $mmi_taxonomy_mapping_only_fields, true) && is_array($mapping['source'] ?? null) && !empty($configured_suppliers)):
                         ?>
                             <div class="supplier-files mmi-label-grid" data-field="<?php echo esc_attr($field_name); ?>">
                                 <?php foreach ($configured_suppliers as $sid => $sinfo):
+                                    // audit-ok: haystack is the profile's assigned source IDs, a handful of suppliers
                                     $mmi_not_assigned = $mmi_restrict_to_assigned_sources && !in_array($sid, $profile_assigned_sources, true);
                                     $mmi_fm_file_opts      = $sinfo['file_options'] ?? [];
                                     $mmi_fm_has_file_choice = count($mmi_fm_file_opts) > 1;
@@ -592,6 +597,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                         $mmi_tax_slug     = ($mapping['type'] === 'taxonomy') ? ((strpos($field_name, 'tax:') === 0) ? substr($field_name, 4) : $field_name) : '';
                         $mmi_taxonomy_obj = $mmi_tax_slug !== '' && taxonomy_exists($mmi_tax_slug) ? get_taxonomy($mmi_tax_slug) : null;
                         ?>
+                        <?php // audit-ok: haystack is the 2 fixed taxonomy-mapping-only fields ?>
                         <?php if (in_array($field_name, $mmi_taxonomy_mapping_only_fields, true)): ?>
                             <?php /* Both product_brand and product_cat DO have a real per-supplier
                                  'source' in DEFAULTS (product_cat since 2026-08-30, see AGENTS.md's
@@ -654,6 +660,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                         // per-supplier row on this table (import-settings.css) —
                                         // hidden outright for a supplier this profile hasn't
                                         // assigned, not just visually deprioritized.
+                                        // audit-ok: haystack is the profile's assigned source IDs, a handful of suppliers
                                         $mmi_tm_not_assigned = $mmi_restrict_to_assigned_sources && !in_array($sid, $profile_assigned_sources, true);
                                     ?>
                                         <label class="mmi-taxonomy-enable-toggle<?php echo $mmi_tm_not_assigned ? ' mmi-supplier-not-in-profile' : ''; ?>" data-supplier="<?php echo esc_attr($sid); ?>" title="Turn on Taxonomy Mapping resolution for <?php echo esc_attr(strtoupper($sinfo['supplier_name'])); ?>, using its '<?php echo esc_attr($mmi_fixed_sources[$sid]); ?>' field">
@@ -793,6 +800,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                         <?php endif; ?>
                                         <?php if (!empty($configured_suppliers)): ?>
                                             <?php foreach ($configured_suppliers as $sid => $sinfo):
+                                                // audit-ok: haystack is the profile's assigned source IDs, a handful of suppliers
                                                 $mmi_not_assigned = $mmi_restrict_to_assigned_sources && !in_array($sid, $profile_assigned_sources, true);
                                                 $mmi_use_const_raw = $mapping['use_constant_value'] ?? false;
                                                 $mmi_sup_use_const = is_array($mmi_use_const_raw) ? !empty($mmi_use_const_raw[$sid]) : !empty($mmi_use_const_raw);
@@ -1004,6 +1012,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                             </div>
                         <?php endif; ?>
                         </td>
+                        <?php // audit-ok: haystack is the 2 fixed taxonomy-mapping-only fields ?>
                         <?php if (in_array($field_name, $mmi_taxonomy_mapping_only_fields, true)): ?>
                         <td class="col-transform">
                             <span class="mmi-no-sources-notice" title="Not applicable — values resolved via Taxonomy Mapping never run through Field Mapping's transform pipeline">N/A</span>
@@ -1175,6 +1184,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                         </td>
                         <?php endif; ?>
                     </tr>
+                    <?php // audit-ok: haystack is the 2 fixed taxonomy-mapping-only fields ?>
                     <?php if ( ! in_array( $field_name, $mmi_taxonomy_mapping_only_fields, true ) ) : ?>
                     <tr class="mmi-fm-conditions-row<?php echo $row_advanced_class; ?><?php echo empty( $fm_conditions ) ? ' mmi-is-hidden' : ''; ?>" data-field="<?php echo esc_attr( $field_name ); ?>">
                         <td colspan="4" class="mmi-fm-conditions-cell">

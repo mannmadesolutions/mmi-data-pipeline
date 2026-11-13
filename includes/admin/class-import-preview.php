@@ -100,6 +100,7 @@ class MMI_Import_Preview {
         }
 
         $profile = sanitize_text_field($_POST['profile'] ?? 'default');
+        // audit-ok: decoded on the next line and every SKU passed through sanitize_text_field
         $skus_json = stripslashes($_POST['skus'] ?? '[]');
         $skus = array_filter(array_map('sanitize_text_field', (array) json_decode($skus_json, true)));
 
@@ -129,6 +130,7 @@ class MMI_Import_Preview {
         
         $supplier = sanitize_text_field($_POST['supplier'] ?? '');
         $limit = (int) ($_POST['limit'] ?? 10);
+        // audit-ok: read-only preview; field names only used as lookup keys into saved mappings
         $preview_fields_json = $_POST['preview_fields'] ?? '[]';
         $preview_fields = json_decode(stripslashes($preview_fields_json), true);
         $profile = sanitize_text_field($_POST['profile'] ?? 'default');
@@ -945,6 +947,7 @@ class MMI_Import_Preview {
         foreach ( array_unique( $alias_taxonomy_pool ) as $alias_taxonomy ) {
             if ( ! taxonomy_exists( $alias_taxonomy )
                 || isset( $mappings[ $alias_taxonomy ] )
+                // audit-ok: haystack is the profile's preview column names, a few dozen at most
                 || in_array( $alias_taxonomy, $requested_field_names, true )
             ) {
                 continue;
@@ -2142,6 +2145,7 @@ class MMI_Import_Preview {
             wp_send_json_error( [ 'message' => 'Unknown profile' ] );
         }
 
+        // audit-ok: is_array checked, sanitize_text_field mapped, then must equal the profile's own sources
         $reported_sources = json_decode( stripslashes( (string) ( $_POST['sources'] ?? '[]' ) ), true );
         if ( ! is_array( $reported_sources ) ) {
             wp_send_json_error( [ 'message' => 'Invalid sources payload' ] );

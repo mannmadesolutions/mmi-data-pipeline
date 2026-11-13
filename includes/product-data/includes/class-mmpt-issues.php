@@ -275,6 +275,7 @@ final class Issues {
 			$lacks  = $taxonomy === 'product_cat'
 				? "NOT EXISTS (SELECT 1 FROM {$wpdb->term_relationships} tr JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_cat' AND tt.term_id <> {$def} WHERE tr.object_id = m.post_id)"
 				: "NOT EXISTS (SELECT 1 FROM {$wpdb->term_relationships} tr JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_brand' WHERE tr.object_id = m.post_id)";
+			// audit-ok: loops the few taxonomy source fields of one product's suppliers, one count each
 			$others = (int) $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(DISTINCT m.post_id) FROM {$wpdb->postmeta} m
@@ -448,6 +449,7 @@ final class Issues {
 		if ( $want ) {
 			$term = $ids[0]; // the new term, or the first one chosen
 			foreach ( self::feed_values( $id, $taxonomy ) as $fv ) {
+				// audit-ok: loop is one product's feed values; haystack is the few fields the person ticked
 				if ( ! in_array( $fv['supplier'] . '|' . $fv['field'], $want, true ) ) {
 					continue;
 				}

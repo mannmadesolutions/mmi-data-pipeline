@@ -208,10 +208,12 @@ class UrlQueue {
 		}
 
 		$counts = [];
+		// audit-ok: $ex is Exclusions::sql_not_excluded(), an int id list; $c is a table name
 		foreach ( $wpdb->get_results( "SELECT c.reason, COUNT(*) n FROM {$c} c JOIN {$wpdb->posts} p ON p.ID = c.product_id AND p.post_status = 'publish' WHERE c.status = 'candidate'{$ex} GROUP BY c.reason", ARRAY_A ) as $x ) {
 			$counts[ $x['reason'] ] = (int) $x['n'];
 		}
 		// Vendors with open rows, A–Z by the name the filter shows (no "www."; owner 2026-10-08), each with its count.
+		// audit-ok: $ex is Exclusions::sql_not_excluded(), an int id list; $c is a table name
 		$hosts = $wpdb->get_results( "SELECT TRIM( LEADING 'www.' FROM c.host ) host, COUNT(*) n FROM {$c} c JOIN {$wpdb->posts} p ON p.ID = c.product_id AND p.post_status = 'publish' WHERE c.status = 'candidate' AND c.host <> ''{$ex} GROUP BY 1 ORDER BY 1 LIMIT 300", ARRAY_A );
 		$reasons = [];
 		foreach ( self::REASONS as $key => $label ) {
@@ -522,8 +524,10 @@ class UrlQueue {
 		$adopted = [];
 		$offsite  = []; // skipped because the page moved to a site nobody has confirmed: host → count
 		$replaced = []; // product id → the verified URL an approval replaced, so a bulk decision can be undone
-		foreach ( array_slice( $ids, 0, 500 ) as $id ) {
-			$url = (string) $wpdb->get_var( $wpdb->prepare( "SELECT url FROM {$t} WHERE product_id = %d", $id ) );
+		$ids  = array_slice( $ids, 0, 500 );
+		$urls = array_column( (array) $wpdb->get_results( "SELECT product_id, url FROM {$t} WHERE product_id IN (" . implode( ',', $ids ) . ')', ARRAY_A ), 'url', 'product_id' ); // phpcs:ignore WordPress.DB.PreparedSQL -- ints only (intval above); one query, not one per product
+		foreach ( $ids as $id ) {
+			$url = (string) ( $urls[ $id ] ?? '' );
 			if ( $url === '' ) {
 				continue;
 			}
@@ -618,8 +622,10 @@ class UrlQueue {
 		global $wpdb;
 		$t    = UrlFinder::table();
 		$done = [];
-		foreach ( array_values( array_filter( array_map( 'intval', $ids ) ) ) as $id ) {
-			$url = (string) $wpdb->get_var( $wpdb->prepare( "SELECT url FROM {$t} WHERE product_id = %d AND status = 'candidate'", $id ) );
+		$ids  = array_values( array_filter( array_map( 'intval', $ids ) ) );
+		$urls = $ids ? array_column( (array) $wpdb->get_results( "SELECT product_id, url FROM {$t} WHERE status = 'candidate' AND product_id IN (" . implode( ',', $ids ) . ')', ARRAY_A ), 'url', 'product_id' ) : []; // phpcs:ignore WordPress.DB.PreparedSQL -- ints only; one query, not one per product
+		foreach ( $ids as $id ) {
+			$url = (string) ( $urls[ $id ] ?? '' );
 			if ( $url !== '' ) {
 				$wpdb->update( $t, [ 'status' => 'approved' ], [ 'product_id' => $id ] );
 				UrlFinder::adopt( $id, $url, true );

@@ -433,6 +433,7 @@ add_action( 'wp_ajax_mmi_save_taxonomy_alias_rules', function () {
         }
 
         $operator = sanitize_text_field( $r['operator'] ?? 'contains' );
+        // audit-ok: haystack is the 5 fixed alias-rule operators
         if ( ! in_array( $operator, $valid_operators, true ) ) {
             $operator = 'contains';
         }
@@ -674,6 +675,7 @@ add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
             // three checks could ever match. SkuPort records use 'name' and
             // have no 'product' key, so the two suppliers never collide.
             $product_name = mmi_taxmap_record_label( (array) $item );
+            // audit-ok: haystack is capped at 3 sample names by the count() < 3 guard above
             if ( $product_name !== '' && ! in_array( $product_name, $sample_products[ $key ], true ) ) {
                 $sample_products[ $key ][] = $product_name;
             }
@@ -1056,6 +1058,7 @@ function mmi_taxmap_get_raw_source_scan( bool $force_refresh ): array {
                 // 'product' is Xchange's own product-name field — see the
                 // matching comment in mmi_get_taxonomy_source_values above.
                 $pname = mmi_taxmap_record_label( (array) $item );
+                // audit-ok: haystack is capped at 3 sample names by the count() < 3 guard above
                 if ( $pname !== '' && ! in_array( $pname, $samples[ $key ], true ) ) {
                     $samples[ $key ][] = $pname;
                 }
@@ -1216,6 +1219,7 @@ function mmi_taxmap_assignable_taxonomies(): array {
     $internal = [ 'product_type', 'product_visibility', 'product_shipping_class' ];
     $out      = [];
     foreach ( get_object_taxonomies( 'product', 'objects' ) as $tax ) {
+        // audit-ok: haystack is the 3 fixed internal WC taxonomy names
         if ( in_array( $tax->name, $internal, true ) || strpos( $tax->name, 'pa_' ) === 0 ) {
             continue;
         }
@@ -1631,6 +1635,7 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
             [ $sup, $field ] = explode( '|', $sf_key, 2 );
             if ( $row['source_field'] === $field
                 && in_array( $row['supplier_id'], [ $sup, '' ], true )
+                // audit-ok: haystack is the 1-2 taxonomies one supplier field feeds
                 && ! in_array( $row['wc_taxonomy'], $taxes, true )
                 && (int) $row['wc_term_id'] > 0 ) {
                 $has_redirects[ $sf_key ] = true;
@@ -1681,6 +1686,7 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
         }
 
         // Apply to products
+        // audit-ok: one prepared query per taxonomy source field (supplier x field, a handful)
         $product_rows = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s",

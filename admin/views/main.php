@@ -131,7 +131,7 @@ $_mmi_next_schedule_url = $_mmi_next_schedule
     : '';
 ?>
 
-<div class="wrap">
+<div class="wrap mmi-page">
     <div class="mmi-header<?php echo $_mmi_compact ? ' mmi-header--compact' : ''; ?>">
         <h1><span class="dashicons dashicons-database-import"></span> Data Pipeline</h1>
         <?php if ( $_mmi_compact ) { $_mmi_render_tabs(); } ?>

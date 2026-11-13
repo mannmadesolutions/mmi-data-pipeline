@@ -79,6 +79,7 @@ $scope_saved     = is_array( $current_profile_meta['product_identifier'] ?? null
             foreach ( $order_statuses as $slug => $label ) :
                 $slug_bare = str_replace( 'wc-', '', $slug );
             ?>
+                <?php // audit-ok: haystack is the saved order statuses filter, at most ~7 WC statuses ?>
                 <option value="<?php echo esc_attr( $slug_bare ); ?>" <?php selected( in_array( $slug_bare, $selected_status, true ) ); ?>>
                     <?php echo esc_html( $label ); ?>
                 </option>

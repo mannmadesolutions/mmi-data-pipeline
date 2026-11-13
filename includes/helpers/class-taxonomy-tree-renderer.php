@@ -83,6 +83,7 @@ class MMI_Taxonomy_Tree_Renderer {
         $first      = true;
 
         foreach ( $taxonomies as $tax ) {
+            // audit-ok: haystack is the caller's few excluded taxonomy slugs (e.g. product_cat)
             if ( ! $tax->show_ui || in_array( $tax->name, $exclude, true ) ) {
                 continue;
             }
@@ -172,6 +173,7 @@ class MMI_Taxonomy_Tree_Renderer {
         echo '<ul>';
         foreach ( $children as $term ) {
             $has_children = (bool) array_filter( $terms, static fn( $t ) => (int) $t->parent === (int) $term->term_id );
+            // audit-ok: haystack is the user's saved scope slugs; tree only drawn for <=150 terms
             $checked      = in_array( $term->slug, $selected_slugs, true );
 
             echo '<li>';

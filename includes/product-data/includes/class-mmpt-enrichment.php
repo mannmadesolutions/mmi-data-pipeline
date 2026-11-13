@@ -255,13 +255,16 @@ class Enrichment {
 		$maker = $only && self::rules()['content:maker_replaces']['approved']; // owner 2026-10-21: the maker's copy replaces what isn't the maker's (Scrape only)
 		foreach ( array_chunk( $ids, 500 ) as $chunk ) {
 			$in    = implode( ',', $chunk );
+			// audit-ok: $in is a chunk of ids intval'd by Exclusions::filter()/eligible_ids()
 			$posts = $wpdb->get_results( "SELECT ID, post_title, post_content FROM {$wpdb->posts} WHERE ID IN ({$in})", ARRAY_A );
 			$meta  = [];
+			// audit-ok: $in is a chunk of ids intval'd by Exclusions::filter()/eligible_ids()
 			foreach ( $wpdb->get_results( "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ({$in}) AND meta_key IN ('_sku','_thumbnail_id','_mmi_supplier_sku_plugivery','vendor_product_url','vendor_product_url_verified')", ARRAY_A ) as $m ) {
 				$meta[ (int) $m['post_id'] ][ $m['meta_key'] ] = $m['meta_value'];
 			}
 			$descs    = Descriptions::get_many( $chunk );
 			$existing = [];
+			// audit-ok: $in is a chunk of ids intval'd by Exclusions::filter()/eligible_ids()
 			foreach ( $wpdb->get_results( "SELECT product_id, kind, status, source, proposed_value, original_value, detail FROM {$t} WHERE product_id IN ({$in})", ARRAY_A ) as $r ) {
 				$existing[ (int) $r['product_id'] ][ $r['kind'] ] = $r;
 			}
@@ -1070,6 +1073,7 @@ class Enrichment {
 		$w     = implode( ' AND ', $where );
 		$per   = max( 25, min( 200, (int) ( $f['per_page'] ?? 0 ) ?: 25 ) );
 		$page  = max( 1, (int) ( $f['page'] ?? 1 ) );
+		// audit-ok: $w joins prepare() outputs, an intval id list and fixed clauses
 		$total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE {$w}" ); // phpcs:ignore WordPress.DB.PreparedSQL
 		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT e.*, p.post_title FROM {$t} e JOIN {$wpdb->posts} p ON p.ID = e.product_id WHERE {$w} ORDER BY e.product_id LIMIT %d OFFSET %d", $per, ( $page - 1 ) * $per ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL
 		return [ 'rows' => $rows, 'total' => $total, 'pages' => (int) max( 1, ceil( $total / $per ) ) ];

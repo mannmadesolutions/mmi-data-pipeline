@@ -55,6 +55,7 @@ add_action('wp_ajax_mmi_run_supplier_fetch', function () {
             $legacy_selected = $legacy_suppliers;
         } else {
             foreach ($selected_suppliers as $sid) {
+                // audit-ok: haystack is the 3 fixed legacy supplier IDs
                 if (in_array($sid, $legacy_suppliers)) {
                     $legacy_selected[] = $sid;
                 } else {

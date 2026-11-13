@@ -355,7 +355,9 @@ class MMI_Pipeline_Run_Insights {
                             return null;
                         }
                         return $products[ $id ] + [
+                            // audit-ok: haystacks are the few product IDs tracked for / owning one SKU
                             'tracked'   => in_array( $id, $tracked_ids, true ),
+                            // audit-ok: haystack is the few product IDs owning one SKU
                             'sku_owner' => in_array( $id, $owner_ids, true ),
                             'matched'   => $id === $matched_id,
                         ];

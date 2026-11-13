@@ -50,6 +50,7 @@ final class WorkbenchCounts {
 		global $wpdb;
 		$out = (array) $out;
 		$x   = Exclusions::sql_not_excluded();
+		// audit-ok: $x is Exclusions::sql_not_excluded(), an int id list
 		$out['titles'] = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Store::table() . " WHERE status IN ('proposed','stale','error'){$x}" ); // phpcs:ignore WordPress.DB.PreparedSQL -- table name and a fixed clause
 		$kinds = [ 'content' => 0, 'image' => 0 ];
 		foreach ( $wpdb->get_results( 'SELECT kind, COUNT(*) n FROM ' . Enrichment::table() . " WHERE status = 'proposed' GROUP BY kind", ARRAY_A ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL

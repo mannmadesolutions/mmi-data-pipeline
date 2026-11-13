@@ -909,6 +909,7 @@ class Stock_Override_Resolver {
             $ids = get_posts( [
                 'post_type'      => 'product',
                 'post_status'    => self::$status_scope,
+                // audit-ok: IDs only, filtered in SQL by tax_query; rule matcher needs the full ID set
                 'posts_per_page' => -1,
                 'fields'         => 'ids',
                 'tax_query'      => [ [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
@@ -939,6 +940,7 @@ class Stock_Override_Resolver {
         $ids = get_posts( [
             'post_type'      => 'product',
             'post_status'    => self::$status_scope,
+            // audit-ok: IDs only, filtered in SQL by tax_query; rule matcher needs the full ID set
             'posts_per_page' => -1,
             'fields'         => 'ids',
             'tax_query'      => [ [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
@@ -995,6 +997,7 @@ class Stock_Override_Resolver {
             // is_not_empty can tell "absent" from "empty string" — matching
             // eval_operator()'s null-means-absent convention.
             // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            // audit-ok: status_sql() is esc_sql-quoted statuses intersected with SEARCHABLE_STATUSES
             $ids = $wpdb->get_col( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND {$status_sql_bare}" );
             // phpcs:enable
             $values = [];
@@ -1861,6 +1864,7 @@ class Stock_Override_Resolver {
 
                 $products = wc_get_products( [
                     'status'  => 'publish',
+                    // audit-ok: bounded by 'include' => $chunk, one page of $per_page IDs
                     'limit'   => -1,
                     'include' => $chunk,
                     'return'  => 'objects',
@@ -2039,6 +2043,7 @@ class Stock_Override_Resolver {
                 $expected = esc_sql( $expected_status );
 
                 // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                // audit-ok: on-demand admin report, one query only per condition-free stock rule (a few)
                 $row = $wpdb->get_row(
                     "SELECT
                          COUNT(DISTINCT p.ID)                                                    AS total,

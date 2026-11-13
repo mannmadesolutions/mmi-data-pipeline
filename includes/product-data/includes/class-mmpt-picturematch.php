@@ -267,6 +267,7 @@ class PictureMatch {
 			$reqs[ $u ] = [ 'url' => $u, 'type' => 'GET', 'options' => [ 'filename' => $tmp, 'timeout' => 20, 'connect_timeout' => 10, 'useragent' => FetchPolicy::asset_ua() ] ];
 		}
 		try {
+			// audit-ok: one vendor page's pictures from vendor image hosts, never this server; uncached only
 			$res = \WpOrg\Requests\Requests::request_multiple( $reqs );
 		} catch ( \Throwable $e ) {
 			$res = [];

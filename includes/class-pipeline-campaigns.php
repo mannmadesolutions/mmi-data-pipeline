@@ -173,7 +173,7 @@ class Campaigns {
 				$rows = $catalog->rows( 'promotions' );
 			} catch ( \Throwable $e ) {
 				if ( class_exists( 'MMI_Logger' ) ) {
-					\MMI_Logger::warning( 'Campaigns: could not read promotions', [ 'supplier' => $supplier, 'error' => $e->getMessage() ] );
+					\MMI_Logger::warn( 'Campaigns: could not read promotions', [ 'supplier' => $supplier, 'error' => $e->getMessage() ] );
 				}
 				continue;
 			}
@@ -365,7 +365,7 @@ class Campaigns {
 		] );
 		if ( is_wp_error( $result ) ) {
 			if ( class_exists( 'MMI_Logger' ) ) {
-				\MMI_Logger::warning( 'Campaigns: could not create term', [ 'name' => $g['name'], 'error' => $result->get_error_message() ] );
+				\MMI_Logger::warn( 'Campaigns: could not create term', [ 'name' => $g['name'], 'error' => $result->get_error_message() ] );
 			}
 			return 0;
 		}
@@ -457,6 +457,7 @@ class Campaigns {
 		$small = [ 'a', 'an', 'and', 'at', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'with' ];
 		$words = explode( ' ', $s );
 		foreach ( $words as $i => $w ) {
+			// audit-ok: haystack is the 13 fixed small words of a campaign title
 			if ( $w !== '' && $w === strtolower( $w ) && ( $i === 0 || ! in_array( $w, $small, true ) ) ) {
 				$words[ $i ] = ucfirst( $w );
 			}

@@ -500,6 +500,7 @@ class ExtBridge {
 		if ( $others ) {
 			$rows = [];
 			foreach ( array_slice( $others, 0, self::MAX_PRODUCTS ) as $id ) {
+				// audit-ok: loop capped at MAX_PRODUCTS (20); haystack is the products linked to one URL
 				$rows[] = self::product_row( (int) $id, in_array( $id, $ids, true ), $v2 );
 			}
 			$more       = count( $others ) - count( $rows );
@@ -2386,6 +2387,7 @@ class ExtBridge {
 		foreach ( array_map( 'intval', $ids ) as $id ) {
 			$cur  = (string) get_post_meta( $id, 'vendor_product_url', true );
 			$ok   = UrlFinder::is_verified( get_post_meta( $id, 'vendor_product_url_verified', true ) );
+			// audit-ok: loop is <= SEARCH_MAX hits; haystack is the few products using this one page
 			$same = in_array( $id, $here, true );
 			$row  = [
 				'label' => html_entity_decode( get_the_title( $id ), ENT_QUOTES, 'UTF-8' ),
@@ -3278,6 +3280,7 @@ class ExtBridge {
 		$new  = [];
 		foreach ( array_slice( $urls, 0, self::MAX_VIDEOS ) as $u ) {
 			$vid = \MMI_Product_Content_Registry::youtube_id( (string) $u );
+			// audit-ok: haystack is one product's videos; loop capped at MAX_VIDEOS
 			if ( $vid !== '' && ! in_array( $vid, $ids, true ) ) {
 				$ids[] = $vid;
 				$new[] = 'https://www.youtube.com/watch?v=' . $vid;

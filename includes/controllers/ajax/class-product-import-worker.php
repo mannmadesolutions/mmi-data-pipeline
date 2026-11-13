@@ -511,6 +511,7 @@ class Product_Import_Worker {
         }
 
         foreach ( self::get_active_alias_taxonomies( $supplier, $mappings ) as $taxonomy ) {
+            // audit-ok: haystack is the few taxonomy slugs this product's field mapping already applied
             if ( in_array( $taxonomy, $already_applied_taxonomies, true ) ) {
                 continue;
             }
@@ -893,6 +894,7 @@ class Product_Import_Worker {
         if ( ! empty( $options['attribute_manager'] ) ) {
             $existing_attrs = array_keys( $product->get_attributes() );
             foreach ( $options['attribute_config_slugs'] ?? [] as $slug ) {
+                // audit-ok: haystack is one product's attribute slugs, a handful
                 if ( ! in_array( $slug, $existing_attrs, true ) ) {
                     return true;
                 }

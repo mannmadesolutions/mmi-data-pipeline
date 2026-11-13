@@ -558,6 +558,7 @@ final class ProductPreview {
 	public static function log_changes( int $id, array $c, string $source ): void {
 		$locks = (array) ( $c['locks'] ?? [] );
 		foreach ( (array) ( $c['meta'] ?? [] ) as $k => $m ) {
+			// audit-ok: haystack is one product's few locked field keys
 			Write::logged( $id, (string) $k, isset( $m['was'] ) ? (string) $m['was'] : null, $source, in_array( $k, $locks, true ) ? [ (string) $k ] : [] );
 		}
 	}

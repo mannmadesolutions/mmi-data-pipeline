@@ -368,6 +368,7 @@ class MMI_Pipeline_Cron {
         if ( class_exists( $legacy_class ) ) {
             $legacy_enabled = (array) MMI_Settings::get( 'mmi_vip_enabled_suppliers', [] );
             foreach ( $legacy_class::SUPPORTED_SUPPLIERS as $sid ) {
+                // audit-ok: loop over the fixed legacy supplier list; haystacks are data-source IDs (a handful)
                 if ( ! in_array( $sid, $ids, true ) && in_array( $sid, $legacy_enabled, true ) ) {
                     $ids[] = $sid;
                 }
@@ -557,6 +558,7 @@ class MMI_Pipeline_Cron {
         if ( class_exists( $legacy_class ) ) {
             $legacy_enabled = (array) MMI_Settings::get( 'mmi_vip_enabled_suppliers', [] );
             foreach ( $legacy_class::SUPPORTED_SUPPLIERS as $sid ) {
+                // audit-ok: loop over the fixed legacy supplier list; haystacks are data-source IDs (a handful)
                 if ( in_array( $sid, $known_ids, true ) || ! in_array( $sid, $legacy_enabled, true ) ) {
                     continue;
                 }
@@ -817,6 +819,7 @@ class MMI_Pipeline_Cron {
                     'supplier_name'     => $source['name'],
                     'frequency'         => $source['frequency'],
                     'matches'           => ( 'disabled' !== $profile_freq && $source['frequency'] === $profile_freq ),
+                    // audit-ok: haystack is one profile's linked source IDs, a handful of suppliers
                     'linked'            => in_array( $supplier_id, $linked_sources, true ),
                 ];
             }
@@ -1083,6 +1086,7 @@ class MMI_Pipeline_Cron {
         if ( class_exists( $legacy_class ) ) {
             $legacy_enabled = (array) MMI_Settings::get( 'mmi_vip_enabled_suppliers', [] );
             foreach ( $legacy_class::SUPPORTED_SUPPLIERS as $sid ) {
+                // audit-ok: loop over the fixed legacy supplier list; haystacks are data-source IDs (a handful)
                 if ( in_array( $sid, $known_ids, true ) || ! in_array( $sid, $legacy_enabled, true ) ) {
                     continue;
                 }
@@ -2943,6 +2947,7 @@ class MMI_Pipeline_Cron {
             foreach ( $entry['summary'] ?? [] as $stat ) {
                 $sl       = $stat['label'] ?? '';
                 $sv       = $stat['value'] ?? '—';
+                // audit-ok: haystack is the 3 fixed labels Imported/Updated/Failed
                 $summable = in_array( $sl, $summable_labels, true );
                 $numeric  = (float) preg_replace( '/[^0-9.]/', '', str_replace( ',', '', $sv ) );
 
@@ -3200,6 +3205,7 @@ class MMI_Pipeline_Cron {
                     if ( strcasecmp( $sl, 'Source' ) === 0 ) {
                         $has_source_stat = true;
                     }
+                    // audit-ok: haystack is the few distinct stat labels of one run family (~5)
                     if ( ! in_array( $sl, $stat_label_order, true ) ) {
                         $stat_label_order[] = $sl;
                     }

@@ -142,6 +142,7 @@ class Applier {
 		global $wpdb;
 		$t    = Store::table();
 		$auto = Store::apply_settings()['auto'] ? ' OR (' . Store::auto_eligible_sql() . ')' : '';
+		// audit-ok: $auto is auto_eligible_sql(): fixed SQL and prepare() parts; exclusions are ints
 		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t} WHERE ( status IN ('accepted','edited'){$auto} )" . Exclusions::sql_not_excluded() );
 	}
 

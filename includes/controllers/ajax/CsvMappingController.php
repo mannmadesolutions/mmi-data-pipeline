@@ -62,6 +62,7 @@ function mmi_pipeline_csv_source_info( string $supplier_id ): ?array {
  * @param  int    $max_bytes  Maximum bytes to retrieve (default 512 KB).
  * @return string|WP_Error
  */
+// audit-ok: one user-clicked 512 KB fetch of the source's own CSV file per admin AJAX request
 function mmi_pipeline_fetch_csv( string $url, int $max_bytes = 524288 ) {
     if ( $url === '' ) {
         return new WP_Error( 'no_url', 'No URL configured for this data source.' );
@@ -305,6 +306,7 @@ add_action( 'wp_ajax_mmi_save_csv_mapping', function () {
         $field  = sanitize_text_field( $field );
         $column = sanitize_text_field( $map['column'] ?? '' );
         $transform = sanitize_text_field( $map['transform'] ?? 'none' );
+        // audit-ok: haystack is the 9 fixed transform names
         if ( ! in_array( $transform, $allowed_transforms, true ) ) {
             $transform = 'none';
         }

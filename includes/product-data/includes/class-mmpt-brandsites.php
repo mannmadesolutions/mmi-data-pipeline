@@ -503,6 +503,7 @@ class BrandSites {
 		$ids   = array_map( static fn( $x ) => (int) $x['id'], $rows );
 		if ( $terms === null || $ids ) {
 			$only = $terms === null ? '' : ' AND post_id IN (' . implode( ',', $ids ) . ')';
+			// audit-ok: $only is '' or an IN list of (int)-cast product ids
 			foreach ( $wpdb->get_results( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = 'vendor_product_url_verified'{$only}", ARRAY_A ) as $x ) { // phpcs:ignore WordPress.DB.PreparedSQL -- ids are ints
 				$flags[ (int) $x['post_id'] ] = strtoupper( (string) $x['meta_value'] );
 			}
@@ -1035,6 +1036,7 @@ class BrandSites {
 			return [];
 		}
 		$hashes = implode( ',', array_map( static fn( $u ) => "'" . md5( $u ) . "'", $urls ) );
+		// audit-ok: $hashes is quoted md5() hex of URLs
 		$pages  = $wpdb->get_results( 'SELECT url, title, html_file, content_hash FROM ' . PageStore::table() . " WHERE url_hash IN ({$hashes}) AND status = 'ok' ORDER BY fetched_at DESC", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL -- md5 hex
 		// Pages whose address carries a word of these products' names first (a pack "for Myth" is listed on /products/myth).
 		$words = [];

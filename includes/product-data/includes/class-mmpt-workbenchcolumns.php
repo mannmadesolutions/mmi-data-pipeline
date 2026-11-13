@@ -63,6 +63,7 @@ class WorkbenchColumns {
 				}
 				continue;
 			}
+			// audit-ok: haystack is the few column keys asked for (subset of COLUMNS)
 			if ( in_array( 'pd_page', $keys, true ) ) {
 				$values[ $id ]['pd_page'] = self::page( $id, $r );
 			}

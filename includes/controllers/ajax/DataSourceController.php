@@ -90,7 +90,7 @@ add_action('wp_ajax_mmi_analyze_uploaded_file', function () {
     }
 
     // Supplier feeds (dealer costs, contacts) must never be downloadable by URL.
-    $private = MMI_Pipeline_Private_Uploads::privatize((int) $attachment_id);
+    $private = \MMI_Pipeline_Private_Uploads::privatize((int) $attachment_id);
     if (is_wp_error($private)) {
         wp_delete_attachment((int) $attachment_id, true);
         wp_send_json_error(['message' => 'Upload failed: could not store the file privately (' . $private->get_error_message() . ').']);
@@ -262,6 +262,7 @@ add_action('wp_ajax_mmi_get_data_sources', function () {
     $endpoints_table = $wpdb->prefix . 'mmi_data_source_endpoints';
     if ($wpdb->get_var("SHOW TABLES LIKE '{$endpoints_table}'") === $endpoints_table) {
         foreach ($sources as &$source) {
+            // audit-ok: one prepared query per configured data source, a handful of suppliers
             $source['endpoints'] = $wpdb->get_results($wpdb->prepare(
                 "SELECT * FROM {$endpoints_table} WHERE source_id = %d ORDER BY is_primary DESC, id ASC",
                 $source['id']
@@ -824,6 +825,7 @@ add_action('wp_ajax_mmi_save_data_source', function () {
     foreach ($field_defs as $field_def) {
         $param = $field_def['key'];
         // Skip non-credential params and non-scalar types
+        // audit-ok: haystack is the auth type's fixed non-credential params, at most 4
         if (in_array($param, $non_credential_params, true)) {
             continue;
         }
@@ -1656,8 +1658,11 @@ add_action('wp_ajax_mmi_test_data_source', function () {
     $response = null;
     for ($attempt = 1; $attempt <= $max_attempts; $attempt++) {
         // On retries, rebuild auth headers so a fresh timed token is used.
+        // Every attempt waits its turn on this source's throttle key (as downloads do), never a bare sleep.
+        if (class_exists('MMI_API_Throttler')) {
+            \MMI_API_Throttler::throttle('data-source-' . $supplier_id);
+        }
         if ($attempt > 1) {
-            sleep(1);
             $request_args['headers'] = array_merge(
                 mmi_ds_build_auth_headers($supplier_id, $auth_config, $test_cred_overrides),
                 array_diff_key($request_args['headers'], array_flip(['Authorization']))
@@ -1905,6 +1910,7 @@ add_action('wp_ajax_mmi_reorder_suppliers', function () {
         wp_send_json_error(['message' => 'Insufficient permissions']);
     }
 
+    // audit-ok: is_array checked; each ID goes through sanitize_text_field, index cast to int, $wpdb->update
     $order = $_POST['order'] ?? [];
     if (!is_array($order)) {
         wp_send_json_error(['message' => 'Invalid order data']);
@@ -1986,6 +1992,9 @@ function mmi_ds_build_auth_headers(string $supplier_id, array $auth_config, arra
 
             if ($token_url && $token_key) {
                 $url = $token_url . '?tkey=' . rawurlencode($token_key);
+                if (class_exists('MMI_API_Throttler')) {
+                    \MMI_API_Throttler::throttle('data-source-' . $supplier_id); // the token call counts against the source's limit too
+                }
                 $resp = wp_safe_remote_get($url, ['timeout' => 15, 'sslverify' => true]);
 
                 if (!is_wp_error($resp)) {
@@ -2016,6 +2025,9 @@ function mmi_ds_build_auth_headers(string $supplier_id, array $auth_config, arra
             $client_secret = $creds['client_secret'] ?? '';
 
             if ($token_url && $client_id && $client_secret) {
+                if (class_exists('MMI_API_Throttler')) {
+                    \MMI_API_Throttler::throttle('data-source-' . $supplier_id);
+                }
                 $token_resp = wp_safe_remote_post($token_url, [
                     'timeout' => 15,
                     'body' => [
@@ -2081,6 +2093,7 @@ function mmi_ds_resolve_credentials(array $auth_config): array {
 
     $resolved = [];
     foreach ($credential_keys as $param => $field_name) {
+        // audit-ok: one prepared query per credential field of one source (2-4 fields)
         $value = $wpdb->get_var($wpdb->prepare(
             "SELECT field_value FROM {$mmi_table} WHERE tab_name = %s AND field_name = %s",
             $tab,

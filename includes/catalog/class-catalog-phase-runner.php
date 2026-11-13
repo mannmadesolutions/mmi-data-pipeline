@@ -556,6 +556,7 @@ final class Catalog_Phase_Runner {
             ) );
             foreach ( array_chunk( $add, 500 ) as $chunk ) {
                 $values = implode( ',', array_map( static fn( $id ) => "({$id},{$tt},0)", $chunk ) );
+                // audit-ok: $values tuples are intval'd post IDs and the (int) term_taxonomy_id
                 $out['term_added'] += (int) $wpdb->query( "INSERT IGNORE INTO {$wpdb->term_relationships} (object_id, term_taxonomy_id, term_order) VALUES {$values}" );
             }
             foreach ( array_chunk( $remove, 500 ) as $chunk ) {

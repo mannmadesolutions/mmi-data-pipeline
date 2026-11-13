@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     3.2.2
+ * Version:     3.2.3
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '3.2.2' );
+define( 'MMI_PIPELINE_VERSION', '3.2.3' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -215,6 +215,7 @@ add_action( 'plugins_loaded', function () {
         add_action( 'rest_api_init', static function () {
             register_rest_route( 'mmpt/v1', '/ext/(?P<route>[a-z/-]+)', [
                 'methods'             => 'GET, POST',
+                // audit-ok: unlicensed fallback only returns a fixed 403 "license ended" notice, no data or writes
                 'permission_callback' => '__return_true',
                 'callback'            => static fn() => new WP_REST_Response( [
                     'code'    => 'mmpt_license',

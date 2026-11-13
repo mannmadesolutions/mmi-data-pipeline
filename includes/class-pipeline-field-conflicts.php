@@ -101,6 +101,7 @@ class MMI_Pipeline_Field_Conflicts {
                 }
             }
             foreach ( self::gateway_writers() as $g ) {
+                // audit-ok: haystack is one gateway writer's field keys, a few fields per writer
                 if ( ! $g['locks'] && in_array( self::lock_name( $w['key'] ), $g['keys'], true ) ) {
                     $messages[] = sprintf( '%s also writes this field and doesn’t lock it, so each run may undo the other.', $g['label'] );
                 }

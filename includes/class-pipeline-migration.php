@@ -164,6 +164,7 @@ class MMI_Pipeline_Migration {
         // Backfill the suppliers previously hardcoded in assign_distribution_term().
         $legacy_map = [ 'xchange' => 'x', 'skuport' => 's', 'plugivery' => 'p' ];
         foreach ( $legacy_map as $supplier_id => $slug ) {
+            // audit-ok: one-time migration, one prepared UPDATE per the 3 fixed legacy suppliers
             $wpdb->query(
                 $wpdb->prepare(
                     "UPDATE {$table} SET distribution_term_slug = %s
@@ -305,6 +306,7 @@ class MMI_Pipeline_Migration {
                     if ( $schedule ) {
                         wp_schedule_event( $timestamp, $schedule, $new_hook, $args );
                     } else {
+                        // audit-ok: one-time rename re-registers each already-queued event once, no new events
                         wp_schedule_single_event( $timestamp, $new_hook, $args );
                     }
                 }

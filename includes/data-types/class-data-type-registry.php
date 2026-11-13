@@ -60,7 +60,7 @@ class MMI_Data_Type_Registry {
          * third-party MMI plugin) hook here to register additional handlers,
          * including dynamic per-CPT/per-taxonomy instances.
          *
-         * @param void No args — implementations call MMI_Data_Type_Registry::register() directly.
+         * No args: implementations call MMI_Data_Type_Registry::register() directly.
          */
         do_action( 'mmi_pipeline_register_data_type_handlers' );
     }
@@ -77,6 +77,7 @@ class MMI_Data_Type_Registry {
         if ( class_exists( 'MMI_WP_Post_Type_Data_Type' ) ) {
             $excluded_post_types = [ 'product', 'shop_coupon', 'shop_order', 'product_variation', 'attachment' ];
             foreach ( get_post_types( [ 'public' => true, 'show_ui' => true ], 'objects' ) as $pt ) {
+                // audit-ok: haystack is the 5 fixed excluded post type names
                 if ( in_array( $pt->name, $excluded_post_types, true ) ) {
                     continue;
                 }

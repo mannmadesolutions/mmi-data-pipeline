@@ -230,6 +230,7 @@ class MMI_Pipeline_Field_Locks {
             <p>
                 <label for="<?php echo esc_attr( $id ); ?>">
                     <input type="checkbox" id="<?php echo esc_attr( $id ); ?>" name="mmi_field_locks[]"
+                           <?php // audit-ok: haystack is one product's locked field keys, a few dozen at most ?>
                            value="<?php echo esc_attr( $key ); ?>" <?php checked( in_array( $key, $locked, true ) ); ?>>
                     <?php echo esc_html( $label ); ?>
                 </label>

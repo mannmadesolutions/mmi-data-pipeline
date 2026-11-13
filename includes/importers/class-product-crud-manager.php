@@ -735,6 +735,7 @@ class Product_CRUD_Manager {
                     // The picture that lost stays with the product, in its gallery.
                     if ( $res === 'written' && $old ) {
                         $ids = self::gallery_ids( $canonical_id );
+                        // audit-ok: haystack is one product's gallery image IDs, a handful
                         if ( ! in_array( $old, $ids, true ) ) {
                             $ids[] = $old;
                             $ids   = array_values( array_diff( $ids, [ $thumb_id ] ) );

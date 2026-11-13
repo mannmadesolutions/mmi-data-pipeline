@@ -616,6 +616,7 @@ class Descriptions {
 			if ( $w !== mb_strtolower( $w ) && ! $sentence_hyphen && ! preg_match( '/\/\p{Ll}/u', $w ) ) {
 				continue; // vendor casing kept ("EQ", "SoundID")
 			}
+			// audit-ok: haystack is the 11 fixed minor words in $minor
 			if ( $i > 0 && in_array( $w, $minor, true ) ) {
 				continue;
 			}

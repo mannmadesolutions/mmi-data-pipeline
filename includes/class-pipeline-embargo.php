@@ -255,6 +255,7 @@ class Embargo {
 		$ids = $wpdb->get_col( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status IN ('publish','draft','pending','private') AND post_title LIKE '%embargo%'" );
 		foreach ( self::feed_names() as $meta => $names ) {
 			foreach ( array_keys( $names ) as $key ) {
+				// audit-ok: hourly cron, one prepared query per feed item named "embargo" (rare, a handful)
 				$ids = array_merge( $ids, $wpdb->get_col( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %s", $meta, (string) $key ) ) );
 			}
 		}

@@ -482,6 +482,7 @@ class VendorCatalog {
 			$state = Module::state( self::STATE . '_hosts' );
 			foreach ( $gone as $host => $hashes ) {
 				foreach ( array_chunk( $hashes, 500 ) as $chunk ) {
+					// audit-ok: already batched: one prepared DELETE per 500 hashes per host
 					$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table() . ' WHERE host = %s AND url_hash IN (' . implode( ',', array_fill( 0, count( $chunk ), '%s' ) ) . ')', $host, ...$chunk ) );
 				}
 				if ( isset( $state[ $host ] ) ) {
@@ -720,6 +721,7 @@ class VendorCatalog {
 			$locs = array_map( static fn( $u ) => html_entity_decode( $u, ENT_QUOTES | ENT_XML1, 'UTF-8' ), $m[1] );
 			if ( stripos( $xml, '<sitemapindex' ) !== false ) {
 				foreach ( $locs as $u ) {
+					// audit-ok: haystack capped at SITEMAPS (40) sitemap files, checked first
 					if ( count( $cur['maps'] ) < self::SITEMAPS && BrandSites::host( $u ) === BrandSites::host( $host ) && ! in_array( $u, $cur['maps'], true ) ) {
 						$cur['maps'][] = $u;
 					}
@@ -777,6 +779,7 @@ class VendorCatalog {
 					continue;
 				}
 				if ( $sub ) {
+					// audit-ok: haystack capped at SITEMAPS (40) sitemap files, checked first
 					if ( count( $maps ) < self::SITEMAPS && ! in_array( $u, $maps, true ) ) {
 						$maps[] = $u;
 					}

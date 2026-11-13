@@ -241,6 +241,7 @@ class Coverage {
 		}
 		$have = [];
 		$in   = "'" . implode( "','", array_map( 'esc_sql', array_keys( $hashes ) ) ) . "'";
+		// audit-ok: $in is quoted, esc_sql'd md5() hex keys
 		foreach ( $wpdb->get_results( 'SELECT url_hash, content_hash, offers FROM ' . self::table() . " WHERE url_hash IN ({$in})", ARRAY_A ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			$have[ $r['url_hash'] ] = $r;
 		}

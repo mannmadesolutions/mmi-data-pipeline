@@ -343,6 +343,7 @@ function mmi_canonical_candidates_link_older( int $live_id, array $old_ids ): ar
     $link    = [];
     $skipped = [];
     foreach ( array_unique( array_map( 'intval', $old_ids ) ) as $old_id ) {
+        // audit-ok: haystack is one older-listings group's product IDs, a handful
         if ( ! in_array( $old_id, $known, true ) ) {
             $skipped[ $old_id ] = 'No longer paired with this listing.';
             continue;
@@ -392,6 +393,7 @@ function mmi_canonical_candidates_link_older( int $live_id, array $old_ids ): ar
 function mmi_canonical_candidates_dismiss_older( int $live_id, array $old_ids ): void {
     $dismissed = (array) MMI_DB::get_setting( 'mmi_canonical_candidates_dismissed', [] );
     foreach ( array_map( 'intval', $old_ids ) as $old_id ) {
+        // audit-ok: loop is one listing's few old IDs, so the dismissed list is scanned a handful of times
         if ( $old_id && $old_id !== $live_id && ! in_array( "older-{$live_id}-{$old_id}", $dismissed, true ) ) {
             $dismissed[] = "older-{$live_id}-{$old_id}";
         }

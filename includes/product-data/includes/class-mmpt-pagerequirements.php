@@ -111,6 +111,7 @@ class PageRequirements {
 		$out  = self::parse( $lines );
 		$text = implode( "\n", $lines );
 		foreach ( self::OS_RE as $os => $re ) {
+			// audit-ok: haystack is the found OS names, at most the few OS_RE keys
 			if ( ! in_array( $os, $out['platforms'], true ) && preg_match( $re, $text ) ) {
 				$out['platforms'][] = $os;
 			}

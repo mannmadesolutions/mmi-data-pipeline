@@ -1818,6 +1818,7 @@ class VendorMaps {
 		$stamp    = self::stamp( (string) $pages[0]['url'] );
 		$hashes   = "'" . implode( "','", array_map( static fn( $p ) => md5( $p['url'] ), $pages ) ) . "'";
 		$readings = [];
+		// audit-ok: $hashes is quoted md5() hex of page URLs
 		foreach ( $wpdb->get_col( 'SELECT offers FROM ' . Coverage::table() . " WHERE url_hash IN ({$hashes})" ) as $json ) { // phpcs:ignore WordPress.DB.PreparedSQL -- md5 hex only
 			$o = json_decode( (string) $json, true );
 			if ( is_array( $o ) && (string) ( $o['m'] ?? '' ) === $stamp ) {
@@ -3092,6 +3093,7 @@ class VendorMaps {
 		}
 		$out = [];
 		foreach ( self::plan_fill( $pid, $url, $html, $fetch ) as $f => $p ) {
+			// audit-ok: loop is one product's fill plan; haystack is the few parts asked for
 			if ( $only !== null && ! in_array( $f, $only, true ) ) {
 				continue;
 			}
