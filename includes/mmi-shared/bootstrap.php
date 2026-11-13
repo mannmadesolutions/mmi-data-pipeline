@@ -217,7 +217,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.50.1';
+$mmi_shared_lib_this_copy_version = '1.50.2';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -369,6 +369,26 @@ if ( ! function_exists( 'mmi_shared_lib_autoload' ) ) {
 		if ( is_file( $path ) ) {
 			require_once $path;
 		}
+	}
+}
+
+if ( ! function_exists( 'mmi_time_budget' ) ) {
+	/**
+	 * Seconds a chunked background step may spend before it stops starting
+	 * new work: $want anywhere, but under this server's WP-Cron runner
+	 * (scripts/wp-cron.php, killed by `timeout 45`) no more than what is left
+	 * before the runner's own 35 s deadline (MMI_CRON_DEADLINE), less 3 s
+	 * to save state. A step the runner starts late does less and re-queues
+	 * the rest instead of being killed mid-write. Never below 1: the step
+	 * still makes progress, and an item already started is never cut short.
+	 *
+	 * @param int $want The step's own budget in seconds.
+	 */
+	function mmi_time_budget( int $want ): int {
+		if ( defined( 'MMI_CRON_DEADLINE' ) ) {
+			return max( 1, min( $want, (int) floor( (float) MMI_CRON_DEADLINE - microtime( true ) - 3 ) ) );
+		}
+		return $want;
 	}
 }
 

@@ -42,7 +42,7 @@ class Applier {
 	 * killed mid-write, and the chain stopped (25 titles a day). A batch now
 	 * stops starting titles after this budget; the rest wait for the next one.
 	 */
-	const TIME_BUDGET = 40;
+	const TIME_BUDGET = 15; // seconds of writing per batch; was 40 until 2026-11-13, which overran a cron run that started it late (mmi_time_budget())
 
 	public static function register_hooks(): void {
 		add_action( self::HOOK, [ __CLASS__, 'run_batch' ] );
@@ -271,6 +271,11 @@ class Applier {
 		if ( ! $s['enabled'] ) {
 			return [ 'skipped' => 'disabled' ];
 		}
+		// Bulk writing waits out a load spike instead of competing with visitors.
+		if ( class_exists( '\MMI_Resource_Guard' ) && ! \MMI_Resource_Guard::can_proceed( [ 'name' => 'Title writer' ] ) ) {
+			self::dispatch( 60, true );
+			return [ 'skipped' => 'load' ];
+		}
 		if ( ! add_option( self::LOCK, time(), '', 'no' ) ) {
 			if ( time() - (int) get_option( self::LOCK ) < self::LOCK_TTL ) {
 				return [ 'skipped' => 'locked' ];
@@ -291,10 +296,11 @@ class Applier {
 			self::dispatch( self::GAP, true );
 			Store::set_state( Store::APPLY_STATE, [ 'status' => 'running', 'started_at' => current_time( 'mysql' ) ] );
 
-			$done = [ 'applied' => 0, 'stale' => 0, 'error' => 0 ];
-			$t0   = microtime( true );
+			$done   = [ 'applied' => 0, 'stale' => 0, 'error' => 0 ];
+			$t0     = microtime( true );
+			$budget = function_exists( 'mmi_time_budget' ) ? \mmi_time_budget( self::TIME_BUDGET ) : self::TIME_BUDGET;
 			foreach ( $ids as $id ) {
-				if ( microtime( true ) - $t0 > self::TIME_BUDGET ) {
+				if ( microtime( true ) - $t0 > $budget ) {
 					break; // the rest go in the next batch
 				}
 				$r = self::apply_one( $id, 'queue' );

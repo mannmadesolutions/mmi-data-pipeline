@@ -85,7 +85,7 @@ class Enrichment {
 	const DAILY_HOOK   = 'mmpt_daily_enrich';
 	const BATCH        = 20;
 	const GAP_S        = 120;
-	const BATCH_S      = 25; // stop starting rows after this: the cron runner kills a request at ~45 s, and a killed batch never queued the next one (2026-10-08: 13 descriptions, then nothing)
+	const BATCH_S      = 12; // 25 until 2026-11-13 (max seen 31 s); mmi_time_budget() trims it further when the cron runner starts a batch late. stop starting rows after this: the cron runner kills a request at ~45 s, and a killed batch never queued the next one (2026-10-08: 13 descriptions, then nothing)
 	const MAX_GALLERY  = 4;
 	const MAX_CANDIDATES = 12; // pictures offered to the picker
 
@@ -725,13 +725,18 @@ class Enrichment {
 		if ( ! $s['enabled'] ) {
 			return [ 'skipped' => 'disabled' ];
 		}
+		// Bulk writing waits out a load spike instead of competing with visitors.
+		if ( class_exists( '\MMI_Resource_Guard' ) && ! \MMI_Resource_Guard::can_proceed( [ 'name' => 'Enrichment writer' ] ) ) {
+			self::dispatch( 60, true );
+			return [ 'skipped' => 'load' ];
+		}
 		$state = Module::state( self::STATE );
 		$today = current_time( 'Y-m-d' );
 		$done  = ( $state['day'] ?? '' ) === $today ? (array) ( $state['today'] ?? [] ) : [];
 		$out   = [];
-		$stop           = time() + self::BATCH_S;
+		$stop           = time() + ( function_exists( 'mmi_time_budget' ) ? \mmi_time_budget( self::BATCH_S ) : self::BATCH_S );
 		$timed          = false;
-		self::$deadline = $stop + 10; // a picture row stops between images, so one slow row can't outlive the ~45 s cron limit (2026-10-08 06:44: a 5-picture row was killed and the chain died)
+		self::$deadline = $stop + 5; // 10 until 2026-11-13; a picture row stops between images, so one slow row can't outlive the ~45 s cron limit (2026-10-08 06:44: a 5-picture row was killed and the chain died)
 		foreach ( self::KINDS as $kind ) {
 			foreach ( self::next( $kind, self::BATCH ) as $id ) {
 				if ( time() >= $stop ) {

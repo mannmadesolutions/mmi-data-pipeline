@@ -25,7 +25,7 @@ class MMI_Pipeline_Cron {
     const PROFILE_BATCH_ITEM_LIMIT = 300;
 
     /** Wall-clock cap per batch (seconds) — see run_profile_import_batch(). */
-    const PROFILE_BATCH_TIME_BUDGET = 25.0;
+    const PROFILE_BATCH_TIME_BUDGET = 15.0; // 25 until 2026-11-13; the scheduled batch takes it through profile_batch_time_budget()
 
     /**
      * Memory cap per batch, in bytes (200 MB). The cron runner's PHP process is
@@ -2024,6 +2024,14 @@ class MMI_Pipeline_Cron {
         // instead of racing a second batch chain against this one's state record.
         MMI_DB::set_job_state( $lock_key, current_time( 'mysql' ), self::PROFILE_BATCH_LOCK_TTL );
 
+        // A load spike defers this batch a minute instead of competing with
+        // visitors; the lock just renewed holds the run meanwhile.
+        if ( class_exists( 'MMI_Resource_Guard' ) && ! MMI_Resource_Guard::can_proceed( [ 'name' => "Profile import [{$profile_id}]" ] ) ) {
+            as_schedule_single_action( time() + MINUTE_IN_SECONDS, 'mmi_pipeline_profile_import_batch', [ $profile_id, $supplier, $offset ], 'mmi-pipeline-profile-import', false, MMI_PIPELINE_AS_PRIORITY_BATCH );
+            return;
+        }
+        $time_budget = function_exists( 'mmi_time_budget' ) ? (float) mmi_time_budget( (int) self::PROFILE_BATCH_TIME_BUDGET ) : self::PROFILE_BATCH_TIME_BUDGET;
+
         try {
             // Non-Product profiles are delegated to MMI_Dynamic_Record_Importer,
             // the generic sibling importer — see that class's own docblock and
@@ -2039,7 +2047,7 @@ class MMI_Pipeline_Cron {
                 $result   = $importer->run(
                     $offset,
                     self::PROFILE_BATCH_ITEM_LIMIT,
-                    self::PROFILE_BATCH_TIME_BUDGET,
+                    $time_budget,
                     self::PROFILE_BATCH_MEMORY_BUDGET
                 );
                 // MMI_Dynamic_Record_Importer's stat names (created/errors) differ
@@ -2061,7 +2069,7 @@ class MMI_Pipeline_Cron {
                 $result   = $importer->run(
                     $offset,
                     self::PROFILE_BATCH_ITEM_LIMIT,
-                    self::PROFILE_BATCH_TIME_BUDGET,
+                    $time_budget,
                     self::PROFILE_BATCH_MEMORY_BUDGET
                 );
                 $stats = $result['stats'] ?? [];
