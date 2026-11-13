@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { groupIssues, groupMode, type Issue } from "../../src/workbench/issuesApi";
 
-const bundle: Issue = { key: "bundle_not_in_category", label: "Not in Software Bundles", help: "", tone: "warning", fixes: [{ kind: "action", action: "add_cat:11", label: "Add to Software Bundles", primary: true }, { kind: "cats", label: "Change the category…" }, { kind: "title", label: "Not a bundle: edit the title" }] };
+const bundle: Issue = { key: "bundle_not_in_category", label: "Not in Software Bundles", help: "", tone: "warning", fixes: [{ kind: "action", action: "move_cat:11:3", label: "Move to Software Bundles", primary: true }, { kind: "cats", label: "Change the category…" }, { kind: "title", label: "Not a bundle: edit the title" }] };
 const noBrand: Issue = { key: "no_brand", label: "No brand", help: "", tone: "error", fixes: [{ kind: "brand", label: "Set the brand…" }] };
 const long: Issue = { key: "over_length", label: "Too long", help: "", tone: "warning", fixes: [{ kind: "title", label: "Edit the title" }] };
 

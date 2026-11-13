@@ -2,7 +2,7 @@
  * Alerts fixed alike (2026-11-12): above a list, one chip per alert on the page with how many products carry it.
  * Opening one offers that alert's fixes for all of them at once:
  *
- * - a one-click fix (Add to Software Bundles, mark it virtual) runs for each product, with its progress;
+ * - a one-click fix (Move to Software Bundles, mark it virtual) runs for each product, with its progress;
  * - a category or brand fix opens the list's bulk picker with those products ticked;
  * - a fix made product by product (edit the title, pick a description) shows only those rows, to work through
  *   with each row's own alert.
@@ -16,7 +16,7 @@ import { Dashicon } from "./ui";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** A fix's button for a whole group: "Add to Software Bundles (all 7)", "Change the category of all 7…". */
+/** A fix's button for a whole group: "Move to Software Bundles (all 7)", "Change the category of all 7…". */
 export function groupFixLabel(f: Fix, n: number): string {
   return groupMode(f) === "each" ? `${f.label} (all ${n})` : `${f.label.replace(/…$/, "")} of all ${n}…`;
 }
@@ -29,7 +29,7 @@ export function IssueGroups({ groups, open, onOpen, only, onOnly, busy, progress
   only: string | null;
   onOnly: (key: string | null) => void;
   busy: boolean;
-  /** "Add to Software Bundles: 3 of 7…" while a fix runs. */
+  /** "Move to Software Bundles: 3 of 7…" while a fix runs. */
   progress: string;
   onFix: (group: IssueGroup, fix: Fix) => void;
 }) {

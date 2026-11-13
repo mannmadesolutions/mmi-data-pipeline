@@ -111,7 +111,7 @@ export class TitleRulesMock {
     };
     const flags: Record<string, { label: string; help: string; fixes: { kind: string; label: string; action?: string; primary?: boolean }[] }> = {
       over_length: { label: "Too long", help: "Longer than search results show.", fixes: [{ kind: "title", label: "Edit the title" }] },
-      bundle_not_in_category: { label: "Not in Software Bundles", help: "XChange files it as a bundle, but our category doesn’t say so.", fixes: [{ kind: "action", action: "add_cat:11", label: "Add to Software Bundles", primary: true }, { kind: "cats", label: "Change the category…" }, { kind: "title", label: "Not a bundle: edit the title" }] },
+      bundle_not_in_category: { label: "Not in Software Bundles", help: "XChange files it as a bundle, but our category doesn’t say so.", fixes: [{ kind: "action", action: "move_cat:11:3", label: "Move to Software Bundles", primary: true }, { kind: "cats", label: "Change the category…" }, { kind: "title", label: "Not a bundle: edit the title" }] },
     };
     return [
       ...r.missing.map((k) => ({ key: k, label: miss[k]![0], help: miss[k]![1], tone: "error", fixes: [{ kind: miss[k]![2], label: miss[k]![3], primary: true }] })),
@@ -306,7 +306,7 @@ export class TitleRulesMock {
           return this.json(route, { id, message, row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [], others });
         }
       }
-      if (row && kind === "action") { row.cats = [...row.cats, { id: 11, name: "Bundles" }]; row.flags = row.flags.filter((f) => f !== "bundle_not_in_category"); message = "Added to Software Bundles."; }
+      if (row && kind === "action") { row.cats = [{ id: 11, name: "Bundles" }]; row.flags = row.flags.filter((f) => f !== "bundle_not_in_category"); message = "Moved to Software Bundles, out of Virtual Processor Plug-Ins."; }
       if (row && kind === "sku") { row.sku = String(body.sku); row.missing = row.missing.filter((k) => k !== "sku"); message = `SKU set to ${String(body.sku)}.`; }
       if (kind === "image") message = "Featured picture set.";
       return this.json(route, { id, message, row: row ? this.shaped(row) : null, removed: false, missing: row?.missing ?? [], others: { updated: 2, locked: 0, queued: false } });

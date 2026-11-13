@@ -93,14 +93,14 @@ test("alerts alike are fixed all at once from the strip above the list", async (
   await bundles.click();
   const panel = strip.locator('[data-group-panel="bundle_not_in_category"]');
   await expect(panel).toContainText("3 products on this page");
-  const add = panel.locator('[data-fix="add_cat:11"]');
-  await expect(add).toHaveText("Add to Software Bundles (all 3)");
+  const add = panel.locator('[data-fix="move_cat:11:3"]');
+  await expect(add).toHaveText("Move to Software Bundles (all 3)");
   await add.click();
-  await expect(add).toHaveText("Click again: add to Software Bundles for all 3");
+  await expect(add).toHaveText("Click again: move to Software Bundles for all 3");
   expect(api.callsTo("products/2005/fix")).toHaveLength(0);
   await add.click();
-  await expect(page.locator("#mmi-wb-pr-notice")).toHaveText("Add to Software Bundles: done for 3 of 3 products; their titles were recomposed.");
-  for (const id of [2005, 2008, 2014]) expect(api.callsTo(`products/${id}/fix`).at(-1)!.body).toEqual({ kind: "action", action: "add_cat:11" });
+  await expect(page.locator("#mmi-wb-pr-notice")).toHaveText("Move to Software Bundles: done for 3 of 3 products; their titles were recomposed.");
+  for (const id of [2005, 2008, 2014]) expect(api.callsTo(`products/${id}/fix`).at(-1)!.body).toEqual({ kind: "action", action: "move_cat:11:3" });
   await expect(bundles).toHaveCount(0);
   // A fix done product by product: show only those rows, then every row again.
   await strip.locator('[data-group="over_length"]').click();
@@ -145,9 +145,9 @@ test("a bundle not in the bundles category is filed with one click", async ({ pa
   const { api } = await open(page);
   await row(page, 2014).locator(".mmi-wb-issue", { hasText: "Not in Software Bundles" }).click();
   await expect(panel(page)).toContainText("XChange files it as a bundle, but our category doesn’t say so.");
-  await panel(page).getByRole("button", { name: "Add to Software Bundles" }).click();
-  await expect(page.locator(".mmi-wb-pr-row-notice")).toHaveText("Added to Software Bundles.");
-  expect(api.callsTo("products/2014/fix")[0]!.body).toEqual({ kind: "action", action: "add_cat:11" });
+  await panel(page).getByRole("button", { name: "Move to Software Bundles" }).click();
+  await expect(page.locator(".mmi-wb-pr-row-notice")).toHaveText("Moved to Software Bundles, out of Virtual Processor Plug-Ins.");
+  expect(api.callsTo("products/2014/fix")[0]!.body).toEqual({ kind: "action", action: "move_cat:11:3" });
   await expect(row(page, 2014).locator(".mmi-wb-pr-termcell").nth(1)).toContainText("Bundles");
 });
 
