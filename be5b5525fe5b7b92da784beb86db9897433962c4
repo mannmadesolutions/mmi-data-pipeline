@@ -1,2 +1,7 @@
-lint pass ship 4 files
-site-rules pass ship 4 files
+lint pass 305 files
+site-rules pass dirty:1
+run-all pass 8 scenarios dirty:1
+ui-check pass 132 dirty:1
+ui-e2e pass 238 dirty:1
+customer-site pass 26 ok on be5b552 as installed dirty:1
+page pass 8 features, 12 screenshots; 10 warnings dirty:1
