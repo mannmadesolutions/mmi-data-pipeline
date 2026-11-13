@@ -1,3 +1,8 @@
-lint pass ship 13 files
+lint pass 308 files
 audit pass ship 13 files
-site-rules pass ship 13 files
+site-rules pass
+run-all pass 8 scenarios
+ui-check pass 134
+ui-e2e pass 246
+customer-site pass 26 ok on 3d98eb5 as installed
+page pass 9 features, 12 screenshots; 12 warnings
