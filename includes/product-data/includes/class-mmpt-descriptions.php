@@ -108,7 +108,7 @@ class Descriptions {
 	const DAILY_HOOK = 'mmpt_daily_describe';
 
 	public static function register_hooks(): void {
-		add_action( self::DAILY_HOOK, [ __CLASS__, 'refresh_all' ] );
+		add_action( self::DAILY_HOOK, [ __CLASS__, 'refresh_detached' ] );
 	}
 
 	public static function schedule_daily(): void {
@@ -116,6 +116,16 @@ class Descriptions {
 			// 04:40 site time — before the 04:50 title composition reads these rows.
 			$ts = strtotime( 'tomorrow 04:40', current_time( 'timestamp' ) ) - (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS );
 			wp_schedule_event( $ts, 'daily', self::DAILY_HOOK );
+		}
+	}
+
+	/**
+	 * The daily hook: `wp mmpt runner describe` on its own, out of WP-Cron's 45 s run, where the whole refresh took
+	 * 15–40 s (BACKGROUND_LOAD_SCOPE.md §4.2). A host that can't start processes refreshes here, as before.
+	 */
+	public static function refresh_detached(): void {
+		if ( ! Background::can_spawn() || ! Scraper::spawn( 'mmpt runner describe', 'describe.log' ) ) {
+			self::refresh_all();
 		}
 	}
 

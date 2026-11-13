@@ -31,6 +31,31 @@ final class RunnerCli {
 	}
 
 	/**
+	 * Recompose every product's title proposal (Generator::run()). Started in the background by the queued
+	 * mmpt_generate job; safe to run by hand: a second run exits at once (the generator's lock).
+	 */
+	public function generate(): void {
+		\WP_CLI::log( wp_json_encode( Generator::run() ) );
+	}
+
+	/**
+	 * Refresh every digital product's description row (Descriptions::refresh_all()). Started daily at 04:40.
+	 */
+	public function describe(): void {
+		\WP_CLI::log( wp_json_encode( Descriptions::refresh_all() ) );
+	}
+
+	/**
+	 * The daily enrichment run (Enrichment::daily()): proposals, the writer, first pictures. Started daily at 05:10.
+	 *
+	 * @subcommand enrich-daily
+	 */
+	public function enrich_daily(): void {
+		Enrichment::daily();
+		\WP_CLI::log( 'done' );
+	}
+
+	/**
 	 * Look for a brand's product pages on its maker site. Matches become proposed URLs waiting for a person.
 	 *
 	 * ## OPTIONS

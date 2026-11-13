@@ -127,7 +127,7 @@ class Enrichment {
 
 	public static function register_hooks(): void {
 		add_action( self::HOOK, [ __CLASS__, 'run_batch' ] );
-		add_action( self::DAILY_HOOK, [ __CLASS__, 'daily' ] );
+		add_action( self::DAILY_HOOK, [ __CLASS__, 'daily_detached' ] );
 		add_filter( 'mmi_seo_product_data_coverage', [ __CLASS__, 'seo_coverage' ] );
 		add_filter( 'mmi_seo_product_data_ready_ids', [ __CLASS__, 'seo_ready_ids' ] );
 	}
@@ -177,6 +177,17 @@ class Enrichment {
 			// 05:10 site time — after descriptions (04:40) and titles (04:50).
 			$ts = strtotime( 'tomorrow 05:10', current_time( 'timestamp' ) ) - (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS );
 			wp_schedule_event( $ts, 'daily', self::DAILY_HOOK );
+		}
+	}
+
+	/**
+	 * The daily hook: `wp mmpt runner enrich-daily` on its own, out of WP-Cron's 45 s run (a whole-catalogue
+	 * generate, a large join and a kick; BACKGROUND_LOAD_SCOPE.md §4.2). A host that can't start processes runs it
+	 * here, as before.
+	 */
+	public static function daily_detached(): void {
+		if ( ! Background::can_spawn() || ! Scraper::spawn( 'mmpt runner enrich-daily', 'enrich-daily.log' ) ) {
+			self::daily();
 		}
 	}
 

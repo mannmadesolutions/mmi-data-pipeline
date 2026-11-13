@@ -58,7 +58,7 @@ class Generator {
 	const LATE_QUEUE = 'mmpt_recompose_late';
 
 	public static function register_hooks(): void {
-		add_action( self::HOOK, [ __CLASS__, 'run' ] );
+		add_action( self::HOOK, [ __CLASS__, 'run_detached' ] );
 		add_action( self::DAILY_HOOK, [ __CLASS__, 'dispatch' ] );
 		add_action( 'set_object_terms', [ __CLASS__, 'on_terms_set' ], 10, 6 );
 		// wp_remove_object_terms() (a rule's "remove brand/category") fires this, not set_object_terms (2026-11-12).
@@ -298,6 +298,29 @@ class Generator {
 		}
 		self::run();
 		return true;
+	}
+
+	/**
+	 * The queued job (HOOK): starts `wp mmpt runner generate` on its own, so a whole-catalogue run (19–22 s in
+	 * 2026-11, growing with the catalogue) never runs inside WP-Cron, whose run this server stops at 45 s
+	 * (BACKGROUND_LOAD_SCOPE.md §4.3). While a run holds the lock, the job waits a minute and asks again, so a
+	 * change made during a run still gets its own run. A host that can't start processes runs it here, as before.
+	 */
+	public static function run_detached(): void {
+		if ( ! Background::can_spawn() ) {
+			self::run();
+			return;
+		}
+		$held = (int) get_option( self::LOCK );
+		if ( $held && time() - $held < self::LOCK_TTL ) {
+			if ( function_exists( 'as_schedule_single_action' ) && ! as_has_scheduled_action( self::HOOK, [], self::GROUP ) ) {
+				as_schedule_single_action( time() + MINUTE_IN_SECONDS, self::HOOK, [], self::GROUP, false, self::AS_PRIORITY );
+			}
+			return;
+		}
+		if ( ! Scraper::spawn( 'mmpt runner generate', 'generate.log' ) ) {
+			self::run();
+		}
 	}
 
 	/** @param string|null $dropped_rule the rule just switched off (see $dropped_rule) */

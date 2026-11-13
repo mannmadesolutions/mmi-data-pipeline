@@ -138,9 +138,12 @@ final class Background {
 				$args[] = $w;
 			}
 		}
-		if ( function_exists( 'set_time_limit' ) ) {
+		// Under this server's WP-Cron runner (MMI_CRON_DEADLINE) the runner's own limit stands: raising it to 300 s
+		// would outlive the runner's `timeout 45` and its deadline; the step's budget shrinks to fit instead.
+		if ( function_exists( 'set_time_limit' ) && ! defined( 'MMI_CRON_DEADLINE' ) ) {
 			@set_time_limit( 5 * MINUTE_IN_SECONDS ); // phpcs:ignore WordPress.PHP.NoSilencedErrors -- a host may refuse; the step is short anyway
 		}
+		$budget = function_exists( 'mmi_time_budget' ) ? \mmi_time_budget( self::STEP_S ) : self::STEP_S;
 		self::$stepping = true;
 		$res            = [];
 		try {
@@ -154,14 +157,14 @@ final class Background {
 					$res = ProductPreview::scrape( (string) ( $args[2] ?? '' ), (int) ( $args[3] ?? 0 ), false ); // no server browser here
 					break;
 				case 'maps run':
-					$res = VendorMaps::run( self::STEP_S );
+					$res = VendorMaps::run( $budget );
 					break;
 				case 'images run':
-					$res = Pictures::run( 0, self::STEP_S );
+					$res = Pictures::run( 0, $budget );
 					break;
 				case 'runner scrape':
 				case 'scrape-run':
-					$res = Scraper::run( self::STEP_S );
+					$res = Scraper::run( $budget );
 					break;
 				case 'runner heartbeat':
 					$res = self::heartbeat( true );

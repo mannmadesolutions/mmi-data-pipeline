@@ -991,7 +991,7 @@ class MMI_Pipeline_Catalog_Updater
     {
         global $wpdb;
 
-        $deadline = microtime( true ) + self::CANONICAL_TIME_BUDGET;
+        $deadline = microtime( true ) + ( function_exists( 'mmi_time_budget' ) ? mmi_time_budget( (int) self::CANONICAL_TIME_BUDGET ) : self::CANONICAL_TIME_BUDGET );
 
         $targets = self::suppressed_duplicate_ids();
         if ( $only_ids !== null ) {

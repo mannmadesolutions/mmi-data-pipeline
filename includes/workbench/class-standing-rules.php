@@ -425,7 +425,8 @@ final class Standing_Rules {
     public static function apply_all(): array {
         wp_raise_memory_limit( 'wc' );
 
-        $deadline = microtime( true ) + self::TIME_BUDGET;
+        // The catalog run's override_stock phase: under the WP-Cron runner, only what the run has left.
+        $deadline = microtime( true ) + ( function_exists( 'mmi_time_budget' ) ? \mmi_time_budget( (int) self::TIME_BUDGET ) : self::TIME_BUDGET );
         $rules    = self::all();
         $claimed  = [];
         $live     = [];
