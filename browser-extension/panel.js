@@ -144,7 +144,7 @@
 		showAll: 'Show all %n',
 		seeIt: 'See it',
 		hideIt: 'Hide it',
-		stays: 'Stays as it is',
+		stays: `Current %l on ${ STORE_HOST }`,
 		nowChars: 'Now · %n characters',
 		afterChars: 'After the commit · %n characters',
 		nowCount: 'Now · %n',
@@ -157,6 +157,7 @@
 		previewOn: `Preview on ${ STORE_HOST }`,
 		openOn: `Open on ${ STORE_HOST }`,
 		openPage: 'Open its page',
+		linkedPage: 'Linked vendor URL',
 		notIncluded: 'Not in this commit: %p. They have no pick of %l’s own, so they can’t go to its products. Click the part and save a pick for %l.',
 		noneToCommit: 'None of the ticked parts has a pick of %l’s own, so nothing can go to its products. Click a part and save a pick for %l.',
 		commitProduct: 'Commit to this product',
@@ -209,7 +210,7 @@
 		linksWaiting: ' %w more are being compared: look again in a minute.',
 		linksNone: 'Nothing doubtful on this site.',
 		pageSays: 'Its page: “%t”',
-		pageIs: 'Its page says “%t”.',
+		pageIs: 'Linked vendor page title - “%t”.',
 		save: 'Save',
 		saving: 'Saving…',
 		goesLive: 'Committing also puts this pick in use on %l’s pages from now on, on products that don’t change today too.',
@@ -380,6 +381,7 @@
 		.col h4 { margin: 0 0 4px; color: #50575e; font-size: 12px; font-weight: 600; }
 		.col .tx { max-height: 260px; overflow-y: auto; overflow-wrap: anywhere; }
 		.col .tx mark { background: #fff2b8; color: inherit; }
+		.col .tx.cl { display: -webkit-box; max-height: none; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; }
 		.col ul { max-height: 260px; margin: 0; padding: 0 0 0 16px; overflow-y: auto; overflow-wrap: anywhere; }
 		.col .ph { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow-y: auto; }
 		.col figure { position: relative; width: 84px; margin: 0; }
@@ -968,7 +970,7 @@
 		if ( got && got.error ) {
 			box.append( notice( 'error', got.error ) );
 			if ( sameSite( x.url ) ) {
-				box.append( link( 'a', '', MESSAGES.openPage + ' ↗', x.url ) );
+				box.append( link( 'a', '', MESSAGES.linkedPage + ' ↗', x.url ) );
 			}
 		} else if ( got ) {
 			box.append( exampleBody( got.parts[ 0 ], got.product ) );
@@ -998,7 +1000,7 @@
 			links.append( link( 'a', '', MESSAGES.previewOn + ' ↗', preview ) );
 		}
 		if ( sameSite( product.page ) ) {
-			links.append( link( 'a', '', MESSAGES.openPage + ' ↗', product.page ) );
+			links.append( link( 'a', '', MESSAGES.linkedPage + ' ↗', product.page ) );
 		}
 		const view = ownLink( product.view || '' );
 		if ( view ) {
@@ -1008,7 +1010,7 @@
 		const same = ! p.will;
 		const cols = el( 'div', same ? '' : 'cols' );
 		if ( same ) {
-			cols.append( columnOf( MESSAGES.stays, p, p.now ) );
+			cols.append( columnOf( MESSAGES.stays.replace( '%l', String( p.label || '' ).toLowerCase() ), p, p.now, true ) ); // the product's current value, which a commit leaves: three lines are enough to recognise it
 		} else {
 			const counted = ( chars, count, n ) => ( p.kind === 'text' ? chars : count ).replace( '%n', Number( n ).toLocaleString() );
 			const nowN = p.kind === 'text' ? p.now_chars : p.kind === 'pictures' ? p.now_n : p.now.length;
@@ -1022,13 +1024,13 @@
 		return box;
 	}
 
-	function columnOf( title, p, v ) {
+	function columnOf( title, p, v, short ) {
 		const col = el( 'div', 'col' );
 		col.append( el( 'h4', '', title ) );
 		if ( ! v.length ) {
 			col.append( el( 'div', 'tx', MESSAGES.none ) );
 		} else if ( p.kind === 'text' ) {
-			const tx = el( 'div', 'tx' );
+			const tx = el( 'div', short ? 'tx cl' : 'tx' );
 			v.forEach( ( [ words, changed ] ) => tx.append( changed && p.will ? el( 'mark', '', words ) : document.createTextNode( words ), document.createTextNode( ' ' ) ) );
 			col.append( tx );
 		} else if ( p.kind === 'pictures' ) {
