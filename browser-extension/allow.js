@@ -10,7 +10,10 @@
 	const host = o.replace( /^https?:\/\//, '' ).replace( /\/\*$/, '' );
 	const said = document.getElementById( 'said' );
 	document.getElementById( 'yes' ).textContent = `Allow on ${ host }`;
-	document.getElementById( 'what' ).textContent = `Chrome asks next. Once allowed, the Product Data panel comes back on each page of ${ host } you open while it is open, until you close it. Nothing runs on the site unless the panel is open.`;
+	const library = new URLSearchParams( location.search ).get( 'w' ) === 'library';
+	document.getElementById( 'what' ).textContent = library
+		? `Chrome asks next. Once allowed, pages you open on ${ host } are kept in your store’s reference library as you read them. Nothing is opened or read on the site by itself.`
+		: `Chrome asks next. Once allowed, the Product Data panel comes back on each page of ${ host } you open while it is open, until you close it. Nothing runs on the site unless the panel is open.`;
 	document.getElementById( 'no' ).addEventListener( 'click', () => window.close() );
 	document.getElementById( 'yes' ).addEventListener( 'click', async () => {
 		if ( ! /^https?:\/\/[^/]+\/\*$/.test( o ) ) {
@@ -22,7 +25,7 @@
 			const s = await chrome.storage.local.get( 'declined' );
 			chrome.storage.local.set( { declined: ( s.declined || [] ).filter( ( x ) => x !== o ) } );
 		}
-		said.textContent = yes ? 'Allowed. This window closes now.' : 'Not allowed. The panel opens from the toolbar button on each page.';
+		said.textContent = yes ? 'Allowed. This window closes now.' : library ? 'Not allowed. Pages on this site aren’t kept.' : 'Not allowed. The panel opens from the toolbar button on each page.';
 		window.setTimeout( () => window.close(), yes ? 1200 : 2500 );
 	} );
 }() );

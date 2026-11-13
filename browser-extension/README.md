@@ -31,7 +31,15 @@ page moves the extension there.
 | `pictures.js` | The picture and video picker |
 | `mapper.js` | The live mapper's bridge (`map-select.js` and `live-mapper.js` come from the module's `assets/js`) |
 | `send.js` | Send this site, from the maker's own tab |
-| `allow.html`, `allow.js` | "Keep it open as you browse": Chrome's per-site permission |
+| `allow.html`, `allow.js` | "Keep it open as you browse", and a reference site's "Allow in Chrome": Chrome's per-site permission |
 
 The download adds the live mapper's two scripts and `build.json`. `scripts/check-no-site-rules.sh` checks this folder
 whole: no store's name, host or rules belong here.
+
+## Reference library
+
+The store lists reference sites (help and knowledge-base pages; `Library` on the server, the Chrome extension page's
+Reference library section). When a page on one of them finishes loading in a tab, and Chrome lets the extension onto that
+site, `sw.js` reads the page as drawn and sends it to `ext/library` (op `keep`), once per address per half hour. The
+button shows ✓ for a moment when it is kept. Only pages a person opens are kept: the extension never opens, follows or
+fetches a page by itself, so a site's robots rules and bot checks are left alone.

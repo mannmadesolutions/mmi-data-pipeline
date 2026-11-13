@@ -82,7 +82,7 @@ class ExtBridge {
 	const HEADER       = 'X-MMI-Ext-Token';
 	const MAX_TOKENS   = 5;                       // per person; the oldest goes first
 	const IDLE_DAYS    = 90;                      // a token unused this long stops working
-	const TOKEN_ROUTES = [ 'hello', 'page', 'snapshot', 'map', 'write', 'undo', 'pictures', 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape' ];
+	const TOKEN_ROUTES = [ 'hello', 'page', 'snapshot', 'map', 'write', 'undo', 'pictures', 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape', 'library' ];
 	const MAX_PRODUCTS = 20;                      // product rows in one panel
 	const HELD_WORDS   = 40;                      // words of the product's text on the Finding the page card
 	const SAME_TEXT    = 120;                     // opening characters of a description that must be on a page to count as its text
@@ -312,6 +312,7 @@ class ExtBridge {
 		register_rest_route( Rest::NS, '/ext/write', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, 'write' ] ] );
 		register_rest_route( Rest::NS, '/ext/undo', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, 'undo' ] ] );
 		register_rest_route( Rest::NS, '/ext/pictures', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, 'pictures' ] ] );
+		register_rest_route( Rest::NS, '/ext/library', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ Library::class, 'ext' ] ] ); // the reference library: pages kept as they are read
 		foreach ( [ 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape' ] as $route ) {
 			register_rest_route( Rest::NS, '/ext/' . $route, [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, $route ] ] );
 		}
@@ -3508,6 +3509,8 @@ class ExtBridge {
 					</div>
 				</div>
 			</div>
+
+			<?php Library::render_section(); ?>
 		</div>
 		<?php
 	}

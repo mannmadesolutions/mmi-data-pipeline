@@ -51,6 +51,12 @@
             "text": "Product content: suggested titles, descriptions and pictures from the maker's own pages, reviewed before they're written",
             "anchor": "file:includes/product-data/boot.php",
             "since": "2.65.6"
+        },
+        {
+            "id": "reference-library",
+            "text": "Reference library: help and knowledge-base pages you read in Chrome are kept with their text and dates, ready to search",
+            "anchor": "file:includes/product-data/includes/class-mmpt-library.php",
+            "since": "3.3.0"
         }
     ],
     "sections": [],

@@ -34,7 +34,7 @@ const HOOKED = [
 	Rest::class, UrlQueue::class, PageReview::class, MapProposals::class, Pictures::class, PictureChoices::class, FeedFill::class,
 	VendorMaps::class, BrandSites::class, SharedPages::class, UrlReview::class, PageList::class, WorkbenchColumns::class,
 	BrandNames::class, MapCheck::class, ReleaseRead::class, DescLinks::class, ExtBridge::class, Capture::class, Background::class, PageEvents::class,
-	Issues::class, WorkbenchCounts::class, Waiting::class,
+	Issues::class, WorkbenchCounts::class, Waiting::class, Library::class,
 ];
 
 /** The module's tables, hooks, review API and CLI. */
@@ -56,6 +56,7 @@ function boot(): void {
 		\WP_CLI::add_command( 'mmpt maps', MapsCli::class );
 		\WP_CLI::add_command( 'mmpt runner', RunnerCli::class );
 		\WP_CLI::add_command( 'mmpt extension', ExtensionCli::class );
+		\WP_CLI::add_command( 'mmpt library', LibraryCli::class );
 	}
 }
 

@@ -6,6 +6,8 @@
  * (admin.php?page=mmi-product-extension, ext-connect.js) the page asks whether the extension is installed and
  * connected, hands it a new token after Connect, and tells it when this browser was disconnected. On any admin page a
  * site's Send (brand-sites.js) asks it to open and send a site, or to stop, and hears how the send goes (sendsay).
+ * On the Chrome extension page the Reference library section (library.js) asks which reference sites Chrome lets
+ * the extension onto (libstate) and asks Chrome for one (liballow).
  * Only messages from this same page are taken.
  *
  * After the extension is installed, updated or reloaded, the service worker puts this script back into the page
@@ -65,6 +67,11 @@
 		} else if ( d.op === 'forget' ) {
 			await ask( { type: 'forget', id: d.id } );
 			announce();
+		} else if ( d.op === 'libstate' ) {
+			const r = await ask( { type: 'libstate' } );
+			post( { op: 'libstate', paired: !! ( r && r.paired ), allowed: ( r && r.allowed ) || {} } );
+		} else if ( d.op === 'liballow' ) {
+			ask( { type: 'liballow', site: String( d.site || '' ) } );
 		}
 	} );
 

@@ -30,6 +30,10 @@
  * connect.html. Either way Chrome is asked for that site, and the bridge is registered on its admin pages
  * (chrome.scripting.registerContentScripts). The key handed over on a store's page connects the extension to that
  * store; connecting on another store's page moves it there.
+ *
+ * The reference library (Library on the server): the store lists reference sites (help and knowledge-base pages). A page
+ * opened on one of them, where Chrome lets the extension onto that site, is sent as Chrome drew it and kept there
+ * (ext/library). Only pages a person opens: nothing is opened, followed or fetched on its own.
  */
 'use strict';
 
@@ -363,6 +367,8 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 		sendstop: () => stopSend( String( msg.host || '' ) ),
 		sendsay: () => relaySend( sender, msg ),
 		connect: async () => chrome.tabs.create( { url: await connectPage() } ).then( () => ( { ok: true } ) ),
+		libstate: () => libState( sender ),
+		liballow: () => libAllow( sender, String( msg.site || '' ) ),
 	}[ msg.type ];
 	if ( ! run ) {
 		return false;
@@ -450,12 +456,12 @@ async function allowed( url ) {
 }
 
 /** The panel's "Keep it open as you browse": a small extension window where the owner's click lets Chrome ask. */
-async function askAllow( url ) {
+async function askAllow( url, why ) {
 	const o = originOf( url );
 	if ( ! o ) {
 		return { ok: false, data: { message: MESSAGES.badPage } };
 	}
-	await chrome.windows.create( { url: chrome.runtime.getURL( `allow.html?o=${ encodeURIComponent( o ) }` ), type: 'popup', width: 460, height: 300 } );
+	await chrome.windows.create( { url: chrome.runtime.getURL( `allow.html?o=${ encodeURIComponent( o ) }${ why ? `&w=${ encodeURIComponent( why ) }` : '' }` ), type: 'popup', width: 460, height: 300 } );
 	return { ok: true };
 }
 
@@ -583,6 +589,7 @@ chrome.tabs.onUpdated.addListener( async ( tabId, info, tab ) => {
 		return;
 	}
 	reopen( tabId, tab.url || '' );
+	keepIfLibrary( tabId, tab.url || '' );
 	const f = ( await chrome.storage.session.get( `focus${ tabId }` ) )[ `focus${ tabId }` ];
 	if ( f && Date.now() - f.at < FOCUS_MS ) {
 		chrome.action.setBadgeBackgroundColor( { tabId, color: '#2271b1' } );
@@ -761,4 +768,130 @@ function flash( tabId, title ) {
 		chrome.action.setBadgeText( { tabId, text: '' } );
 		chrome.action.setTitle( { tabId, title: TITLE } );
 	}, 4000 );
+}
+
+/**
+ * The reference library. The store's reference sites ("host" or "host/path-prefix", Library::sites()) are asked for at
+ * most every LIB.refreshMs, and at once when the store's Chrome extension page changes them (libstate). A page loaded on
+ * one of them, where Chrome lets the extension onto the site, is read as drawn (after LIB.settleMs, for pages that fill
+ * in by script) and sent to the store, once per LIB.againMs per address. The button shows ✓ briefly when it is kept.
+ */
+const LIB = { refreshMs: 10 * 60 * 1000, againMs: 30 * 60 * 1000, settleMs: 1500, maxBytes: 7500000, remember: 300, badgeMs: 3000 };
+
+async function libSites( force ) {
+	const { lib } = await chrome.storage.local.get( 'lib' );
+	if ( ! force && lib && Date.now() - lib.at < LIB.refreshMs ) {
+		return lib.sites;
+	}
+	if ( ! ( await saved() ).token ) {
+		return lib ? lib.sites : [];
+	}
+	const r = await api( 'ext/library', { op: 'sites' } );
+	let sites = lib ? lib.sites : []; // the store didn't answer: the list it last gave is kept
+	if ( r.ok && Array.isArray( r.data.sites ) ) {
+		sites = r.data.sites.map( String );
+	} else if ( r.status === 404 || r.status === 401 ) {
+		sites = []; // a store without the library, or this browser no longer connected: nothing is kept
+	}
+	await chrome.storage.local.set( { lib: { sites, at: Date.now() } } );
+	return sites;
+}
+
+const libBare = ( h ) => String( h || '' ).toLowerCase().replace( /^www\./, '' );
+
+/** The reference site an address falls under ('' when none): the same rule as Library::site_for(). */
+function libSiteFor( url, sites ) {
+	let u;
+	try {
+		u = new URL( url );
+	} catch ( e ) {
+		return '';
+	}
+	if ( ! /^https?:$/.test( u.protocol ) ) {
+		return '';
+	}
+	const path = u.pathname.toLowerCase();
+	let best = '';
+	for ( const e of sites ) {
+		const at = e.indexOf( '/' );
+		const host = libBare( at < 0 ? e : e.slice( 0, at ) );
+		const pre = at < 0 ? '' : e.slice( at );
+		if ( host === libBare( u.hostname ) && ( ! pre || path.startsWith( pre ) ) && e.length > best.length ) {
+			best = e;
+		}
+	}
+	return best;
+}
+
+/** A page finished loading: kept when it is on a reference site Chrome lets the extension onto. */
+async function keepIfLibrary( tabId, url ) {
+	if ( ! /^https?:/.test( url ) ) {
+		return;
+	}
+	const sites = await libSites( false );
+	if ( ! sites.length || ! libSiteFor( url, sites ) || ! ( await allowed( url ) ) ) {
+		return;
+	}
+	const key = url.split( '#' )[ 0 ];
+	const kept = ( await chrome.storage.session.get( 'libKept' ) ).libKept || {};
+	if ( kept[ key ] && Date.now() - kept[ key ] < LIB.againMs ) {
+		return;
+	}
+	let got = null;
+	try {
+		const res = await chrome.scripting.executeScript( { target: { tabId }, func: async ( ms ) => {
+			await new Promise( ( r ) => setTimeout( r, ms ) );
+			return { url: location.href, html: '<!DOCTYPE html>\n' + document.documentElement.outerHTML };
+		}, args: [ LIB.settleMs ] } );
+		got = res && res[ 0 ] && res[ 0 ].result;
+	} catch ( e ) {
+		return; // the tab moved on or closed
+	}
+	if ( ! got || ! got.html || got.html.length > LIB.maxBytes || ! libSiteFor( got.url, sites ) ) {
+		return;
+	}
+	const r = await api( 'ext/library', { op: 'keep', url: got.url, html: got.html } );
+	if ( r.ok || r.status === 422 ) { // kept, or refused for a reason another try won't change (a search page, a bot check)
+		kept[ key ] = Date.now();
+		const keys = Object.keys( kept ).sort( ( a, b ) => kept[ a ] - kept[ b ] );
+		for ( const k of keys.slice( 0, Math.max( 0, keys.length - LIB.remember ) ) ) {
+			delete kept[ k ];
+		}
+		await chrome.storage.session.set( { libKept: kept } );
+	}
+	if ( r.ok ) {
+		chrome.action.setBadgeBackgroundColor( { tabId, color: '#00a32a' } ).catch( () => {} );
+		chrome.action.setBadgeText( { tabId, text: '✓' } ).catch( () => {} );
+		chrome.action.setTitle( { tabId, title: `${ TITLE }: ${ r.data.message || 'Kept in the reference library.' }` } ).catch( () => {} );
+		setTimeout( () => {
+			chrome.action.setBadgeText( { tabId, text: '' } ).catch( () => {} );
+			chrome.action.setTitle( { tabId, title: TITLE } ).catch( () => {} );
+		}, LIB.badgeMs );
+	} else if ( r.status !== 422 ) {
+		flash( tabId, r.data.message || MESSAGES.offline );
+	}
+}
+
+/** The store's Chrome extension page asks: connected? which reference sites does Chrome let the extension onto? */
+async function libState( sender ) {
+	const st = await storeNow();
+	if ( ! st || sender.origin !== st.origin || ! ( await saved() ).token ) {
+		return { paired: false, allowed: {} };
+	}
+	const out = {};
+	for ( const e of await libSites( true ) ) {
+		const host = e.split( '/' )[ 0 ];
+		out[ e ] = await chrome.permissions.contains( { origins: [ `https://${ host }/*` ] } ).catch( () => false );
+	}
+	return { paired: true, allowed: out };
+}
+
+/** "Allow in Chrome" on the store's page: the small window where a click lets Chrome ask for that site. */
+async function libAllow( sender, site ) {
+	const st = await storeNow();
+	const host = site.split( '/' )[ 0 ];
+	if ( ! st || sender.origin !== st.origin || ! /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test( host ) ) {
+		return { ok: false };
+	}
+	return askAllow( `https://${ host }/`, 'library' );
 }
