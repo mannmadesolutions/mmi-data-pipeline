@@ -2,7 +2,7 @@
   "checks": [
     "lint",
     "site-rules",
-    "run-all",
+    "shared-lib",
     "ui-check",
     "ui-e2e",
     "customer-site",
