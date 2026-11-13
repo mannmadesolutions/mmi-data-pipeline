@@ -21,10 +21,12 @@ async function open(page: Page, o: { waiting?: boolean; query?: string } = {}) {
   await api.attach(page);
   await page.goto(`/${o.query ?? ""}`);
   await page.evaluate(() => { // WordPress's media library: picking resolves at once with one image (as issues.spec)
-    (window as unknown as { wp: { media: unknown } }).wp.media = () => {
+    // Core's media scripts keep using wp.media's parts (wp.media.view…) after load, so the stub keeps them.
+    const w = window as unknown as { wp: { media: object } };
+    w.wp.media = Object.assign(() => {
       let done: () => void = () => {};
       return { on: (_e: string, fn: () => void) => { done = fn; }, open: () => setTimeout(done, 0), state: () => ({ get: () => ({ toJSON: () => [{ id: 99, url: "/wp-includes/images/w-logo-blue.png" }] }) }) };
-    };
+    }, w.wp.media);
   });
   return { api, backend, errors };
 }

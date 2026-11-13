@@ -23,14 +23,16 @@ async function open(page: Page, key = "titles") {
   if (key === "titles") await expect(page.locator("#mmi-wb-pr-rows tr[data-id]")).toHaveCount(22);
   // WordPress's media library (the harness loads the real one): picking resolves at once with one image.
   await page.evaluate(() => {
-    (window as unknown as { wp: { media: unknown } }).wp.media = () => {
+    // Core's media scripts keep using wp.media's parts (wp.media.view…) after load, so the stub keeps them.
+    const w = window as unknown as { wp: { media: object } };
+    w.wp.media = Object.assign(() => {
       let done: () => void = () => {};
       return {
         on: (_ev: string, fn: () => void) => { done = fn; },
         open: () => setTimeout(done, 0),
         state: () => ({ get: () => ({ toJSON: () => [{ id: 99, url: "/wp-includes/images/w-logo-blue.png" }] }) }),
       };
-    };
+    }, w.wp.media);
   });
   return { api, backend, errors };
 }
