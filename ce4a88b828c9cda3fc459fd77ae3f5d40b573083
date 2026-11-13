@@ -1,3 +1,8 @@
 lint pass ship 3 files
 audit pass ship 3 files
 site-rules pass ship 3 files
+shared-lib pass 8 scenarios
+ui-check pass 134
+ui-e2e fail exit 1
+customer-site pass 26 ok on ce4a88b as installed
+page pass 9 features, 12 screenshots; 12 warnings
