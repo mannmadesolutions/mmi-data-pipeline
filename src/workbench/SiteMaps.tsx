@@ -6,14 +6,17 @@
  * Layout (owner 2026-11-14, the "split view with part rows" mockup):
  * - A header with the site's actions and its Fill, a line saying what the Fill waits on, the Fill's review when it
  *   is open, then tabs (Parts, Pages, Last fills, Text left out, Settings).
- * - Parts has one row per part (Pictures, Description, Requirements…): what the map reads it with, a bar of what it
- *   does across the site's products, and the part's proposals under it with Approve and Reject. A part's name
- *   opens its products, with the decisions a cell takes ("its page has none of this", the page's requirements).
+ * - Parts opens on the proposed parts as batches by the reviewer's verdict (owner 2026-11-14, Makers step 3): Careful
+ *   first and never approved in bulk, then Changed, Added and Checked, each a line per proposal with Approve, Reject
+ *   and More (its samples and note). A site with several page layouts can show them as a grid instead, a part per
+ *   row and a layout per column. Under them, one row per part (Pictures, Description, Requirements…): what the map
+ *   reads it with and a bar of what it does across the site's products. A part's name opens its products, with the
+ *   decisions a cell takes ("its page has none of this", the page's requirements).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, idsWith, layoutName, noteParts,
-  PART_LABEL, partRows, partsHint, sliceAt, SLICES, sortParts, STATUS, tallyText,
+  adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, idsWith, layoutName, noteBody, noteParts,
+  PART_LABEL, partRows, partsHint, proposalGrid, sliceAt, SLICES, sortParts, STATUS, tallyText, verdictBatches, verdictOf, VERDICTS,
   type CellAction, type DrillSort, type FillRunRow, type GapRow, type Gaps, type PartRow, type PartSort, type Proposal,
   type Reading, type SiteRow, type Tally, type TextSkips,
 } from "./mapsApi";
@@ -212,7 +215,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
       <div className="mmi-wb-split-panel" id="mmi-wb-sm-tabpanel" role="tabpanel" aria-labelledby={`mmi-wb-sm-tab-${tab}`}>
         {tab === "parts" && gaps && (
           <PartsTab gaps={gaps} proposals={proposals} busy={busy}
-            onApproveAll={() => void post("approve-all", "map-proposals/site", { host }, (d) => `${plural(Number(d.approved ?? 0), "part")} approved.${(d.failed as string[] | undefined)?.length ? ` Not approved: ${(d.failed as string[]).join("; ")}` : ""}`)}
+            onApproveMany={(ids) => void post("approve-many", "map-proposals/site", { host, ids }, (d) => `${plural(Number(d.approved ?? 0), "part")} approved.${(d.failed as string[] | undefined)?.length ? ` Not approved: ${(d.failed as string[]).join("; ")}` : ""}`)}
             onProposal={decideProposal} onCell={decideCell} />
         )}
 
@@ -304,9 +307,9 @@ function Bar({ t }: { t: Tally }) {
   );
 }
 
-function PartsTab({ gaps, proposals, busy, onApproveAll, onProposal, onCell }: {
+function PartsTab({ gaps, proposals, busy, onApproveMany, onProposal, onCell }: {
   gaps: Gaps; proposals: Proposal[]; busy: string | null;
-  onApproveAll: () => void; onProposal: (p: Proposal, approve: boolean) => void; onCell: (id: number, field: string, a: CellAction) => void;
+  onApproveMany: (ids: number[]) => void; onProposal: (p: Proposal, approve: boolean) => void; onCell: (id: number, field: string, a: CellAction) => void;
 }) {
   const [pq, setPq] = useState("");
   const [openPart, setOpenPart] = useState<string | null>(null);
@@ -320,18 +323,13 @@ function PartsTab({ gaps, proposals, busy, onApproveAll, onProposal, onCell }: {
 
   return (
     <>
+      {waiting > 0 && <ProposedParts proposals={proposals} busy={busy} onApproveMany={onApproveMany} onProposal={onProposal} />}
       <div className="mmi-wb-sm-parts-bar">
         <input type="search" id="mmi-wb-sm-pq" aria-label="Find a product" placeholder="Find a product" value={pq} onChange={(e) => setPq(e.target.value)} />
         {pq && <span className="mmi-wb-count">{plural(products.length, "product")}</span>}
-        {waiting > 0 && (
-          <button type="button" className="button button-primary" id="mmi-wb-sm-approve-all" disabled={busy !== null}
-            title="Save every proposed part as this site's map; products are written from it only by a Fill or a commit from the Chrome extension" onClick={onApproveAll}>
-            Approve all {waiting}
-          </button>
-        )}
       </div>
       <p className="mmi-wb-sm-key" aria-label="What the bars show">{SLICES.map((s) => <span key={s.key}><i className={`mmi-wb-sm-sw is-${s.key}`} aria-hidden="true" />{s.label}</span>)}</p>
-      <p className="description">One row per part: what the map reads it with, and what it does across the site's {plural(products.length, "product")}. Click a part for its products. A proposed part was found on the site's stored pages; nothing reaches a product until a person approves it and a Fill (or the Chrome extension) writes it.</p>
+      <p className="description">One row per part: what the map reads it with, and what it does across the site's {plural(products.length, "product")}. Click a part for its products. A proposed part (above) was found on the site's stored pages; nothing reaches a product until a person approves it and a Fill (or the Chrome extension) writes it.</p>
       <div className="mmi-table-scroll-wrapper">
         <table ref={tableRef} className="wp-list-table widefat mmi-wb-sm-parts" id="mmi-wb-sm-parts">
           <thead>
@@ -344,7 +342,7 @@ function PartsTab({ gaps, proposals, busy, onApproveAll, onProposal, onCell }: {
           <tbody>
             {!parts.length && <tr><td colSpan={3} className="mmi-wb-empty-cell">No part applies to these products.</td></tr>}
             {parts.map((p) => <PartRows key={p.field} p={p} rows={products} open={openPart === p.field} busy={busy}
-              onToggle={() => setOpenPart(openPart === p.field ? null : p.field)} onProposal={onProposal} onCell={onCell} />)}
+              onToggle={() => setOpenPart(openPart === p.field ? null : p.field)} onCell={onCell} />)}
           </tbody>
         </table>
       </div>
@@ -352,10 +350,10 @@ function PartsTab({ gaps, proposals, busy, onApproveAll, onProposal, onCell }: {
   );
 }
 
-/** A part's row, its proposals under it, and (open) its products. */
-function PartRows({ p, rows, open, busy, onToggle, onProposal, onCell }: {
+/** A part's row and (open) its products. Its proposals are decided above the table, by verdict. */
+function PartRows({ p, rows, open, busy, onToggle, onCell }: {
   p: PartRow; rows: GapRow[]; open: boolean; busy: string | null; onToggle: () => void;
-  onProposal: (p: Proposal, approve: boolean) => void; onCell: (id: number, field: string, a: CellAction) => void;
+  onCell: (id: number, field: string, a: CellAction) => void;
 }) {
   const measured = p.tally.applies > 0;
   return (
@@ -377,13 +375,126 @@ function PartRows({ p, rows, open, busy, onToggle, onProposal, onCell }: {
           <div className="mmi-wb-sm-across"><Bar t={p.tally} />{measured && <span className="description">{tallyText(p.tally)}</span>}</div>
         </td>
       </tr>
-      {p.proposals.map((pr) => (
-        <tr key={pr.id} className="mmi-wb-sm-prop-row"><td colSpan={3}><ProposalView pr={pr} busy={busy} onDecide={(a) => onProposal(pr, a)} /></td></tr>
-      ))}
       {open && (
         <tr className="mmi-wb-sm-drill-row" id={`mmi-wb-sm-drill-${p.field}`}><td colSpan={3}><PartProducts p={p} rows={rows} busy={busy} onCell={onCell} /></td></tr>
       )}
     </>
+  );
+}
+
+/**
+ * The proposed parts, by the reviewer's verdict: a batch per verdict (Careful first, never approved in bulk), a line per
+ * proposal. With several page layouts, Grid shows a part per row and a layout per column; a cell opens its proposal.
+ */
+function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
+  proposals: Proposal[]; busy: string | null; onApproveMany: (ids: number[]) => void; onProposal: (p: Proposal, approve: boolean) => void;
+}) {
+  const batches = verdictBatches(proposals);
+  const grid = proposalGrid(proposals);
+  const [view, setView] = useState<"batches" | "grid">("batches");
+  // Checked starts shut while something needs a closer look (Careful, Changed, Added): those come first; Checked is approved together.
+  const [shut, setShut] = useState<Set<string>>(() => new Set(batches.some((b) => b.v.key && b.v.key !== "checked") ? ["checked"] : []));
+  const [opened, setOpened] = useState<number | null>(null);
+  const waiting = batches.reduce((n, b) => n + b.rows.length, 0);
+  const flipShut = (k: string) => setShut((set) => { const n = new Set(set); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const picked = opened !== null ? proposals.find((p) => p.id === opened && p.status === "proposed") ?? null : null;
+  return (
+    <div className="mmi-wb-vp" id="mmi-wb-sm-proposed">
+      <div className="mmi-wb-vp-bar">
+        <strong>{plural(waiting, "proposed part")}</strong>
+        <span className="mmi-wb-vp-counts">{batches.map((b) => <span key={b.v.key || "none"} className={`mmi-badge ${b.v.badge} inline`}>{b.v.key ? b.v.key[0]!.toUpperCase() + b.v.key.slice(1) : "Not reviewed"} {b.rows.length}</span>)}</span>
+        {grid.layouts.length > 1 && (
+          <span className="mmi-wb-mk-mode mmi-wb-vp-view" role="group" aria-label="Show the proposed parts">
+            <button type="button" id="mmi-wb-vp-batches" className={`button button-small${view === "batches" ? " is-active" : ""}`} aria-pressed={view === "batches"} onClick={() => setView("batches")}>By verdict</button>
+            <button type="button" id="mmi-wb-vp-grid" className={`button button-small${view === "grid" ? " is-active" : ""}`} aria-pressed={view === "grid"} onClick={() => setView("grid")}>Parts × layouts</button>
+          </span>
+        )}
+      </div>
+
+      {view === "batches" && (
+        <div className="mmi-wb-bt-list">
+          {batches.map(({ v, rows }) => {
+            const key = v.key || "none";
+            const closed = shut.has(key);
+            return (
+              <section key={key} className={`mmi-wb-bt is-v-${key}`} data-vbatch={key} aria-label={v.label}>
+                <div className="mmi-wb-bt-head">
+                  <span aria-hidden="true" />
+                  <span className="mmi-wb-bt-count">{rows.length}</span>
+                  <div className="mmi-wb-bt-why"><strong>{v.label}</strong><span className="description">{v.hint}</span></div>
+                  <span className="mmi-wb-bt-acts">
+                    {v.bulk && rows.length > 1 && (
+                      <button type="button" className="button button-small button-primary" data-vbatch-action="approve" disabled={busy !== null}
+                        title="Save these as the site's map; products are written from it only by a Fill or a commit from the Chrome extension" onClick={() => onApproveMany(rows.map((p) => p.id))}>
+                        Approve the {rows.length}
+                      </button>
+                    )}
+                    <button type="button" className="button button-small" aria-expanded={!closed} data-vbatch-action="toggle" onClick={() => flipShut(key)}>{closed ? `Show ${rows.length}` : "Hide"}</button>
+                  </span>
+                </div>
+                {!closed && (
+                  <ul className="mmi-wb-bt-rows">
+                    {rows.map((pr) => (
+                      <li key={pr.id} data-proposal={pr.id} className={`mmi-wb-bt-row${opened === pr.id ? " is-open" : ""}`}>
+                        <div className="mmi-wb-vp-line">
+                          <span className="mmi-badge inline mmi-wb-vp-layout">{layoutName(pr)}{pr.of ? ` · ${pr.of}` : ""}</span>
+                          <strong className="mmi-wb-vp-part">{PART_LABEL[pr.field] ?? pr.field}</strong>
+                          <code className="mmi-wb-vp-sel" title={pr.sel}>{pr.sel}</code>
+                          <span className="mmi-wb-vp-found" title={`Found on ${pr.found} of ${pr.of} pages`}>{pr.found} / {pr.of}</span>
+                          <span className="mmi-wb-vp-note" title={noteBody(pr.note)}>{noteBody(pr.note) || <span className="description">No note</span>}</span>
+                          <span className="mmi-wb-bt-acts">
+                            <button type="button" className="button button-small button-primary" data-action="approve" disabled={busy !== null} onClick={() => onProposal(pr, true)}>Approve</button>
+                            <button type="button" className="button button-small" data-action="reject" disabled={busy !== null} onClick={() => onProposal(pr, false)}>Reject</button>
+                            <button type="button" className="button button-small mmi-wb-bt-more" aria-expanded={opened === pr.id} onClick={() => setOpened(opened === pr.id ? null : pr.id)}>{opened === pr.id ? "Less" : "More"}</button>
+                          </span>
+                        </div>
+                        {opened === pr.id && <div className="mmi-wb-bt-detail"><ProposalView pr={pr} busy={busy} onDecide={(a) => onProposal(pr, a)} /></div>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "grid" && (
+        <>
+          <div className="mmi-wb-vgrid" role="table" aria-label="Proposed parts: a part per row, a page layout per column" id="mmi-wb-vp-table"
+            style={{ gridTemplateColumns: `minmax(110px, 0.8fr) repeat(${grid.layouts.length}, minmax(0, 1fr))` }}>
+            <div role="row" className="mmi-wb-vgrid-row">
+              <span role="columnheader">Part</span>
+              {grid.layouts.map((l) => <span key={l.layout} role="columnheader">{l.label}{l.pages ? <span className="description"> · {l.pages} pages</span> : null}</span>)}
+            </div>
+            {grid.parts.map((f) => (
+              <div key={f} role="row" className="mmi-wb-vgrid-row" data-part={f}>
+                <span role="rowheader"><strong>{PART_LABEL[f] ?? f}</strong></span>
+                {grid.layouts.map((l) => {
+                  const pr = grid.at(f, l.layout);
+                  if (!pr) return <span key={l.layout} role="cell" className="mmi-wb-vgrid-none">–</span>;
+                  const v = VERDICTS.find((d) => d.key === verdictOf(pr))!;
+                  return (
+                    <span key={l.layout} role="cell">
+                      <button type="button" className={`mmi-wb-vgrid-cell${opened === pr.id ? " is-on" : ""}`} data-cell={`${f}:${l.layout}`} aria-pressed={opened === pr.id} onClick={() => setOpened(opened === pr.id ? null : pr.id)}>
+                        <span className={`mmi-badge ${v.badge} inline`}>{v.key ? v.key[0]!.toUpperCase() + v.key.slice(1) : "Not reviewed"}</span>
+                        <span className="description">{pr.found} / {pr.of}</span>
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          {picked && (
+            <div className="mmi-wb-vgrid-open" data-open={picked.id}>
+              <p className="mmi-wb-vgrid-open-title"><strong>{layoutName(picked)} · {PART_LABEL[picked.field] ?? picked.field}</strong></p>
+              <ProposalView pr={picked} busy={busy} onDecide={(a) => onProposal(picked, a)} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

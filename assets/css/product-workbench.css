@@ -1720,6 +1720,118 @@ tr.mmi-wb-mp-gone .notice {
     background: #fbfbfb;
     border-top: 1px dashed var(--mmi-wb-border);
 }
+/* Makers → Map: proposed parts by verdict (2026-11-14, step 3), and the parts × layouts grid. */
+.mmi-wb-vp {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.mmi-wb-vp-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+}
+.mmi-wb-vp-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.mmi-wb-vp-view {
+    margin-left: auto;
+}
+.mmi-wb-bt.is-v-careful {
+    border-color: #ff9800;
+}
+.mmi-wb-bt.is-v-careful .mmi-wb-bt-head {
+    background: var(--mmi-wb-warn-bg, #fff3cd);
+}
+.mmi-wb-bt.is-v-careful .mmi-wb-bt-count {
+    background: #856404;
+}
+.mmi-wb-bt.is-v-checked .mmi-wb-bt-count {
+    background: #155724;
+}
+.mmi-wb-bt.is-v-none .mmi-wb-bt-count {
+    background: #ccd0d4;
+    color: #1d2327;
+}
+.mmi-wb-vp-line {
+    display: grid;
+    grid-template-columns: auto minmax(70px, 0.5fr) minmax(0, 1fr) auto minmax(0, 1.6fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    font-size: 13px;
+}
+.mmi-wb-vp-layout {
+    white-space: nowrap;
+}
+.mmi-wb-vp-sel,
+.mmi-wb-vp-note {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.mmi-wb-vp-sel {
+    font-size: 11px;
+}
+.mmi-wb-vp-found {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.mmi-wb-vgrid {
+    display: grid;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.mmi-wb-vgrid-row {
+    display: contents;
+}
+.mmi-wb-vgrid-row > span {
+    padding: 6px 8px;
+    border-bottom: 1px solid #f0f0f1;
+    font-size: 13px;
+    min-width: 0;
+}
+.mmi-wb-vgrid-row:first-child > span {
+    background: #f9f9f9;
+    font-weight: 600;
+    font-size: 12px;
+}
+.mmi-wb-vgrid-none {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-vgrid-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+.mmi-wb-vgrid-cell:hover,
+.mmi-wb-vgrid-cell.is-on {
+    border-color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+}
+.mmi-wb-vgrid-open {
+    border: 1px solid var(--mmi-wb-accent);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+.mmi-wb-vgrid-open-title {
+    margin: 0 0 6px;
+}
 /* In a narrow panel the address and the match score go under the product, and a batch's buttons under its why. */
 .mmi-wb-bt-list {
     container-type: inline-size;
@@ -1751,6 +1863,27 @@ tr.mmi-wb-mp-gone .notice {
     }
     .mmi-wb-bt-title {
         display: none;
+    }
+    .mmi-wb-vp-line {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        row-gap: 2px;
+    }
+    .mmi-wb-vp-sel {
+        grid-column: 1 / 3;
+        grid-row: 2;
+    }
+    .mmi-wb-vp-found {
+        grid-column: 3;
+        grid-row: 2;
+        justify-self: end;
+    }
+    .mmi-wb-vp-note {
+        grid-column: 1 / 4;
+        grid-row: 3;
+    }
+    .mmi-wb-vp-line > .mmi-wb-bt-acts {
+        grid-column: 3;
+        grid-row: 1;
     }
 }
 .mmi-wb-split-work {

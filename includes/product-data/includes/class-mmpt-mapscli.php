@@ -93,16 +93,20 @@ class MapsCli {
 	 * : The proposal.
 	 *
 	 * <note>
-	 * : What the reviewer found.
+	 * : What the reviewer found. Start it with the verdict: "Checked: …" (the element reads the part), "Changed: …"
+	 * (a better element, with --sel), "Added: …" or "Careful: …" (it can read the wrong thing: look before approving).
 	 *
 	 * [--sel=<css>]
 	 * : A better element.
 	 *
 	 * [--mode=<mode>]
 	 * : Its way of reading.
+	 *
+	 * [--verdict=<verdict>]
+	 * : careful, changed, added or checked, when the note doesn't start with it.
 	 */
 	public function proposal( $args, $assoc ): void {
-		$res = MapProposals::review( (int) $args[0], (string) $args[1], (string) ( $assoc['sel'] ?? '' ), (string) ( $assoc['mode'] ?? '' ) );
+		$res = MapProposals::review( (int) $args[0], (string) $args[1], (string) ( $assoc['sel'] ?? '' ), (string) ( $assoc['mode'] ?? '' ), (string) ( $assoc['verdict'] ?? '' ) );
 		if ( is_wp_error( $res ) ) {
 			\WP_CLI::error( $res->get_error_message() );
 		}
@@ -132,10 +136,13 @@ class MapsCli {
 	 * [--mode=<mode>]
 	 * : Its way of reading.
 	 *
+	 * [--verdict=<verdict>]
+	 * : careful when it can read the wrong thing; added otherwise (the default).
+	 *
 	 * @subcommand proposal-add
 	 */
 	public function proposal_add( $args, $assoc ): void {
-		$res = MapProposals::add( (string) $args[0], (int) $args[1], (string) $args[2], (string) $args[3], (string) ( $assoc['mode'] ?? '' ), (string) $args[4] );
+		$res = MapProposals::add( (string) $args[0], (int) $args[1], (string) $args[2], (string) $args[3], (string) ( $assoc['mode'] ?? '' ), (string) $args[4], (string) ( $assoc['verdict'] ?? '' ) );
 		if ( is_wp_error( $res ) ) {
 			\WP_CLI::error( $res->get_error_message() );
 		}

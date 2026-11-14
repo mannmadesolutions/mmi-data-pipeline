@@ -98,7 +98,9 @@ test("old links land: Site maps' and Brands & sites' keys, and a brand on its si
 test("an approval on a brand's Map tab updates the site under the brand", async ({ page }) => {
   const { sec, errors } = await open(page, "?wb_brand=20&wb_site=acme.example");
   await expect(page.locator("#mmi-wb-sm-panel")).toHaveAttribute("data-host", "acme.example");
-  await page.locator("#mmi-wb-sm-approve-all").click();
+  await page.locator('#mmi-wb-sm-proposed [data-proposal="27"] [data-action="approve"]').click();
+  await expect(page.locator("#mmi-wb-sm-notice")).toHaveText("Pictures: approved as this site's part.");
+  await page.locator('#mmi-wb-sm-proposed [data-proposal="28"] [data-action="approve"]').click();
   await expect(sec.locator('#mmi-wb-bs-rows li[data-site="acme.example"]')).toContainText("Draft map");
   await expect(drawer(page).locator('[data-stab="map"] .mmi-wb-split-dot')).toHaveCount(0);
   expect(errors).toEqual([]);

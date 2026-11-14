@@ -176,6 +176,8 @@ export interface TextSkips { skips: string[]; scan: { repeated?: { text: string;
 export interface Proposal {
   id: number; host: string; field: string; layout: number; scope: string; sel: string; mode: string; found: number; of: number;
   note: string; checked: string; status: "proposed" | "approved" | "rejected" | string;
+  /** The reviewer's verdict (MapProposals::VERDICTS), "" when no reviewer has looked; older servers leave it out. */
+  verdict?: string;
   samples: { id: number; title: string; url: string; short: string; urls?: string[] }[];
 }
 export const PART_LABEL: Record<string, string> = {
@@ -183,6 +185,43 @@ export const PART_LABEL: Record<string, string> = {
   manual: "Manual", videos: "Videos", audio: "Audio", disclaimer: "Disclaimer",
 };
 export const proposalHosts = (rows: Proposal[]): Set<string> => new Set(rows.filter((p) => p.status === "proposed").map((p) => p.host));
+
+/* ── Proposed parts by verdict (owner 2026-11-14, Makers step 3): sorted by how closely to look ── */
+
+export type Verdict = "careful" | "changed" | "added" | "checked" | "";
+export interface VerdictDef { key: Verdict; label: string; hint: string; badge: string; bulk: boolean }
+export const VERDICTS: VerdictDef[] = [
+  { key: "careful", label: "Careful: look before approving", hint: "The reviewer found it can read the wrong thing on some pages", badge: "warning", bulk: false },
+  { key: "changed", label: "Changed: the reviewer replaced the finder's element", hint: "Read each line before approving", badge: "info", bulk: true },
+  { key: "added", label: "Added: a part the finder missed", hint: "The reviewer's own pick, tested on the stored pages", badge: "info", bulk: true },
+  { key: "checked", label: "Checked: the reviewer agrees with the finder", hint: "Safe to approve together", badge: "success", bulk: true },
+  { key: "", label: "Not reviewed yet", hint: "Found on the stored pages; no reviewer has looked yet", badge: "", bulk: false },
+];
+const VERDICT_RE = /^\s*(careful|changed|added|checked)\s*:\s*/i;
+/** A proposal's verdict: the saved one, else (an older server) the reviewed note's first word. */
+export function verdictOf(p: Proposal): Verdict {
+  const v = (p.verdict ?? "").toLowerCase();
+  if (VERDICTS.some((d) => d.key === v && v)) return v as Verdict;
+  const m = p.checked ? p.note.match(VERDICT_RE) : null;
+  return m ? (m[1]!.toLowerCase() as Verdict) : "";
+}
+/** A review note without its verdict word (the batch already says it). */
+export const noteBody = (note: string): string => note.replace(VERDICT_RE, "");
+const FIELD_ORDER = ["pictures", "description", "features", "requirements", "version", "manual", "videos", "audio", "disclaimer"];
+const byLayoutThenPart = (a: Proposal, b: Proposal) => a.layout - b.layout || FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field);
+/** The waiting proposals as batches, Careful first; empty batches left out. */
+export function verdictBatches(rows: Proposal[]): { v: VerdictDef; rows: Proposal[] }[] {
+  const waiting = rows.filter((p) => p.status === "proposed");
+  return VERDICTS.map((v) => ({ v, rows: waiting.filter((p) => verdictOf(p) === v.key).sort(byLayoutThenPart) })).filter((b) => b.rows.length > 0);
+}
+/** The grid's columns (the layouts the waiting proposals are for, the whole site first) and rows (their parts). */
+export function proposalGrid(rows: Proposal[]): { layouts: { layout: number; label: string; pages: number }[]; parts: string[]; at: (field: string, layout: number) => Proposal | null } {
+  const waiting = rows.filter((p) => p.status === "proposed");
+  const layouts = [...new Set(waiting.map((p) => p.layout))].sort((a, b) => a - b)
+    .map((l) => ({ layout: l, label: layoutName({ scope: l < 0 ? "site" : "layout", layout: l }), pages: Math.max(0, ...waiting.filter((p) => p.layout === l).map((p) => p.of)) }));
+  const parts = [...new Set(waiting.map((p) => p.field))].sort((a, b) => FIELD_ORDER.indexOf(a) - FIELD_ORDER.indexOf(b));
+  return { layouts, parts, at: (f, l) => waiting.find((p) => p.field === f && p.layout === l) ?? null };
+}
 
 /* ── The open site, part by part (owner 2026-11-14: the site list beside the open site, one row per part) ── */
 

@@ -58,7 +58,7 @@ test("the site list stays beside the open site: work pills, map status, arrow ke
   expect(errors).toEqual([]);
 });
 
-test("Parts: one row per part with its bar, its proposals under it, and its products", async ({ page }) => {
+test("Parts: the proposed parts by verdict above, one row per part with its bar, and its products", async ({ page }) => {
   const { sec } = await open(page);
   await openSite(page, "acme.example");
   const p = panel(page);
@@ -67,12 +67,20 @@ test("Parts: one row per part with its bar, its proposals under it, and its prod
   await expect(part(page, "images")).toContainText("Page adds 2 · Being checked 1");
   await expect(part(page, "images")).toContainText("1 proposed");
   await expect(part(page, "manual")).toContainText("Page adds 1");
-  // The proposal sits under its part: Pictures' under Pictures.
-  await expect(p.locator('tr.mmi-wb-sm-prop-row [data-proposal="27"]')).toContainText("Whole site · found on 3 of 3 pages");
-  await expect(p.locator('[data-proposal="27"]')).toContainText("Reviewed: Checked: the product's banner picture.");
-  await expect(p.locator('[data-proposal="27"] img')).toHaveCount(1);
-  const order = await p.locator("#mmi-wb-sm-parts tbody tr").evaluateAll((trs) => trs.map((t) => t.getAttribute("data-part") ?? t.querySelector("[data-proposal]")?.getAttribute("data-proposal")));
-  expect(order.indexOf("27")).toBe(order.indexOf("images") + 1);
+  // The proposals sit above the parts, a batch per verdict, a line each: the verdict's word is the batch's, not the line's.
+  const proposed = p.locator("#mmi-wb-sm-proposed");
+  expect(await proposed.locator("[data-vbatch]").evaluateAll((els) => els.map((e) => e.getAttribute("data-vbatch")))).toEqual(["checked", "none"]);
+  const line = proposed.locator('[data-vbatch="checked"] [data-proposal="27"]');
+  await expect(line.locator(".mmi-wb-vp-layout")).toHaveText("Whole site · 3");
+  await expect(line.locator(".mmi-wb-vp-part")).toHaveText("Pictures");
+  await expect(line.locator(".mmi-wb-vp-found")).toHaveText("3 / 3");
+  await expect(line.locator(".mmi-wb-vp-note")).toHaveText("the product's banner picture.");
+  await expect(proposed.locator('[data-vbatch="none"] [data-proposal="28"] .mmi-wb-vp-note')).toHaveText("No note");
+  await line.locator(".mmi-wb-bt-more").click(); // More: its samples and the whole note
+  await expect(line.locator(".mmi-wb-sm-proposal")).toContainText("Reviewed: Checked: the product's banner picture.");
+  await expect(line.locator(".mmi-wb-sm-proposal img")).toHaveCount(1);
+  await expect(p.locator("#mmi-wb-sm-parts tr.mmi-wb-sm-prop-row")).toHaveCount(0); // no longer stacked under the parts
+  await expect(proposed.locator("#mmi-wb-vp-grid")).toHaveCount(0); // one layout: no grid to offer
 
   // A part's name opens its products, a slice at a time.
   await part(page, "images").getByRole("button", { name: /Pictures/ }).click();
@@ -97,16 +105,63 @@ test("proposed parts: reject one, approve the rest", async ({ page }) => {
   await expect(page.locator("#mmi-wb-sm-rows tr[data-host]")).toHaveCount(1);
   await openSite(page, "acme.example");
   const p = panel(page);
-  await expect(p.locator(".mmi-wb-sm-proposal")).toHaveCount(2);
-  await p.locator('[data-proposal="28"]').getByRole("button", { name: "Reject" }).click();
+  await expect(p.locator("#mmi-wb-sm-proposed [data-proposal]")).toHaveCount(2);
+  await p.locator('[data-proposal="28"] [data-action="reject"]').click();
   await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("Manual: rejected.");
   expect(api.callsTo("map-proposals/28")[0]!.body).toEqual({ decision: "reject" });
-  await expect(p.locator(".mmi-wb-sm-proposal")).toHaveCount(1);
-  await p.locator("#mmi-wb-sm-approve-all").click();
-  await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("1 part approved.");
-  expect(api.callsTo("map-proposals/site")[0]!.body).toEqual({ host: "acme.example" });
-  await expect(p.locator(".mmi-wb-sm-proposal")).toHaveCount(0);
+  await expect(p.locator("#mmi-wb-sm-proposed [data-proposal]")).toHaveCount(1);
+  await p.locator('[data-proposal="27"] [data-action="approve"]').click();
+  await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("Pictures: approved as this site's part.");
+  expect(api.callsTo("map-proposals/27")[0]!.body).toEqual({ decision: "approve" });
+  await expect(p.locator("#mmi-wb-sm-proposed")).toHaveCount(0);
   await expect(p.locator("#mmi-wb-sm-parts-hint")).toHaveCount(0);
+});
+
+test("proposed parts by verdict: Careful first and never in bulk, a batch approved together, a grid for several layouts", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/mmi-data-pipeline/build/workbench.js*", (r) => r.fulfill({ path: "build/workbench.js", contentType: "text/javascript" }));
+  await new MockBackend().attach(page);
+  const api = new TitleRulesMock();
+  const sample = [{ id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", short: "Version 24.8" }];
+  api.makerPages.proposals.push(
+    // The saved verdict wins over the note's wording; layout 2 is "Layout C".
+    { id: 30, host: "acme.example", field: "version", layout: 2, scope: "layout", sel: "div.spec li", mode: "text", found: 15, of: 38, note: "Reads the first spec line with a number; on some pages that is a size.", checked: "claude", verdict: "careful", status: "proposed", samples: sample },
+    { id: 31, host: "acme.example", field: "pictures", layout: 2, scope: "layout", sel: "div.overview img", mode: "img", found: 38, of: 38, note: "Checked: the overview picture.", checked: "claude", verdict: "checked", status: "proposed", samples: [] },
+    { id: 32, host: "acme.example", field: "description", layout: -1, scope: "site", sel: "div#overview", mode: "text", found: 3, of: 3, note: "Changed: the finder took the specs accordion.", checked: "claude", verdict: "changed", status: "proposed", samples: [] },
+  );
+  await api.attach(page);
+  await page.goto("/?wb_sec=maps&wb_site=acme.example");
+  const p = panel(page);
+  const proposed = p.locator("#mmi-wb-sm-proposed");
+  await expect(proposed.locator("[data-vbatch]")).toHaveCount(4);
+  expect(await proposed.locator("[data-vbatch]").evaluateAll((els) => els.map((e) => e.getAttribute("data-vbatch")))).toEqual(["careful", "changed", "checked", "none"]);
+  const careful = proposed.locator('[data-vbatch="careful"]');
+  await expect(careful.locator(".mmi-wb-bt-why")).toContainText("Careful: look before approving");
+  await expect(careful.locator('[data-vbatch-action="approve"]')).toHaveCount(0);
+  await expect(careful.locator('[data-proposal="30"] .mmi-wb-vp-layout')).toHaveText("Layout C · 38");
+  await expect(proposed.locator(".mmi-wb-vp-counts")).toHaveText(/Careful 1.*Changed 1.*Checked 2.*Not reviewed 1/);
+  await expect(proposed.locator('[data-vbatch="checked"] [data-vbatch-action="toggle"]')).toHaveText("Show 2"); // shut while others need a closer look
+  await expect(proposed.locator('[data-vbatch="checked"] li')).toHaveCount(0);
+
+  // Checked: the two approved together, in one request naming them.
+  await proposed.locator('[data-vbatch="checked"] [data-vbatch-action="approve"]').click();
+  await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("2 parts approved.");
+  expect(api.callsTo("map-proposals/site")[0]!.body).toEqual({ host: "acme.example", ids: [27, 31] });
+  await expect(proposed.locator('[data-vbatch="checked"]')).toHaveCount(0);
+
+  // Two layouts: the grid, a part per row, a layout per column; a cell opens its proposal with Approve and Reject.
+  await proposed.locator("#mmi-wb-vp-grid").click();
+  const grid = proposed.locator("#mmi-wb-vp-table");
+  await expect(grid.locator('[role="columnheader"]')).toHaveText(["Part", "Whole site · 3 pages", "Layout C · 38 pages"]);
+  await expect(grid.locator('[data-part="version"] [data-cell="version:2"]')).toContainText("Careful15 / 38");
+  await expect(grid.locator('[data-part="version"] [role="cell"]').first()).toHaveText("–");
+  await grid.locator('[data-cell="version:2"]').click();
+  await expect(proposed.locator(".mmi-wb-vgrid-open")).toContainText("Layout C · Version");
+  await proposed.locator(".mmi-wb-vgrid-open").getByRole("button", { name: "Reject" }).click();
+  await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("Version: rejected.");
+  await expect(grid.locator('[data-part="version"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
 test("Pages: the site's pages and reading the unread ones", async ({ page }) => {

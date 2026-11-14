@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  adds, cellActions, choiceBody, drillRows, findProducts, gapKey, layoutName, noteParts, partRows, partsHint, proposalHosts, fillDone, fillLabel, fillRows, gainOf, idsWith,
-  sitesIn, siteViewCount, kindsText, sliceN, sortParts, sortSites, tally, tallyText, tilesOf, waitingParts, waitingSites, type Gaps, type SiteRow,
-} from "../../src/workbench/mapsApi";
+import { adds, cellActions, choiceBody, drillRows, findProducts, gapKey, layoutName, noteParts, partRows, partsHint, proposalHosts, fillDone, fillLabel, fillRows, gainOf, idsWith, sitesIn, siteViewCount, kindsText, sliceN, sortParts, sortSites, tally, tallyText, tilesOf, waitingParts, waitingSites, type Gaps, type SiteRow, noteBody, proposalGrid, verdictBatches, verdictOf, VERDICTS, type Proposal } from "../../src/workbench/mapsApi";
 
 const site = (host: string, status: string, fields: number): SiteRow => ({
   host, status, pattern: "", render: 0, stats: { products: 5, pages: 5, read: 5, refused: 0, blocked: 0, at: "" },
@@ -168,5 +165,35 @@ describe("map parts under Needs a decision", () => {
   });
   it("lists the sites with parts waiting, and how many", () => {
     expect(waitingSites(all)).toEqual([["a.example", 2], ["b.example", 1]]);
+  });
+});
+
+describe("Makers → Map: proposed parts by verdict", () => {
+  const pr = (id: number, field: string, layout: number, o: Partial<Proposal> = {}): Proposal => ({
+    id, host: "s.example", field, layout, scope: layout < 0 ? "site" : "layout", sel: "x", mode: "", found: 1, of: layout < 0 ? 80 : 38, note: "", checked: "", status: "proposed", samples: [], ...o,
+  });
+  const rows = [
+    pr(1, "pictures", -1, { verdict: "changed", checked: "claude", note: "Changed: every slide." }),
+    pr(2, "version", 2, { verdict: "careful", checked: "claude", note: "Reads a size on some pages." }),
+    pr(3, "features", 2, { checked: "claude", note: "Checked: the specs list." }), // an older server: no verdict field
+    pr(4, "manual", -1),
+    pr(5, "pictures", 2, { verdict: "checked", checked: "claude" }),
+    pr(6, "audio", -1, { verdict: "checked", status: "approved" }),
+  ];
+  it("takes the saved verdict, else the reviewed note's first word, else none", () => {
+    expect(rows.map(verdictOf)).toEqual(["changed", "careful", "checked", "", "checked", "checked"]);
+    expect(verdictOf(pr(9, "x", -1, { note: "Checked: not reviewed by anyone" }))).toBe(""); // a note only counts once reviewed
+    expect(noteBody("Changed: every slide.")).toBe("every slide.");
+  });
+  it("batches the waiting ones, Careful first, then by layout and part", () => {
+    expect(verdictBatches(rows).map((b) => [b.v.key, b.rows.map((p) => p.id)])).toEqual([["careful", [2]], ["changed", [1]], ["checked", [5, 3]], ["", [4]]]);
+    expect(VERDICTS.filter((v) => v.bulk).map((v) => v.key)).toEqual(["changed", "added", "checked"]);
+  });
+  it("lays the waiting ones out as parts × layouts", () => {
+    const g = proposalGrid(rows);
+    expect(g.layouts).toEqual([{ layout: -1, label: "Whole site", pages: 80 }, { layout: 2, label: "Layout C", pages: 38 }]);
+    expect(g.parts).toEqual(["pictures", "features", "version", "manual"]);
+    expect(g.at("pictures", 2)?.id).toBe(5);
+    expect(g.at("audio", -1)).toBeNull(); // decided
   });
 });

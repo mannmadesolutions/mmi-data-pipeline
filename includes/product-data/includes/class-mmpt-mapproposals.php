@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class MapProposals {
 
 	const DB_OPTION  = 'mmpt_map_proposals_db';
-	const DB_VERSION = '1';
+	const DB_VERSION = '2';
 	const FIELDS     = [ 'pictures', 'description', 'requirements', 'features', 'manual', 'videos', 'audio', 'version' ];
 	const SITE       = -1;  // a proposal for the whole site; else a layout index (MapTypes)
 	const SAMPLE     = 12;  // stored pages an element is looked for on (the site's, or one layout's)
@@ -38,6 +38,12 @@ final class MapProposals {
 	const SAMPLES    = 3;   // products whose reading a proposal keeps (those it reads something on first)
 	const LOOK       = 10;  // pages looked at for them
 	const STATUSES   = [ 'proposed', 'approved', 'rejected' ];
+	/**
+	 * What a reviewer made of a proposal, as Makers sorts it (owner 2026-11-14): careful (look before approving: it can
+	 * read the wrong thing), changed (the reviewer replaced the finder's element), added (a part the finder missed),
+	 * checked (the finder's element reads the part). A review note starts with the word; the column keeps it.
+	 */
+	const VERDICTS   = [ 'careful', 'changed', 'added', 'checked' ];
 
 	public static function register_hooks(): void {
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
@@ -79,9 +85,13 @@ final class MapProposals {
 				'permission_callback' => $admin,
 				'callback'            => static function ( \WP_REST_Request $r ) {
 					$host = VendorMaps::host( (string) $r->get_param( 'host' ) );
+					$only = array_flip( array_map( 'intval', (array) ( $r->get_param( 'ids' ) ?? [] ) ) ); // a batch of them (Makers); none = every proposed part
 					$done = 0;
 					$fail = [];
 					foreach ( self::rows( $host, 'proposed' ) as $p ) {
+						if ( $only && ! isset( $only[ (int) $p['id'] ] ) ) {
+							continue;
+						}
 						$res = self::decide( $p['id'], true, get_current_user_id() );
 						if ( is_wp_error( $res ) ) {
 							$fail[] = ( VendorMaps::FIELDS[ $p['field'] ][0] ?? $p['field'] ) . ': ' . $res->get_error_message();
@@ -120,6 +130,7 @@ final class MapProposals {
 			samples longtext NULL,
 			note text NULL,
 			checked varchar(16) NOT NULL DEFAULT '',
+			verdict varchar(16) NOT NULL DEFAULT '',
 			status varchar(16) NOT NULL DEFAULT 'proposed',
 			decided_by bigint(20) unsigned NOT NULL DEFAULT 0,
 			created_at datetime NOT NULL,
@@ -129,7 +140,19 @@ final class MapProposals {
 			KEY status (status)
 			) {$wpdb->get_charset_collate()};"
 		);
+		// Version 2 added verdict: reviews written before it say theirs as the note's first word.
+		$wpdb->query( 'UPDATE ' . self::table() . " SET verdict = LOWER(SUBSTRING_INDEX(note, ':', 1)) WHERE verdict = '' AND checked <> '' AND LOWER(SUBSTRING_INDEX(note, ':', 1)) IN ('careful','changed','added','checked')" ); // phpcs:ignore WordPress.DB.PreparedSQL -- no input
 		update_option( self::DB_OPTION, self::DB_VERSION, false );
+	}
+
+	/** A review's verdict: the one given, else the note's first word ("Changed: …"), else $default. */
+	public static function verdict_of( string $note, string $given = '', string $default = '' ): string {
+		$given = strtolower( trim( $given ) );
+		if ( in_array( $given, self::VERDICTS, true ) ) {
+			return $given;
+		}
+		$first = preg_match( '/^\s*([a-z]+)\s*:/i', $note, $m ) ? strtolower( $m[1] ) : '';
+		return in_array( $first, self::VERDICTS, true ) ? $first : $default;
 	}
 
 	/* ── Proposing ──────────────────────────────────────────────────────── */
@@ -246,6 +269,7 @@ final class MapProposals {
 			'samples'    => wp_json_encode( self::readings( $f, $cand, $samples ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
 			'note'       => $same ? (string) $was['note'] : '',
 			'checked'    => $same ? (string) $was['checked'] : '',
+			'verdict'    => $same ? (string) ( $was['verdict'] ?? '' ) : '',
 			'status'     => 'proposed',
 			'created_at' => current_time( 'mysql', true ),
 		];
@@ -354,13 +378,14 @@ final class MapProposals {
 	 * The reviewer's change (Claude): a better element ($sel/$mode, tested again with its readings) and a note.
 	 * @return array|\WP_Error the proposal
 	 */
-	public static function review( int $id, string $note, string $sel = '', string $mode = '' ) {
+	public static function review( int $id, string $note, string $sel = '', string $mode = '', string $verdict = '', string $default = '' ) {
 		global $wpdb;
+		self::maybe_install();
 		$p = self::get( $id );
 		if ( ! $p ) {
 			return new \WP_Error( 'mmpt_proposal', 'No such proposal.' );
 		}
-		$set = [ 'note' => mb_substr( $note, 0, 600 ), 'checked' => 'claude' ];
+		$set = [ 'note' => mb_substr( $note, 0, 600 ), 'checked' => 'claude', 'verdict' => self::verdict_of( $note, $verdict, $default !== '' ? $default : ( $sel !== '' && $sel !== $p['sel'] ? 'changed' : '' ) ) ];
 		if ( $sel !== '' ) {
 			$mode = in_array( $mode, VendorMaps::MODES[ $p['field'] ] ?? [], true ) ? $mode : $p['mode'];
 			$only = $p['layout'] === self::SITE ? null : array_fill_keys( (array) ( MapTypes::layout_pages( $p['host'] )[ $p['layout'] ]['urls'] ?? [] ), 1 );
@@ -379,7 +404,7 @@ final class MapProposals {
 	 * The reviewer's own proposal for a part the finder missed (or got wrong at the layout's level): tested on the
 	 * site's or the layout's pages, with its readings and a note. @return array|\WP_Error the proposal
 	 */
-	public static function add( string $host, int $layout, string $field, string $sel, string $mode, string $note ) {
+	public static function add( string $host, int $layout, string $field, string $sel, string $mode, string $note, string $verdict = '' ) {
 		self::maybe_install();
 		$h = VendorMaps::host( $host );
 		if ( ! in_array( $field, self::FIELDS, true ) ) {
@@ -395,7 +420,7 @@ final class MapProposals {
 		self::keep( $h, $layout, $field, [ 'sel' => $sel, 'mode' => $mode, 'where' => 'Proposed by Claude on review' ], $t, self::spread( $pg, self::LOOK ) );
 		global $wpdb;
 		$id = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::table() . ' WHERE host = %s AND layout = %d AND field = %s', $h, $layout, $field ) );
-		return $id ? self::review( $id, $note ) : new \WP_Error( 'mmpt_proposal', 'Not kept (that part was decided already).' );
+		return $id ? self::review( $id, $note, '', '', $verdict, 'added' ) : new \WP_Error( 'mmpt_proposal', 'Not kept (that part was decided already).' );
 	}
 
 	/**
@@ -434,6 +459,7 @@ final class MapProposals {
 			'of'      => $p['of'],
 			'note'    => (string) $p['note'],
 			'checked' => (string) $p['checked'],
+			'verdict' => (string) ( $p['verdict'] ?? '' ),
 			'status'  => (string) $p['status'],
 			'samples' => $p['samples'],
 		];

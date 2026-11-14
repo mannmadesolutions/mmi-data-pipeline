@@ -3,6 +3,8 @@
  * product's state as PageList does), the /urls/* decisions, /urls/evidence, /pages/queue and page-list/{id}/keep.
  * TitleRulesMock hands it every path it doesn't know.
  */
+import type { Proposal } from "../../../src/workbench/mapsApi";
+
 interface MockPage {
   id: number; title: string; current: string; verified: boolean; proposed: string; status: string; conf: number | null;
   broken?: boolean; wrong?: string; kept?: boolean; noPage?: boolean; final?: string; reason?: string;
@@ -41,7 +43,7 @@ export class MakerPagesMock {
   ];
   filled = false;
   undone = false;
-  proposals = [
+  proposals: Proposal[] = [
     { id: 27, host: "acme.example", field: "pictures", layout: -1, scope: "site", sel: "section#hero img", mode: "img", found: 3, of: 3, note: "Checked: the product's banner picture.", checked: "claude", status: "proposed",
       samples: [{ id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", short: "1 picture", urls: ["https://acme.example/img/hero-1.webp"] }] },
     { id: 28, host: "acme.example", field: "manual", layout: -1, scope: "site", sel: "a.manual", mode: "links", found: 2, of: 3, note: "", checked: "", status: "proposed",
@@ -188,7 +190,12 @@ export class MakerPagesMock {
       case "pages/queue": return { data: { queued: (body.ids as number[]).length, started: true, status: {}, states: {}, ...(body.mode === "pictures" ? { pictures: null } : {}) } };
       case "brand-sites": return { data: { brands: this.brands, shared: {}, find: {} } };
       case "map-proposals": return { data: { rows: this.proposals } };
-      case "map-proposals/site": { const mine = this.proposals.filter((x) => x.host === body.host && x.status === "proposed"); mine.forEach((x) => { x.status = "approved"; }); return { data: { approved: mine.length, failed: [], rows: [] } }; }
+      case "map-proposals/site": {
+        const only = (body.ids as number[] | undefined) ?? [];
+        const mine = this.proposals.filter((x) => x.host === body.host && x.status === "proposed" && (!only.length || only.includes(x.id)));
+        mine.forEach((x) => { x.status = "approved"; });
+        return { data: { approved: mine.length, failed: [], rows: [] } };
+      }
       case "maps": return { data: { rows: this.sites, fields: {}, modes: {}, fills: [], reasons: {}, runner: { running: false, waiting: 0, note: "", finished_at: "" } } };
       case "urls/set-many": {
         const done: number[] = [];
