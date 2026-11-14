@@ -1579,27 +1579,17 @@ tr.mmi-wb-mp-gone .notice {
     color: #fff;
     position: relative;
 }
-.mmi-wb-mk-sites {
-    margin: 4px 0 0 2px;
-    padding: 0 0 0 8px;
-    border-left: 2px solid var(--mmi-wb-border);
-    list-style: none;
+/* An open brand's maker sites, in its description: the host opens its map, then its map's state, then ↗ to the site. */
+.mmi-wb-bs-site .button-link {
+    font-size: inherit;
+    vertical-align: baseline;
 }
-.mmi-wb-mk-sites li {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 2px 6px;
-    margin: 2px 0;
-    font-size: 12px;
-}
-.mmi-wb-mk-sites .button-link {
-    font-size: 12px;
-    word-break: break-all;
-    text-align: left;
-}
-.mmi-wb-mk-sites .mmi-badge {
+.mmi-wb-bs-site .mmi-badge {
     font-size: 10px;
+    vertical-align: 1px;
+}
+.mmi-wb-bs-site a {
+    text-decoration: none;
 }
 .mmi-wb-mk-owners {
     margin: 0 0 10px;

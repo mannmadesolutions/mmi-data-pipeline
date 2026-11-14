@@ -33,9 +33,11 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString
 
 export interface BrandStep { body: ReactNode; count: string; dot: boolean }
 /** map, fill: those tabs' content, count and dot (Makers draws the maker site's map and its Fill). */
-export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
+export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill, siteState, onSite }: {
   cfg: TitleRulesConfig; brand: Brand; onBrand: (b: Brand) => void; tab: BrandTab; onTab: (t: BrandTab) => void;
   map: BrandStep; fill: BrandStep;
+  /** A maker site's map state, as a badge, and opening the brand on that site's map (the description's site list). */
+  siteState: (host: string) => ReactNode; onSite: (host: string) => void;
 }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -181,7 +183,13 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
         <div className="mmi-wb-split-title">
           <h4>{brand.logo && <img src={brand.logo} alt="" />} {brand.name}{brand.gone && <span className="mmi-badge inline">Set aside</span>}</h4>
           <p className="description">
-            {plural(brand.products, "product")} · {makers.length ? <>the maker's site{makers.length === 1 ? "" : "s"}: {makers.map((h, i) => <span key={h}>{i ? ", " : ""}<a href={`https://${h}`} target="_blank" rel="noreferrer">{h}</a></span>)}</> : "no maker site saved"}
+            {plural(brand.products, "product")} · {makers.length ? <>the maker's site{makers.length === 1 ? "" : "s"}: {makers.map((h, i) => (
+              <span key={h} className="mmi-wb-bs-site" data-site={h}>{i ? ", " : ""}
+                <button type="button" className="button-link" title={`Open ${brand.name} on ${h}'s map`} onClick={() => onSite(h)}>{h}</button>{" "}
+                {siteState(h)}{" "}
+                <a href={`https://${h}`} target="_blank" rel="noreferrer" title={`Open ${h} in a new tab`} aria-label={`Open ${h} in a new tab`}>↗</a>
+              </span>
+            ))}</> : "no maker site saved"}
             {brand.url && <> · <a href={brand.url} target="_blank" rel="noreferrer">its brand page ↗</a></>}
           </p>
         </div>
