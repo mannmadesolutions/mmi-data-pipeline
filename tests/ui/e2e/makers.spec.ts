@@ -157,3 +157,27 @@ test("a map the brand no longer needs: switch it off, asked again in place", asy
   await expect(idle).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("a whole list row opens its brand or site; the name reads as plain text", async ({ page }) => {
+  const { sec, errors } = await open(page);
+  const row = sec.locator('#mmi-wb-bs-rows [data-brand="21"]');
+  await row.locator(".mmi-wb-split-num").click(); // the To do cell, not the name
+  await expect(drawer(page)).toHaveAttribute("data-brand", "21");
+  const name = row.locator(".mmi-wb-split-name");
+  const look = await name.evaluate((el) => { const c = getComputedStyle(el); return { weight: c.fontWeight, color: c.color, line: c.textDecorationLine, cell: getComputedStyle(el.closest("td")!).color }; });
+  expect(look).toEqual({ weight: "400", color: look.cell, line: "none", cell: look.cell }); // the cell's own text color
+  expect(look.color).not.toBe("rgb(34, 113, 177)"); // not WordPress's link blue
+  expect(await row.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
+  // Enter on the focused name opens it too (keys and Tab still work).
+  await sec.locator('#mmi-wb-bs-rows [data-brand="20"] .mmi-wb-split-name').focus();
+  await page.keyboard.press("Enter");
+  await expect(drawer(page)).toHaveAttribute("data-brand", "20");
+  // A site under a brand still opens that site's map, not the brand's Pages.
+  await sec.locator('#mmi-wb-bs-rows [data-brand="20"] li[data-site="acme.example"] button').click();
+  await expect(drawer(page).locator('[data-stab="map"]')).toHaveAttribute("aria-selected", "true");
+  // By site, the same.
+  await sec.locator("#mmi-wb-mk-by-site").click();
+  await sec.locator('#mmi-wb-sm-rows [data-host="acme.example"] .mmi-wb-split-meta').click();
+  await expect(page.locator("#mmi-wb-sm-panel")).toHaveAttribute("data-host", "acme.example");
+  expect(errors).toEqual([]);
+});

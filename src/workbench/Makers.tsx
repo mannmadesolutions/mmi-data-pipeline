@@ -163,11 +163,12 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
                   {brandList.map((b) => {
                     const makers = b.sites.filter(isMaker);
                     return (
-                      <tr key={b.id} data-brand={b.id} data-key={b.id} className={brandId === b.id ? "is-open" : undefined}>
+                      // The whole row opens the brand (owner 2026-11-14); its name stays a button for the keys and Tab.
+                      <tr key={b.id} data-brand={b.id} data-key={b.id} className={`mmi-wb-split-row${brandId === b.id ? " is-open" : ""}`} onClick={() => setBrandId(b.id)}>
                         <td>
                           <div className="mmi-wb-bs-brand">
                             {b.logo && <img src={b.logo} alt="" loading="lazy" />}
-                            <button type="button" className="button-link mmi-wb-split-name" aria-current={brandId === b.id ? "true" : undefined} onClick={() => setBrandId(b.id)}>{b.name}</button>
+                            <button type="button" className="button-link mmi-wb-split-name" aria-current={brandId === b.id ? "true" : undefined}>{b.name}</button>
                           </div>
                           <div className="mmi-wb-split-meta">
                             {b.gone ? <span className="mmi-badge inline">set aside</span> : !makers.length ? <span className="mmi-wb-mp-warn">None saved</span> : null}
@@ -181,7 +182,7 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
                                 const [label, badge] = mapState(siteRow(s.host)?.status ?? s.map);
                                 return (
                                   <li key={s.host} data-site={s.host}>
-                                    <button type="button" className="button-link" tabIndex={-1} title={`Open ${b.name} on ${s.host}'s map`} onClick={() => openBrand(b.id, "map", s.host)}>{s.host}</button>
+                                    <button type="button" className="button-link" tabIndex={-1} title={`Open ${b.name} on ${s.host}'s map`} onClick={(e) => { e.stopPropagation(); openBrand(b.id, "map", s.host); }}>{s.host}</button>
                                     {w ? <span className="mmi-badge warning inline">{plural(w, "part")}</span> : <span className={`mmi-badge ${badge} inline`}>{label}</span>}
                                   </li>
                                 );
@@ -230,9 +231,9 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
                     const [label, badge] = mapState(r.status);
                     const waiting = waitingOn(r.host);
                     return (
-                      <tr key={r.host} data-host={r.host} data-key={r.host} className={siteHost === r.host ? "is-open" : undefined}>
+                      <tr key={r.host} data-host={r.host} data-key={r.host} className={`mmi-wb-split-row${siteHost === r.host ? " is-open" : ""}`} onClick={() => setSiteHost(r.host)}>
                         <td>
-                          <button type="button" className="button-link mmi-wb-split-name" aria-current={siteHost === r.host ? "true" : undefined} onClick={() => setSiteHost(r.host)}>{r.host}</button>
+                          <button type="button" className="button-link mmi-wb-split-name" aria-current={siteHost === r.host ? "true" : undefined}>{r.host}</button>
                           <div className="mmi-wb-split-meta">
                             <span className={`mmi-badge ${badge} inline`}>{label}</span>
                             {waiting ? <span className="mmi-wb-mp-warn">{plural(waiting, "part")} to approve</span>

@@ -1522,6 +1522,20 @@ tr.mmi-wb-mp-gone .notice {
     text-align: left;
     word-break: break-word;
 }
+/* Makers' lists: the whole row opens its item (owner 2026-11-14), so the name reads as plain text, not a link. */
+.mmi-wb-split-list tbody tr.mmi-wb-split-row {
+    cursor: pointer;
+}
+.mmi-wb-split-list tbody tr.mmi-wb-split-row:not(.is-open):hover > td {
+    background: #f6f7f7;
+}
+.mmi-wb-split-list .mmi-wb-split-row .mmi-wb-split-name,
+.mmi-wb-split-list .mmi-wb-split-row .mmi-wb-split-name:hover {
+    font-weight: 400;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
 .mmi-wb-split-meta {
     display: flex;
     flex-wrap: wrap;
