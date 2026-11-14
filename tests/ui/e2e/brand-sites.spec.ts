@@ -1,5 +1,5 @@
 /**
- * The Workbench's Brands & sites section in a real browser, WebKit first, with the REST routes mocked
+ * Makers listed by brand (the Workbench's Brands & sites until 2026-11-14) in a real browser, WebKit first, with the REST routes mocked
  * (maker-pages-mock.ts); the workspace's fresh build. The brand list stays on the left and the open brand beside it
  * (owner 2026-11-14, the same split view as Site maps), its products and sites in tabs.
  */
@@ -8,7 +8,7 @@ import { MockBackend } from "./mock-backend";
 import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-async function open(page: Page, key = "sites") {
+async function open(page: Page, key = "makers") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
@@ -19,13 +19,13 @@ async function open(page: Page, key = "sites") {
   await api.attach(page);
   await page.goto("/");
   await openSection(page, key);
-  const sec = page.locator("#mmi-wb-brand-sites");
+  const sec = page.locator("#mmi-wb-makers");
   await expect(sec.locator("#mmi-wb-bs-rows tr[data-brand]")).toHaveCount(2);
   return { api, errors, sec };
 }
 const drawer = (page: Page) => page.locator("#mmi-wb-bs-drawer");
 const openBrand = async (page: Page, id: number) => {
-  await page.locator(`#mmi-wb-bs-rows [data-brand="${id}"] button`).click();
+  await page.locator(`#mmi-wb-bs-rows [data-brand="${id}"] .mmi-wb-split-name`).click();
   await expect(drawer(page)).toHaveAttribute("data-brand", String(id));
 };
 const tab = (page: Page, key: string) => drawer(page).locator(`[data-stab="${key}"]`).click();
@@ -56,7 +56,7 @@ test("the brand list stays beside the open brand: work pills, more lists, arrow 
   expect(new URL(page.url()).searchParams.get("wb_brand")).toBe("20");
   await page.keyboard.press("ArrowDown");
   await expect(drawer(page)).toHaveAttribute("data-brand", "21");
-  await expect(sec.locator('#mmi-wb-bs-rows [data-brand="21"] button')).toBeFocused();
+  await expect(sec.locator('#mmi-wb-bs-rows [data-brand="21"] .mmi-wb-split-name')).toBeFocused();
   expect(errors).toEqual([]);
 });
 

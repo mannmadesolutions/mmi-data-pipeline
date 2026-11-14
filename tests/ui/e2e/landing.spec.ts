@@ -25,24 +25,25 @@ test("wb_q opens Find and change on the search", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("wb_brand alone opens Brands & sites on the brand", async ({ page }) => {
+test("wb_brand alone opens Makers on the brand", async ({ page }) => {
   const { errors } = await open(page, "?wb_brand=20");
-  await expect(current(page)).toHaveAttribute("data-sec", "sites");
+  await expect(current(page)).toHaveAttribute("data-sec", "makers");
   await expect(page.locator("#mmi-wb-bs-drawer")).toHaveAttribute("data-brand", "20");
   expect(errors).toEqual([]);
 });
 
-test("wb_site alone opens Site maps on the site", async ({ page }) => {
+test("wb_site alone opens Makers listed by site, on the site", async ({ page }) => {
   const { errors } = await open(page, "?wb_site=acme.example");
-  await expect(current(page)).toHaveAttribute("data-sec", "maps");
+  await expect(current(page)).toHaveAttribute("data-sec", "makers");
+  await expect(page.locator("#mmi-wb-mk-by-site")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#mmi-wb-sm-panel")).toHaveAttribute("data-host", "acme.example");
   expect(errors).toEqual([]);
 });
 
 test("wb_sec opens its section alone; sections not opened yet aren't drawn", async ({ page }) => {
-  await open(page, "?wb_sec=maps");
-  await expect(current(page)).toHaveAttribute("data-sec", "maps");
-  await expect(page.locator("#mmi-wb-site-maps")).toBeVisible();
+  await open(page, "?wb_sec=maps"); // Site maps' key: Makers, listed by site
+  await expect(current(page)).toHaveAttribute("data-sec", "makers");
+  await expect(page.locator("#mmi-wb-makers #mmi-wb-sm-table")).toBeVisible();
   await expect(page.locator("#mmi-wb-find")).toBeHidden(); // mounted with the page (it hosts the shared components), hidden
   await expect(page.locator("#mmi-wb-proposals")).toHaveCount(0);
   await expect(page.locator("#mmi-wb-maker-pages")).toHaveCount(0);

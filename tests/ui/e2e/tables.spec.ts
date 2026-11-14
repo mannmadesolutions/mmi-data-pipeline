@@ -8,7 +8,7 @@ import { MockBackend } from "./mock-backend";
 import { openSection } from "./shell";
 import { TitleRulesMock } from "./title-rules-mock";
 
-const SECTIONS = ["decide", "titles", "descriptions", "pages", "sites", "maps", "rules", "left", "standing", "upkeep", "pictures", "changes"];
+const SECTIONS = ["decide", "titles", "descriptions", "pages", "makers", "rules", "left", "standing", "upkeep", "pictures", "changes"];
 
 interface TableLook { id: string; pads: string[]; heights: number[]; unsorted: string[]; handles: number; heads: number; over: number }
 

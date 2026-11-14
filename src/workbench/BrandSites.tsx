@@ -1,132 +1,36 @@
 /**
- * Brands & sites in the Workbench (Product Data's BrandSites): where each brand's maker publishes its product
- * pages, and its products matched to them.
+ * An open brand in Makers (Makers.tsx; Product Data's BrandSites): where its maker publishes its product pages, and
+ * its products matched to them.
  *
- * Layout (owner 2026-11-14: "the same layout" as Site maps, ui.tsx's split view):
- * - The brand list is a column on the left that stays in view; ↑ and ↓ move between brands. Its pills are the work
- *   (Needs work, No maker site); Set aside and Every brand are in the menu beside the search.
- * - The open brand is beside it: a header (the brand, its website, Set aside), lines for what waits on the whole
- *   brand (pages that moved, bundles with no maker page, what its products wait for), then two tabs.
- * - Products: decided row by row as in Maker pages, and "Find their pages", which reads every maker site's own
+ * - A header (the brand, its maker sites, Set aside), lines for what waits on the whole brand (pages that moved,
+ *   bundles with no maker page, what its products wait for), then the brand's tabs in the order the work goes.
+ * - Pages: decided row by row as in Maker pages, and "Find their pages", which reads every maker site's own
  *   product list and ticks the sure matches, saved together.
+ * - Map: what Makers hands in (the maker site's map, SiteMaps.tsx's SitePanel).
  * - Sites: each switched to what it is (the maker's own, a partner, a reseller, a store, another brand's), a site
  *   added, the Brand website.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { landing } from "./landing";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  bestMatches, BRAND_VIEWS, brandsIn, drawerRow, brandViewCount, hostOf, isMaker, makerHosts, PRODUCT_GROUPS, ROLES, rolesBody, roleLabel, sortBrands, ticks, toDo,
-  toDoText, type Brand, type BrandSort, type BrandView, type Match, type ProductGroup, type ProductsReply, type SitePages, type SiteRole,
+  bestMatches, drawerRow, hostOf, isMaker, makerHosts, PRODUCT_GROUPS, ROLES, rolesBody, roleLabel, ticks, toDo,
+  toDoText, type Brand, type Match, type ProductGroup, type ProductsReply, type SitePages, type SiteRole,
 } from "./brandsApi";
-import { useSectionVisible } from "./nav";
 import { msg, usePageRows, type Notice } from "./pageRows";
 import type { PageListReply, PageRow } from "./pagesApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section, SortTh, SplitTabs, useAddressParam, useColumnResize, useListKeys } from "./ui";
+import { Dashicon, SplitTabs, type SplitTab } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 const POLL = { ms: 3000, tries: 40 };
 
-export type BrandTab = "products" | "sites";
-type Sort = { col: BrandSort; desc: boolean } | null;
+export type BrandTab = "products" | "map" | "sites";
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-/** The work the pills show; the rest are in the menu beside the search. */
-const WORK_VIEWS: BrandView[] = ["work", "nomaker"];
 
-export function BrandSites({ cfg }: { cfg: TitleRulesConfig }) {
-  const [brands, setBrands] = useState<Brand[] | null>(null);
-  const [view, setView] = useState<BrandView>("work");
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState<number | null>(() => landing().brand || null); // a link can open a brand (wb_brand)
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const [sort, setSort] = useState<Sort>(null);
-  const [tab, setTab] = useState<BrandTab>("products"); // kept while moving between brands
-  const visible = useSectionVisible();
-  useEffect(() => {
-    rest<{ brands: Brand[] }>(cfg, "GET", "brand-sites").then((d) => setBrands(d.brands)).catch((e) => { setBrands([]); setNotice({ text: msg(e), kind: "error" }); });
-  }, [cfg]);
-  const list = sortBrands(brands ? brandsIn(brands, view, q) : [], sort);
-  const tableRef = useRef<HTMLTableElement>(null);
-  useColumnResize(tableRef, list.length > 0);
-  const brand = brands?.find((b) => b.id === open) ?? null;
-  const replace = (b: Brand) => setBrands((bs) => (bs ? bs.map((x) => (x.id === b.id ? b : x)) : bs));
-  useAddressParam("wb_brand", open ? String(open) : null, visible);
-  const onListKey = useListKeys(tableRef, list.map((b) => String(b.id)), open ? String(open) : null, (k) => setOpen(Number(k)));
-  const sortBy = (col: BrandSort) => setSort((s) => (!s || s.col !== col ? { col, desc: col === "todo" } : s.desc === (col === "todo") ? { col, desc: !s.desc } : null));
-
-  return (
-    <Section id="mmi-wb-brand-sites" icon="store" title="Brands & sites"
-      desc="Where each brand's maker publishes its product pages. Open a brand to match its products to the maker's own pages, and to say which of its sites are the maker's">
-      {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status"><p>{notice.text}</p></div>}
-      <div className="mmi-wb-split">
-        <div className="mmi-wb-split-list" id="mmi-wb-bs-list">
-          <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="Brands that need work">
-            {BRAND_VIEWS.filter((v) => WORK_VIEWS.includes(v.value)).map((v) => (
-              <button key={v.value} type="button" className={`mmi-pill${view === v.value ? " active" : ""}`} aria-pressed={view === v.value} data-bview={v.value} title={v.hint || undefined} onClick={() => setView(v.value)}>
-                {v.label} <span className="mmi-pill-count">{brands ? brandViewCount(brands, v.value) : "…"}</span>
-              </button>
-            ))}
-          </div>
-          <div className="mmi-wb-split-filters">
-            <select id="mmi-wb-bs-view" aria-label="Other brand lists" value={WORK_VIEWS.includes(view) ? "" : view} onChange={(e) => setView((e.target.value || "work") as BrandView)}>
-              <option value="">More lists…</option>
-              {BRAND_VIEWS.filter((v) => !WORK_VIEWS.includes(v.value)).map((v) => <option key={v.value} value={v.value} title={v.hint || undefined}>{v.label} ({brands ? brandViewCount(brands, v.value) : "…"})</option>)}
-            </select>
-            <input type="search" id="mmi-wb-bs-q" aria-label="Find brands" placeholder="Brand or site" value={q} onChange={(e) => setQ(e.target.value)} />
-            <span className="mmi-wb-count" id="mmi-wb-bs-count">{brands ? plural(list.length, "brand") : ""}</span>
-          </div>
-          <div className="mmi-table-scroll-wrapper mmi-wb-split-scroll">
-            <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-bs-table">
-              <thead>
-                <tr>
-                  <SortTh col="brand" label="Brand" active={sort?.col === "brand"} desc={!!sort?.desc} onSort={sortBy} />
-                  <SortTh col="todo" label="To do" title="Products waiting for a maker page" active={sort?.col === "todo"} desc={!!sort?.desc} onSort={sortBy} className="mmi-wb-split-num" />
-                </tr>
-              </thead>
-              <tbody id="mmi-wb-bs-rows" onKeyDown={onListKey}>
-                {!brands && <tr><td colSpan={2} className="mmi-wb-empty-cell">Loading brands…</td></tr>}
-                {brands && !list.length && <tr><td colSpan={2} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
-                {list.map((b) => {
-                  const makers = b.sites.filter(isMaker);
-                  return (
-                    <tr key={b.id} data-brand={b.id} data-key={b.id} className={open === b.id ? "is-open" : undefined}>
-                      <td>
-                        <div className="mmi-wb-bs-brand">
-                          {b.logo && <img src={b.logo} alt="" loading="lazy" />}
-                          <button type="button" className="button-link mmi-wb-split-name" aria-current={open === b.id ? "true" : undefined} onClick={() => setOpen(b.id)}>{b.name}</button>
-                        </div>
-                        <div className="mmi-wb-split-meta">
-                          {b.gone ? <span className="mmi-badge inline">set aside</span>
-                            : makers.length ? <span className="mmi-wb-bs-hosts">{makers[0]!.host}{makers.length > 1 ? ` +${makers.length - 1}` : ""}</span>
-                            : <span className="mmi-wb-mp-warn">None saved</span>}
-                          <span>{plural(b.products, "product")}</span>
-                        </div>
-                      </td>
-                      <td className="mmi-wb-split-num" title={toDoText(b) || "Nothing waits"}>{toDo(b) ? toDo(b).toLocaleString("en-US") : <span className="description">–</span>}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {list.length > 1 && <p className="description mmi-wb-split-keys">↑ and ↓ move between brands.</p>}
-        </div>
-        <div className="mmi-wb-split-work">
-          {brand
-            ? <BrandDrawer key={brand.id} cfg={cfg} brand={brand} onBrand={replace} tab={tab} onTab={setTab} />
-            : (
-              <div className="mmi-wb-split-empty" id="mmi-wb-bs-empty">
-                <p><strong>Choose a brand on the left.</strong></p>
-                <p className="description">It opens here, with its products matched to the maker's own pages and the sites it links to.</p>
-              </div>
-            )}
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-function BrandDrawer({ cfg, brand, onBrand, tab, onTab }: { cfg: TitleRulesConfig; brand: Brand; onBrand: (b: Brand) => void; tab: BrandTab; onTab: (t: BrandTab) => void }) {
+/** map: the Map tab's content and its tab's count and dot (Makers draws the maker site's map). */
+export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map }: {
+  cfg: TitleRulesConfig; brand: Brand; onBrand: (b: Brand) => void; tab: BrandTab; onTab: (t: BrandTab) => void;
+  map: { body: ReactNode; count: string; dot: boolean };
+}) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -253,7 +157,7 @@ function BrandDrawer({ cfg, brand, onBrand, tab, onTab }: { cfg: TitleRulesConfi
       {/* What waits on the whole brand: a line each, with its fix, whichever tab is open. */}
       <div className="mmi-wb-split-lines">
         {!hasMaker && !brand.gone && <p className="mmi-wb-split-why is-blocked" id="mmi-wb-bs-why">No maker site is saved, so its products' pages can't be found. Add the maker's site under Sites, or set the brand aside when the maker has none.</p>}
-        {hasMaker && waits && <p className="mmi-wb-split-why is-info" id="mmi-wb-bs-waits">{waits}: decide them under Products, or let Find their pages match them to the maker's own list.</p>}
+        {hasMaker && waits && <p className="mmi-wb-split-why is-info" id="mmi-wb-bs-waits">{waits}: decide them under Pages, or let Find their pages match them to the maker's own list.</p>}
         {(brand.moves ?? []).map((mv) => (
           <div key={`${mv.from} ${mv.to}`} className="notice notice-warning inline mmi-wb-bs-move" data-move={mv.from}>
             <p>{mv.n} products' pages on {mv.from} now redirect to {mv.to}.{" "}
@@ -276,12 +180,15 @@ function BrandDrawer({ cfg, brand, onBrand, tab, onTab }: { cfg: TitleRulesConfi
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-bs-notice"><p>{notice.text}</p></div>}
 
       <SplitTabs id="mmi-wb-bs" label={`${brand.name}: what to look at`} active={tab} onTab={onTab} tabs={[
-        { key: "products", label: "Products", count: toDo(brand) ? `${toDo(brand)} to do` : plural(brand.products, "product"), dot: toDo(brand) > 0 },
+        { key: "products", label: "Pages", count: toDo(brand) ? `${toDo(brand)} to do` : plural(brand.products, "product"), dot: toDo(brand) > 0 },
+        { key: "map", label: "Map", count: map.count, dot: map.dot },
         // No dot for a site whose role isn't set: roles aren't a task (owner 2026-10-23). Only a missing maker site or moved pages.
         { key: "sites", label: "Sites", count: String(brand.sites.length), dot: !hasMaker || (brand.moves ?? []).length > 0 },
-      ]} />
+      ] satisfies SplitTab<BrandTab>[]} />
 
       <div className="mmi-wb-split-panel" id="mmi-wb-bs-tabpanel" role="tabpanel" aria-labelledby={`mmi-wb-bs-tab-${tab}`}>
+        {tab === "map" && map.body}
+
         {tab === "sites" && (<>
         <p className="description">Every site its products link to, and what each is. Product data is read only from the maker's own sites and its partners'.</p>
         <div className="mmi-table-scroll-wrapper">

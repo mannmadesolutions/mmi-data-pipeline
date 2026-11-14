@@ -1,5 +1,5 @@
 /**
- * The Workbench's Site maps section in a real browser, WebKit first, with the REST routes mocked
+ * Makers listed by site (the Workbench's Site maps until 2026-11-14) in a real browser, WebKit first, with the REST routes mocked
  * (maker-pages-mock.ts); the workspace's fresh build. The site list stays on the left and the open site beside it
  * (owner 2026-11-14), its parts one row each with their proposals; Map parts is a pill of Needs a decision.
  */
@@ -18,9 +18,12 @@ async function open(page: Page, key = "maps") {
   const api = new TitleRulesMock();
   await api.attach(page);
   await page.goto("/");
-  await openSection(page, key);
-  const sec = page.locator("#mmi-wb-site-maps");
-  if (key === "maps") await expect(sec.locator("#mmi-wb-sm-rows tr[data-host]")).toHaveCount(1);
+  await openSection(page, key === "maps" ? "makers" : key);
+  const sec = page.locator("#mmi-wb-makers");
+  if (key === "maps") {
+    await sec.locator("#mmi-wb-mk-by-site").click();
+    await expect(sec.locator("#mmi-wb-sm-rows tr[data-host]")).toHaveCount(1);
+  }
   return { api, errors, sec };
 }
 const panel = (page: Page) => page.locator("#mmi-wb-sm-panel");
@@ -89,8 +92,8 @@ test("Parts: one row per part with its bar, its proposals under it, and its prod
 
 test("proposed parts: reject one, approve the rest", async ({ page }) => {
   const { api } = await open(page);
-  await expect(page.locator('#mmi-wb-site-maps [data-sview="proposals"]')).toContainText("1");
-  await page.locator('#mmi-wb-site-maps [data-sview="proposals"]').click();
+  await expect(page.locator('#mmi-wb-makers [data-sview="proposals"]')).toContainText("1");
+  await page.locator('#mmi-wb-makers [data-sview="proposals"]').click();
   await expect(page.locator("#mmi-wb-sm-rows tr[data-host]")).toHaveCount(1);
   await openSite(page, "acme.example");
   const p = panel(page);

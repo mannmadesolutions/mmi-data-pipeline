@@ -451,7 +451,7 @@ class ExtBridge {
 		if ( $maker !== '' ) {
 			$notices[] = [ 'kind' => 'info', 'text' => 'This page keeps ' . $maker . '’s system requirements, and may list many products. Pick the part that applies to ours: only that part is read, for all of them.' ];
 		} elseif ( ! $known ) {
-			$notices[] = [ 'kind' => 'info', 'text' => 'No product uses this page, and this site isn’t one of a brand’s maker sites. Add the site in its brand’s row in the Product Workbench’s Brands & sites to work on it here.' ];
+			$notices[] = [ 'kind' => 'info', 'text' => 'No product uses this page, and this site isn’t one of a brand’s maker sites. Add the site under its brand’s Sites tab in the Product Workbench’s Makers to work on it here.' ];
 		} elseif ( ! $ids && ! $propos ) {
 			$notices[] = [ 'kind' => 'info', 'text' => 'No product uses this page as its vendor URL yet.' ];
 		}
@@ -532,7 +532,7 @@ class ExtBridge {
 			$actions[] = [ 'id' => 'thissite', 'label' => 'Show the site overview', 'help' => 'Lists the site’s pages, its layouts and the work left, here in the panel.', 'kind' => 'site' ];
 		}
 		if ( $brands || $map ) {
-			$actions[] = [ 'id' => 'site', 'label' => 'Show this site in the Workbench', 'help' => 'Opens the Product Workbench’s Site maps on this site, in a new tab.', 'kind' => 'open', 'href' => Module::workbench_url( [ 'site' => $host ] ) ];
+			$actions[] = [ 'id' => 'site', 'label' => 'Show this site in the Workbench', 'help' => 'Opens this site in the Product Workbench’s Makers, in a new tab.', 'kind' => 'open', 'href' => Module::workbench_url( [ 'site' => $host ] ) ];
 		}
 		if ( $maker !== '' ) {
 			$picked = (bool) VendorMaps::kept_pick( $maker, $url );
@@ -1521,7 +1521,7 @@ class ExtBridge {
 		if ( ! $stored ) {
 			return [ 'label' => 'Site map', 'value' => 'None yet, and none of our products’ pages on it is stored yet to start one from. Product Data reads them once their pages are found (Find pages); Store this page stores this one.', 'state' => 'missing' ];
 		}
-		return [ 'label' => 'Site map', 'value' => sprintf( 'None yet. %s it reads our products’ %d stored pages for where the site keeps pictures, description, requirements and manuals, and groups the pages into layouts.', $start ? 'Start it below:' : 'Starting it (Product Data, Site maps):', $stored ), 'state' => 'missing' ];
+		return [ 'label' => 'Site map', 'value' => sprintf( 'None yet. %s it reads our products’ %d stored pages for where the site keeps pictures, description, requirements and manuals, and groups the pages into layouts.', $start ? 'Start it below:' : 'Starting it (Product Workbench, Makers):', $stored ), 'state' => 'missing' ];
 	}
 
 	/** A page address as the site's lists compare it: no scheme, no www, no trailing slash. */
@@ -2356,7 +2356,7 @@ class ExtBridge {
 		}
 		$terms = self::brand_terms( VendorMaps::host( $url ) );
 		if ( ! $terms ) {
-			return new \WP_REST_Response( [ 'message' => 'This site isn’t a maker site of any brand. Add it in the brand’s row in the Product Workbench’s Brands & sites first.' ], 400 );
+			return new \WP_REST_Response( [ 'message' => 'This site isn’t a maker site of any brand. Add it under the brand’s Sites tab in the Product Workbench’s Makers first.' ], 400 );
 		}
 		$q = trim( sanitize_text_field( (string) $r->get_param( 'q' ) ) );
 		if ( mb_strlen( $q ) < 2 ) {
@@ -2467,7 +2467,7 @@ class ExtBridge {
 		$host = VendorMaps::host( $url );
 		$map  = VendorMaps::get( $host );
 		if ( ! $map && ! self::brands_for( $host ) ) {
-			return new \WP_REST_Response( [ 'message' => 'This site isn’t one of a brand’s maker sites. Add it in its brand’s row in the Product Workbench’s Brands & sites first.' ], 404 );
+			return new \WP_REST_Response( [ 'message' => 'This site isn’t one of a brand’s maker sites. Add it under its brand’s Sites tab in the Product Workbench’s Makers first.' ], 404 );
 		}
 		if ( sanitize_key( (string) $r->get_param( 'op' ) ) !== 'start' ) {
 			return new \WP_REST_Response( [ 'message' => 'Unknown site action.' ], 400 );
@@ -3008,7 +3008,7 @@ class ExtBridge {
 		}
 		$terms = self::brand_terms( VendorMaps::host( $target ) );
 		if ( ! $terms || ! array_intersect( $terms, array_map( 'intval', (array) wp_get_post_terms( $id, 'product_brand', [ 'fields' => 'ids' ] ) ) ) ) {
-			return $refuse( 'That address isn’t on a maker site of this product’s brand. Add the site in the brand’s row in the Product Workbench’s Brands & sites first.' );
+			return $refuse( 'That address isn’t on a maker site of this product’s brand. Add the site under the brand’s Sites tab in the Product Workbench’s Makers first.' );
 		}
 		if ( UrlFinder::same_url( $was, $target ) ) {
 			return $refuse( 'That is already its page.' );

@@ -21,8 +21,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
-import { BrandSites } from "./BrandSites";
-import { SiteMaps } from "./SiteMaps";
+import { Makers } from "./Makers";
 import { TitleRules } from "./TitleRules";
 import { ProductDataRuns } from "./WritingSettings";
 import { LeftAlone } from "./LeftAlone";
@@ -518,8 +517,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
     ...(tr ? [
       // The review queues (Title proposals, Descriptions, Pictures to pick, Maker pages) are Needs a decision's pills
       // (owner 2026-11-13); links to their old keys open it on the pill (landing.ts QUEUE_PILLS).
-      { key: "sites", label: "Brands & sites", group: "maker", render: () => <BrandSites cfg={tr} /> },
-      { key: "maps", label: "Site maps", group: "maker", render: () => <SiteMaps cfg={tr} /> },
+      // Brands & sites and Site maps are one entry (owner 2026-11-14); their old keys land on it (landing.ts ALIASES).
+      { key: "makers", label: "Makers", group: "maker", render: () => <Makers cfg={tr} /> },
       { key: "rules", label: "Title rules", group: "maker", render: () => <TitleRules cfg={tr} /> },
       { key: "left", label: "Left alone", group: "maker", render: () => <LeftAlone cfg={tr} /> },
     ] as MenuEntry[] : []),

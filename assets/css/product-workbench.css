@@ -1543,6 +1543,53 @@ tr.mmi-wb-mp-gone .notice {
     margin: 0;
     font-size: 12px;
 }
+/* Makers (2026-11-14): By brand / By site above the list, and a brand's maker sites under its name. */
+.mmi-wb-mk-mode {
+    display: flex;
+}
+.mmi-wb-mk-mode .button {
+    flex: 1 1 0;
+    justify-content: center;
+    border-radius: 0;
+}
+.mmi-wb-mk-mode .button:first-child {
+    border-radius: 3px 0 0 3px;
+}
+.mmi-wb-mk-mode .button:last-child {
+    border-radius: 0 3px 3px 0;
+    margin-left: -1px;
+}
+.mmi-wb-mk-mode .button.is-active {
+    background: var(--mmi-wb-accent);
+    border-color: var(--mmi-wb-accent);
+    color: #fff;
+    position: relative;
+}
+.mmi-wb-mk-sites {
+    margin: 4px 0 0 2px;
+    padding: 0 0 0 8px;
+    border-left: 2px solid var(--mmi-wb-border);
+    list-style: none;
+}
+.mmi-wb-mk-sites li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 6px;
+    margin: 2px 0;
+    font-size: 12px;
+}
+.mmi-wb-mk-sites .button-link {
+    font-size: 12px;
+    word-break: break-all;
+    text-align: left;
+}
+.mmi-wb-mk-sites .mmi-badge {
+    font-size: 10px;
+}
+.mmi-wb-mk-owners {
+    margin: 0 0 10px;
+}
 .mmi-wb-split-work {
     min-width: 0;
     padding: 12px 14px 14px;

@@ -5,8 +5,8 @@
  * redirects here):
  *   wb_sec     the menu entry to open (a key of SECTION_IDS, or an ALIASES key)
  *   wb_q       Find products starts with this search (a product ID or words)
- *   wb_brand   Brands & sites opens this brand (term ID)
- *   wb_site    Site maps opens this maker site (host)
+ *   wb_brand   Makers opens this brand (term ID); with wb_site, on that site's map
+ *   wb_site    Makers opens this maker site (host): listed by site, or under wb_brand
  *   wb_bundle  the Bundles panel shows this bundle (a store's own panel reads it)
  *   wb_product Needs a decision opens the product drawer on this product (product ID)
  *   wb_kind    Needs a decision opens on this pill: a queue (titles, descriptions, pictures, pages, maps) or key:{waiting key}
@@ -14,11 +14,18 @@
  * The review queues are pills of Needs a decision (owner 2026-11-13: "subsets of Needs a decision"), so a link to
  * one (wb_sec=titles, descriptions, picks, pages) opens Needs a decision on its pill.
  *
+ * Brands & sites and Site maps are one entry, Makers (owner 2026-11-14): wb_sec=sites opens it listed by brand,
+ * wb_sec=maps listed by site, so the Chrome extension's and mmi-admin's links still land.
+ *
  * A link without wb_sec opens the section its other parameter belongs to
- * (wb_brand → Brands & sites, …). An older link's #section-id hash (e.g.
+ * (wb_brand → Makers, …). An older link's #section-id hash (e.g.
  * #mmi-wb-rules from the rule-efficacy alert) opens that section too.
  */
-export interface Landing { sec: string; q: string; brand: number; site: string; bundle: number; product: number; kind: string }
+export interface Landing {
+  sec: string; q: string; brand: number; site: string; bundle: number; product: number; kind: string;
+  /** Makers opens listed by site (wb_sec=maps, or wb_site without wb_brand). */
+  bySite: boolean;
+}
 
 /** The review queues' old menu keys → Needs a decision's pill. */
 export const QUEUE_PILLS: Record<string, string> = { titles: "titles", descriptions: "descriptions", picks: "pictures", pages: "pages" };
@@ -35,8 +42,7 @@ export const SECTION_IDS: Record<string, string> = {
   picks: "mmi-wb-enrich",
   pictures: "mmi-wb-pictures",
   pages: "mmi-wb-maker-pages",
-  sites: "mmi-wb-brand-sites",
-  maps: "mmi-wb-site-maps",
+  makers: "mmi-wb-makers",
   rules: "mmi-wb-title-rules",
   left: "mmi-wb-left-alone",
   writing: "mmi-wb-pd-runs",
@@ -50,6 +56,8 @@ export const ALIASES: Record<string, string> = {
   proposals: "descriptions", // "Description and picture proposals" was one section
   parts: "part-numbers",
   history: "changes",
+  sites: "makers", // Brands & sites and Site maps became Makers (2026-11-14)
+  maps: "makers",
 };
 
 /** A wb_sec value (or alias) → its menu key, or "" (a review queue's key is Needs a decision's). */
@@ -69,6 +77,7 @@ function keyForHash(hash: string): string {
   const id = hash.replace(/^#/, "");
   if (!id) return "";
   if (id === "mmi-wb-find") return "data";
+  if (id === "mmi-wb-brand-sites" || id === "mmi-wb-site-maps") return "makers";
   return Object.keys(SECTION_IDS).find((k) => SECTION_IDS[k] === id) ?? "";
 }
 
@@ -89,8 +98,10 @@ export function readLanding(search: string, hash = ""): Landing {
     bundle: int("wb_bundle"),
     product: int("wb_product"),
     kind: pillKind((p.get("wb_kind") ?? "").trim()) || queueOf(p.get("wb_sec") ?? "", hash),
+    bySite: false,
   };
-  if (!l.sec) l.sec = sectionKey(keyForHash(hash)) || (l.product ? "decide" : l.brand ? "sites" : l.site ? "maps" : l.bundle ? "bundles" : l.q ? "data" : "");
+  if (!l.sec) l.sec = sectionKey(keyForHash(hash)) || (l.product ? "decide" : l.brand || l.site ? "makers" : l.bundle ? "bundles" : l.q ? "data" : "");
+  l.bySite = l.sec === "makers" && !l.brand && (p.get("wb_sec") === "maps" || hash.replace(/^#/, "") === "mmi-wb-site-maps" || !!l.site);
   return l;
 }
 

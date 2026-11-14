@@ -53,12 +53,12 @@ test("a slow count shows a spinner in its badge, never a blank menu", async ({ p
 
 test("a menu click adds a history entry: Back returns, reload keeps the place, Cmd-click has a real address", async ({ page }) => {
   await open(page);
-  await expect(item(page, "maps")).toHaveAttribute("href", /[?&]wb_sec=maps(&|$)/);
+  await expect(item(page, "makers")).toHaveAttribute("href", /[?&]wb_sec=makers(&|$)/);
   await openSection(page, "rules");
   expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("rules");
   await expect(page.locator("#mmi-wb-title-rules")).toBeVisible();
   await expect(page.locator("#mmi-wb-find")).toBeHidden();
-  await openSection(page, "maps");
+  await openSection(page, "makers");
   await page.goBack();
   await expect(current(page)).toHaveAttribute("data-sec", "rules");
   await expect(page.locator("#mmi-wb-title-rules")).toBeVisible();
@@ -121,7 +121,7 @@ test("under 960 px the menu is a select above the section", async ({ page }) => 
   const select = page.locator("#mmi-wb-menu-select");
   await expect(select).toBeVisible();
   await expect(select.locator("option", { hasText: "Find and change" })).toHaveText(/\(120\)/);
-  await select.selectOption("maps");
-  await expect(page.locator("#mmi-wb-site-maps")).toBeVisible();
-  expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("maps");
+  await select.selectOption("makers");
+  await expect(page.locator("#mmi-wb-makers")).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("wb_sec")).toBe("makers");
 });

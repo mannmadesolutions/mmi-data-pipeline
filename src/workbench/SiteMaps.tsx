@@ -1,151 +1,45 @@
 /**
- * Site maps in the Workbench (Product Data's VendorMaps, SiteGaps, FillRun): each maker site's map, what its pages
- * would add to its products, and the Fill that writes it. Parts themselves are picked on the maker's live page in
- * the Chrome extension.
+ * An open maker site in Makers (Makers.tsx; Product Data's VendorMaps, SiteGaps, FillRun): the site's map, what its
+ * pages would add to its products, and the Fill that writes it. Parts themselves are picked on the maker's live page
+ * in the Chrome extension. It opens listed by site, or as an open brand's Map tab.
  *
  * Layout (owner 2026-11-14, the "split view with part rows" mockup):
- * - The site list is a column on the left that stays in view; ↑ and ↓ move between sites. Its pills are the work
- *   waiting (Gaps to fill, Parts to approve); map status is a menu beside the search.
- * - The open site is beside it: a header with the site's actions and its Fill, a line saying what the Fill waits
- *   on, the Fill's review when it is open, then tabs (Parts, Pages, Last fills, Text left out, Settings).
+ * - A header with the site's actions and its Fill, a line saying what the Fill waits on, the Fill's review when it
+ *   is open, then tabs (Parts, Pages, Last fills, Text left out, Settings).
  * - Parts has one row per part (Pictures, Description, Requirements…): what the map reads it with, a bar of what it
  *   does across the site's products, and the part's proposals under it with Approve and Reject. A part's name
  *   opens its products, with the decisions a cell takes ("its page has none of this", the page's requirements).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { landing } from "./landing";
 import {
-  adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, gainOf, gainProducts, idsWith, layoutName, noteParts,
-  PART_LABEL, partRows, partsHint, proposalHosts, SITE_VIEWS, siteViewCount, sitesIn, sliceAt, SLICES, sortParts, sortSites, STATUS, tallyText,
-  type CellAction, type DrillSort, type FillRunRow, type GapRow, type Gaps, type MapsReply, type PartRow, type PartSort, type Proposal, type RailSort,
-  type Reading, type SiteRow, type SiteView, type Tally, type TextSkips,
+  adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, idsWith, layoutName, noteParts,
+  PART_LABEL, partRows, partsHint, sliceAt, SLICES, sortParts, STATUS, tallyText,
+  type CellAction, type DrillSort, type FillRunRow, type GapRow, type Gaps, type PartRow, type PartSort, type Proposal,
+  type Reading, type SiteRow, type Tally, type TextSkips,
 } from "./mapsApi";
-import { useSectionVisible } from "./nav";
 import { msg, type Notice } from "./pageRows";
 import { ProductPictures, SitePicturesPanel } from "./SitePictures";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section, SortTh, SplitTabs, useAddressParam, useColumnResize, useListKeys } from "./ui";
+import { SortTh, SplitTabs, useColumnResize } from "./ui";
 
 const POLL_MS = 8000;
 const enc = encodeURIComponent;
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 export type SiteTab = "parts" | "pages" | "fills" | "text" | "settings";
-type Sort<K> = { col: K; desc: boolean } | null;
+export type Sort<K> = { col: K; desc: boolean } | null;
 /** A heading click: a new column starts ascending (counts descending), the same one flips, a third goes back to the default order. */
-function nextSort<K extends string>(s: Sort<K>, col: K, countCol: K): Sort<K> {
+export function nextSort<K extends string>(s: Sort<K>, col: K, countCol: K): Sort<K> {
   const first = col === countCol;
   if (!s || s.col !== col) return { col, desc: first };
   return s.desc === first ? { col, desc: !first } : null;
-}
-
-export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
-  const [reply, setReply] = useState<MapsReply | null>(null);
-  const [view, setView] = useState<SiteView | "proposals">("gain");
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState<string | null>(() => landing().site || null); // a link can open a site (wb_site)
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [sort, setSort] = useState<Sort<RailSort>>(null);
-  const [tab, setTab] = useState<SiteTab>("parts"); // kept while moving between sites
-  const visible = useSectionVisible();
-  const loadProposals = useCallback(() => { rest<{ rows: Proposal[] }>(cfg, "GET", "map-proposals").then((d) => setProposals(d.rows)).catch(() => {}); }, [cfg]);
-  useEffect(() => { loadProposals(); }, [loadProposals]);
-  const withProposals = proposalHosts(proposals);
-  const waitingOn = (host: string) => proposals.filter((p) => p.host === host && p.status === "proposed").length;
-  const loadList = useCallback(() => {
-    rest<MapsReply>(cfg, "GET", "maps").then(setReply).catch((e) => { setReply({ rows: [], runner: { running: false, waiting: 0, note: "", finished_at: "" } }); setNotice({ text: msg(e), kind: "error" }); });
-  }, [cfg]);
-  useEffect(() => { loadList(); }, [loadList]);
-  const listed = reply ? (view === "proposals" ? sitesIn(reply.rows, "all", q).filter((r) => withProposals.has(r.host)) : sitesIn(reply.rows, view, q)) : [];
-  const rows = sortSites(listed, sort);
-  const tableRef = useRef<HTMLTableElement>(null);
-  useColumnResize(tableRef, rows.length > 0);
-  const site = reply?.rows.find((r) => r.host === open) ?? null;
-
-  useAddressParam("wb_site", open, visible);
-  const onListKey = useListKeys(tableRef, rows.map((r) => r.host), open, setOpen);
-  const statusValue = view !== "gain" && view !== "proposals" ? view : "";
-
-  return (
-    <Section id="mmi-wb-site-maps" icon="location-alt" title="Site maps"
-      desc="Where each maker site keeps pictures and text, what its pages would add to its products, and the Fill that writes it. Parts are picked on the maker's live page in the Chrome extension"
-      actions={cfg.extension ? <a className="button" id="mmi-wb-sm-extension" href={cfg.extension}><Dashicon name="admin-plugins" /> Chrome extension</a> : undefined}>
-      {notice && <div className="notice notice-error inline" role="status"><p>{notice.text}</p></div>}
-      <div className="mmi-wb-split">
-        <div className="mmi-wb-split-list" id="mmi-wb-sm-rail">
-          <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="Work waiting">
-            <button type="button" className={`mmi-pill${view === "gain" ? " active" : ""}`} aria-pressed={view === "gain"} data-sview="gain" title={SITE_VIEWS[0]!.hint} onClick={() => setView("gain")}>
-              Gaps to fill <span className="mmi-pill-count">{reply ? siteViewCount(reply.rows, "gain") : "…"}</span>
-            </button>
-            <button type="button" className={`mmi-pill${view === "proposals" ? " active" : ""}`} aria-pressed={view === "proposals"} data-sview="proposals" title="Sites with parts found on their pages, waiting for a person's approval" onClick={() => setView("proposals")}>
-              Parts to approve <span className="mmi-pill-count">{withProposals.size}</span>
-            </button>
-          </div>
-          <div className="mmi-wb-split-filters">
-            <select id="mmi-wb-sm-status" aria-label="Map status" value={statusValue} onChange={(e) => setView((e.target.value || "gain") as SiteView)}>
-              <option value="">By map status…</option>
-              {SITE_VIEWS.filter((v) => v.value !== "gain").map((v) => <option key={v.value} value={v.value} title={v.hint || undefined}>{v.label} ({reply ? siteViewCount(reply.rows, v.value) : "…"})</option>)}
-            </select>
-            <input type="search" id="mmi-wb-sm-q" aria-label="Find sites" placeholder="Site" value={q} onChange={(e) => setQ(e.target.value)} />
-            <span className="mmi-wb-count" id="mmi-wb-sm-count">{reply ? plural(rows.length, "site") : ""}</span>
-          </div>
-          {reply?.runner.running && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Checking maps{reply.runner.note ? `: ${reply.runner.note}` : ""}</p>}
-          <div className="mmi-table-scroll-wrapper mmi-wb-split-scroll">
-            <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-sm-table">
-              <thead>
-                <tr>
-                  <SortTh col="site" label="Site" active={sort?.col === "site"} desc={!!sort?.desc} onSort={(c) => setSort((s) => nextSort(s, c, "gaps"))} />
-                  <SortTh col="gaps" label="Gaps" title="Gaps its pages would fill, as last measured" active={sort?.col === "gaps"} desc={!!sort?.desc} onSort={(c) => setSort((s) => nextSort(s, c, "gaps"))} className="mmi-wb-split-num" />
-                </tr>
-              </thead>
-              <tbody id="mmi-wb-sm-rows" onKeyDown={onListKey}>
-                {!reply && <tr><td colSpan={2} className="mmi-wb-empty-cell">Loading sites…</td></tr>}
-                {reply && !rows.length && <tr><td colSpan={2} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
-                {rows.map((r) => {
-                  const [label, badge] = STATUS[r.status] ?? [r.status, ""];
-                  const waiting = waitingOn(r.host);
-                  return (
-                    <tr key={r.host} data-host={r.host} data-key={r.host} className={open === r.host ? "is-open" : undefined}>
-                      <td>
-                        <button type="button" className="button-link mmi-wb-split-name" aria-current={open === r.host ? "true" : undefined} onClick={() => setOpen(r.host)}>{r.host}</button>
-                        <div className="mmi-wb-split-meta">
-                          <span className={`mmi-badge ${badge} inline`}>{label}</span>
-                          {waiting ? <span className="mmi-wb-mp-warn">{plural(waiting, "part")} to approve</span>
-                            : <span>{r.stats.read} of {r.stats.pages} read{r.stats.refused ? <span className="mmi-wb-mp-warn"> · {r.stats.refused} refused</span> : null}</span>}
-                        </div>
-                      </td>
-                      <td className="mmi-wb-split-num" title={gainOf(r) ? `${plural(gainOf(r), "gap")} on ${plural(gainProducts(r), "product")}` : "Nothing its pages would add"}>
-                        {gainOf(r) ? gainOf(r).toLocaleString("en-US") : <span className="description">–</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {rows.length > 1 && <p className="description mmi-wb-split-keys">↑ and ↓ move between sites.</p>}
-        </div>
-        <div className="mmi-wb-split-work">
-          {site
-            ? <SitePanel key={site.host} cfg={cfg} site={site} proposals={proposals.filter((p) => p.host === site.host)} tab={tab} onTab={setTab} onChanged={() => { loadList(); loadProposals(); }} />
-            : (
-              <div className="mmi-wb-split-empty" id="mmi-wb-sm-empty">
-                <p><strong>Choose a site on the left.</strong></p>
-                <p className="description">It opens here, with its parts, what its pages would add to its products, and the Fill that writes it.</p>
-              </div>
-            )}
-        </div>
-      </div>
-    </Section>
-  );
 }
 
 const TABS: { key: SiteTab; label: string }[] = [
   { key: "parts", label: "Parts" }, { key: "pages", label: "Pages" }, { key: "fills", label: "Last fills" }, { key: "text", label: "Text left out" }, { key: "settings", label: "Settings" },
 ];
 
-function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg: TitleRulesConfig; site: SiteRow; proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void }) {
+export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg: TitleRulesConfig; site: SiteRow; proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void }) {
   const [gaps, setGaps] = useState<Gaps | null>(null);
   const [runs, setRuns] = useState<FillRunRow[] | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
