@@ -1017,7 +1017,8 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			state.away = r.data.away ? r.data.host : '';
 			state.pageMode = state.pageMode || !! state.away;
 			state.layout = r.data.layout || null;
-			state.scope = state.layout && state.layout.pages >= 2 ? 'layout' : 'site';
+			// A map step (BRIDGE.scope 'site') saves for the whole site: a pick for one layout leaves the site map without it.
+			state.scope = BRIDGE.scope !== 'site' && state.layout && state.layout.pages >= 2 ? 'layout' : 'site';
 			state.proposals = r.data.proposals || {};
 			state.undo = r.data.undo || {}; // parts whose site pick can be put back (VendorMaps::undoable())
 			const waiting = Object.values( state.proposals ).filter( ( p ) => p.status === 'proposed' ).length;

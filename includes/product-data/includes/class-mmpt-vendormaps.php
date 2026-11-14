@@ -3281,7 +3281,8 @@ class VendorMaps {
 						return new \WP_REST_Response( [ 'message' => 'No map for this site yet.' ], 404 );
 					}
 					self::measure_if_stale( (string) $r['host'] );
-					$m['fill'] = array_diff_key( $m['fill'], [ 'scrape' => 1, 'pictures' => 1 ] ) + [ 'scrape' => count( $m['fill']['scrape'] ), 'pictures' => count( $m['fill']['pictures'] ) ];
+					$m['steps'] = MapSteps::of( (string) $r['host'], $m ); // what the map needs next, as the extension's panel says it
+					$m['fill']  = array_diff_key( $m['fill'], [ 'scrape' => 1, 'pictures' => 1 ] ) + [ 'scrape' => count( $m['fill']['scrape'] ), 'pictures' => count( $m['fill']['pictures'] ) ];
 					return rest_ensure_response( $m );
 				},
 			]

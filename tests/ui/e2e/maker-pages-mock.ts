@@ -250,7 +250,12 @@ export class MakerPagesMock {
           const fill = done || host !== "acme.example"
             ? { confirm: false, products: 0, fields: 0, per: [], waiting: 0, why: "Nothing to fill: every gain the pages offer is written.", scrape: 0, pictures: 0 }
             : { confirm: s.status === "draft", products: 2, fields: 3, per: { images: 2, manual: 1 }, waiting: 0, why: "", scrape: 1, pictures: 2 };
-          return { data: { host, status: s.status, products: 3, no_card: 0, ready: { read: 2, blocked: 0, unread: 1, broken: 0 }, pending: 0, rows, totals: { images: { A: 2, U: 1 } }, layouts: [], parts: {}, writes: {}, at: "", ms: 1, fill } };
+          // MapSteps::of(): acme's map needs its pictures picked for the site (none yet), then a Fill confirms it.
+          const steps = host !== "acme.example" || done ? [] : [
+            { key: "pick:pictures", title: "Pick its pictures for the whole site on a Layout A page (2 of its 3 pages)", why: "Without a pick the reader finds a gallery (2 or more pictures) on 0 of its 3 stored pages.", done: false, where: "page", url: "https://acme.example/products/synth-1", part: "pictures", layout: 0 },
+            { key: "fill", title: "Confirm the map with a Fill", why: "In Makers → Fill: it writes what the pages add to 2 products, and its first run confirms the map.", done: false, where: "makers", tab: "fill" },
+          ];
+          return { data: { host, status: s.status, products: 3, no_card: 0, ready: { read: 2, blocked: 0, unread: 1, broken: 0 }, pending: 0, rows, totals: { images: { A: 2, U: 1 } }, layouts: [], parts: {}, writes: {}, at: "", ms: 1, fill, steps } };
         }
         case "fill": {
           this.filled = true; s.status = "confirmed";

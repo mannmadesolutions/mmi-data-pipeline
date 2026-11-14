@@ -91,6 +91,43 @@ test("a maker site's ↗ asks the Chrome extension for the site overview, or ope
   expect(errors).toEqual([]);
 });
 
+test("a site's map steps show on its Map tab, the next one opening its page in the Chrome extension, or a new tab without it", async ({ page }) => {
+  const { errors } = await open(page, "?wb_brand=20&wb_site=acme.example");
+  const steps = page.locator("#mmi-wb-sm-steps");
+  await expect(steps).toContainText("0 of 2 done");
+  await expect(steps.locator("li")).toHaveCount(2);
+  await expect(steps.locator('li[data-step="pick:pictures"]')).toHaveClass(/is-now/);
+  await expect(steps.locator('li[data-step="pick:pictures"] .mmi-badge')).toHaveText("Next");
+  await expect(steps.locator('li[data-step="fill"] button')).toHaveCount(0);
+  const pick = steps.locator('[data-step-pick="pictures"]');
+  // No extension: the page opens in a new tab.
+  await page.context().route("https://acme.example/**", (r) => r.fulfill({ body: "<title>Acme</title>", contentType: "text/html" }));
+  const [plain] = await Promise.all([page.waitForEvent("popup"), pick.click()]);
+  expect(plain.url()).toBe("https://acme.example/products/synth-1");
+  await plain.close();
+  // The extension can pick: the click asks it to open the page with the mapper on Pictures, saving for the site.
+  await page.evaluate(() => {
+    (window as unknown as { asked: unknown[] }).asked = [];
+    window.addEventListener("message", (e) => { if (e.data?.mmiExt && e.data.from === "page" && e.data.op === "pick") (window as unknown as { asked: unknown[] }).asked.push([e.data.url, e.data.part, e.data.scope]); });
+    window.postMessage({ mmiExt: true, from: "extension", op: "here", paired: true, can: ["send", "overview", "pick"] }, location.origin);
+  });
+  await page.waitForTimeout(100);
+  let popups = 0;
+  page.on("popup", () => { popups += 1; });
+  await pick.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { asked: unknown[] }).asked)).toEqual([["https://acme.example/products/synth-1", "pictures", "site"]]);
+  await page.waitForTimeout(300);
+  expect(popups).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test("a link to a brand's Fill tab (wb_tab) opens Makers there", async ({ page }) => {
+  const { errors } = await open(page, "?wb_sec=makers&wb_brand=20&wb_site=acme.example&wb_tab=fill");
+  await expect(drawer(page).locator('[data-stab="fill"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#mmi-wb-sm-steps")).toHaveCount(0); // the steps are the Map tab's
+  expect(errors).toEqual([]);
+});
+
 test("a brand with no maker site says so on its Map tab", async ({ page }) => {
   await open(page);
   await page.locator('#mmi-wb-bs-rows [data-brand="21"] .mmi-wb-split-name').click();

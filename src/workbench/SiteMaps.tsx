@@ -18,8 +18,9 @@ import {
   adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, idsWith, layoutName, noteBody, noteParts,
   PART_LABEL, partRows, partsHint, proposalGrid, sliceAt, SLICES, sortParts, STATUS, tallyText, verdictBatches, verdictOf, VERDICTS,
   type CellAction, type DrillSort, type FillRunRow, type GapRow, type Gaps, type PartRow, type PartSort, type Proposal,
-  type Reading, type SiteRow, type Tally, type TextSkips,
+  type MapStep, type Reading, type SiteRow, type Tally, type TextSkips,
 } from "./mapsApi";
+import { openPick, openSite, watchExtension } from "./extension";
 import { msg, type Notice } from "./pageRows";
 import { ProductPictures, SitePicturesPanel } from "./SitePictures";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
@@ -69,6 +70,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
   const host = site.host;
   // The site opens beside the list; when the page was scrolled past its top, bring its top into view.
   useEffect(() => { if (ref.current && ref.current.getBoundingClientRect().top < 0) ref.current.scrollIntoView({ block: "start" }); }, []);
+  useEffect(watchExtension, []); // a map step's Pick opens the page in the Chrome extension when it is here
 
   const load = useCallback(async () => {
     try {
@@ -196,6 +198,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
         {reading?.r && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Reading: {reading.r.done} done, {reading.r.working} now, {reading.r.waiting} waiting</p>}
       </div>
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-sm-notice"><p>{notice.text}</p></div>}
+      {showMap && gaps?.steps && gaps.steps.some((s) => !s.done) && <MapSteps host={host} steps={gaps.steps} />}
 
       {showFill && review && plan && (
         <div className="mmi-wb-sm-review" id="mmi-wb-sm-review" onKeyDown={deckKeys({ j: () => stepReview(1), k: () => stepReview(-1) })}>
@@ -651,6 +654,45 @@ function PartProducts({ p, rows, busy, onCell }: { p: PartRow; rows: GapRow[]; b
         </table>
       </div>
       {list.some((r) => cellActions(r, p.field).includes("none")) && <p className="description">"Its page has none of this" holds for every product of the site reading that page, until taken back.</p>}
+    </div>
+  );
+}
+
+/**
+ * What the site's map needs next (MapSteps, the same steps as the Chrome extension's panel on the site; owner 2026-11-14:
+ * "it is unclear how to proceed"): numbered, done ones ticked, the first not done with its way to do it. A step on one of
+ * the maker's pages opens it with the mapper on its part (the extension), or the page in a new tab without it.
+ */
+function MapSteps({ host, steps }: { host: string; steps: MapStep[] }) {
+  const now = steps.find((s) => !s.done);
+  const done = steps.filter((s) => s.done).length;
+  const how = (s: MapStep) => {
+    if (s.where === "page" && s.url) {
+      return (
+        <button type="button" className="button button-small button-primary" data-step-pick={s.part}
+          title={`Opens ${s.url} with the Chrome extension's mapper on this part, saving for the whole site`} onClick={() => openPick(s.url!, s.part ?? "")}>
+          Open the page to pick it ↗
+        </button>
+      );
+    }
+    if (s.where === "send" || s.where === "start") {
+      return <button type="button" className="button button-small button-primary" onClick={() => openSite(host)}>Open the site in the Chrome extension ↗</button>;
+    }
+    return null;
+  };
+  return (
+    <div className="mmi-wb-sm-steps" id="mmi-wb-sm-steps">
+      <p className="mmi-wb-sm-steps-head"><strong>This map's next steps</strong> <span className="description">{done} of {steps.length} done</span></p>
+      <ol>
+        {steps.map((s) => (
+          <li key={s.key} data-step={s.key} className={s.done ? "is-done" : s === now ? "is-now" : ""}>
+            <span className="mmi-wb-sm-step-title">{s.title}</span>{" "}
+            {s.done ? <span className="mmi-badge success inline">Done</span> : s === now ? <span className="mmi-badge info inline">Next</span> : null}
+            <span className="description">{s.why}</span>
+            {s === now && how(s)}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

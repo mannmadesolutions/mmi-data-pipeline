@@ -6,6 +6,9 @@
  * overview (owner 2026-11-14): a maker site's ↗ in Makers opens the site in a new tab with the panel on its site
  * overview (its pages, layouts and the work left). Without the extension, or a copy that can't, the link opens the
  * site as any link does.
+ *
+ * pick (owner 2026-11-14, a site's map steps): a step done on one of the maker's pages opens that page in a new tab with
+ * the panel there and the mapper on the step's part, saving for the whole site. Without the extension, the page opens.
  */
 const TAG = "mmiExt";
 
@@ -35,3 +38,18 @@ export const canOverview = (): boolean => !!here?.paired && here.can.includes("o
 
 /** Have the extension open $host with the panel on its site overview (bridge.js answers "overviewing"). */
 export const openOverview = (host: string): void => post("overview", { host });
+
+/** $host's site overview in the extension; its home page in a plain new tab where the extension can't. */
+export function openSite(host: string): void {
+  if (canOverview()) openOverview(host);
+  else window.open(`https://${host}/`, "_blank", "noopener");
+}
+
+/** The extension is connected in this browser and can open a page with the mapper on a part. */
+export const canPick = (): boolean => !!here?.paired && here.can.includes("pick");
+
+/** $url with the mapper on $part, saving for the whole site; in a plain new tab where the extension can't. */
+export function openPick(url: string, part: string): void {
+  if (canPick()) post("pick", { url, part, scope: "site" });
+  else window.open(url, "_blank", "noopener");
+}

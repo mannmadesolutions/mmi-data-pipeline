@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandDrawer, type BrandStep, type BrandTab } from "./BrandSites";
+import { openSite } from "./extension";
 import {
   BRAND_VIEWS, brandsIn, brandViewCount, isMaker, makerHosts, sortBrands, toDo, toDoText,
   type Brand, type BrandSort, type BrandView,
@@ -49,7 +50,7 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   // By brand: the open brand, its tab (kept while moving between brands) and the site its Map tab shows.
   const [brandId, setBrandId] = useState<number | null>(l.brand || null);
-  const [bTab, setBTab] = useState<BrandTab>(l.brand && l.site ? "map" : "products");
+  const [bTab, setBTab] = useState<BrandTab>(l.brand && l.tab ? (l.tab as BrandTab) : l.brand && l.site ? "map" : "products");
   const [mapHost, setMapHost] = useState<string | null>(l.brand ? l.site || null : null);
   // By site: the open site. Both modes share the site's own tab.
   const [siteHost, setSiteHost] = useState<string | null>(l.bySite ? l.site || null : null);
@@ -341,7 +342,8 @@ function BrandSiteStep({ cfg, focus, brand, brands, hosts, host, row, loaded, wa
         : (
           <div className="mmi-wb-split-empty" id="mmi-wb-mk-nomap">
             <p><strong>{host} has no map yet.</strong></p>
-            <p className="description">{focus === "fill" ? "There is nothing to fill from it until it has one: its pages are read without a map." : "Its pages are read without one. Pick its parts on its live page in the Chrome extension."}</p>
+            <p className="description">{focus === "fill" ? "There is nothing to fill from it until it has one: its pages are read without a map." : "Its pages are read without one. Start it from the site overview in the Chrome extension, once one of its product pages is approved under Pages."}</p>
+            {focus !== "fill" && <p><button type="button" className="button button-small" data-overview={host} onClick={() => openSite(host)}>Open {host} in the Chrome extension ↗</button></p>}
           </div>
         )}
     </>

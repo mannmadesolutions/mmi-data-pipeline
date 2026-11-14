@@ -2026,6 +2026,34 @@ tr.mmi-wb-mp-gone .notice {
     border-left-color: #72aee6;
     background: #f0f6fc;
 }
+/* A site's map steps (MapSteps): the info line's look, numbered, the next one with its button. */
+.mmi-wb-sm-steps {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-left: 4px solid #72aee6;
+    background: #f0f6fc;
+}
+.mmi-wb-sm-steps-head {
+    margin: 0 0 4px;
+}
+.mmi-wb-sm-steps ol {
+    margin: 0 0 0 20px;
+}
+.mmi-wb-sm-steps li {
+    margin: 6px 0 0;
+}
+.mmi-wb-sm-steps li .description {
+    display: block;
+}
+.mmi-wb-sm-steps li.is-done .mmi-wb-sm-step-title {
+    color: var(--mmi-wb-muted, #646970);
+}
+.mmi-wb-sm-steps li.is-now .mmi-wb-sm-step-title {
+    font-weight: 600;
+}
+.mmi-wb-sm-steps li .button {
+    margin-top: 4px;
+}
 /* The open item's tabs: WordPress's nav tabs in the suite's look, at a section's size. */
 .mmi-page .wrap .mmi-wb-split .mmi-wb-split-tabs {
     display: flex;

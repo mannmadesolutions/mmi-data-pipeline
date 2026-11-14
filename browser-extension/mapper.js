@@ -25,6 +25,7 @@
 	window.mmptLiveMapperBridge = {
 		origin: STORE.base || STORE.origin || '',
 		part: ( window.__mmiExtPickFor || {} ).part || '', // the panel row clicked: the mapper opens on that part, picking
+		scope: ( window.__mmiExtPickFor || {} ).scope || '', // 'site': a map step, saving for the whole site, not this page's layout
 		ask( op, payload ) {
 			const page = op === 'hello' ? { html: window.__mmiExtPageHtml() } : {}; // the server finds this page's layout from it when it has no stored copy
 			return chrome.runtime.sendMessage( { type: 'map', op, url: location.href, ...page, ...payload } )

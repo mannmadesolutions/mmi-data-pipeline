@@ -76,7 +76,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ExtBridge {
 
 	const SLUG         = 'mmi-product-extension'; // mmi- prefix → the shared library adds body.mmi-page and the suite styling
-	const PROTOCOL     = 10;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
+	const PROTOCOL     = 11;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
 	const MIN_PROTOCOL = 1;                       // the oldest extension still answered
 	const META         = '_mmpt_ext_tokens';      // [ id => { hash, label, created, used } ]
 	const HEADER       = 'X-MMI-Ext-Token';
@@ -452,7 +452,7 @@ class ExtBridge {
 			$notices[] = [ 'kind' => 'info', 'text' => 'This page keeps ' . $maker . '’s system requirements, and may list many products. Pick the part that applies to ours: only that part is read, for all of them.' ];
 		} elseif ( ! $known ) {
 			$notices[] = [ 'kind' => 'info', 'text' => 'No product uses this page, and this site isn’t one of a brand’s maker sites. Add the site under its brand’s Sites tab in the Product Workbench’s Makers to work on it here.' ];
-		} elseif ( ! $ids && ! $propos ) {
+		} elseif ( ! $ids && ! $propos && ( (int) $client['protocol'] < 11 || ! ( $brands || $map ) ) ) { // protocol 11: the site's steps say what to do here
 			$notices[] = [ 'kind' => 'info', 'text' => 'No product uses this page as its vendor URL yet.' ];
 		}
 		if ( $stored && in_array( (string) $stored['status'], self::REFUSED, true ) ) {
@@ -488,13 +488,27 @@ class ExtBridge {
 			),
 			'text'  => '',
 		];
-		$sections[] = $page; // above the site, so its layout is in sight
+		$v11   = (int) $client['protocol'] >= 11;
+		$steps = $v11 && ( $brands || $map ) ? self::steps_section( $host, $url, $here, (bool) $focus && ! $site ) : null;
+		$ours  = $ids || $propos;
+		if ( $steps ) {
+			$sections[] = $steps; // owner 2026-11-14: on the maker's home page, what to do next comes first; on a product's page, after the product
+		}
+		if ( ! ( $v11 && $site && ! $ours ) ) {
+			$sections[] = $page; // above the site, so its layout is in sight
+		}
 		if ( $site ) {
 			$whole = self::mark_layout( self::site_section( $host, $poll, (int) $client['protocol'] >= 8 ), $here );
 			if ( $focus ) { // the product's own Next is in the panel's More
 				$whole['actions'] = array_values( array_filter( $whole['actions'], static fn( $a ) => $a['id'] !== 'next' ) );
 			}
+			if ( $steps ) { // the step's button is the one to press; Next stays, plain
+				$whole['actions'] = array_map( static fn( $a ) => array_merge( $a, [ 'primary' => false ] ), $whole['actions'] );
+			}
 			$sections[] = $whole;
+		}
+		if ( $v11 && $site && ! $ours ) {
+			$sections[] = $page; // a page of none of our products: below the site, which is what it is opened for
 		}
 
 		$others = array_values( array_filter( array_merge( $ids, $propos ), static fn( $id ) => (int) $id !== $focus ) );
@@ -510,7 +524,7 @@ class ExtBridge {
 
 		if ( $known ) {
 			$fresh     = $stored && $stored['status'] === 'ok';
-			$actions[] = [ 'id' => 'store', 'label' => 'Store this page', 'help' => 'Keeps a copy of the page as you see it now, for the store to read.', 'kind' => 'snapshot', 'primary' => ! $focus && ( ! $fresh || (string) ( $stored['method'] ?? '' ) !== 'capture' ) ];
+			$actions[] = [ 'id' => 'store', 'label' => 'Store this page', 'help' => 'Keeps a copy of the page as you see it now, for the store to read.', 'kind' => 'snapshot', 'primary' => ! $focus && ( ! $fresh || (string) ( $stored['method'] ?? '' ) !== 'capture' ) && ( ! $v11 || $ids || $propos || ! $map ) ]; // protocol 11: a home or listing page isn't what a map reads
 		}
 		$list = Store::state( VendorCatalog::STATE . '_hosts' )[ $host ] ?? [];
 		if ( $v3 && ( ( $stored && in_array( (string) $stored['status'], self::REFUSED, true ) ) || ! empty( $list['blocked'] ) || ( $map && VendorMaps::status_of( $map ) === 'refused' ) ) ) { // a refusing site, from any of its pages
@@ -1397,6 +1411,74 @@ class ExtBridge {
 		return [ 'busy' => false, 'text' => $said, 'undo' => $item['status'] === 'applied' ];
 	}
 
+	/* ── The site's map, step by step (protocol 11) ─────────────────────── */
+
+	/**
+	 * Protocol 11 (owner 2026-11-14, Sick Noise Instruments: following Makers' ↗ to the maker's home page, "there is
+	 * little direction regarding what should come next"): the site's map steps (MapSteps), numbered, the done ones
+	 * ticked and the first one not done as the section's button and a clickable row. $compact: on a product's page, that
+	 * step alone. Null when nothing is left to do.
+	 */
+	private static function steps_section( string $host, string $url, ?array $here, bool $compact ): ?array {
+		$steps = MapSteps::of( $host );
+		$now   = MapSteps::now( $steps );
+		if ( ! $now ) {
+			return null;
+		}
+		$act  = self::step_action( $host, $url, $here, $now );
+		$rows = [];
+		foreach ( $steps as $n => $s ) {
+			if ( $compact && $s['key'] !== $now['key'] ) {
+				continue;
+			}
+			$row = [ 'label' => sprintf( '%d. %s', $n + 1, $s['title'] ), 'value' => $s['why'], 'state' => $s['done'] ? 'ok' : '' ];
+			if ( $s['done'] ) {
+				$row['status'] = [ 'kind' => 'ok', 'word' => 'Done', 'help' => '' ];
+			} elseif ( $s['key'] === $now['key'] ) {
+				$row['status'] = [ 'kind' => 'change', 'word' => 'Next', 'help' => '' ];
+				$row          += $act ? [ 'action' => $act, 'hint' => $act['label'] ] : [];
+			}
+			$rows[] = $row;
+		}
+		$done = count( array_filter( $steps, static fn( $s ) => $s['done'] ) );
+		return [
+			'title'   => $compact ? 'Next for this site’s map' : sprintf( 'This site’s map: %d of %d steps done', $done, count( $steps ) ),
+			'href'    => Module::workbench_url( [ 'site' => $host ] ),
+			'rows'    => $rows,
+			'text'    => $compact ? sprintf( 'Step %d of %d. Show the site overview (More) for the rest.', array_search( $now, $steps, true ) + 1, count( $steps ) ) : '',
+			'actions' => $act ? [ $act + [ 'id' => 'step', 'primary' => true ] ] : [],
+		];
+	}
+
+	/**
+	 * A step as a panel action: its page opened with the mapper on its part, saving for the whole site (gopick), or the
+	 * mapper here when this is that page or a page of that layout; Start; Send; Makers' tab on the site's brand.
+	 */
+	private static function step_action( string $host, string $url, ?array $here, array $s ): ?array {
+		$part = (string) ( $s['part'] ?? '' );
+		$name = strtolower( VendorMaps::FIELDS[ $part ][0] ?? $part );
+		switch ( $s['where'] ) {
+			case 'page':
+				$there = (string) ( $s['url'] ?? '' );
+				$same  = $there !== '' && self::page_key( $there ) === self::page_key( $url );
+				$alike = isset( $s['layout'] ) && $here && (int) $here['i'] === (int) $s['layout'] && (int) $here['pages'] >= 2;
+				if ( $same || $alike || $there === '' ) {
+					return [ 'kind' => 'map', 'part' => $part, 'scope' => 'site', 'label' => sprintf( 'Pick %s on this page', $name ) ];
+				}
+				return [ 'kind' => 'gopick', 'url' => $there, 'part' => $part, 'scope' => 'site', 'label' => isset( $s['layout'] ) ? sprintf( 'Open a Layout %s page and pick %s', self::letter( (int) $s['layout'] ), $name ) : sprintf( 'Open that page and pick %s', $name ) ];
+			case 'start':
+				return [ 'kind' => 'startmap', 'op' => 'start', 'label' => 'Start this site’s map' ];
+			case 'send':
+				return [ 'kind' => 'send', 'label' => 'Send this site' ];
+			case 'makers':
+				$brand = (int) ( self::brand_terms( $host )[0] ?? 0 );
+				$tab   = (string) ( $s['tab'] ?? 'map' );
+				$label = [ 'fill' => 'Open its Fill in Makers', 'products' => 'Open its Pages in Makers' ][ $tab ] ?? 'Open its Map in Makers';
+				return [ 'kind' => 'open', 'href' => Module::workbench_url( [ 'sec' => 'makers', 'brand' => $brand, 'site' => $host, 'tab' => $tab ] ), 'label' => $label . ' ↗' ];
+		}
+		return null;
+	}
+
 	/* ── The site (protocol 4: Site mode, plan §13 S1) ──────────────────── */
 
 	/**
@@ -1413,7 +1495,7 @@ class ExtBridge {
 		global $wpdb;
 		$map  = VendorMaps::get( $host );
 		$kept = $wpdb->get_row( $wpdb->prepare( 'SELECT COUNT(*) n, MAX(fetched_at) at FROM ' . PageStore::table() . ' WHERE host IN (%s, %s)', $host, 'www.' . $host ), ARRAY_A ); // the host index: a page stored or linked here (Link stores it) shows at once, so a new store's first page offers Start
-		$key  = 'mmpt_ext_site2_' . md5( implode( '|', [ $host, SiteGaps::stamp( $host ), $list['at'] ?? '', (int) $start, $map['drafted_at'] ?? 'none', $map['gaps']['at'] ?? '', $kept['n'] ?? 0, $kept['at'] ?? '' ] ) ); // a new map or a new grouping shows at once
+		$key  = 'mmpt_ext_site3_' . md5( implode( '|', [ $host, SiteGaps::stamp( $host ), $list['at'] ?? '', (int) $start, $map['drafted_at'] ?? 'none', $map['gaps']['at'] ?? '', $kept['n'] ?? 0, $kept['at'] ?? '' ] ) ); // a new map or a new grouping shows at once
 		$busy = self::site_busy( $host );
 		$sec  = $busy === '' ? get_transient( $key ) : false;
 		if ( is_array( $sec ) ) {
@@ -1593,14 +1675,14 @@ class ExtBridge {
 			$rows[] = $sample !== '' ? $row + [ 'action' => [ 'kind' => 'go', 'url' => $sample ] ] : $row;
 		}
 		if ( $ones ) {
-			$rows[] = [ 'label' => 'One-page layouts', 'value' => sprintf( '%d pages each look like no other page of the site', $ones ), 'state' => '' ];
+			$rows[] = [ 'label' => 'One-page layouts', 'value' => $ones === 1 ? '1 page looks like no other page of the site' : sprintf( '%d pages each look like no other page of the site', $ones ), 'state' => '' ];
 		}
 		$pages = array_sum( array_map( static fn( $l ) => (int) $l['pages'], $m['layouts'] ) );
 		$many  = count( $m['layouts'] ) - $ones;
 		$head  = [
 			'label' => 'Layouts',
 			'value' => ( $many
-				? sprintf( '%d %s of our products’ %d grouped pages%s. Click a layout to open one of its pages and map it.', $many, $many === 1 ? 'layout' : 'layouts', $pages, $ones ? sprintf( ', and %d pages built like no other', $ones ) : '' )
+				? sprintf( '%d %s of our products’ %d grouped pages%s. Click a layout to open one of its pages and map it.', $many, $many === 1 ? 'layout' : 'layouts', $pages, $ones ? sprintf( ', and %d %s built like no other', $ones, $ones === 1 ? 'page' : 'pages' ) : '' )
 				: sprintf( 'No two of our products’ %d grouped pages are built alike%s: map each page itself.', $pages, (int) $m['products'] > $pages * 2 ? sprintf( ' (our %d products share them)', (int) $m['products'] ) : '' ) ),
 			'state' => 'ok',
 		];

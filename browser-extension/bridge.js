@@ -6,7 +6,8 @@
  * (admin.php?page=mmi-product-extension, ext-connect.js) the page asks whether the extension is installed and
  * connected, hands it a new token after Connect, and tells it when this browser was disconnected. On any admin page a
  * site's Send (brand-sites.js) asks it to open and send a site, or to stop, and hears how the send goes (sendsay); a
- * maker site's ↗ in the Product Workbench's Makers (overview) asks it to open the site with the panel on its overview.
+ * maker site's ↗ in the Product Workbench's Makers (overview) asks it to open the site with the panel on its overview,
+ * and a map step there (pick) to open one of the site's pages with the mapper on the step's part.
  * On the Chrome extension page the Reference library section (library.js) asks which reference sites Chrome lets
  * the extension onto (libstate) and asks Chrome for one (liballow).
  * Only messages from this same page are taken.
@@ -61,6 +62,9 @@
 		} else if ( d.op === 'overview' ) {
 			const r = await ask( { type: 'openoverview', host: String( d.host || '' ) } );
 			post( { op: 'overviewing', host: d.host, ok: !! ( r && r.ok ), allowed: !! ( r && r.data && r.data.allowed ), message: ( r && r.data && r.data.message ) || '' } );
+		} else if ( d.op === 'pick' ) {
+			const r = await ask( { type: 'openpick', url: String( d.url || '' ), part: String( d.part || '' ), scope: String( d.scope || '' ) } );
+			post( { op: 'picking', url: d.url, ok: !! ( r && r.ok ), allowed: !! ( r && r.data && r.data.allowed ), message: ( r && r.data && r.data.message ) || '' } );
 		} else if ( d.op === 'sendstop' ) {
 			ask( { type: 'sendstop', host: String( d.host || '' ) } );
 		} else if ( ! CONNECT_PAGE ) {

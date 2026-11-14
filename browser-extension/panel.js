@@ -31,6 +31,11 @@
  * (ExtBridge::example(): the product now and after, Preview on the store, its page). Nothing is written until Commit
  * in the review. Picking is the rows' alone: one-off pictures for one product open from inside the row's picking.
  *
+ * Protocol 11 (owner 2026-11-14, Sick Noise Instruments: from Makers' ↗ the maker's home page gave "little direction
+ * regarding what should come next"): the server puts the site's map steps first (MapSteps), the next one as a button.
+ * A step on another of the site's pages opens it in this tab (gopick: the service worker carries the part over the
+ * load) and the mapper opens there on the step's part, saving for the whole site (scope).
+ *
  * A part's row carries its criteria's selector (`sel`): hovered or focused, what it reads is outlined on the page and
  * brought into view if it is out of sight (owner 2026-11-04: "why don't the corresponding DOM element get highlighted?").
  * A row with no pick here (none, or it finds nothing on this page) carries the two ends of the text read (`find`):
@@ -85,6 +90,7 @@
 		starting: 'Starting…',
 		keepOpen: 'Keep it open as you browse',
 		going: ' Opening its page: click MMI Product Data in the toolbar there to carry on.',
+		goingPick: 'Opening the page: the mapper opens there on this part. If it doesn’t, click MMI Product Data in the toolbar there.',
 		vetoing: 'Keeping it off…',
 		searching: 'Searching…',
 		noMatch: 'No product of this site’s brands matches.',
@@ -451,7 +457,8 @@
 	document.documentElement.appendChild( host );
 
 	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
-	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), allowed: true, href: location.href, ticks: {}, ticksFor: 0, more: false, key: false, shown: '', reviews: {}, say: null };
+	// pick (protocol 11): a map step opened this page for one of its parts, so the mapper opens on it once the panel is drawn.
+	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, ticks: {}, ticksFor: 0, more: false, key: false, shown: '', reviews: {}, say: null };
 
 	/** Open or closed, folded or not: the service worker keeps it for this tab, and puts the panel back on the next page. */
 	const report = () => chrome.runtime.sendMessage( { type: 'panelstate', open: host.style.display !== 'none', folded: box.hidden } ).catch( () => {} );
@@ -1974,6 +1981,11 @@
 		} else if ( ! quiet ) {
 			failed( res );
 		}
+		if ( state.pick && res && res.ok ) { // the map step that opened this page: its part, picking
+			const p = state.pick;
+			state.pick = null;
+			act( { kind: 'map', part: String( p.part || '' ), scope: p.scope === 'site' ? 'site' : '' }, el( 'button' ) );
+		}
 	}
 
 	function stopPolling() {
@@ -2051,6 +2063,19 @@
 					location.assign( a.url );
 				}
 				break;
+			case 'gopick': { // protocol 11: a map step on another page of the site, the mapper opening on its part there
+				if ( ! sameSite( a.url ) ) {
+					break;
+				}
+				const res = await ask( { type: 'carry', url: a.url, part: a.part || '', scope: a.scope || '' } );
+				if ( res && res.ok ) {
+					body.prepend( notice( 'ok', MESSAGES.goingPick ) );
+					location.assign( a.url );
+				} else {
+					answered( res );
+				}
+				break;
+			}
 			case 'sitepart':
 				forgetReviews();
 				answered( await working( b, MESSAGES.working, () => ask( { type: 'sitepart', url: location.href, op: a.op || '', product: state.product } ) ) );
@@ -2130,7 +2155,7 @@
 				break;
 			case 'map':
 			case 'pictures': {
-				window.__mmiExtPickFor = { product: a.product || state.product, title: a.title || '', part: a.part || '' };
+				window.__mmiExtPickFor = { product: a.product || state.product, title: a.title || '', part: a.part || '', scope: a.scope || '' }; // scope 'site': a map step saves for the whole site
 				const res = await working( b, MESSAGES.opening, () => ask( { type: 'inject', set: a.kind === 'map' ? 'mapper' : 'pictures' } ) );
 				if ( res && res.ok ) {
 					stopPolling();

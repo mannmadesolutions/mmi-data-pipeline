@@ -37,7 +37,12 @@ export interface Gaps {
   pending: number; rows: GapRow[]; totals: Record<string, Record<string, number>>; fill: FillPlan; at: string;
   /** The map's parts as saved, by part (pictures, requirements…): its element and whether it stopped matching. PHP's empty list is []. */
   parts?: Record<string, { sel: string; mode: string; broken: boolean }> | [];
+  /** What the map needs next (MapSteps), as the extension's panel on the site says it. */
+  steps?: MapStep[];
 }
+
+/** One of a site's map steps. where: page (url + part, picked in the extension), start, send or makers (tab). */
+export interface MapStep { key: string; title: string; why: string; done: boolean; where: "page" | "start" | "send" | "makers"; url?: string; part?: string; layout?: number; tab?: string }
 
 export interface FillItem { id: number; title: string; edit: string; state: string; wrote: string[]; pictures: string; undoable: boolean }
 export interface FillRunRow { run: string; at: string; items: FillItem[] }

@@ -23,6 +23,8 @@
  */
 export interface Landing {
   sec: string; q: string; brand: number; site: string; bundle: number; product: number; kind: string;
+  /** Makers: the open brand's tab (wb_tab: products, map, fill or sites), or "" for its default. */
+  tab: string;
   /** Makers opens listed by site (wb_sec=maps, or wb_site without wb_brand). */
   bySite: boolean;
 }
@@ -98,6 +100,7 @@ export function readLanding(search: string, hash = ""): Landing {
     bundle: int("wb_bundle"),
     product: int("wb_product"),
     kind: pillKind((p.get("wb_kind") ?? "").trim()) || queueOf(p.get("wb_sec") ?? "", hash),
+    tab: ["products", "map", "fill", "sites"].includes(p.get("wb_tab") ?? "") ? String(p.get("wb_tab")) : "",
     bySite: false,
   };
   if (!l.sec) l.sec = sectionKey(keyForHash(hash)) || (l.product ? "decide" : l.brand || l.site ? "makers" : l.bundle ? "bundles" : l.q ? "data" : "");

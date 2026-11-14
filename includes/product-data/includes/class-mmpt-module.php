@@ -68,11 +68,12 @@ final class Module {
 		$site   = $get( 'site' );
 		$bundle = absint( $get( 'bundle' ) );
 		$sec    = sanitize_key( $get( 'sec' ) );
+		$tab    = sanitize_key( $get( 'tab' ) ); // Makers: the open brand's tab (map, fill)
 		if ( $sec === '' ) {
 			$sec = $bundle ? 'bundles' : ( $q !== '' ? 'data' : ( $site !== '' ? 'maps' : ( $brand ? 'sites' : '' ) ) );
 		}
 		$out = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'workbench' ];
-		foreach ( [ 'sec' => $sec, 'q' => $q, 'brand' => $brand ? (string) $brand : '', 'site' => $site, 'bundle' => $bundle ? (string) $bundle : '' ] as $k => $v ) {
+		foreach ( [ 'sec' => $sec, 'q' => $q, 'brand' => $brand ? (string) $brand : '', 'site' => $site, 'bundle' => $bundle ? (string) $bundle : '', 'tab' => $tab ] as $k => $v ) {
 			if ( $v !== '' ) {
 				$out[ 'wb_' . $k ] = $v;
 			}

@@ -8,10 +8,12 @@
  * runs on a maker's page until then.
  *
  * Messages: from bridge.js (the store's Chrome extension page) status / pair / forget, and on any store admin page
- * opensend / sendstop and openoverview (Makers' ↗: the site with the panel on its overview); from connect.html connectto; from the scripts on a
+ * opensend / sendstop, openoverview (Makers' ↗: the site with the panel on its overview) and openpick (a map step: one
+ * of the site's pages, the mapper opening on its part there); from connect.html connectto; from the scripts on a
  * maker's page (panel.js, mapper.js, pictures.js, send.js) page / snapshot / map / write / undo / pictures / veto /
  * products / link / next / send / connect; inject, which puts the live mapper, the picture picker or Send this site
- * on that page (activeTab: the page the button was used on); and focus, which remembers the product Next opened in
+ * on that page (activeTab: the page the button was used on); carry, a map step's part for the page the panel moves this
+ * tab to (pick: the mapper opens on it there, once); and focus, which remembers the product Next opened in
  * this tab, so the panel opens on it when the button is clicked there (the extension can't act on the new page by
  * itself: activeTab ends when the tab moves on).
  *
@@ -42,7 +44,7 @@ const ROUTES = 'wp-json/mmpt/v1/';
 const CONNECT_PATH = 'wp-admin/admin.php?page=mmi-product-extension';
 const CONNECT_SLUG = 'mmi-product-extension';
 const BRIDGE_ID = 'mmi-bridge';
-const EXT_PROTOCOL = 10; // ExtBridge::PROTOCOL
+const EXT_PROTOCOL = 11; // ExtBridge::PROTOCOL
 /** What inject may put on a page, in order (map-select.js and live-mapper.js come from mmi-admin's assets/js). */
 const SETS = {
 	mapper: [ 'page-copy.js', 'map-select.js', 'mapper.js', 'live-mapper.js' ],
@@ -50,6 +52,8 @@ const SETS = {
 	send: [ 'send.js' ],
 };
 const FOCUS_MS = 15 * 60 * 1000; // a product Next opened is remembered this long
+/** A map part a step may open the mapper on (VendorMaps::FIELDS' keys). */
+const PARTS = /^[a-z_]{2,20}$/;
 const PANEL_FILES = [ 'page-copy.js', 'panel.js' ];
 /** Sites where the owner said no to Chrome's prompt: not asked again from the toolbar (the panel still offers it). */
 let declined = new Set();
@@ -296,7 +300,7 @@ async function pair( token, id, rest, sender ) {
 async function status() {
 	const s = await saved();
 	const st = await storeNow();
-	return { version: chrome.runtime.getManifest().version, protocol: EXT_PROTOCOL, paired: !! s.token, tokenId: s.tokenId || '', user: s.user || '', store: st ? st.origin : '', can: [ 'send', 'overview' ] };
+	return { version: chrome.runtime.getManifest().version, protocol: EXT_PROTOCOL, paired: !! s.token, tokenId: s.tokenId || '', user: s.user || '', store: st ? st.origin : '', can: [ 'send', 'overview', 'pick' ] };
 }
 
 /**
@@ -366,6 +370,8 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 		inject: () => inject( sender, String( msg.set || '' ) ),
 		opensend: () => openSend( String( msg.host || '' ) ),
 		openoverview: () => openOverview( sender, String( msg.host || '' ) ),
+		openpick: () => openOverview( sender, '', String( msg.url || '' ), String( msg.part || '' ), String( msg.scope || '' ) ),
+		carry: () => carryPick( sender, String( msg.url || '' ), String( msg.part || '' ), String( msg.scope || '' ) ),
 		sendstop: () => stopSend( String( msg.host || '' ) ),
 		sendsay: () => relaySend( sender, msg ),
 		connect: async () => chrome.tabs.create( { url: await connectPage() } ).then( () => ( { ok: true } ) ),
@@ -564,7 +570,7 @@ async function restorePanels() {
 	}
 }
 
-chrome.tabs.onRemoved.addListener( ( tabId ) => chrome.storage.session.remove( [ `panel${ tabId }`, `focus${ tabId }`, `hand${ tabId }`, `site${ tabId }` ] ) );
+chrome.tabs.onRemoved.addListener( ( tabId ) => chrome.storage.session.remove( [ `panel${ tabId }`, `focus${ tabId }`, `hand${ tabId }`, `site${ tabId }`, `pick${ tabId }` ] ) );
 
 /** A page loaded in a tab whose panel is open: the panel comes back (folded if it was), where Chrome allows it. */
 async function reopen( tabId, url ) {
@@ -574,9 +580,10 @@ async function reopen( tabId, url ) {
 	}
 	if ( ! ( await allowed( url ) ) ) {
 		const site = ( await chrome.storage.session.get( `site${ tabId }` ) )[ `site${ tabId }` ];
+		const pick = ( await chrome.storage.session.get( `pick${ tabId }` ) )[ `pick${ tabId }` ];
 		chrome.action.setBadgeBackgroundColor( { tabId, color: '#2271b1' } );
 		chrome.action.setBadgeText( { tabId, text: '+' } );
-		chrome.action.setTitle( { tabId, title: site ? `${ TITLE }: click to see ${ site.host }’s overview` : `${ TITLE }: click to bring the panel back on this site` } );
+		chrome.action.setTitle( { tabId, title: pick ? `${ TITLE }: click to pick ${ pick.part } on this page` : site ? `${ TITLE }: click to see ${ site.host }’s overview` : `${ TITLE }: click to bring the panel back on this site` } );
 		return;
 	}
 	try {
@@ -687,18 +694,45 @@ async function openSend( host ) {
  * already lets the extension onto the site the panel comes up as the page loads (reopen()); otherwise the button shows
  * "+" and its first click opens it there. Not connected: the site opens, nothing more.
  */
-async function openOverview( sender, host ) {
+async function openOverview( sender, host, page = '', part = '', scope = '' ) {
 	const s = await storeNow();
-	if ( ! /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test( host ) || ( s && host === new URL( s.origin ).hostname ) ) {
+	if ( page ) { // openpick (a site's map step): that page of the maker's site, the mapper on $part there
+		host = originOf( page ) ? new URL( page ).hostname : '';
+	}
+	if ( ! /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test( host ) || ( s && host === new URL( s.origin ).hostname ) || ( page && ! PARTS.test( part ) ) ) {
 		return { ok: false, data: { message: MESSAGES.badPage } };
 	}
-	const url = `https://${ host }/`;
+	const url = page || `https://${ host }/`;
 	const tab = await chrome.tabs.create( sender.tab ? { url, index: sender.tab.index + 1 } : { url } );
 	if ( ! s || ! ( await saved() ).token ) {
 		return { ok: true, data: { allowed: false, message: MESSAGES.notConnected } };
 	}
-	await chrome.storage.session.set( { [ `panel${ tab.id }` ]: { open: true, folded: false }, [ `site${ tab.id }` ]: { host } } );
+	const flag = page ? { [ `pick${ tab.id }` ]: { part, scope: scope === 'site' ? 'site' : '', host: bareHost( url ), at: Date.now() } } : { [ `site${ tab.id }` ]: { host } };
+	await chrome.storage.session.set( { [ `panel${ tab.id }` ]: { open: true, folded: false }, ...flag } );
 	return { ok: true, data: { allowed: await allowed( url ) } };
+}
+
+/**
+ * A map step on another page of the site (the panel's gopick): the panel there opens the mapper on $part as it loads,
+ * once. Kept for this tab until then (FOCUS_MS at most).
+ */
+async function carryPick( sender, url, part, scope ) {
+	if ( ! sender.tab || ! sender.tab.id || ! originOf( url ) || ! PARTS.test( part ) ) {
+		return { ok: false, data: { message: MESSAGES.badPage } };
+	}
+	await chrome.storage.session.set( { [ `pick${ sender.tab.id }` ]: { part, scope: scope === 'site' ? 'site' : '', host: bareHost( url ), at: Date.now() } } );
+	return { ok: true };
+}
+
+/** The part a map step asked for on this tab's page, once: { part, scope } or null. */
+async function takePick( tabId, url ) {
+	const key = `pick${ tabId }`;
+	const p = ( await chrome.storage.session.get( key ) )[ key ];
+	if ( ! p ) {
+		return null;
+	}
+	await chrome.storage.session.remove( key );
+	return p.host === bareHost( url ) && Date.now() - p.at < FOCUS_MS ? { part: p.part, scope: p.scope } : null;
 }
 
 /** Send starts on this tab, once, if a Send opened it. The panel is on the page by now. */
@@ -775,9 +809,10 @@ chrome.tabs.onRemoved.addListener( async ( tabId ) => {
 async function startPanel( tabId, folded ) {
 	const s = await storeNow();
 	const site = !! ( await chrome.storage.session.get( `site${ tabId }` ) )[ `site${ tabId }` ]; // opened from Makers' ↗: once
-	await chrome.scripting.executeScript( { target: { tabId }, func: ( f, b, st, so ) => {
-		window.__mmiExtStart = { folded: f, build: b, store: st, site: so };
-	}, args: [ folded, await buildId(), s ? { origin: s.origin, base: s.base } : null, site ] } );
+	const pick = await takePick( tabId, ( await chrome.tabs.get( tabId ) ).url || '' ); // a map step: the mapper on its part, once
+	await chrome.scripting.executeScript( { target: { tabId }, func: ( f, b, st, so, pk ) => {
+		window.__mmiExtStart = { folded: f, build: b, store: st, site: so, pick: pk };
+	}, args: [ folded, await buildId(), s ? { origin: s.origin, base: s.base } : null, site, pick ] } );
 	if ( site ) {
 		await chrome.storage.session.remove( `site${ tabId }` );
 	}
