@@ -314,6 +314,13 @@ final class MapProposals {
 		return array_map( [ __CLASS__, 'rows_one' ], $wpdb->get_results( $args ? $wpdb->prepare( $sql, $args ) : $sql, ARRAY_A ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 	}
 
+	/** Parts waiting for a person, every site (Needs a decision's Map parts pill). */
+	public static function waiting(): int {
+		self::maybe_install();
+		global $wpdb;
+		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . self::table() . " WHERE status = 'proposed'" ); // phpcs:ignore WordPress.DB.PreparedSQL -- table name, fixed value
+	}
+
 	/** The proposals a page's mapper inspects: per part, its layout's proposal, else the site's. */
 	public static function for_page( string $host, ?int $layout ): array {
 		$out = [];

@@ -26,7 +26,7 @@ export interface WaitingRow {
 }
 
 /** A pill: every product (""), a review queue, or key:{one waiting key}. */
-export type QueueKind = "titles" | "descriptions" | "pictures" | "pages";
+export type QueueKind = "titles" | "descriptions" | "pictures" | "pages" | "maps";
 export type WaitKind = "" | QueueKind | `key:${string}`;
 export type WaitSort = "" | "id" | "title" | "brand" | "waiting";
 
@@ -53,12 +53,15 @@ export const WAIT_KINDS: { value: "" | QueueKind; label: string; count: "all" | 
   { value: "descriptions", label: "Descriptions", count: "descriptions", hint: "Description proposals from maker pages and suppliers" },
   { value: "pictures", label: "Pictures to pick", count: "pictures", hint: "Picture proposals: pick and order a product's pictures" },
   { value: "pages", label: "Maker pages", count: "pages", hint: "Products whose maker page waits on a decision" },
+  { value: "maps", label: "Map parts", count: "maps", hint: "Parts found on maker sites' pages (where each keeps pictures, manuals, requirements…), waiting for your approval" },
 ];
 
 /** The waiting keys the queue pills stand for (they get no alert pill of their own). */
 export const QUEUE_KEYS: Record<string, QueueKind> = { title: "titles", description: "descriptions", pictures: "pictures", page: "pages" };
 
-export const isQueue = (k: WaitKind): k is QueueKind => k === "titles" || k === "descriptions" || k === "pictures" || k === "pages";
+/** The pills that show a review queue's own tools instead of the product table. */
+export const QUEUE_KINDS: QueueKind[] = ["titles", "descriptions", "pictures", "pages", "maps"];
+export const isQueue = (k: WaitKind): k is QueueKind => (QUEUE_KINDS as string[]).includes(k);
 
 /**
  * One pill per alert on the listed products (errors, then warnings, then notes; commonest first), the active one kept

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { adds, cellActions, choiceBody, proposalHosts, fillDone, fillLabel, fillRows, gainOf, idsWith, sitesIn, siteViewCount, kindsText, tilesOf, type Gaps, type SiteRow } from "../../src/workbench/mapsApi";
+import {
+  adds, cellActions, choiceBody, drillRows, findProducts, gapKey, layoutName, noteParts, partRows, partsHint, proposalHosts, fillDone, fillLabel, fillRows, gainOf, idsWith,
+  sitesIn, siteViewCount, kindsText, sliceN, sortParts, sortSites, tally, tallyText, tilesOf, waitingParts, waitingSites, type Gaps, type SiteRow,
+} from "../../src/workbench/mapsApi";
 
 const site = (host: string, status: string, fields: number): SiteRow => ({
   host, status, pattern: "", render: 0, stats: { products: 5, pages: 5, read: 5, refused: 0, blocked: 0, at: "" },
@@ -76,5 +79,94 @@ describe("site maps: proposed maps", () => {
   it("lists the sites with a part waiting for approval", () => {
     const p = (host: string, status: string) => ({ id: 1, host, field: "pictures", layout: -1, scope: "site", sel: "", mode: "img", found: 1, of: 1, note: "", checked: "", status, samples: [] });
     expect([...proposalHosts([p("a.example", "proposed"), p("b.example", "approved"), p("a.example", "proposed")])]).toEqual(["a.example"]);
+  });
+});
+
+describe("site maps: the open site, part by part", () => {
+  const cell = (c: string, now = "", why = "") => [c, "", now, why] as [string, string, string, string];
+  const g = {
+    host: "a.example", status: "draft", products: 4, ready: { read: 4, blocked: 0, unread: 0, broken: 0 }, pending: 1, totals: {}, at: "",
+    fill: { confirm: true, products: 2, fields: 3, per: [], waiting: 0, why: "", scrape: 1, pictures: 2 },
+    parts: { pictures: { sel: "div.gallery img", mode: "img", broken: false }, manual: { sel: "a.pdf", mode: "links", broken: true } },
+    rows: [
+      { id: 1, title: "Synth One", url: "", edit: "", page: "read", status: "ok", note: "", cells: { images: cell("A"), manual: cell("H"), size: cell("-") } },
+      { id: 2, title: "Drum Two", url: "", edit: "", page: "read", status: "ok", note: "", cells: { images: cell("H"), manual: cell("G"), size: cell("-") } },
+      { id: 3, title: "Bass Three", url: "", edit: "", page: "read", status: "ok", note: "", cells: { images: cell("C"), manual: cell("A"), size: cell("-") } },
+      { id: 4, title: "Keys Four", url: "", edit: "", page: "read", status: "ok", note: "", cells: { images: cell("A"), manual: cell("P"), size: cell("-") } },
+    ],
+  } as unknown as Gaps;
+  const prop = (id: number, field: string, status = "proposed", layout = -1) =>
+    ({ id, host: "a.example", field, layout, scope: layout < 0 ? "site" : "layout", sel: "x", mode: "", found: 1, of: 2, note: "", checked: "", status, samples: [] });
+
+  it("names a proposal's part by the gaps' column", () => {
+    expect(gapKey("pictures")).toBe("images");
+    expect(gapKey("requirements")).toBe("os");
+    expect(gapKey("manual")).toBe("manual");
+  });
+  it("counts a part's products per slice, leaving out the ones it doesn't apply to", () => {
+    const t = tally(g.rows, "images");
+    expect(t.applies).toBe(4);
+    expect(sliceN(t, "add")).toBe(2);
+    expect(sliceN(t, "check")).toBe(1);
+    expect(tallyText(t)).toBe("Page adds 2 · Has it 1 · Being checked 1");
+    expect(tally(g.rows, "size").applies).toBe(0);
+  });
+  it("one row per part that applies, has a saved part or a proposal, with its proposals under it", () => {
+    const rows = partRows(g, g.rows, [prop(7, "pictures"), prop(8, "requirements"), prop(9, "pictures", "approved"), prop(10, "disclaimer")]);
+    expect(rows.map((r) => r.field)).toEqual(["images", "os", "manual", "disclaimer"]);
+    expect(rows[0]!.sel).toBe("div.gallery img");
+    expect(rows[0]!.proposals.map((p) => p.id)).toEqual([7]);
+    expect(rows[1]!.proposals.map((p) => p.id)).toEqual([8]);
+    expect(rows[2]!.broken).toBe(true);
+    expect(rows[3]!.label).toBe("Disclaimer");
+  });
+  it("sorts parts by a heading, and goes back to the gaps' order", () => {
+    const rows = partRows(g, g.rows, [prop(8, "requirements")]);
+    expect(sortParts(rows, { col: "adds", desc: true }).map((r) => r.field)).toEqual(["images", "manual", "os"]);
+    expect(sortParts(rows, { col: "map", desc: true })[0]!.field).toBe("os");
+    expect(sortParts(rows, null)).toBe(rows);
+  });
+  it("lists a part's products in the bar's order, one slice or all", () => {
+    expect(drillRows(g.rows, "manual", "", null).map((r) => r.id)).toEqual([3, 1, 4, 2]);
+    expect(drillRows(g.rows, "manual", "gap", null).map((r) => r.id)).toEqual([2]);
+    expect(drillRows(g.rows, "manual", "", { col: "id", desc: true }).map((r) => r.id)).toEqual([4, 3, 2, 1]);
+    expect(drillRows(g.rows, "size", "", null)).toEqual([]);
+  });
+  it("keeps a cell a person closed in view, as its own slice", () => {
+    const closed = [{ ...g.rows[1]!, none: ["manual"], cells: { ...g.rows[1]!.cells, manual: cell("-") } }];
+    expect(sliceN(tally(closed, "manual"), "none")).toBe(1);
+    expect(drillRows(closed, "manual", "none", null).map((r) => r.id)).toEqual([2]);
+  });
+  it("finds products by title or ID", () => {
+    expect(findProducts(g.rows, "drum").map((r) => r.id)).toEqual([2]);
+    expect(findProducts(g.rows, "3").map((r) => r.id)).toEqual([3]);
+    expect(findProducts(g.rows, " ")).toBe(g.rows);
+  });
+  it("names a proposal's place, splits its note, and says what waiting parts mean for a Fill", () => {
+    expect(layoutName({ scope: "site", layout: -1 })).toBe("Whole site");
+    expect(layoutName({ scope: "layout", layout: 2 })).toBe("Layout C");
+    expect(noteParts("Changed: took the first slide. This takes every slide.")).toEqual(["Changed: took the first slide.", "This takes every slide."]);
+    expect(noteParts("Checked")).toEqual(["Checked", ""]);
+    expect(partsHint(0)).toBe("");
+    expect(partsHint(1)).toContain("1 proposed part waits under Parts");
+  });
+  it("sorts the site list by a heading", () => {
+    expect(sortSites(rows, { col: "gaps", desc: true }).map((r) => r.host)).toEqual(["b.example", "a.example", "c.example", "d.example"]); // ties A–Z
+    expect(sortSites(rows, { col: "site", desc: false })[0]!.host).toBe("a.example");
+  });
+});
+
+describe("map parts under Needs a decision", () => {
+  const p = (id: number, host: string, field: string, status = "proposed", found = 1) => ({ id, host, field, layout: -1, scope: "site", sel: "", mode: "", found, of: 4, note: "", checked: "", status, samples: [] });
+  const all = [p(1, "b.example", "manual", "proposed", 4), p(2, "a.example", "pictures", "proposed", 1), p(3, "a.example", "manual", "approved"), p(4, "a.example", "videos", "proposed", 2)];
+  it("lists the waiting parts, by site or part", () => {
+    expect(waitingParts(all, "", "", null).map((x) => x.id)).toEqual([1, 2, 4]);
+    expect(waitingParts(all, "a.example", "", null).map((x) => x.id)).toEqual([2, 4]);
+    expect(waitingParts(all, "", "manual", null).map((x) => x.id)).toEqual([1]);
+    expect(waitingParts(all, "", "", { col: "found", desc: true }).map((x) => x.id)).toEqual([1, 4, 2]);
+    expect(waitingParts(all, "", "", { col: "site", desc: false }).map((x) => x.id)).toEqual([2, 4, 1]);
+  });
+  it("lists the sites with parts waiting, and how many", () => {
+    expect(waitingSites(all)).toEqual([["a.example", 2], ["b.example", 1]]);
   });
 });

@@ -9,7 +9,7 @@
  *   wb_site    Site maps opens this maker site (host)
  *   wb_bundle  the Bundles panel shows this bundle (a store's own panel reads it)
  *   wb_product Needs a decision opens the product drawer on this product (product ID)
- *   wb_kind    Needs a decision opens on this pill: a queue (titles, descriptions, pictures, pages) or key:{waiting key}
+ *   wb_kind    Needs a decision opens on this pill: a queue (titles, descriptions, pictures, pages, maps) or key:{waiting key}
  *
  * The review queues are pills of Needs a decision (owner 2026-11-13: "subsets of Needs a decision"), so a link to
  * one (wb_sec=titles, descriptions, picks, pages) opens Needs a decision on its pill.
@@ -61,7 +61,7 @@ export function sectionKey(raw: string): string {
 
 /** A pill Needs a decision takes from wb_kind (a queue, or key:{waiting key}), or "". */
 export function pillKind(raw: string): string {
-  return Object.values(QUEUE_PILLS).includes(raw) || /^key:[a-z0-9_:+-]{1,80}$/.test(raw) ? raw : "";
+  return Object.values(QUEUE_PILLS).includes(raw) || raw === "maps" || /^key:[a-z0-9_:+-]{1,80}$/.test(raw) ? raw : "";
 }
 
 /** An element id from an older link's hash → the menu key showing it. */

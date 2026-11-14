@@ -34,3 +34,11 @@ describe("landing", () => {
     expect(readLanding("?wb_sec=decide&wb_kind=key:<x>").kind).toBe("");
   });
 });
+
+describe("Map parts, a pill of Needs a decision", () => {
+  it("a link's wb_kind=maps opens it, and Site maps keeps its own menu key", () => {
+    expect(readLanding("?wb_sec=decide&wb_kind=maps")).toMatchObject({ sec: "decide", kind: "maps" });
+    expect(readLanding("?wb_kind=maps").kind).toBe("maps");
+    expect(readLanding("?wb_sec=maps&wb_site=a.example")).toMatchObject({ sec: "maps", site: "a.example", kind: "" });
+  });
+});

@@ -47,6 +47,8 @@ final class Waiting {
 		'pages'          => [ 'page' ],
 		'data'           => [ 'no_brand', 'no_category', 'no_sku', 'no_picture', 'flag:' ],
 		'picture_errors' => [ 'picture_error' ],
+		// Map parts waiting for approval are a site's, not a product's: no product carries this key, the count is MapProposals'.
+		'maps'           => [ 'map_part' ],
 	];
 	/** Keys that put a product at the top. */
 	const ERRORS = [ 'picture_error', 'no_brand' ];
@@ -231,6 +233,7 @@ final class Waiting {
 		}
 		$counts['all'] = $counts[''];
 		unset( $counts[''] );
+		$counts['maps'] = MapProposals::waiting();
 		// Every key on the listed products, with how many carry it: one filter pill each.
 		$seen = [];
 		foreach ( $map as $id => $keys ) {

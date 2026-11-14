@@ -6,6 +6,8 @@
  * - The review queues (Title proposals, Descriptions, Pictures to pick, Maker pages) were the menu's Review group;
  *   they are subsets of this list, so they are its pills. Each shows its own tools under the pill (the queue's
  *   table, writer and bulk buttons), mounted on first open and kept, so its filters and page stay put.
+ * - Map parts (owner 2026-11-14): every maker site's proposed map parts, one decision a row. A site's decision, not
+ *   a product's, so it counts parts, and its count comes from the server beside the products' (Waiting::list()).
  * - One pill per alert the listed products carry (No category, No picture, Not in Software Bundles…), from the
  *   server's `keys`. Choosing one lists the products with it and opens its fixes for all of them on the page.
  *
@@ -27,6 +29,7 @@ import { IssueGroups } from "./IssueGroups";
 import { groupIssues, groupMode, runFix, type Fix, type IssueGroup } from "./issuesApi";
 import { landing } from "./landing";
 import { MakerPages } from "./MakerPages";
+import { MapParts } from "./MapParts";
 import { COUNTS_EVENT, PILL_EVENT, openSection, refreshCounts, SectionEmbedContext, SectionVisibleContext, useSectionVisible } from "./nav";
 import { ProductDrawer } from "./ProductDrawer";
 import type { TermKind } from "./proposalsApi";
@@ -251,7 +254,7 @@ export function Decide({ cfg }: { cfg: TitleRulesConfig }) {
           {WAIT_KINDS.map((k) => (
             <button key={k.value || "all"} type="button" className={pill(filter.kind === k.value)} aria-pressed={filter.kind === k.value}
               data-kind={k.value || "all"} title={k.hint} onClick={() => choose(k.value)}>
-              {k.label} <span className="mmi-pill-count">{page ? page.counts[k.count].toLocaleString("en-US") : "…"}</span>
+              {k.label} <span className="mmi-pill-count">{page ? (page.counts[k.count] ?? 0).toLocaleString("en-US") : "…"}</span>
             </button>
           ))}
         </div>
@@ -277,6 +280,7 @@ export function Decide({ cfg }: { cfg: TitleRulesConfig }) {
         {(mounted.has("descriptions") || mounted.has("pictures")) && queuePane("enrich", queue === "descriptions" || queue === "pictures",
           <EnrichProposals cfg={cfg} kind={enrichKind} onKind={(k) => choose(k === "image" ? "pictures" : "descriptions")} />)}
         {mounted.has("pages") && queuePane("pages", queue === "pages", <MakerPages cfg={cfg} />)}
+        {mounted.has("maps") && queuePane("maps", queue === "maps", <MapParts cfg={cfg} />)}
       </SectionEmbedContext.Provider>
 
       <div className="mmi-wb-dc-all" hidden={queue !== null}>

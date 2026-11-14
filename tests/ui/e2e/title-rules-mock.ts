@@ -152,7 +152,8 @@ export class TitleRulesMock {
     const q = (u.searchParams.get("q") ?? "").toLowerCase();
     const found = all.filter((x) => !q || String(x.r.id) === q || x.r.current.toLowerCase().includes(q));
     const has = (x: { w: { key: string }[] }, keys: string[]) => x.w.some((b) => keys.includes(b.key));
-    const counts = { all: found.length, titles: found.filter((x) => has(x, ["title"])).length, descriptions: 0, pictures: 0, pages: 0, data: found.filter((x) => has(x, ["no_brand", "no_sku", "no_picture"])).length, picture_errors: 0 };
+    const counts = { all: found.length, titles: found.filter((x) => has(x, ["title"])).length, descriptions: 0, pictures: 0, pages: 0, data: found.filter((x) => has(x, ["no_brand", "no_sku", "no_picture"])).length, picture_errors: 0,
+      maps: this.makerPages.proposals.filter((p) => p.status === "proposed").length }; // map parts are a site's, counted apart (Waiting::list())
     const kind = u.searchParams.get("kind") ?? "";
     let rows = kind === "titles" ? found.filter((x) => has(x, ["title"])) : kind.startsWith("key:") ? found.filter((x) => has(x, [kind.slice(4)])) : kind ? [] : found;
     // Every key on the listed products: one pill each (Waiting::list() `keys`).
