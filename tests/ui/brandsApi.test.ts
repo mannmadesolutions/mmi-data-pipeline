@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestMatches, brandsIn, brandViewCount, drawerRow, hostOf, makerHosts, ticks, toDo, type Brand, type BrandSite } from "../../src/workbench/brandsApi";
+import { bestMatches, brandsIn, brandViewCount, drawerRow, hostOf, makerHosts, sortBrands, ticks, toDo, toDoText, type Brand, type BrandSite } from "../../src/workbench/brandsApi";
 import type { PageRow } from "../../src/workbench/pagesApi";
 
 const site = (host: string, role: BrandSite["role"]): BrandSite => ({ host, n: 1, read: 1, unread: 0, failed: 0, unverified: 0, better: 0, bundles: 0, open: 0, role, why: "", saved: true, map: "", shared: 0 });
@@ -64,5 +64,19 @@ describe("brands & sites: matching products to the maker's pages", () => {
     expect(drawerRow(row({})).op_group).toBe("none");
     expect(drawerRow(row({ fetch_status: "no_page" })).op_group).toBe("");
     expect(drawerRow(row({ current: "https://a.example/x", result: "read" })).op_group).toBe("");
+  });
+});
+
+describe("brands & sites: the split view", () => {
+  it("sorts the list by a heading, ties A–Z whichever way it runs", () => {
+    expect(sortBrands(list, { col: "todo", desc: true }).map((b) => b.id)).toEqual([2, 1, 4, 3]);
+    expect(sortBrands(list, { col: "todo", desc: false }).map((b) => b.id)).toEqual([4, 3, 1, 2]);
+    expect(sortBrands(list, { col: "brand", desc: false })[0]!.name).toBe("Acme");
+    expect(sortBrands(list, null)).toBe(list);
+  });
+  it("says what a brand's products wait for", () => {
+    expect(toDoText(list[0]!)).toBe("2 proposed pages to decide, 1 product with no page");
+    expect(toDoText(brand({ failed_open: 1 }))).toBe("1 page gone or moved");
+    expect(toDoText(list[3]!)).toBe("");
   });
 });

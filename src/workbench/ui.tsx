@@ -333,3 +333,52 @@ export function ProductThumb({ thumb, size = 40 }: { thumb: Thumb | null; size?:
     </span>
   );
 }
+
+/* ── Split view (owner 2026-11-14: Site maps, then Brands & sites): the list stays on the left, the open item beside it ── */
+
+/** The open item is kept in the address (wb_site, wb_brand…), so a reload or a shared link opens it. */
+export function useAddressParam(name: string, value: string | null, visible: boolean): void {
+  useEffect(() => {
+    if (!visible) return;
+    const u = new URL(window.location.href);
+    if (value) u.searchParams.set(name, value);
+    else u.searchParams.delete(name);
+    if (u.toString() !== window.location.href) window.history.replaceState(window.history.state, "", u.toString());
+  }, [name, value, visible]);
+}
+
+/**
+ * ↑ and ↓ in a split view's list open the row above or below and keep the focus on its button. Rows carry
+ * `data-key`; bind the returned handler to the list's tbody.
+ */
+export function useListKeys(table: RefObject<HTMLTableElement>, keys: string[], open: string | null, onOpen: (key: string) => void) {
+  return (e: ReactKeyboardEvent<HTMLTableSectionElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const at = open === null ? -1 : keys.indexOf(open);
+    const next = keys[Math.min(keys.length - 1, Math.max(0, at < 0 ? 0 : at + (e.key === "ArrowDown" ? 1 : -1)))];
+    if (next === undefined) return;
+    e.preventDefault();
+    onOpen(next);
+    window.requestAnimationFrame(() => {
+      const btn = table.current?.querySelector<HTMLButtonElement>(`tr[data-key="${CSS.escape(next)}"] button`);
+      btn?.focus();
+      btn?.closest("tr")?.scrollIntoView({ block: "nearest" });
+    });
+  };
+}
+
+export interface SplitTab<K extends string> { key: K; label: string; count?: string; dot?: boolean }
+/** The open item's tabs: WordPress's nav tabs at a section's size, a count each, a dot on what waits on you. */
+export function SplitTabs<K extends string>({ id, label, tabs, active, onTab }: { id: string; label: string; tabs: SplitTab<K>[]; active: K; onTab: (k: K) => void }) {
+  return (
+    <nav className="nav-tab-wrapper mmi-wb-split-tabs" role="tablist" aria-label={label}>
+      {tabs.map((t) => (
+        <button key={t.key} type="button" role="tab" id={`${id}-tab-${t.key}`} aria-selected={active === t.key} aria-controls={`${id}-tabpanel`} data-stab={t.key}
+          className={`nav-tab${active === t.key ? " nav-tab-active" : ""}`} onClick={() => onTab(t.key)}>
+          {t.label}{t.count ? <span className="mmi-pill-count">{t.count}</span> : null}
+          {t.dot ? <span className="mmi-wb-split-dot" title="Waits on you" aria-label="waits on you" /> : null}
+        </button>
+      ))}
+    </nav>
+  );
+}

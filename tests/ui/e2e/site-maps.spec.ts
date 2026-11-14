@@ -37,8 +37,8 @@ test("the site list stays beside the open site: work pills, map status, arrow ke
   const acme = sec.locator('#mmi-wb-sm-rows [data-host="acme.example"]');
   await expect(acme).toContainText("Draft map");
   await expect(acme).toContainText("2 parts to approve");
-  await expect(acme.locator(".mmi-wb-sm-gapcol")).toHaveText("3");
-  await expect(acme.locator(".mmi-wb-sm-gapcol")).toHaveAttribute("title", "3 gaps on 2 products");
+  await expect(acme.locator(".mmi-wb-split-num")).toHaveText("3");
+  await expect(acme.locator(".mmi-wb-split-num")).toHaveAttribute("title", "3 gaps on 2 products");
   await sec.locator("#mmi-wb-sm-status").selectOption("all");
   await expect(sec.locator("#mmi-wb-sm-rows tr[data-host]")).toHaveCount(3);
   await expect(sec.locator('#mmi-wb-sm-rows [data-host="wall.example"]')).toContainText("2 refused");
@@ -46,7 +46,7 @@ test("the site list stays beside the open site: work pills, map status, arrow ke
 
   // The list and the open site sit side by side; ↓ moves to the next site.
   await openSite(page, "acme.example");
-  const [list, work] = await Promise.all([sec.locator("#mmi-wb-sm-rail").boundingBox(), sec.locator(".mmi-wb-sm-work").boundingBox()]);
+  const [list, work] = await Promise.all([sec.locator("#mmi-wb-sm-rail").boundingBox(), sec.locator(".mmi-wb-split-work").boundingBox()]);
   expect(work!.x).toBeGreaterThan(list!.x + list!.width - 1);
   expect(new URL(page.url()).searchParams.get("wb_site")).toBe("acme.example");
   await page.keyboard.press("ArrowDown");
@@ -110,7 +110,7 @@ test("Pages: the site's pages and reading the unread ones", async ({ page }) => 
   const { api } = await open(page);
   await openSite(page, "acme.example");
   const p = panel(page);
-  await expect(p.locator('[data-stab="pages"] .mmi-wb-sm-dot')).toHaveCount(1);
+  await expect(p.locator('[data-stab="pages"] .mmi-wb-split-dot')).toHaveCount(1);
   await tab(page, "pages");
   await expect(p.locator("#mmi-wb-sm-ready")).toContainText("2 readable");
   await p.getByRole("button", { name: "Read them" }).click();
@@ -122,7 +122,7 @@ test("Fill: in the site's header, reviewed first, a product left out, then Last 
   const { api, errors } = await open(page);
   await openSite(page, "acme.example");
   const p = panel(page);
-  await expect(p.locator(".mmi-wb-sm-head #mmi-wb-sm-fill")).toHaveText("Confirm map & fill 3 gaps on 2 products");
+  await expect(p.locator(".mmi-wb-split-head #mmi-wb-sm-fill")).toHaveText("Confirm map & fill 3 gaps on 2 products");
   await p.locator("#mmi-wb-sm-fill").click();
   await expect(p.locator("#mmi-wb-sm-review li")).toHaveCount(2);
   await expect(p.locator('#mmi-wb-sm-review li[data-id="4001"]')).toContainText("gets Pictures, Manual");

@@ -1,6 +1,7 @@
 /**
  * The Workbench's Brands & sites section in a real browser, WebKit first, with the REST routes mocked
- * (maker-pages-mock.ts); the workspace's fresh build.
+ * (maker-pages-mock.ts); the workspace's fresh build. The brand list stays on the left and the open brand beside it
+ * (owner 2026-11-14, the same split view as Site maps), its products and sites in tabs.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { MockBackend } from "./mock-backend";
@@ -11,6 +12,7 @@ async function open(page: Page, key = "sites") {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/status of 40[034]/.test(m.text())) errors.push(m.text()); });
+  page.on("dialog", (d) => { errors.push(`dialog: ${d.message()}`); void d.dismiss(); }); // decisions are asked in place
   await page.route("**/mmi-data-pipeline/build/workbench.js*", (r) => r.fulfill({ path: "build/workbench.js", contentType: "text/javascript" }));
   await new MockBackend().attach(page);
   const api = new TitleRulesMock();
@@ -22,26 +24,64 @@ async function open(page: Page, key = "sites") {
   return { api, errors, sec };
 }
 const drawer = (page: Page) => page.locator("#mmi-wb-bs-drawer");
+const openBrand = async (page: Page, id: number) => {
+  await page.locator(`#mmi-wb-bs-rows [data-brand="${id}"] button`).click();
+  await expect(drawer(page)).toHaveAttribute("data-brand", String(id));
+};
+const tab = (page: Page, key: string) => drawer(page).locator(`[data-stab="${key}"]`).click();
 
-test("the brand list: needs work first, no maker site, set aside", async ({ page }) => {
+test("the brand list stays beside the open brand: work pills, more lists, arrow keys", async ({ page }) => {
   const { sec, errors } = await open(page);
+  await expect(sec.locator("#mmi-wb-bs-empty")).toContainText("Choose a brand on the left");
   await expect(sec.locator("#mmi-wb-bs-rows tr[data-brand]").first()).toContainText("Acme Audio");
-  await expect(sec.locator('[data-brand="20"]')).toContainText("2 proposed");
-  await expect(sec.locator('[data-brand="20"]')).toContainText("acme.example");
+  const acme = sec.locator('[data-brand="20"]');
+  await expect(acme).toContainText("acme.example");
+  await expect(acme.locator(".mmi-wb-split-num")).toHaveText("4");
+  await expect(acme.locator(".mmi-wb-split-num")).toHaveAttribute("title", "2 proposed pages to decide, 1 page gone or moved, 1 product with no page");
   await expect(sec.locator('[data-brand="21"]')).toContainText("None saved");
   await expect(sec.locator('[data-bview="nomaker"]')).toContainText("1");
-  await sec.locator('[data-bview="gone"]').click();
+  await sec.locator("#mmi-wb-bs-view").selectOption("gone");
   await expect(sec.locator("#mmi-wb-bs-rows tr[data-brand]")).toHaveCount(1);
   await expect(sec.locator('[data-brand="22"]')).toContainText("set aside");
   await sec.locator("#mmi-wb-bs-q").fill("resell");
-  await sec.locator('[data-bview="all"]').click();
+  await sec.locator("#mmi-wb-bs-view").selectOption("all");
   await expect(sec.locator("#mmi-wb-bs-rows tr[data-brand]")).toHaveCount(1);
+  await sec.locator("#mmi-wb-bs-q").fill("");
+  await sec.locator('[data-bview="work"]').click();
+
+  // The list and the open brand sit side by side; ↓ moves to the next brand.
+  await openBrand(page, 20);
+  const [list, work] = await Promise.all([sec.locator("#mmi-wb-bs-list").boundingBox(), sec.locator(".mmi-wb-split-work").boundingBox()]);
+  expect(work!.x).toBeGreaterThan(list!.x + list!.width - 1);
+  expect(new URL(page.url()).searchParams.get("wb_brand")).toBe("20");
+  await page.keyboard.press("ArrowDown");
+  await expect(drawer(page)).toHaveAttribute("data-brand", "21");
+  await expect(sec.locator('#mmi-wb-bs-rows [data-brand="21"] button')).toBeFocused();
   expect(errors).toEqual([]);
 });
 
+test("the open brand: what waits on it said under its header, the tab kept between brands", async ({ page }) => {
+  await open(page);
+  await openBrand(page, 20);
+  const d = drawer(page);
+  await expect(d.locator("#mmi-wb-bs-waits")).toContainText("2 proposed pages to decide, 1 page gone or moved, 1 product with no page");
+  await expect(d.locator('[data-stab="products"]')).toContainText("4 to do");
+  await expect(d.locator('[data-stab="sites"] .mmi-wb-split-dot')).toHaveCount(1); // its pages moved (an undecided role alone asks nothing)
+  await tab(page, "sites");
+  await openBrand(page, 21);
+  await expect(d.locator('[data-stab="sites"]')).toHaveAttribute("aria-selected", "true");
+  await expect(d.locator("#mmi-wb-bs-why")).toContainText("No maker site is saved");
+  await expect(d.locator('[data-stab="sites"] .mmi-wb-split-dot')).toHaveCount(1);
+  await openBrand(page, 20);
+  await d.getByRole("button", { name: "Move them to acme-audio.example" }).click();
+  await expect(d.locator(".mmi-wb-bs-move")).toHaveCount(0);
+  await expect(d.locator('[data-stab="sites"] .mmi-wb-split-dot')).toHaveCount(0); // shop.example's role is still unset: no nag
+});
+
 test("a brand's sites: what each is, a site added, the Brand website", async ({ page }) => {
-  const { api, sec } = await open(page);
-  await sec.locator('[data-brand="20"] button').click();
+  const { api } = await open(page);
+  await openBrand(page, 20);
+  await tab(page, "sites");
   const d = drawer(page);
   await expect(d.locator("#mmi-wb-bs-sites tr[data-host]")).toHaveCount(3);
   await d.locator('[data-host="shop.example"] select').selectOption("reseller");
@@ -58,8 +98,8 @@ test("a brand's sites: what each is, a site added, the Brand website", async ({ 
 });
 
 test("Find their pages reads the maker's list, ticks the sure matches, and saves them together", async ({ page }) => {
-  const { api, sec } = await open(page);
-  await sec.locator('[data-brand="20"] button').click();
+  const { api } = await open(page);
+  await openBrand(page, 20);
   const d = drawer(page);
   await expect(d.locator("#mmi-wb-bs-products tbody tr[data-id]")).toHaveCount(5);
   await d.locator("#mmi-wb-bs-find").click();
@@ -74,9 +114,9 @@ test("Find their pages reads the maker's list, ticks the sure matches, and saves
   await expect(d.locator('tr[data-id="4004"]')).toHaveCount(0);
 });
 
-test("a product row in the drawer decides as in Maker pages", async ({ page }) => {
-  const { api, sec } = await open(page);
-  await sec.locator('[data-brand="20"] button').click();
+test("a product row in the brand decides as in Maker pages", async ({ page }) => {
+  const { api } = await open(page);
+  await openBrand(page, 20);
   const r = drawer(page).locator('tr[data-id="4001"]');
   await expect(r.locator("[data-action]")).toHaveText(["Use proposed URL", "Not this page", "Set the page", "Maker doesn't publish it"]);
   await expect(drawer(page).locator('tr[data-id="4003"] [data-action]').first()).toHaveText("Use its new address");
@@ -86,34 +126,36 @@ test("a product row in the drawer decides as in Maker pages", async ({ page }) =
   await expect(r.locator(".mmi-wb-mp-now")).toContainText("https://maker.example/synth-1");
 });
 
-test("a brand with no maker site can be set aside, and brought back", async ({ page }) => {
-  const { api, sec } = await open(page);
-  await sec.locator('[data-brand="21"] button').click();
+test("a brand with no maker site can be set aside from its header, and brought back", async ({ page }) => {
+  const { api } = await open(page);
+  await openBrand(page, 21);
   const d = drawer(page);
   await expect(d.locator("#mmi-wb-bs-find")).toBeDisabled();
-  await d.locator("#mmi-wb-bs-gone").click();
+  await d.locator(".mmi-wb-split-head #mmi-wb-bs-gone").click();
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("Set aside: its maker has no site.");
   expect(api.callsTo("brand-sites/21")[0]!.body).toEqual({ gone: true });
   await expect(d.locator("#mmi-wb-bs-gone")).toHaveText("Bring it back");
 });
 
 test("a brand's site-wide fixes: pages moved, a reseller's products to the maker's pages, bundles, an unused site", async ({ page }) => {
-  const { api, sec } = await open(page);
-  await sec.locator('[data-brand="20"] button').click();
+  const { api, errors } = await open(page);
+  await openBrand(page, 20);
   const d = drawer(page);
+  // Moves and bundles are brand-wide: their lines show whichever tab is open.
   await d.getByRole("button", { name: "Move them to acme-audio.example" }).click();
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("2 pages moved to acme-audio.example; reading them.");
   expect(api.callsTo("brand-sites/20/move")[0]!.body).toEqual({ from: "acme.example", to: "acme-audio.example" });
   await expect(d.locator(".mmi-wb-bs-move")).toHaveCount(0);
 
-  await d.locator('[data-host="shop.example"] [data-site-action="to-own"]').click();
-  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("1 product moved to the maker's own pages; reading them.");
-  expect(api.callsTo("brand-sites/20/to-own")[0]!.body).toEqual({ from: "shop.example" });
-
   await d.locator("#mmi-wb-bs-bundles-none").click();
   expect(api.callsTo("brand-sites/20/bundles-none")).toHaveLength(0);
   await d.locator("#mmi-wb-bs-bundles-none").click();
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("2 bundles marked: the maker doesn't publish them.");
+
+  await tab(page, "sites");
+  await d.locator('[data-host="shop.example"] [data-site-action="to-own"]').click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("1 product moved to the maker's own pages; reading them.");
+  expect(api.callsTo("brand-sites/20/to-own")[0]!.body).toEqual({ from: "shop.example" });
 
   await d.locator('[data-host="old.example"] [data-site-action="remove"]').click();
   await expect(d.locator('[data-host="old.example"] [data-site-action="remove"]')).toHaveText("Click again to remove");
@@ -121,4 +163,23 @@ test("a brand's site-wide fixes: pages moved, a reseller's products to the maker
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("old.example taken off the list.");
   expect(api.callsTo("brand-sites/20").at(-1)!.body).toEqual({ remove: "old.example", bundles_none: false });
   await expect(d.locator('[data-host="old.example"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("nothing in the open brand runs past its box, in either tab; the list meets the table standard", async ({ page }) => {
+  await open(page);
+  await openBrand(page, 20);
+  const over = () => page.evaluate(() => {
+    const box = document.querySelector<HTMLElement>(".mmi-wb-split-work")!.getBoundingClientRect();
+    return Array.from(document.querySelectorAll<HTMLElement>("#mmi-wb-bs-drawer button, #mmi-wb-bs-drawer select, #mmi-wb-bs-drawer table"))
+      .filter((el) => el.getClientRects().length && el.getBoundingClientRect().right > box.right + 1).map((el) => el.id || el.textContent!.trim().slice(0, 30) || el.tagName);
+  });
+  await expect(drawer(page).locator("#mmi-wb-bs-products tbody tr[data-id]")).toHaveCount(5);
+  expect(await over()).toEqual([]);
+  await tab(page, "sites");
+  await expect(drawer(page).locator("#mmi-wb-bs-sites tr[data-host]")).toHaveCount(3);
+  expect(await over()).toEqual([]);
+  const list = page.locator("#mmi-wb-bs-table");
+  await expect(list.locator("thead .mmi-resize-handle")).toHaveCount(2);
+  expect(await list.evaluate((t: HTMLTableElement) => Array.from(t.tHead!.rows[0]!.cells).every((c) => c.classList.contains("mmi-wb-job-sortable")))).toBe(true);
 });

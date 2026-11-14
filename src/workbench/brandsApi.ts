@@ -135,3 +135,19 @@ export function drawerRow(r: PageRow): PageRow {
     : !r.current ? "none" : "";
   return { ...r, op_group: group, op_conf: r.op_conf ?? null, op_wrong: r.op_wrong ?? "", op_wrong_note: r.op_wrong_note ?? "" };
 }
+
+/* ── The split view (owner 2026-11-14: "the same layout" as Site maps) ── */
+
+export type BrandSort = "brand" | "todo";
+/** The brand list's order: the view's own, or by a heading; ties stay A–Z whichever way the column runs. */
+export function sortBrands(list: Brand[], sort: { col: BrandSort; desc: boolean } | null): Brand[] {
+  if (!sort) return list;
+  const dir = sort.desc ? -1 : 1;
+  return [...list].sort((a, b) => (sort.col === "brand" ? a.name.localeCompare(b.name) * dir : (toDo(a) - toDo(b)) * dir || a.name.localeCompare(b.name)));
+}
+
+/** What a brand's products wait for, in words ("2 proposed pages to decide, 1 gone or moved"), or "". */
+export function toDoText(b: Brand): string {
+  const n = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
+  return [n(b.open, "proposed page to decide", "proposed pages to decide"), n(b.failed_open, "page gone or moved", "pages gone or moved"), n(b.no_url, "product with no page", "products with no page")].filter(Boolean).join(", ");
+}

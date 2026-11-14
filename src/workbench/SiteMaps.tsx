@@ -12,7 +12,7 @@
  *   does across the site's products, and the part's proposals under it with Approve and Reject. A part's name
  *   opens its products, with the decisions a cell takes ("its page has none of this", the page's requirements).
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { landing } from "./landing";
 import {
   adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, gainOf, gainProducts, idsWith, layoutName, noteParts,
@@ -24,7 +24,7 @@ import { useSectionVisible } from "./nav";
 import { msg, type Notice } from "./pageRows";
 import { ProductPictures, SitePicturesPanel } from "./SitePictures";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, Section, SortTh, useColumnResize } from "./ui";
+import { Dashicon, Section, SortTh, SplitTabs, useAddressParam, useColumnResize, useListKeys } from "./ui";
 
 const POLL_MS = 8000;
 const enc = encodeURIComponent;
@@ -63,29 +63,8 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
   useColumnResize(tableRef, rows.length > 0);
   const site = reply?.rows.find((r) => r.host === open) ?? null;
 
-  // The open site is in the address (wb_site), so a reload or a shared link opens it.
-  useEffect(() => {
-    if (!visible) return;
-    const u = new URL(window.location.href);
-    if (open) u.searchParams.set("wb_site", open);
-    else u.searchParams.delete("wb_site");
-    if (u.toString() !== window.location.href) window.history.replaceState(window.history.state, "", u.toString());
-  }, [open, visible]);
-
-  // ↑ and ↓ in the list open the site above or below, and keep the focus on it.
-  const onListKey = (e: ReactKeyboardEvent<HTMLTableSectionElement>) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    const at = rows.findIndex((r) => r.host === open);
-    const next = rows[Math.min(rows.length - 1, Math.max(0, at < 0 ? 0 : at + (e.key === "ArrowDown" ? 1 : -1)))];
-    if (!next) return;
-    e.preventDefault();
-    setOpen(next.host);
-    window.requestAnimationFrame(() => {
-      const btn = tableRef.current?.querySelector<HTMLButtonElement>(`tr[data-host="${CSS.escape(next.host)}"] button`);
-      btn?.focus();
-      btn?.closest("tr")?.scrollIntoView({ block: "nearest" });
-    });
-  };
+  useAddressParam("wb_site", open, visible);
+  const onListKey = useListKeys(tableRef, rows.map((r) => r.host), open, setOpen);
   const statusValue = view !== "gain" && view !== "proposals" ? view : "";
 
   return (
@@ -93,8 +72,8 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
       desc="Where each maker site keeps pictures and text, what its pages would add to its products, and the Fill that writes it. Parts are picked on the maker's live page in the Chrome extension"
       actions={cfg.extension ? <a className="button" id="mmi-wb-sm-extension" href={cfg.extension}><Dashicon name="admin-plugins" /> Chrome extension</a> : undefined}>
       {notice && <div className="notice notice-error inline" role="status"><p>{notice.text}</p></div>}
-      <div className="mmi-wb-sm-split">
-        <div className="mmi-wb-sm-rail" id="mmi-wb-sm-rail">
+      <div className="mmi-wb-split">
+        <div className="mmi-wb-split-list" id="mmi-wb-sm-rail">
           <div className="mmi-filter-pills mmi-wb-pr-views" role="group" aria-label="Work waiting">
             <button type="button" className={`mmi-pill${view === "gain" ? " active" : ""}`} aria-pressed={view === "gain"} data-sview="gain" title={SITE_VIEWS[0]!.hint} onClick={() => setView("gain")}>
               Gaps to fill <span className="mmi-pill-count">{reply ? siteViewCount(reply.rows, "gain") : "…"}</span>
@@ -103,7 +82,7 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
               Parts to approve <span className="mmi-pill-count">{withProposals.size}</span>
             </button>
           </div>
-          <div className="mmi-wb-sm-rail-filters">
+          <div className="mmi-wb-split-filters">
             <select id="mmi-wb-sm-status" aria-label="Map status" value={statusValue} onChange={(e) => setView((e.target.value || "gain") as SiteView)}>
               <option value="">By map status…</option>
               {SITE_VIEWS.filter((v) => v.value !== "gain").map((v) => <option key={v.value} value={v.value} title={v.hint || undefined}>{v.label} ({reply ? siteViewCount(reply.rows, v.value) : "…"})</option>)}
@@ -112,12 +91,12 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
             <span className="mmi-wb-count" id="mmi-wb-sm-count">{reply ? plural(rows.length, "site") : ""}</span>
           </div>
           {reply?.runner.running && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Checking maps{reply.runner.note ? `: ${reply.runner.note}` : ""}</p>}
-          <div className="mmi-table-scroll-wrapper mmi-wb-sm-rail-list">
+          <div className="mmi-table-scroll-wrapper mmi-wb-split-scroll">
             <table ref={tableRef} className="wp-list-table widefat striped mmi-wb-pr-table" id="mmi-wb-sm-table">
               <thead>
                 <tr>
                   <SortTh col="site" label="Site" active={sort?.col === "site"} desc={!!sort?.desc} onSort={(c) => setSort((s) => nextSort(s, c, "gaps"))} />
-                  <SortTh col="gaps" label="Gaps" title="Gaps its pages would fill, as last measured" active={sort?.col === "gaps"} desc={!!sort?.desc} onSort={(c) => setSort((s) => nextSort(s, c, "gaps"))} className="mmi-wb-sm-gapcol" />
+                  <SortTh col="gaps" label="Gaps" title="Gaps its pages would fill, as last measured" active={sort?.col === "gaps"} desc={!!sort?.desc} onSort={(c) => setSort((s) => nextSort(s, c, "gaps"))} className="mmi-wb-split-num" />
                 </tr>
               </thead>
               <tbody id="mmi-wb-sm-rows" onKeyDown={onListKey}>
@@ -127,16 +106,16 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
                   const [label, badge] = STATUS[r.status] ?? [r.status, ""];
                   const waiting = waitingOn(r.host);
                   return (
-                    <tr key={r.host} data-host={r.host} className={open === r.host ? "is-open" : undefined}>
+                    <tr key={r.host} data-host={r.host} data-key={r.host} className={open === r.host ? "is-open" : undefined}>
                       <td>
-                        <button type="button" className="button-link mmi-wb-sm-host" aria-current={open === r.host ? "true" : undefined} onClick={() => setOpen(r.host)}>{r.host}</button>
-                        <div className="mmi-wb-sm-site-meta">
+                        <button type="button" className="button-link mmi-wb-split-name" aria-current={open === r.host ? "true" : undefined} onClick={() => setOpen(r.host)}>{r.host}</button>
+                        <div className="mmi-wb-split-meta">
                           <span className={`mmi-badge ${badge} inline`}>{label}</span>
                           {waiting ? <span className="mmi-wb-mp-warn">{plural(waiting, "part")} to approve</span>
                             : <span>{r.stats.read} of {r.stats.pages} read{r.stats.refused ? <span className="mmi-wb-mp-warn"> · {r.stats.refused} refused</span> : null}</span>}
                         </div>
                       </td>
-                      <td className="mmi-wb-sm-gapcol" title={gainOf(r) ? `${plural(gainOf(r), "gap")} on ${plural(gainProducts(r), "product")}` : "Nothing its pages would add"}>
+                      <td className="mmi-wb-split-num" title={gainOf(r) ? `${plural(gainOf(r), "gap")} on ${plural(gainProducts(r), "product")}` : "Nothing its pages would add"}>
                         {gainOf(r) ? gainOf(r).toLocaleString("en-US") : <span className="description">–</span>}
                       </td>
                     </tr>
@@ -145,13 +124,13 @@ export function SiteMaps({ cfg }: { cfg: TitleRulesConfig }) {
               </tbody>
             </table>
           </div>
-          {rows.length > 1 && <p className="description mmi-wb-sm-keys">↑ and ↓ move between sites.</p>}
+          {rows.length > 1 && <p className="description mmi-wb-split-keys">↑ and ↓ move between sites.</p>}
         </div>
-        <div className="mmi-wb-sm-work">
+        <div className="mmi-wb-split-work">
           {site
             ? <SitePanel key={site.host} cfg={cfg} site={site} proposals={proposals.filter((p) => p.host === site.host)} tab={tab} onTab={setTab} onChanged={() => { loadList(); loadProposals(); }} />
             : (
-              <div className="mmi-wb-sm-empty" id="mmi-wb-sm-empty">
+              <div className="mmi-wb-split-empty" id="mmi-wb-sm-empty">
                 <p><strong>Choose a site on the left.</strong></p>
                 <p className="description">It opens here, with its parts, what its pages would add to its products, and the Fill that writes it.</p>
               </div>
@@ -266,16 +245,16 @@ function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg: Title
   const pagesHref = (() => { const u = new URL(window.location.href); u.search = ""; ["page", "pipeline_tab"].forEach((k) => { const v = new URL(window.location.href).searchParams.get(k); if (v) u.searchParams.set(k, v); }); u.searchParams.set("wb_kind", "pages"); return u.toString(); })();
 
   return (
-    <div className="mmi-wb-sm-site" id="mmi-wb-sm-panel" ref={ref} data-host={host}>
-      <div className="mmi-wb-sm-head">
-        <div className="mmi-wb-sm-title">
+    <div className="mmi-wb-split-item" id="mmi-wb-sm-panel" ref={ref} data-host={host}>
+      <div className="mmi-wb-split-head">
+        <div className="mmi-wb-split-title">
           <h4><a href={`https://${host}`} target="_blank" rel="noreferrer">{host}</a> <span className={`mmi-badge ${badge} inline`}>{label}</span></h4>
           <p className="description">
             {site.pattern ? <>Its product pages: <code>{site.pattern}</code> · </> : null}
             {plural(site.stats.products, "product")} · {site.stats.read} of {plural(site.stats.pages, "page")} read{site.map_at ? ` · map changed ${site.map_at}` : ""}
           </p>
         </div>
-        <div className="mmi-wb-sm-site-actions">
+        <div className="mmi-wb-split-actions">
           <button type="button" className="button" disabled={busy !== null} title="Read the site's product list again and look for pages for its products"
             onClick={() => void post("reread", `maps/${enc(host)}/reread`, {}, () => "Reading the site's products again.")}>Re-read its products</button>
           {site.status === "off" ? (
@@ -291,10 +270,10 @@ function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg: Title
       </div>
 
       {/* What the Fill waits on, said where the Fill is (not as grey text beside a grey button). */}
-      <div className="mmi-wb-sm-lines">
+      <div className="mmi-wb-split-lines">
         {!gaps && <p className="mmi-wb-empty-cell">Loading the site's products…</p>}
-        {plan && plan.why !== "" && <p className="mmi-wb-sm-why is-blocked" id="mmi-wb-sm-why">{plan.why}</p>}
-        {waiting.length > 0 && <p className="mmi-wb-sm-why is-parts" id="mmi-wb-sm-parts-hint">{partsHint(waiting.length)}</p>}
+        {plan && plan.why !== "" && <p className="mmi-wb-split-why is-blocked" id="mmi-wb-sm-why">{plan.why}</p>}
+        {waiting.length > 0 && <p className="mmi-wb-split-why is-info" id="mmi-wb-sm-parts-hint">{partsHint(waiting.length)}</p>}
         {gaps && gaps.pending > 0 && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> {gaps.pending} page{gaps.pending === 1 ? " is" : "s are"} being checked with the map as it is now</p>}
         {reading?.r && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Reading: {reading.r.done} done, {reading.r.working} now, {reading.r.waiting} waiting</p>}
       </div>
@@ -333,17 +312,10 @@ function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg: Title
         </div>
       )}
 
-      <nav className="nav-tab-wrapper mmi-wb-sm-tabs" role="tablist" aria-label={`${host}: what to look at`}>
-        {TABS.map((t) => (
-          <button key={t.key} type="button" role="tab" id={`mmi-wb-sm-tab-${t.key}`} aria-selected={tab === t.key} aria-controls="mmi-wb-sm-tabpanel" data-stab={t.key}
-            className={`nav-tab${tab === t.key ? " nav-tab-active" : ""}`} onClick={() => onTab(t.key)}>
-            {t.label}{tabCount[t.key] ? <span className="mmi-pill-count">{tabCount[t.key]}</span> : null}
-            {tabDot[t.key] ? <span className="mmi-wb-sm-dot" title="Waits on you" aria-label="waits on you" /> : null}
-          </button>
-        ))}
-      </nav>
+      <SplitTabs id="mmi-wb-sm" label={`${host}: what to look at`} active={tab} onTab={onTab}
+        tabs={TABS.map((t) => ({ ...t, count: tabCount[t.key], dot: tabDot[t.key] }))} />
 
-      <div className="mmi-wb-sm-tabpanel" id="mmi-wb-sm-tabpanel" role="tabpanel" aria-labelledby={`mmi-wb-sm-tab-${tab}`}>
+      <div className="mmi-wb-split-panel" id="mmi-wb-sm-tabpanel" role="tabpanel" aria-labelledby={`mmi-wb-sm-tab-${tab}`}>
         {tab === "parts" && gaps && (
           <PartsTab gaps={gaps} proposals={proposals} busy={busy}
             onApproveAll={() => void post("approve-all", "map-proposals/site", { host }, (d) => `${plural(Number(d.approved ?? 0), "part")} approved.${(d.failed as string[] | undefined)?.length ? ` Not approved: ${(d.failed as string[]).join("; ")}` : ""}`)}

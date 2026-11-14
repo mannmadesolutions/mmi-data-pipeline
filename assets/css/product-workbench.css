@@ -1405,61 +1405,23 @@ tr.mmi-wb-mp-gone .notice {
     opacity: 1;
 }
 
-/* ── Brands & sites (src/workbench/BrandSites.tsx) ── */
-.mmi-wb-bs-list {
-    max-height: 420px;
-    overflow-y: auto;
-}
+/* ── Brands & sites (src/workbench/BrandSites.tsx; the split view's rules are below) ── */
 .mmi-wb-bs-brand {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 .mmi-wb-bs-brand img {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
+    flex: none;
     object-fit: contain;
 }
-#mmi-wb-bs-rows tr.is-open {
-    box-shadow: inset 3px 0 0 var(--mmi-wb-accent);
+.mmi-wb-bs-sites select {
+    max-width: 100%;
 }
-.mmi-wb-bs-host {
-    display: inline-block;
-    margin: 0 6px 2px 0;
-    padding: 0 6px;
-    border: 1px solid var(--mmi-wb-border);
-    border-radius: 3px;
-}
-.mmi-wb-bs-todo .mmi-badge {
-    margin-right: 4px;
-}
-.mmi-wb-bs-drawer {
-    margin-top: 12px;
-    padding: 12px;
-    border: 1px solid var(--mmi-wb-border);
-    border-left: 3px solid var(--mmi-wb-accent);
-    border-radius: 4px;
-    scroll-margin-top: 40px;
-}
-.mmi-wb-bs-drawer-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.mmi-wb-bs-drawer-head h4 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-}
-.mmi-wb-bs-drawer-head img {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-}
-.mmi-wb-bs-drawer h5 {
-    margin: 16px 0 6px;
-    font-size: 14px;
+.mmi-wb-bs-site-actions:empty {
+    display: none;
 }
 .mmi-wb-bs-forms {
     display: flex;
@@ -1473,6 +1435,35 @@ tr.mmi-wb-mp-gone .notice {
     align-items: center;
     gap: 6px;
 }
+.mmi-wb-bs-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+.mmi-wb-bs-row-actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+/* Beside the brand list the products table keeps to its box; a long address or a row of badges wraps instead. */
+#mmi-wb-bs-products {
+    table-layout: fixed;
+}
+#mmi-wb-bs-products thead th:first-child {
+    width: 64px;
+}
+#mmi-wb-bs-products thead th:nth-child(2) {
+    width: 24%;
+}
+#mmi-wb-bs-products td {
+    overflow-wrap: anywhere;
+}
+#mmi-wb-bs-products .mmi-wb-mp-pages * {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+}
 .mmi-wb-bs-found label {
     display: flex;
     flex-wrap: wrap;
@@ -1483,15 +1474,15 @@ tr.mmi-wb-mp-gone .notice {
     word-break: break-all;
 }
 
-/* ── Site maps (src/workbench/SiteMaps.tsx): the site list stays on the left, the open site beside it ── */
-.mmi-wb-sm-split {
+/* ── Split view (ui.tsx SplitTabs, useListKeys; Site maps and Brands & sites): the list stays on the left, the open item beside it ── */
+.mmi-wb-split {
     display: grid;
     grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
     gap: 14px;
     align-items: start;
 }
-/* The list stays in view while the open site scrolls; it scrolls inside itself. */
-.mmi-wb-sm-rail {
+/* The list stays in view while the open item scrolls; it scrolls inside itself. */
+.mmi-wb-split-list {
     position: sticky;
     top: 46px;
     display: flex;
@@ -1500,38 +1491,38 @@ tr.mmi-wb-mp-gone .notice {
     min-width: 0;
     max-height: calc(100vh - 66px);
 }
-#mmi-wb-site-maps .mmi-wb-sm-rail-list {
+.mmi-wb-pane .mmi-wb-split .mmi-wb-split-scroll {
     flex: 1 1 auto;
     min-height: 120px;
     max-height: none;
     overflow-y: auto;
 }
-.mmi-wb-sm-rail .mmi-filter-pills {
+.mmi-wb-split-list .mmi-filter-pills {
     margin: 0;
 }
-.mmi-wb-sm-rail-filters {
+.mmi-wb-split-filters {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
 }
-.mmi-wb-sm-rail-filters select,
-.mmi-wb-sm-rail-filters input[type="search"] {
+.mmi-wb-split-filters select,
+.mmi-wb-split-filters input[type="search"] {
     flex: 1 1 120px;
     min-width: 0;
 }
-#mmi-wb-sm-rows tr.is-open > td {
+.mmi-wb-split-list tbody tr.is-open > td {
     background: var(--mmi-wb-accent-bg);
 }
-#mmi-wb-sm-rows tr.is-open > td:first-child {
+.mmi-wb-split-list tbody tr.is-open > td:first-child {
     box-shadow: inset 3px 0 0 var(--mmi-wb-accent);
 }
-.mmi-wb-sm-host {
+.mmi-wb-split-name {
     font-weight: 600;
     text-align: left;
-    word-break: break-all;
+    word-break: break-word;
 }
-.mmi-wb-sm-site-meta {
+.mmi-wb-split-meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1540,47 +1531,45 @@ tr.mmi-wb-mp-gone .notice {
     font-size: 12px;
     color: var(--mmi-wb-muted);
 }
-.mmi-wb-sm-site-meta .mmi-badge {
+.mmi-wb-split-meta .mmi-badge {
     font-size: 10px;
 }
-#mmi-wb-sm-table .mmi-wb-sm-gapcol {
+.mmi-wb-split-list .mmi-wb-split-num {
     text-align: right;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
 }
-.mmi-wb-sm-keys {
+.mmi-wb-split-keys {
     margin: 0;
     font-size: 12px;
 }
-
-.mmi-wb-sm-work {
+.mmi-wb-split-work {
     min-width: 0;
     padding: 12px 14px 14px;
     border: 1px solid var(--mmi-wb-border);
     border-radius: 4px;
+}
+.mmi-wb-split-item {
     scroll-margin-top: 46px;
 }
-.mmi-wb-sm-site {
-    scroll-margin-top: 46px;
-}
-.mmi-wb-sm-empty {
+.mmi-wb-split-empty {
     padding: 48px 12px;
     text-align: center;
 }
-.mmi-wb-sm-empty p {
+.mmi-wb-split-empty p {
     margin: 4px 0;
 }
-.mmi-wb-sm-head {
+.mmi-wb-split-head {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: flex-start;
     gap: 8px 16px;
 }
-.mmi-wb-sm-title {
+.mmi-wb-split-title {
     min-width: 0;
 }
-.mmi-wb-sm-head h4 {
+.mmi-wb-split-head h4 {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1588,35 +1577,40 @@ tr.mmi-wb-mp-gone .notice {
     margin: 0;
     font-size: 16px;
 }
-.mmi-wb-sm-title .description {
+.mmi-wb-split-head h4 img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+.mmi-wb-split-title .description {
     margin: 4px 0 0;
 }
-.mmi-wb-sm-site-actions {
+.mmi-wb-split-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
 }
-.mmi-wb-sm-lines:not(:empty) {
+.mmi-wb-split-lines:not(:empty) {
     display: grid;
     gap: 6px;
     margin-top: 10px;
 }
-.mmi-wb-sm-lines p {
+.mmi-wb-split-lines p,
+.mmi-wb-split-lines .notice {
     margin: 0;
 }
-/* What the Fill waits on: a line of its own, not grey text beside the button. */
-.mmi-wb-sm-why {
+/* What waits on the open item: a line of its own, not grey text beside a button. */
+.mmi-wb-split-why {
     padding: 8px 12px;
     border-left: 4px solid #dba617;
     background: #fcf9e8;
 }
-.mmi-wb-sm-why.is-parts {
+.mmi-wb-split-why.is-info {
     border-left-color: #72aee6;
     background: #f0f6fc;
 }
-
-/* The open site's tabs: WordPress's nav tabs in the suite's look, at a section's size. */
-#mmi-wb-site-maps .mmi-wb-sm-tabs {
+/* The open item's tabs: WordPress's nav tabs in the suite's look, at a section's size. */
+.mmi-page .wrap .mmi-wb-split .mmi-wb-split-tabs {
     display: flex;
     flex-wrap: wrap;
     gap: 2px;
@@ -1627,7 +1621,7 @@ tr.mmi-wb-mp-gone .notice {
     background: transparent;
     box-shadow: none;
 }
-#mmi-wb-site-maps .mmi-wb-sm-tabs .nav-tab {
+.mmi-page .wrap .mmi-wb-split-tabs .nav-tab {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1636,23 +1630,37 @@ tr.mmi-wb-mp-gone .notice {
     font-size: 13px;
     cursor: pointer;
 }
-.mmi-wb-sm-tabs .mmi-pill-count {
+.mmi-wb-split-tabs .mmi-pill-count {
     font-weight: 600;
 }
-.mmi-wb-sm-dot {
+.mmi-wb-split-dot {
     display: inline-block;
     width: 7px;
     height: 7px;
     border-radius: 50%;
     background: #dba617;
 }
-.mmi-wb-sm-tabpanel {
+.mmi-wb-split-panel {
     padding-top: 12px;
 }
-.mmi-wb-sm-tabpanel > p.description:first-child {
+.mmi-wb-split-panel > p.description:first-child {
     margin-top: 0;
 }
+/* A narrow window: the list goes above the open item and scrolls on its own. */
+@media (max-width: 1100px) {
+    .mmi-wb-split {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .mmi-wb-split-list {
+        position: static;
+        max-height: none;
+    }
+    .mmi-wb-pane .mmi-wb-split .mmi-wb-split-scroll {
+        max-height: 320px;
+    }
+}
 
+/* ── Site maps (src/workbench/SiteMaps.tsx) ── */
 /* Parts: one row per part, a bar of what it does across the products, proposals under it. */
 .mmi-wb-sm-parts-bar {
     display: flex;
@@ -1857,19 +1865,6 @@ tr.mmi-wb-mp-gone .notice {
     gap: 6px 12px;
 }
 
-/* A narrow window: the list goes above the open site and scrolls on its own. */
-@media (max-width: 1100px) {
-    .mmi-wb-sm-split {
-        grid-template-columns: minmax(0, 1fr);
-    }
-    .mmi-wb-sm-rail {
-        position: static;
-        max-height: none;
-    }
-    #mmi-wb-site-maps .mmi-wb-sm-rail-list {
-        max-height: 320px;
-    }
-}
 
 /* ── Pictures in the Fill review (src/workbench/SitePictures.tsx) ── */
 .mmi-wb-pc,
@@ -2200,8 +2195,7 @@ tr.mmi-wb-mp-gone .notice {
     flex: 1 0 auto;
 }
 
-.mmi-wb-pane .mmi-table-scroll-wrapper,
-.mmi-wb-pane .mmi-wb-bs-list {
+.mmi-wb-pane .mmi-table-scroll-wrapper {
     max-height: none;
 }
 
