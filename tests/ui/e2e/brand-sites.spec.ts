@@ -101,29 +101,80 @@ test("Find their pages reads the maker's list, ticks the sure matches, and saves
   const { api } = await open(page);
   await openBrand(page, 20);
   const d = drawer(page);
-  await expect(d.locator("#mmi-wb-bs-products tbody tr[data-id]")).toHaveCount(5);
+  await expect(d.locator("#mmi-wb-bs-products li[data-id]")).toHaveCount(5);
   await d.locator("#mmi-wb-bs-find").click();
   await expect(d.getByRole("status").filter({ hasText: "page 2" })).toBeVisible();
   await expect(d.locator("#mmi-wb-bs-notice")).toContainText("1 of 5 products have a sure match, ticked", { timeout: 10_000 });
-  await expect(d.locator('tr[data-id="4004"] .mmi-wb-bs-found input')).toBeChecked();
-  await expect(d.locator('tr[data-id="4001"] .mmi-wb-bs-found input')).not.toBeChecked();
-  await expect(d.locator('tr[data-id="4002"] .mmi-wb-bs-found')).toHaveText("No page names it");
+  // The matches are a batch of their own, above the others: the sure one ticked, a product no page names left out.
+  const f = d.locator('[data-batch="found"]');
+  await expect(d.locator("#mmi-wb-bs-products > section").first()).toHaveAttribute("data-batch", "found");
+  await expect(f.locator('li[data-id="4004"] input')).toBeChecked();
+  await expect(f.locator('li[data-id="4001"] input')).not.toBeChecked();
+  await expect(f.locator('li[data-id="4002"]')).toHaveCount(0);
   await d.locator("#mmi-wb-bs-save-found").click();
   await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("1 page saved and being read.");
   expect(api.callsTo("urls/set-many")[0]!.body).toEqual({ items: [{ id: 4004, url: "https://acme.example/cable-10" }] });
-  await expect(d.locator('tr[data-id="4004"]')).toHaveCount(0);
+  await expect(d.locator('li[data-id="4004"]')).toHaveCount(0);
 });
 
-test("a product row in the brand decides as in Maker pages", async ({ page }) => {
+test("a product row in the brand: one line with Use and Not this, More opens it as Maker pages decides it", async ({ page }) => {
   const { api } = await open(page);
   await openBrand(page, 20);
-  const r = drawer(page).locator('tr[data-id="4001"]');
-  await expect(r.locator("[data-action]")).toHaveText(["Use proposed URL", "Not this page", "Set the page", "Maker doesn't publish it"]);
-  await expect(drawer(page).locator('tr[data-id="4003"] [data-action]').first()).toHaveText("Use its new address");
-  await r.getByRole("button", { name: "Use proposed URL" }).click();
+  const r = drawer(page).locator('[data-batch="why:sku_slug"] li[data-id="4001"]');
+  await expect(r.locator(".mmi-wb-bt-move")).toHaveText("→ maker.example/synth-1");
+  await expect(r.locator(".mmi-wb-bt-move")).toHaveAttribute("title", "No page → https://maker.example/synth-1");
+  await expect(r.locator(".mmi-wb-bt-what .mmi-badge")).toHaveText("92");
+  await r.locator(".mmi-wb-bt-more").click();
+  await expect(r.locator(".mmi-wb-bt-detail [data-action]")).toHaveText(["Use proposed URL", "Not this page", "Set the page", "Maker doesn't publish it"]);
+  const moved = drawer(page).locator('[data-batch="broken"] li[data-id="4003"]');
+  await moved.locator(".mmi-wb-bt-more").click();
+  await expect(moved.locator(".mmi-wb-bt-detail [data-action]").first()).toHaveText("Use its new address");
+  await r.locator(".mmi-wb-bt-more").click(); // closed again: the outcome shows under the line
+  await r.locator('.mmi-wb-bt-line [data-action="use"]').click();
   await expect(r.locator(".notice")).toHaveText("Approved: now its maker page; reading it.");
   expect(api.callsTo("urls/decide")[0]!.body).toEqual({ action: "approve", ids: [4001] });
+  await r.locator(".mmi-wb-bt-more").click();
   await expect(r.locator(".mmi-wb-mp-now")).toContainText("https://maker.example/synth-1");
+});
+
+test("the brand's products as batches: one per why, the sure ones ticked, each decided once", async ({ page }) => {
+  const { api, errors } = await open(page);
+  await openBrand(page, 20);
+  const d = drawer(page);
+  await expect(d.locator("#mmi-wb-bs-products > section")).toHaveCount(5);
+  expect(await d.locator("#mmi-wb-bs-products > section").evaluateAll((els) => els.map((e) => e.getAttribute("data-batch"))))
+    .toEqual(["why:sitemap_slug", "why:sku_slug", "broken", "none", "has"]);
+  const sure = d.locator('[data-batch="why:sku_slug"]');
+  await expect(sure.locator(".mmi-wb-bt-why")).toContainText("The page's address is the product's own part number");
+  await expect(sure.locator(".mmi-wb-bt-why")).toContainText("no page → maker.example · all 1 sure (70+) · would add Images");
+  await expect(sure.locator('li[data-id="4001"] input')).toBeChecked();
+  const weak = d.locator('[data-batch="why:sitemap_slug"]');
+  await expect(weak.locator(".mmi-wb-bt-why")).toContainText("none sure: look, then tick");
+  await expect(weak.locator('[data-batch-action="use"]')).toHaveText("Use the 0 ticked");
+  await expect(weak.locator('[data-batch-action="use"]')).toBeDisabled();
+  await expect(d.locator('[data-batch="has"] .mmi-wb-bt-why')).toHaveText("Their maker page"); // the maker's home page: More says why
+
+  // A turn-down asks again in place before anything is sent.
+  await sure.locator('[data-batch-action="reject"]').click();
+  await expect(sure.locator('[data-batch-action="reject"]')).toHaveText("Click again: not these 1");
+  expect(api.callsTo("urls/decide")).toHaveLength(0);
+  await sure.locator('[data-batch-action="reject"]').click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("1 page turned down: not proposed again.");
+  expect(api.callsTo("urls/decide")[0]!.body).toEqual({ action: "reject", ids: [4001] });
+  await expect(d.locator('[data-batch="why:sku_slug"]')).toHaveCount(0);
+
+  // Tick the weak one by hand and use it.
+  await weak.locator('li[data-id="4002"] input').check();
+  await weak.locator('[data-batch-action="use"]').click();
+  await expect(d.locator("#mmi-wb-bs-notice")).toHaveText("1 page approved and being read.");
+  expect(api.callsTo("urls/decide")[1]!.body).toEqual({ action: "approve", ids: [4002] });
+
+  // A batch can be shut.
+  const broken = d.locator('[data-batch="broken"]');
+  await broken.locator('[data-batch-action="toggle"]').click();
+  await expect(broken.locator('[data-batch-action="toggle"]')).toHaveText("Show 1");
+  await expect(broken.locator("li")).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
 test("a brand with no maker site can be set aside from its header, and brought back", async ({ page }) => {
@@ -174,7 +225,10 @@ test("nothing in the open brand runs past its box, in either tab; the list meets
     return Array.from(document.querySelectorAll<HTMLElement>("#mmi-wb-bs-drawer button, #mmi-wb-bs-drawer select, #mmi-wb-bs-drawer table"))
       .filter((el) => el.getClientRects().length && el.getBoundingClientRect().right > box.right + 1).map((el) => el.id || el.textContent!.trim().slice(0, 30) || el.tagName);
   });
-  await expect(drawer(page).locator("#mmi-wb-bs-products tbody tr[data-id]")).toHaveCount(5);
+  await expect(drawer(page).locator("#mmi-wb-bs-products li[data-id]")).toHaveCount(5);
+  expect(await over()).toEqual([]);
+  await drawer(page).locator('li[data-id="4001"] .mmi-wb-bt-more').click(); // a row opened in full fits too
+  await expect(drawer(page).locator('li[data-id="4001"] .mmi-wb-bt-detail')).toBeVisible();
   expect(await over()).toEqual([]);
   await tab(page, "sites");
   await expect(drawer(page).locator("#mmi-wb-bs-sites tr[data-host]")).toHaveCount(3);

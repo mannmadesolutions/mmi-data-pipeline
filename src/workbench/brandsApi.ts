@@ -3,7 +3,7 @@
  * product pages, and matching the brand's products to those pages. Types as the routes return them, the
  * brand list's filters, and the rules for which found pages are ticked for the person.
  */
-import type { PageRow } from "./pagesApi";
+import { pageFills, type PageRow } from "./pagesApi";
 
 export type SiteRole = "official" | "partner" | "reseller" | "store" | "notbrand" | "unknown";
 
@@ -29,6 +29,8 @@ export const ROLES: { value: SiteRole; label: string }[] = [
 ];
 /** The maker's own sites: product data is read from these. */
 export const MAKER: SiteRole[] = ["official", "partner"];
+/** A brand's sites that aren't the maker's (BAD roles), as hostOf() writes them: a page there is "away". */
+export const offHosts = (b: Brand): string[] => b.sites.filter((s) => BAD.includes(s.role as SiteRole)).map((s) => hostOf(s.host));
 /** Sites that aren't the maker's: never used; their products need a maker page. */
 export const BAD: SiteRole[] = ["reseller", "store", "notbrand"];
 
@@ -151,3 +153,64 @@ export function toDoText(b: Brand): string {
   const n = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
   return [n(b.open, "proposed page to decide", "proposed pages to decide"), n(b.failed_open, "page gone or moved", "pages gone or moved"), n(b.no_url, "product with no page", "products with no page")].filter(Boolean).join(", ");
 }
+
+/* ── The Pages tab as batches (owner 2026-11-14, Makers layout A): rows that share why become one decision ── */
+
+export type BatchKind = "why" | "broken" | "away" | "wrong" | "none" | "nopub" | "has";
+export interface Batch {
+  key: string; kind: BatchKind; label: string; rows: PageRow[];
+  /** Proposals only: the sites the proposed pages are on and the sites of the pages they replace ("" = no page), how many are sure (SURE or more), what they would add. */
+  hosts: string[]; from: string[]; sure: number; adds: string[];
+}
+const KIND_ORDER: BatchKind[] = ["why", "broken", "away", "wrong", "none", "nopub", "has"];
+const KIND_LABEL: Record<Exclude<BatchKind, "why">, string> = {
+  broken: "Their page is gone or moved",
+  away: "Their page is on a site that isn't the maker's",
+  wrong: "Their page isn't a product page",
+  none: "No maker page yet",
+  nopub: "The maker doesn't publish a page for them",
+  has: "Their maker page",
+};
+
+/** The batch a row belongs to: a proposal by its reason, anything else by what its page is. `off`: the brand's sites that aren't the maker's. */
+export function batchKey(r: PageRow, off: string[] = []): string {
+  if (r.status === "candidate" && r.proposed) return `why:${r.reason || "other"}`;
+  if (r.op_group === "broken") return "broken";
+  if (r.current && off.includes(hostOf(r.current))) return "away";
+  if (r.op_wrong) return "wrong";
+  if (r.fetch_status === "no_page") return "nopub";
+  return r.current ? "has" : "none";
+}
+
+/**
+ * Rows → batches: proposals grouped by reason, biggest first, then the pages that need a hand, then the rest. `placed`
+ * keeps a row in the batch it was loaded in, so a decision doesn't move it out of sight before the list is read again.
+ */
+export function batchesOf(rows: PageRow[], placed: Record<number, string> = {}, off: string[] = []): Batch[] {
+  const by = new Map<string, Batch>();
+  for (const r of rows) {
+    const key = placed[r.id] ?? batchKey(r, off);
+    const kind = (key.startsWith("why:") ? "why" : key) as BatchKind;
+    let b = by.get(key);
+    if (!b) {
+      b = { key, kind, label: kind === "why" ? r.reason_label || "Proposed pages" : KIND_LABEL[kind], rows: [], hosts: [], from: [], sure: 0, adds: [] };
+      by.set(key, b);
+    }
+    b.rows.push(r);
+    if (kind === "why") {
+      const h = hostOf(r.proposed);
+      if (h && !b.hosts.includes(h)) b.hosts.push(h);
+      const was = r.current ? hostOf(r.current) : "";
+      if (!b.from.includes(was)) b.from.push(was);
+      if (r.score >= SURE) b.sure++;
+      for (const a of pageFills(r)) if (!b.adds.includes(a)) b.adds.push(a);
+    }
+  }
+  return [...by.values()].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.rows.length - a.rows.length || a.label.localeCompare(b.label));
+}
+
+/** The proposals a batch ticks when it opens: the sure ones. */
+export const sureIds = (b: Batch): number[] => (b.kind === "why" ? b.rows.filter((r) => r.score >= SURE).map((r) => r.id) : []);
+
+/** An address shortened for a one-line row: the site and path, no scheme, no www, no trailing slash. */
+export const shortUrl = (u: string): string => u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/+$/, "");

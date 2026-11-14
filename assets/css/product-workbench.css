@@ -1590,6 +1590,169 @@ tr.mmi-wb-mp-gone .notice {
 .mmi-wb-mk-owners {
     margin: 0 0 10px;
 }
+/* Makers → Pages as batches (2026-11-14, layout A): one header per why, one line per product. */
+.mmi-wb-bt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.mmi-wb-bt {
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 6px;
+    background: #fff;
+    overflow: hidden;
+}
+.mmi-wb-bt.is-found {
+    border-color: var(--mmi-wb-accent);
+}
+.mmi-wb-bt-head {
+    display: grid;
+    grid-template-columns: 20px auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: #f9f9f9;
+}
+.mmi-wb-bt-count {
+    min-width: 28px;
+    height: 24px;
+    padding: 0 7px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    background: #1d2327;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.mmi-wb-bt.is-broken .mmi-wb-bt-count,
+.mmi-wb-bt.is-wrong .mmi-wb-bt-count {
+    background: #856404;
+}
+.mmi-wb-bt.is-none .mmi-wb-bt-count,
+.mmi-wb-bt.is-nopub .mmi-wb-bt-count,
+.mmi-wb-bt.is-has .mmi-wb-bt-count {
+    background: #ccd0d4;
+    color: #1d2327;
+}
+.mmi-wb-bt-why {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+.mmi-wb-bt-why .description {
+    font-size: 12px;
+}
+.mmi-wb-bt-acts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+}
+.mmi-wb-bt-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--mmi-wb-border);
+}
+.mmi-wb-bt-row {
+    margin: 0;
+    border-bottom: 1px solid #f0f0f1;
+}
+.mmi-wb-bt-row:last-child {
+    border-bottom: 0;
+}
+.mmi-wb-bt-row.is-gone {
+    opacity: 0.6;
+}
+.mmi-wb-bt-line {
+    display: grid;
+    grid-template-columns: 20px 32px minmax(0, 1.2fr) minmax(0, 1.3fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 10px;
+    font-size: 13px;
+}
+.mmi-wb-bt-line > img,
+.mmi-wb-bt-noimg {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 3px;
+    background: #f6f7f7;
+}
+.mmi-wb-bt-product {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.mmi-wb-bt-product > a,
+.mmi-wb-bt-move,
+.mmi-wb-bt-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.mmi-wb-bt-product .description {
+    font-size: 11px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.mmi-wb-bt-move {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+.mmi-wb-bt-what {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+.mmi-wb-bt-row > .notice {
+    margin: 0 10px 6px 72px;
+}
+.mmi-wb-bt-detail {
+    padding: 6px 10px 10px 72px;
+    background: #fbfbfb;
+    border-top: 1px dashed var(--mmi-wb-border);
+}
+/* In a narrow panel the address and the match score go under the product, and a batch's buttons under its why. */
+.mmi-wb-bt-list {
+    container-type: inline-size;
+}
+@container (max-width: 720px) {
+    .mmi-wb-bt-head {
+        grid-template-columns: 20px auto minmax(0, 1fr);
+    }
+    .mmi-wb-bt-head > .mmi-wb-bt-acts {
+        grid-column: 3;
+        justify-content: flex-start;
+    }
+    .mmi-wb-bt-line {
+        grid-template-columns: 20px 32px minmax(0, 1fr) auto;
+        row-gap: 2px;
+    }
+    .mmi-wb-bt-line > .mmi-wb-bt-acts {
+        grid-column: 4;
+        grid-row: 1;
+    }
+    .mmi-wb-bt-move {
+        grid-column: 3;
+        grid-row: 2;
+    }
+    .mmi-wb-bt-what {
+        grid-column: 4;
+        grid-row: 2;
+        justify-content: flex-end;
+    }
+    .mmi-wb-bt-title {
+        display: none;
+    }
+}
 .mmi-wb-split-work {
     min-width: 0;
     padding: 12px 14px 14px;
