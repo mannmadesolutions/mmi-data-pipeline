@@ -3,4 +3,4 @@
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
-return array( 'dependencies' => array( 'react', 'react-dom', 'react-jsx-runtime', 'jquery', 'mmi-pipeline-rule-builder', 'mmi-pagination', 'mmi-nonce-refresh' ), 'version' => 'ed0049d97a5fb4b05afc' );
+return array( 'dependencies' => array( 'react', 'react-dom', 'react-jsx-runtime', 'jquery', 'mmi-pipeline-rule-builder', 'mmi-pagination', 'mmi-nonce-refresh' ), 'version' => '1c04b666771dcd1323ca' );

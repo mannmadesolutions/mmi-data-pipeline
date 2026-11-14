@@ -161,32 +161,39 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
                   {!brands && <tr><td colSpan={2} className="mmi-wb-empty-cell">Loading brands…</td></tr>}
                   {brands && !brandList.length && <tr><td colSpan={2} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
                   {brandList.map((b) => {
-                    const makers = b.sites.filter(isMaker);
+                    const makers = b.gone ? [] : b.sites.filter(isMaker);
+                    // One maker site: the brand's name opens it on that site's map and its map's state sits beside the
+                    // product count; the site's name is left off (owner 2026-11-14). Several: each is listed under it.
+                    const only = makers.length === 1 ? makers[0]! : null;
+                    const mapBadge = (host: string, map: string) => {
+                      const w = waitingOn(host);
+                      const [label, badge] = mapState(siteRow(host)?.status ?? map);
+                      return w ? <span className="mmi-badge warning inline">{plural(w, "part")}</span> : <span className={`mmi-badge ${badge} inline`}>{label}</span>;
+                    };
                     return (
                       // The whole row opens the brand (owner 2026-11-14); its name stays a button for the keys and Tab.
                       <tr key={b.id} data-brand={b.id} data-key={b.id} className={`mmi-wb-split-row${brandId === b.id ? " is-open" : ""}`} onClick={() => setBrandId(b.id)}>
                         <td>
                           <div className="mmi-wb-bs-brand">
                             {b.logo && <img src={b.logo} alt="" loading="lazy" />}
-                            <button type="button" className="button-link mmi-wb-split-name" aria-current={brandId === b.id ? "true" : undefined}>{b.name}</button>
+                            <button type="button" className="button-link mmi-wb-split-name" aria-current={brandId === b.id ? "true" : undefined}
+                              title={only ? `Open ${b.name} on ${only.host}'s map` : undefined}
+                              onClick={only ? (e) => { e.stopPropagation(); openBrand(b.id, "map", only.host); } : undefined}>{b.name}</button>
                           </div>
-                          <div className="mmi-wb-split-meta">
+                          <div className="mmi-wb-split-meta" data-site={only?.host}>
                             {b.gone ? <span className="mmi-badge inline">set aside</span> : !makers.length ? <span className="mmi-wb-mp-warn">None saved</span> : null}
                             <span>{plural(b.products, "product")}</span>
+                            {only && mapBadge(only.host, only.map)}
                           </div>
-                          {/* Its maker sites under it, each with its map's state: a click opens the brand on that site's map. */}
-                          {!b.gone && makers.length > 0 && (
+                          {/* Several maker sites: each under it with its map's state; a click opens the brand on that site's map. */}
+                          {makers.length > 1 && (
                             <ul className="mmi-wb-mk-sites">
-                              {makers.map((s) => {
-                                const w = waitingOn(s.host);
-                                const [label, badge] = mapState(siteRow(s.host)?.status ?? s.map);
-                                return (
-                                  <li key={s.host} data-site={s.host}>
-                                    <button type="button" className="button-link" tabIndex={-1} title={`Open ${b.name} on ${s.host}'s map`} onClick={(e) => { e.stopPropagation(); openBrand(b.id, "map", s.host); }}>{s.host}</button>
-                                    {w ? <span className="mmi-badge warning inline">{plural(w, "part")}</span> : <span className={`mmi-badge ${badge} inline`}>{label}</span>}
-                                  </li>
-                                );
-                              })}
+                              {makers.map((s) => (
+                                <li key={s.host} data-site={s.host}>
+                                  <button type="button" className="button-link" tabIndex={-1} title={`Open ${b.name} on ${s.host}'s map`} onClick={(e) => { e.stopPropagation(); openBrand(b.id, "map", s.host); }}>{s.host}</button>
+                                  {mapBadge(s.host, s.map)}
+                                </li>
+                              ))}
                             </ul>
                           )}
                         </td>

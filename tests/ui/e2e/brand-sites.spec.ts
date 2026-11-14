@@ -25,7 +25,7 @@ async function open(page: Page, key = "makers") {
 }
 const drawer = (page: Page) => page.locator("#mmi-wb-bs-drawer");
 const openBrand = async (page: Page, id: number) => {
-  await page.locator(`#mmi-wb-bs-rows [data-brand="${id}"] .mmi-wb-split-name`).click();
+  await page.locator(`#mmi-wb-bs-rows [data-brand="${id}"] .mmi-wb-split-num`).click(); // the row, not the name: a one-site brand's name opens its map
   await expect(drawer(page)).toHaveAttribute("data-brand", String(id));
 };
 const tab = (page: Page, key: string) => drawer(page).locator(`[data-stab="${key}"]`).click();
@@ -35,7 +35,8 @@ test("the brand list stays beside the open brand: work pills, more lists, arrow 
   await expect(sec.locator("#mmi-wb-bs-empty")).toContainText("Choose a brand on the left");
   await expect(sec.locator("#mmi-wb-bs-rows tr[data-brand]").first()).toContainText("Acme Audio");
   const acme = sec.locator('[data-brand="20"]');
-  await expect(acme).toContainText("acme.example");
+  await expect(acme.locator('.mmi-wb-split-meta[data-site="acme.example"]')).toContainText("2 parts"); // one maker site: its map's state, not its name
+  await expect(acme).not.toContainText("acme.example");
   await expect(acme.locator(".mmi-wb-split-num")).toHaveText("4");
   await expect(acme.locator(".mmi-wb-split-num")).toHaveAttribute("title", "2 proposed pages to decide, 1 page gone or moved, 1 product with no page");
   await expect(sec.locator('[data-brand="21"]')).toContainText("None saved");
@@ -54,6 +55,7 @@ test("the brand list stays beside the open brand: work pills, more lists, arrow 
   const [list, work] = await Promise.all([sec.locator("#mmi-wb-bs-list").boundingBox(), sec.locator(".mmi-wb-split-work").boundingBox()]);
   expect(work!.x).toBeGreaterThan(list!.x + list!.width - 1);
   expect(new URL(page.url()).searchParams.get("wb_brand")).toBe("20");
+  await sec.locator('#mmi-wb-bs-rows [data-brand="20"] .mmi-wb-split-name').focus(); // the row was clicked, not its name
   await page.keyboard.press("ArrowDown");
   await expect(drawer(page)).toHaveAttribute("data-brand", "21");
   await expect(sec.locator('#mmi-wb-bs-rows [data-brand="21"] .mmi-wb-split-name')).toBeFocused();

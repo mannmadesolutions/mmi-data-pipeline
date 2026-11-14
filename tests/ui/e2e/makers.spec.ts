@@ -35,14 +35,17 @@ test("one menu entry: Brands & sites and Site maps are gone from the menu, Maker
   expect(errors).toEqual([]);
 });
 
-test("a brand shows its maker sites under it; a site opens the brand on that site's map", async ({ page }) => {
+test("a brand with one maker site: its name opens the brand on that site's map", async ({ page }) => {
   const { sec, errors } = await open(page);
   const acme = sec.locator('#mmi-wb-bs-rows [data-brand="20"]');
-  // Only the maker's own sites are listed (shop.example has no role, old.example is a reseller), with what waits on the map.
-  await expect(acme.locator(".mmi-wb-mk-sites li")).toHaveCount(1);
-  await expect(acme.locator('li[data-site="acme.example"]')).toContainText("2 parts");
+  // Only the maker's own sites count (shop.example has no role, old.example is a reseller): one, so no site list under it,
+  // just what waits on its map beside the product count, and the brand's name links to that map.
+  await expect(acme.locator(".mmi-wb-mk-sites")).toHaveCount(0);
+  await expect(acme.locator('.mmi-wb-split-meta[data-site="acme.example"]')).toContainText("2 parts");
+  await expect(acme.locator(".mmi-wb-split-name")).toHaveAttribute("title", "Open Acme Audio on acme.example's map");
   await expect(sec.locator('#mmi-wb-bs-rows [data-brand="21"] .mmi-wb-mk-sites')).toHaveCount(0);
-  await acme.locator('li[data-site="acme.example"] button').click();
+  await expect(sec.locator('#mmi-wb-bs-rows [data-brand="21"] .mmi-wb-split-name')).not.toHaveAttribute("title", /./);
+  await acme.locator(".mmi-wb-split-name").click();
   await expect(drawer(page)).toHaveAttribute("data-brand", "20");
   await expect(drawer(page).locator('[data-stab="map"]')).toHaveAttribute("aria-selected", "true");
   await expect(drawer(page).locator('[data-stab="map"]')).toContainText("2 to approve");
@@ -101,7 +104,7 @@ test("an approval on a brand's Map tab updates the site under the brand", async 
   await page.locator('#mmi-wb-sm-proposed [data-proposal="27"] [data-action="approve"]').click();
   await expect(page.locator("#mmi-wb-sm-notice")).toHaveText("Pictures: approved as this site's part.");
   await page.locator('#mmi-wb-sm-proposed [data-proposal="28"] [data-action="approve"]').click();
-  await expect(sec.locator('#mmi-wb-bs-rows li[data-site="acme.example"]')).toContainText("Draft map");
+  await expect(sec.locator('#mmi-wb-bs-rows [data-brand="20"] .mmi-wb-split-meta[data-site="acme.example"]')).toContainText("Draft map");
   await expect(drawer(page).locator('[data-stab="map"] .mmi-wb-split-dot')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -168,12 +171,10 @@ test("a whole list row opens its brand or site; the name reads as plain text", a
   expect(look).toEqual({ weight: "400", color: look.cell, line: "none", cell: look.cell }); // the cell's own text color
   expect(look.color).not.toBe("rgb(34, 113, 177)"); // not WordPress's link blue
   expect(await row.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
-  // Enter on the focused name opens it too (keys and Tab still work).
+  // Enter on the focused name opens it too (keys and Tab still work); a one-site brand's name opens its map, not its Pages.
   await sec.locator('#mmi-wb-bs-rows [data-brand="20"] .mmi-wb-split-name').focus();
   await page.keyboard.press("Enter");
   await expect(drawer(page)).toHaveAttribute("data-brand", "20");
-  // A site under a brand still opens that site's map, not the brand's Pages.
-  await sec.locator('#mmi-wb-bs-rows [data-brand="20"] li[data-site="acme.example"] button').click();
   await expect(drawer(page).locator('[data-stab="map"]')).toHaveAttribute("aria-selected", "true");
   // By site, the same.
   await sec.locator("#mmi-wb-mk-by-site").click();
