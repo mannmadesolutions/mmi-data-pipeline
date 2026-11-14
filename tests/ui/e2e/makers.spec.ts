@@ -65,6 +65,32 @@ test("the row names no site; the open brand's description lists its maker sites,
   expect(errors).toEqual([]);
 });
 
+test("a maker site's ↗ asks the Chrome extension for the site overview, or opens the site without it", async ({ page }) => {
+  const { errors } = await open(page, "?wb_brand=20");
+  const link = drawer(page).locator('.mmi-wb-bs-site[data-site="acme.example"] a');
+  await expect(link).toHaveAttribute("href", "https://acme.example");
+  await expect(link).toHaveAttribute("target", "_blank");
+  // No extension: a plain link, so the site opens in a new tab.
+  await page.context().route("https://acme.example/**", (r) => r.fulfill({ body: "<title>Acme</title>", contentType: "text/html" }));
+  const [plain] = await Promise.all([page.waitForEvent("popup"), link.click()]);
+  expect(plain.url()).toBe("https://acme.example/");
+  await plain.close();
+  // The extension's bridge says it is here and can open an overview: the click asks it instead of opening a tab.
+  await page.evaluate(() => {
+    (window as unknown as { asked: unknown[] }).asked = [];
+    window.addEventListener("message", (e) => { if (e.data?.mmiExt && e.data.from === "page" && e.data.op === "overview") (window as unknown as { asked: unknown[] }).asked.push(e.data.host); });
+    window.postMessage({ mmiExt: true, from: "extension", op: "here", paired: true, can: ["send", "overview"] }, location.origin);
+  });
+  await page.waitForTimeout(100);
+  let popups = 0;
+  page.on("popup", () => { popups += 1; });
+  await link.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { asked: unknown[] }).asked)).toEqual(["acme.example"]);
+  await page.waitForTimeout(300);
+  expect(popups).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test("a brand with no maker site says so on its Map tab", async ({ page }) => {
   await open(page);
   await page.locator('#mmi-wb-bs-rows [data-brand="21"] .mmi-wb-split-name').click();

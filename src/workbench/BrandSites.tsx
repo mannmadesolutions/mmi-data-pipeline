@@ -22,6 +22,7 @@ import {
 import { bulkUseText } from "./pagesApi";
 import { msg, usePageRows, type Notice } from "./pageRows";
 import type { PageListReply, PageRow } from "./pagesApi";
+import { canOverview, openOverview, watchExtension } from "./extension";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
 import { Dashicon, deckKeys, KeyHints, press, SplitTabs, type SplitTab } from "./ui";
 
@@ -42,6 +43,7 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill, siteSt
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
+  useEffect(watchExtension, []); // the description's ↗ asks the Chrome extension for the site overview
   const [addHost, setAddHost] = useState("");
   const [addRole, setAddRole] = useState<SiteRole>("official");
   const [website, setWebsite] = useState(brand.website);
@@ -187,7 +189,9 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill, siteSt
               <span key={h} className="mmi-wb-bs-site" data-site={h}>{i ? ", " : ""}
                 <button type="button" className="button-link" title={`Open ${brand.name} on ${h}'s map`} onClick={() => onSite(h)}>{h}</button>{" "}
                 {siteState(h)}{" "}
-                <a href={`https://${h}`} target="_blank" rel="noreferrer" title={`Open ${h} in a new tab`} aria-label={`Open ${h} in a new tab`}>↗</a>
+                {/* With the Chrome extension connected, the site opens with its panel on the site overview (layouts and work). */}
+                <a href={`https://${h}`} target="_blank" rel="noreferrer" title={`Open ${h} in a new tab, with the Chrome extension's site overview when it's connected`} aria-label={`Open ${h} in a new tab`}
+                  onClick={(e) => { if (canOverview()) { e.preventDefault(); openOverview(h); } }}>↗</a>
               </span>
             ))}</> : "no maker site saved"}
             {brand.url && <> · <a href={brand.url} target="_blank" rel="noreferrer">its brand page ↗</a></>}

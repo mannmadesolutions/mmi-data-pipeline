@@ -450,7 +450,8 @@
 	root.append( style, layer, sheet, box, pill );
 	document.documentElement.appendChild( host );
 
-	const state = { product: 0, poll: 0, timer: 0, site: false, allowed: true, href: location.href, ticks: {}, ticksFor: 0, more: false, key: false, shown: '', reviews: {}, say: null };
+	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
+	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), allowed: true, href: location.href, ticks: {}, ticksFor: 0, more: false, key: false, shown: '', reviews: {}, say: null };
 
 	/** Open or closed, folded or not: the service worker keeps it for this tab, and puts the panel back on the next page. */
 	const report = () => chrome.runtime.sendMessage( { type: 'panelstate', open: host.style.display !== 'none', folded: box.hidden } ).catch( () => {} );

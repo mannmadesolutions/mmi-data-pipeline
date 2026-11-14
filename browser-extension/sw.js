@@ -7,7 +7,8 @@
  * (ExtBridge on the server). The toolbar button puts the panel on the page it is clicked on (activeTab); nothing
  * runs on a maker's page until then.
  *
- * Messages: from bridge.js (the store's Chrome extension page) status / pair / forget; from connect.html connectto; from the scripts on a
+ * Messages: from bridge.js (the store's Chrome extension page) status / pair / forget, and on any store admin page
+ * opensend / sendstop and openoverview (Makers' ↗: the site with the panel on its overview); from connect.html connectto; from the scripts on a
  * maker's page (panel.js, mapper.js, pictures.js, send.js) page / snapshot / map / write / undo / pictures / veto /
  * products / link / next / send / connect; inject, which puts the live mapper, the picture picker or Send this site
  * on that page (activeTab: the page the button was used on); and focus, which remembers the product Next opened in
@@ -295,7 +296,7 @@ async function pair( token, id, rest, sender ) {
 async function status() {
 	const s = await saved();
 	const st = await storeNow();
-	return { version: chrome.runtime.getManifest().version, protocol: EXT_PROTOCOL, paired: !! s.token, tokenId: s.tokenId || '', user: s.user || '', store: st ? st.origin : '' };
+	return { version: chrome.runtime.getManifest().version, protocol: EXT_PROTOCOL, paired: !! s.token, tokenId: s.tokenId || '', user: s.user || '', store: st ? st.origin : '', can: [ 'send', 'overview' ] };
 }
 
 /**
@@ -364,6 +365,7 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 		allow: () => askAllow( String( msg.url || '' ) ),
 		inject: () => inject( sender, String( msg.set || '' ) ),
 		opensend: () => openSend( String( msg.host || '' ) ),
+		openoverview: () => openOverview( sender, String( msg.host || '' ) ),
 		sendstop: () => stopSend( String( msg.host || '' ) ),
 		sendsay: () => relaySend( sender, msg ),
 		connect: async () => chrome.tabs.create( { url: await connectPage() } ).then( () => ( { ok: true } ) ),
@@ -562,7 +564,7 @@ async function restorePanels() {
 	}
 }
 
-chrome.tabs.onRemoved.addListener( ( tabId ) => chrome.storage.session.remove( [ `panel${ tabId }`, `focus${ tabId }`, `hand${ tabId }` ] ) );
+chrome.tabs.onRemoved.addListener( ( tabId ) => chrome.storage.session.remove( [ `panel${ tabId }`, `focus${ tabId }`, `hand${ tabId }`, `site${ tabId }` ] ) );
 
 /** A page loaded in a tab whose panel is open: the panel comes back (folded if it was), where Chrome allows it. */
 async function reopen( tabId, url ) {
@@ -571,9 +573,10 @@ async function reopen( tabId, url ) {
 		return;
 	}
 	if ( ! ( await allowed( url ) ) ) {
+		const site = ( await chrome.storage.session.get( `site${ tabId }` ) )[ `site${ tabId }` ];
 		chrome.action.setBadgeBackgroundColor( { tabId, color: '#2271b1' } );
 		chrome.action.setBadgeText( { tabId, text: '+' } );
-		chrome.action.setTitle( { tabId, title: `${ TITLE }: click to bring the panel back on this site` } );
+		chrome.action.setTitle( { tabId, title: site ? `${ TITLE }: click to see ${ site.host }’s overview` : `${ TITLE }: click to bring the panel back on this site` } );
 		return;
 	}
 	try {
@@ -678,6 +681,26 @@ async function openSend( host ) {
 	return { ok: true, data: { allowed: await allowed( url ) } };
 }
 
+/**
+ * A maker's site from the store (Makers' ↗ beside a site, through bridge.js; owner 2026-11-14): its home page in a new tab
+ * beside the store's, with the panel open on the site overview (its pages, layouts and the work left). Where Chrome
+ * already lets the extension onto the site the panel comes up as the page loads (reopen()); otherwise the button shows
+ * "+" and its first click opens it there. Not connected: the site opens, nothing more.
+ */
+async function openOverview( sender, host ) {
+	const s = await storeNow();
+	if ( ! /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test( host ) || ( s && host === new URL( s.origin ).hostname ) ) {
+		return { ok: false, data: { message: MESSAGES.badPage } };
+	}
+	const url = `https://${ host }/`;
+	const tab = await chrome.tabs.create( sender.tab ? { url, index: sender.tab.index + 1 } : { url } );
+	if ( ! s || ! ( await saved() ).token ) {
+		return { ok: true, data: { allowed: false, message: MESSAGES.notConnected } };
+	}
+	await chrome.storage.session.set( { [ `panel${ tab.id }` ]: { open: true, folded: false }, [ `site${ tab.id }` ]: { host } } );
+	return { ok: true, data: { allowed: await allowed( url ) } };
+}
+
 /** Send starts on this tab, once, if a Send opened it. The panel is on the page by now. */
 async function startSend( tabId ) {
 	const tabs = await sendTabs();
@@ -751,9 +774,13 @@ chrome.tabs.onRemoved.addListener( async ( tabId ) => {
  */
 async function startPanel( tabId, folded ) {
 	const s = await storeNow();
-	await chrome.scripting.executeScript( { target: { tabId }, func: ( f, b, st ) => {
-		window.__mmiExtStart = { folded: f, build: b, store: st };
-	}, args: [ folded, await buildId(), s ? { origin: s.origin, base: s.base } : null ] } );
+	const site = !! ( await chrome.storage.session.get( `site${ tabId }` ) )[ `site${ tabId }` ]; // opened from Makers' ↗: once
+	await chrome.scripting.executeScript( { target: { tabId }, func: ( f, b, st, so ) => {
+		window.__mmiExtStart = { folded: f, build: b, store: st, site: so };
+	}, args: [ folded, await buildId(), s ? { origin: s.origin, base: s.base } : null, site ] } );
+	if ( site ) {
+		await chrome.storage.session.remove( `site${ tabId }` );
+	}
 	await chrome.scripting.executeScript( { target: { tabId }, files: PANEL_FILES } );
 }
 
