@@ -7,7 +7,9 @@
  * - Pages: the products as batches (owner 2026-11-14, Makers layout A): proposals grouped by why, each batch decided
  *   once for the pages ticked (the sure ones start ticked), then pages gone or moved, no page yet, and the rest. A row
  *   is one line; More opens it as Maker pages decides it. "Find their pages" reads every maker site's own product
- *   list and lists the matches as a batch of their own, the sure ones ticked, saved together.
+ *   list and lists the matches as a batch of their own, the sure ones ticked, saved together. Look closer opens one
+ *   product at a time above the batches (Makers step 5): its pages and evidence, decided with A / R / E / N, J and K to
+ *   move; a decision moves on to the next product not decided yet.
  * - Map and Fill: what Makers hands in (the maker site's map, and its Fill: SiteMaps.tsx's SitePanel in each focus).
  * - Sites: each switched to what it is (the maker's own, a partner, a reseller, a store, another brand's), a site
  *   added, the Brand website.
@@ -21,7 +23,7 @@ import { bulkUseText } from "./pagesApi";
 import { msg, usePageRows, type Notice } from "./pageRows";
 import type { PageListReply, PageRow } from "./pagesApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { Dashicon, SplitTabs, type SplitTab } from "./ui";
+import { Dashicon, deckKeys, KeyHints, press, SplitTabs, type SplitTab } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 const POLL = { ms: 3000, tries: 40 };
@@ -72,6 +74,7 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
         // A long list opens on its biggest batch; a short one shows everything.
         setShut(new Set(fresh.length > 20 ? batches.slice(1).map((b) => b.key) : []));
         setOpened(new Set());
+        setDeck((d) => (d !== null && fresh.some((r) => r.id === d) ? d : null));
       }
     } catch (e) { if (mine === seq.current) { setRows([]); setNotice({ text: msg(e), kind: "error" }); } }
   }, [cfg, brand.id]); // eslint-disable-line react-hooks/exhaustive-deps -- the roles in use when the list is read
@@ -83,7 +86,8 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
       return null; // the brand's lists are read again on the next load
     } catch { return null; }
   };
-  const { busy, reset, cells, act, state } = usePageRows(cfg, refetch);
+  const { busy, reset, cells, act, state, why: loadWhy, evidence } = usePageRows(cfg, refetch);
+  const [deck, setDeck] = useState<number | null>(null); // the product open one at a time
   useEffect(() => { void loadProducts(group, page); setFound(null); reset(); }, [group, page, loadProducts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (key: string, body: Record<string, unknown>, done: string) => {
@@ -308,7 +312,19 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
             {finding ? <span className="mmi-loading" aria-hidden="true" /> : <Dashicon name="search" />} Find their pages
           </button>
           {finding && <span className="description" role="status">{finding}</span>}
+          <button type="button" className="button button-small" id="mmi-wb-bs-deck-open" disabled={!rows.length} aria-pressed={deck !== null}
+            title="One product at a time, its pages and evidence side by side, decided from the keyboard"
+            onClick={() => { const order = batchesOf(rows, placed).flatMap((b) => b.rows); setDeck(deck !== null ? null : (order.find((r) => !state[r.id]?.notice) ?? order[0])?.id ?? null); }}>
+            {deck !== null ? "Close the one-at-a-time view" : "Look closer, one at a time"}
+          </button>
         </div>
+        {deck !== null && (() => {
+          const batches = batchesOf(rows, placed);
+          return (
+            <PageDeck order={batches.flatMap((b) => b.rows)} at={deck} onAt={setDeck} onClose={() => setDeck(null)} cells={cells} state={state}
+              labelOf={(id) => batches.find((b) => b.rows.some((r) => r.id === id))?.label ?? ""} evidence={evidence} loadWhy={loadWhy} />
+          );
+        })()}
         <div className="mmi-wb-bt-list" id="mmi-wb-bs-products">
           {!reply && <p className="mmi-wb-empty-cell">Loading products…</p>}
           {reply && !rows.length && <p className="mmi-wb-empty-cell">Nothing here.</p>}
@@ -342,6 +358,8 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
                   <span className="mmi-wb-bt-acts">
                     {why && (
                       <>
+                        <button type="button" className="button button-small" data-batch-action="deck" title="This batch one product at a time, with its evidence"
+                          onClick={() => setDeck((live[0] ?? b.rows[0])!.id)}>Look closer</button>
                         <button type="button" className={`button button-small mmi-wb-mp-danger${armed === `reject:${b.key}` ? " is-armed" : ""}`} data-batch-action="reject" disabled={!t || saving !== null || busy !== null}
                           title="Turn down the ticked pages: they aren't proposed again" onClick={() => void decideMany(b, "reject")}>
                           {armed === `reject:${b.key}` ? `Click again: not these ${t}` : `Not these ${t}`}
@@ -454,5 +472,59 @@ function FoundBatch({ rows, found, saving, gone, onTick, onSave, onClear }: {
         })}
       </ul>
     </section>
+  );
+}
+
+/**
+ * One product at a time (Makers step 5, the mockups' layout C): its pages in full with the evidence for a proposal, read
+ * as it opens. Keys press the buttons the row shows, so a key decides exactly as a click does (armed ones included).
+ */
+function PageDeck({ order, at, onAt, onClose, cells, state, labelOf, evidence, loadWhy }: {
+  order: PageRow[]; at: number; onAt: (id: number) => void; onClose: () => void;
+  cells: (r: PageRow) => { page: ReactNode; actions: ReactNode }; state: Record<number, { notice?: Notice; gone?: boolean }>;
+  labelOf: (id: number) => string; evidence: Record<number, unknown>; loadWhy: (r: PageRow) => Promise<void> | void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const i = Math.max(0, order.findIndex((r) => r.id === at));
+  const row = order[i];
+  const decided = !!row && state[row.id]?.notice?.kind === "ok";
+  useEffect(() => {
+    box.current?.focus({ preventScroll: true });
+    if (row && row.status === "candidate" && row.proposed && !evidence[row.id]) void loadWhy(row);
+  }, [row?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A decision moves on to the next product not decided yet, after a moment to read the outcome.
+  useEffect(() => {
+    if (!decided) return;
+    const t = window.setTimeout(() => { const next = order.slice(i + 1).find((r) => !state[r.id]?.notice); if (next) onAt(next.id); }, 700);
+    return () => window.clearTimeout(t);
+  }, [decided]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!row) return null;
+  const go = (d: number) => { const n = order[i + d]; if (n) onAt(n.id); };
+  const keys = deckKeys({
+    j: () => go(1), k: () => go(-1), escape: onClose,
+    a: () => { press(box.current, '[data-action="use"]') || press(box.current, '[data-action="useMoved"]') || press(box.current, '[data-action="keep"]'); },
+    r: () => { press(box.current, '[data-action="reject"]'); },
+    e: () => { press(box.current, '[data-action="set"]'); },
+    n: () => { press(box.current, '[data-action="none"]'); },
+  });
+  const c = cells(row);
+  return (
+    <div ref={box} tabIndex={-1} className="mmi-wb-deck" id="mmi-wb-bs-deck" data-id={row.id} onKeyDown={keys} aria-label={`One at a time: ${row.title}`}>
+      <div className="mmi-wb-deck-head">
+        <strong className="mmi-wb-deck-pos">{i + 1} of {order.length}</strong>
+        <span className="description mmi-wb-deck-why">{labelOf(row.id)}</span>
+        <span className="mmi-wb-deck-nav">
+          <button type="button" className="button button-small" data-deck="prev" disabled={i === 0} onClick={() => go(-1)}>‹ Previous</button>
+          <button type="button" className="button button-small" data-deck="next" disabled={i >= order.length - 1} onClick={() => go(1)}>Next ›</button>
+          <button type="button" className="button button-small" data-deck="close" onClick={onClose}>Close</button>
+        </span>
+      </div>
+      <div className="mmi-wb-deck-product">
+        {row.image ? <img src={row.image} alt="" loading="lazy" /> : null}
+        <div><strong><a href={row.view_url} target="_blank" rel="noreferrer">{row.title}</a></strong><p className="description"><a href={row.edit_url} target="_blank" rel="noreferrer">{row.id}</a>{row.sku ? ` · SKU ${row.sku}` : ""}{row.status === "candidate" && row.proposed ? ` · match ${row.score}` : ""}</p></div>
+      </div>
+      <div className="mmi-wb-deck-body mmi-wb-mp-pages">{c.page}{c.actions ? <div className="mmi-wb-bs-row-actions">{c.actions}</div> : null}</div>
+      <KeyHints keys={[["J", "next"], ["K", "previous"], ["A", "use"], ["R", "not this"], ["E", "set the page"], ["N", "maker doesn't publish it"], ["Esc", "close"]]} />
+    </div>
   );
 }

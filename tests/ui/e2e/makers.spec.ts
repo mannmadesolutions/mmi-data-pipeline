@@ -126,6 +126,14 @@ test("Map and Fill are steps of their own: the map without its Fill, the Fill wi
   await expect(site.getByRole("button", { name: "Re-read its products" })).toHaveCount(0);
   await site.locator("#mmi-wb-sm-fill").click();
   await expect(site.locator("#mmi-wb-sm-review")).toBeVisible();
+  // J and K move through the products to fill.
+  const ticks = site.locator("#mmi-wb-sm-review li input[type=checkbox]");
+  await ticks.first().focus();
+  await page.keyboard.press("j");
+  await expect(ticks.nth(1)).toBeFocused();
+  await page.keyboard.press("k");
+  await expect(ticks.first()).toBeFocused();
+  await expect(ticks.first()).toBeChecked(); // moving never ticks or unticks
   expect(errors).toEqual([]);
 });
 

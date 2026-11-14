@@ -382,3 +382,36 @@ export function SplitTabs<K extends string>({ id, label, tabs, active, onTab }: 
     </nav>
   );
 }
+
+/* ── One at a time (owner 2026-11-14, Makers step 5): an inspector decided from the keyboard ── */
+
+/**
+ * Keys for an inspector: bind the result to its container's onKeyDown. Keys are single letters (and "escape"); a key
+ * typed into a text field, a select or with a modifier is left alone, so typing an address never decides anything.
+ */
+export function deckKeys(handlers: Record<string, () => void>) {
+  return (e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target as HTMLElement;
+    if (t.closest("input:not([type=checkbox]):not([type=radio]), textarea, select, [contenteditable='true']")) return;
+    const h = handlers[e.key === "Escape" ? "escape" : e.key.toLowerCase()];
+    if (!h) return;
+    e.preventDefault();
+    h();
+  };
+}
+
+/** Press the button an inspector already shows (so a key decides exactly as a click does, armed confirmations included). */
+export function press(box: HTMLElement | null, selector: string): boolean {
+  const b = box?.querySelector<HTMLButtonElement>(selector);
+  if (!b || b.disabled) return false;
+  b.click();
+  return true;
+}
+
+/** The keys an inspector takes, said under it. */
+export const KeyHints = ({ keys }: { keys: [string, string][] }) => (
+  <p className="description mmi-wb-keys" aria-label="Keyboard">
+    {keys.map(([k, what]) => <span key={k}><kbd>{k}</kbd> {what}</span>)}
+  </p>
+);

@@ -255,5 +255,5 @@ export function usePageRows(cfg: TitleRulesConfig, refetch: (id: number) => Prom
     };
   };
 
-  return { state, setState, busy, setBusy, armed, setArmed, reset, cells, act };
+  return { state, setState, busy, setBusy, armed, setArmed, reset, cells, act, why, evidence };
 }

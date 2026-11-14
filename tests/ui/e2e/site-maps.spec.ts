@@ -340,3 +340,26 @@ test("the open site's tables meet the Workbench table standard: headings sort, c
     expect(look.over, `${id} runs past its box`).toBeLessThanOrEqual(0);
   }
 });
+
+test("proposed parts one at a time: J to move, R and A decide, the next one takes the place", async ({ page }) => {
+  const { api, errors } = await open(page);
+  await openSite(page, "acme.example");
+  const p = panel(page);
+  await p.locator("#mmi-wb-vp-deck-open").click();
+  const deck = p.locator("#mmi-wb-vp-deck");
+  await expect(deck).toHaveAttribute("data-proposal", "27"); // Checked before Not reviewed
+  await expect(deck.locator(".mmi-wb-deck-pos")).toHaveText("1 of 2");
+  await expect(deck).toBeFocused();
+  await page.keyboard.press("j");
+  await expect(deck).toHaveAttribute("data-proposal", "28");
+  await page.keyboard.press("r");
+  await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("Manual: rejected.");
+  expect(api.callsTo("map-proposals/28")[0]!.body).toEqual({ decision: "reject" });
+  await expect(deck).toHaveAttribute("data-proposal", "27");
+  await expect(deck.locator(".mmi-wb-deck-pos")).toHaveText("1 of 1");
+  await deck.focus();
+  await page.keyboard.press("a");
+  await expect(p.locator("#mmi-wb-sm-notice")).toHaveText("Pictures: approved as this site's part.");
+  await expect(p.locator("#mmi-wb-sm-proposed")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

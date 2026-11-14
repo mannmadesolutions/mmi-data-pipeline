@@ -9,7 +9,7 @@
  * - Parts opens on the proposed parts as batches by the reviewer's verdict (owner 2026-11-14, Makers step 3): Careful
  *   first and never approved in bulk, then Changed, Added and Checked, each a line per proposal with Approve, Reject
  *   and More (its samples and note). A site with several page layouts can show them as a grid instead, a part per
- *   row and a layout per column. Under them, one row per part (Pictures, Description, Requirements…): what the map
+ *   row and a layout per column, or one at a time (A / R, J / K). Under them, one row per part (Pictures, Description, Requirements…): what the map
  *   reads it with and a bar of what it does across the site's products. A part's name opens its products, with the
  *   decisions a cell takes ("its page has none of this", the page's requirements).
  */
@@ -23,7 +23,7 @@ import {
 import { msg, type Notice } from "./pageRows";
 import { ProductPictures, SitePicturesPanel } from "./SitePictures";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
-import { SortTh, SplitTabs, useColumnResize } from "./ui";
+import { deckKeys, KeyHints, press, SortTh, SplitTabs, useColumnResize } from "./ui";
 
 const POLL_MS = 8000;
 const enc = encodeURIComponent;
@@ -135,6 +135,15 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
     try { setText(await rest<TextSkips>(cfg, "POST", `maps/${enc(host)}/text`)); } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setBusy(null); }
   };
 
+  /** J / K in the Fill's review: the focus moves to the next or the previous product's tick. */
+  const stepReview = (d: number) => {
+    const ticks = Array.from(document.querySelectorAll<HTMLInputElement>("#mmi-wb-sm-review li input[type=checkbox]"));
+    const at = ticks.indexOf(document.activeElement as HTMLInputElement);
+    const next = ticks[at < 0 ? 0 : Math.min(ticks.length - 1, Math.max(0, at + d))];
+    next?.focus();
+    next?.closest("li")?.scrollIntoView({ block: "nearest" });
+  };
+
   const [label, badge] = STATUS[site.status] ?? [site.status, ""];
   const plan = gaps?.fill;
   const toFill = gaps ? fillRows(gaps) : [];
@@ -189,7 +198,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-sm-notice"><p>{notice.text}</p></div>}
 
       {showFill && review && plan && (
-        <div className="mmi-wb-sm-review" id="mmi-wb-sm-review">
+        <div className="mmi-wb-sm-review" id="mmi-wb-sm-review" onKeyDown={deckKeys({ j: () => stepReview(1), k: () => stepReview(-1) })}>
           <p>{plan.confirm ? "Filling confirms this site's draft map first. " : ""}Each product below gets what its page adds; untick one to leave it out. Writers only fill empty or thin fields, and every write can be undone.</p>
           {toFill.some((r) => adds(r).includes("Pictures")) && (
             <p><button type="button" className="button button-small" id="mmi-wb-sm-site-pics" aria-expanded={sitePics} onClick={() => setSitePics((v) => !v)}>
@@ -214,6 +223,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
               </li>
             ))}
           </ul>
+          <KeyHints keys={[["J", "next product"], ["K", "previous"], ["Space", "tick or untick"]]} />
           <button type="button" className="button button-primary" id="mmi-wb-sm-fill-go" disabled={!review.length || busy !== null} onClick={() => void fill()}>
             {plan.confirm ? "Confirm and fill" : "Fill"} {plural(review.length, "product")}
           </button>{" "}
@@ -410,6 +420,7 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
   // Checked starts shut while something needs a closer look (Careful, Changed, Added): those come first; Checked is approved together.
   const [shut, setShut] = useState<Set<string>>(() => new Set(batches.some((b) => b.v.key && b.v.key !== "checked") ? ["checked"] : []));
   const [opened, setOpened] = useState<number | null>(null);
+  const [deck, setDeck] = useState<number | null>(null); // the place in the Careful-first order, one at a time
   const waiting = batches.reduce((n, b) => n + b.rows.length, 0);
   const flipShut = (k: string) => setShut((set) => { const n = new Set(set); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const picked = opened !== null ? proposals.find((p) => p.id === opened && p.status === "proposed") ?? null : null;
@@ -418,6 +429,8 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
       <div className="mmi-wb-vp-bar">
         <strong>{plural(waiting, "proposed part")}</strong>
         <span className="mmi-wb-vp-counts">{batches.map((b) => <span key={b.v.key || "none"} className={`mmi-badge ${b.v.badge} inline`}>{b.v.key ? b.v.key[0]!.toUpperCase() + b.v.key.slice(1) : "Not reviewed"} {b.rows.length}</span>)}</span>
+        <button type="button" className="button button-small" id="mmi-wb-vp-deck-open" aria-pressed={deck !== null} onClick={() => setDeck(deck !== null ? null : 0)}
+          title="One proposed part at a time, Careful first, decided from the keyboard">{deck !== null ? "Close one at a time" : "One at a time"}</button>
         {grid.layouts.length > 1 && (
           <span className="mmi-wb-mk-mode mmi-wb-vp-view" role="group" aria-label="Show the proposed parts">
             <button type="button" id="mmi-wb-vp-batches" className={`button button-small${view === "batches" ? " is-active" : ""}`} aria-pressed={view === "batches"} onClick={() => setView("batches")}>By verdict</button>
@@ -425,6 +438,8 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
           </span>
         )}
       </div>
+
+      {deck !== null && <ProposalDeck order={batches.flatMap((b) => b.rows)} at={deck} onAt={setDeck} onClose={() => setDeck(null)} busy={busy} onProposal={onProposal} />}
 
       {view === "batches" && (
         <div className="mmi-wb-bt-list">
@@ -513,6 +528,41 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
   );
 }
 
+/**
+ * One proposed part at a time, Careful first (Makers step 5): the proposal in full, A / R to decide, J / K to move. A
+ * decided one leaves the list, so the same place shows the next.
+ */
+function ProposalDeck({ order, at, onAt, onClose, busy, onProposal }: {
+  order: Proposal[]; at: number; onAt: (i: number) => void; onClose: () => void; busy: string | null; onProposal: (p: Proposal, approve: boolean) => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const i = Math.min(at, order.length - 1);
+  const pr = order[i];
+  useEffect(() => { box.current?.focus({ preventScroll: true }); }, [pr?.id]);
+  if (!pr) return <p className="mmi-wb-deck mmi-wb-deck-done" id="mmi-wb-vp-deck">Every proposed part is decided. <button type="button" className="button-link" onClick={onClose}>Close</button></p>;
+  const v = VERDICTS.find((d) => d.key === verdictOf(pr))!;
+  const keys = deckKeys({
+    j: () => onAt(Math.min(order.length - 1, i + 1)), k: () => onAt(Math.max(0, i - 1)), escape: onClose,
+    a: () => { press(box.current, '[data-action="approve"]'); }, r: () => { press(box.current, '[data-action="reject"]'); },
+  });
+  return (
+    <div ref={box} tabIndex={-1} className={`mmi-wb-deck is-v-${v.key || "none"}`} id="mmi-wb-vp-deck" data-proposal={pr.id} onKeyDown={keys} aria-label={`One at a time: ${PART_LABEL[pr.field] ?? pr.field}`}>
+      <div className="mmi-wb-deck-head">
+        <strong className="mmi-wb-deck-pos">{i + 1} of {order.length}</strong>
+        <span className={`mmi-badge ${v.badge} inline`}>{v.key ? v.key[0]!.toUpperCase() + v.key.slice(1) : "Not reviewed"}</span>
+        <span className="mmi-wb-deck-why"><strong>{layoutName(pr)} · {PART_LABEL[pr.field] ?? pr.field}</strong></span>
+        <span className="mmi-wb-deck-nav">
+          <button type="button" className="button button-small" data-deck="prev" disabled={i === 0} onClick={() => onAt(i - 1)}>‹ Previous</button>
+          <button type="button" className="button button-small" data-deck="next" disabled={i >= order.length - 1} onClick={() => onAt(i + 1)}>Next ›</button>
+          <button type="button" className="button button-small" data-deck="close" onClick={onClose}>Close</button>
+        </span>
+      </div>
+      <ProposalView pr={pr} busy={busy} onDecide={(a) => onProposal(pr, a)} />
+      <KeyHints keys={[["J", "next"], ["K", "previous"], ["A", "approve"], ["R", "reject"], ["Esc", "close"]]} />
+    </div>
+  );
+}
+
 function ProposalView({ pr, busy, onDecide }: { pr: Proposal; busy: string | null; onDecide: (approve: boolean) => void }) {
   const [first, rest] = noteParts(pr.note);
   const lead = pr.checked === "claude" ? "Reviewed: " : "";
@@ -523,8 +573,8 @@ function ProposalView({ pr, busy, onDecide }: { pr: Proposal; busy: string | nul
         <span>{layoutName(pr)} · found on {pr.found} of {pr.of} pages</span>
         <code className="mmi-wb-sm-sel" title={pr.sel}>{pr.sel}</code>
         <span className="mmi-wb-sm-prop-acts">
-          <button type="button" className="button button-small button-primary" disabled={busy !== null} onClick={() => onDecide(true)}>Approve</button>
-          <button type="button" className="button button-small" disabled={busy !== null} onClick={() => onDecide(false)}>Reject</button>
+          <button type="button" className="button button-small button-primary" data-action="approve" disabled={busy !== null} onClick={() => onDecide(true)}>Approve</button>
+          <button type="button" className="button button-small" data-action="reject" disabled={busy !== null} onClick={() => onDecide(false)}>Reject</button>
         </span>
       </div>
       {pr.samples.length > 0 && (

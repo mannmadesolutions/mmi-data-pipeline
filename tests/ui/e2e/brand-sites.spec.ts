@@ -237,3 +237,41 @@ test("nothing in the open brand runs past its box, in either tab; the list meets
   await expect(list.locator("thead .mmi-resize-handle")).toHaveCount(2);
   expect(await list.evaluate((t: HTMLTableElement) => Array.from(t.tHead!.rows[0]!.cells).every((c) => c.classList.contains("mmi-wb-job-sortable")))).toBe(true);
 });
+
+test("one at a time: the evidence read as it opens, J and K to move, A and R decide and move on, typing never decides", async ({ page }) => {
+  const { api, errors } = await open(page);
+  await openBrand(page, 20);
+  const d = drawer(page);
+  await d.locator("#mmi-wb-bs-deck-open").click();
+  const deck = d.locator("#mmi-wb-bs-deck");
+  await expect(deck).toHaveAttribute("data-id", "4002"); // the first batch's first product
+  await expect(deck.locator(".mmi-wb-deck-pos")).toHaveText("1 of 5");
+  await expect(deck.locator(".mmi-wb-deck-why")).toHaveText("Found by name in the maker's sitemap (weak match)");
+  await expect(deck.locator(".mmi-wb-mp-evidence")).toBeVisible();
+  expect(api.callsTo("urls/evidence")[0]!.body).toEqual({ ids: [4002] });
+  await expect(deck).toBeFocused();
+  await page.keyboard.press("j");
+  await expect(deck).toHaveAttribute("data-id", "4001");
+  await page.keyboard.press("k");
+  await expect(deck).toHaveAttribute("data-id", "4002");
+  await page.keyboard.press("a");
+  await expect(deck.locator(".notice")).toHaveText("Approved: now its maker page; reading it.");
+  expect(api.callsTo("urls/decide")[0]!.body).toEqual({ action: "approve", ids: [4002] });
+  await expect(deck).toHaveAttribute("data-id", "4001"); // moved on by itself
+  await deck.focus();
+  await page.keyboard.press("r");
+  expect(api.callsTo("urls/decide").length).toBeGreaterThan(0);
+  await expect(deck).toHaveAttribute("data-id", "4003");
+  await expect.poll(() => api.callsTo("urls/decide")[1]?.body).toEqual({ action: "reject", ids: [4001] });
+  // E opens the address editor; letters typed there stay in it.
+  await deck.focus();
+  await page.keyboard.press("e");
+  const input = deck.locator("#mmi-wb-mp-url-4003");
+  await expect(input).toBeFocused();
+  await page.keyboard.type("an");
+  await expect(input).toHaveValue(/an$/);
+  expect(api.callsTo("urls/decide")).toHaveLength(2);
+  await deck.locator('[data-deck="close"]').click();
+  await expect(deck).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

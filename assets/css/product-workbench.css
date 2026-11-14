@@ -1832,6 +1832,76 @@ tr.mmi-wb-mp-gone .notice {
 .mmi-wb-vgrid-open-title {
     margin: 0 0 6px;
 }
+/* Makers: one at a time (2026-11-14, step 5), decided from the keyboard. */
+.mmi-wb-deck {
+    border: 2px solid var(--mmi-wb-accent);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 12px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.mmi-wb-deck:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--mmi-wb-accent-bg);
+}
+.mmi-wb-deck.is-v-careful {
+    border-color: #ff9800;
+}
+.mmi-wb-deck-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+}
+.mmi-wb-deck-why {
+    min-width: 0;
+}
+.mmi-wb-deck-nav {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+.mmi-wb-deck-product {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.mmi-wb-deck-product img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+.mmi-wb-deck-product p {
+    margin: 2px 0 0;
+}
+.mmi-wb-deck-body {
+    border-top: 1px dashed var(--mmi-wb-border);
+    padding-top: 8px;
+}
+.mmi-wb-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0;
+    font-size: 12px;
+}
+.mmi-wb-keys kbd {
+    font-size: 11px;
+    padding: 1px 5px;
+    border: 1px solid #ccd0d4;
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: #f6f7f7;
+}
+.mmi-wb-sm-fills-head {
+    margin: 12px 0 6px;
+    font-size: 14px;
+}
 /* In a narrow panel the address and the match score go under the product, and a batch's buttons under its why. */
 .mmi-wb-bt-list {
     container-type: inline-size;
