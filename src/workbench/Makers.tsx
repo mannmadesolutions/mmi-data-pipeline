@@ -6,13 +6,15 @@
  * - The list on the left stays in view (ui.tsx's split view); ↑ and ↓ move between rows. By brand, each brand shows
  *   its maker sites under it with their map's state. By site lists the sites instead: a site several brands share
  *   (ilio.com), and the maps no brand claims as its maker's site.
- * - An open brand (BrandSites.tsx's BrandDrawer) has Pages, Map and Sites. Map is its maker site's map (SiteMaps.tsx's
- *   SitePanel), with a pill per site when it has several, and says which other brands a shared site serves.
+ * - An open brand (BrandSites.tsx's BrandDrawer) has Pages, Map, Fill and Sites, in the order the work goes. Map is its
+ *   maker site's map and Fill that site's Fill (SiteMaps.tsx's SitePanel, focused on each), with a pill per site when it
+ *   has several. Both say which other brands a shared site serves (a Fill writes their products too), and offer to
+ *   switch a map off once next to none of the brand's products link to that site and no other brand uses it.
  * - An open site is its map, with the brands it is the maker's site of; a click opens that brand on the site's map.
  * - The address keeps the place: wb_brand (and wb_site on its Map tab), or wb_site alone when listed by site.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrandDrawer, type BrandTab } from "./BrandSites";
+import { BrandDrawer, type BrandStep, type BrandTab } from "./BrandSites";
 import {
   BRAND_VIEWS, brandsIn, brandViewCount, isMaker, makerHosts, sortBrands, toDo, toDoText,
   type Brand, type BrandSort, type BrandView,
@@ -35,6 +37,8 @@ const WORK_VIEWS: BrandView[] = ["work", "nomaker"];
 const NO_RUNNER: MapsReply["runner"] = { running: false, waiting: 0, note: "", finished_at: "" };
 /** A map's state in words and badge color; a site with no map row reads "No map". */
 const mapState = (status: string): [string, string] => STATUS[status] ?? ["No map", ""];
+/** A maker site this few of the brand's products link to (and no other brand's) gets "switch its map off". */
+const IDLE_LINKS = 2;
 
 export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
   const l = landing();
@@ -99,18 +103,22 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
   const hosts = brand ? makerHosts(brand) : [];
   const shownHost = mapHost && hosts.includes(mapHost) ? mapHost : hosts[0] ?? null;
   useAddressParam("wb_brand", mode === "brand" && brandId ? String(brandId) : null, visible);
-  useAddressParam("wb_site", mode === "site" ? siteHost : bTab === "map" && brand ? shownHost : null, visible);
+  useAddressParam("wb_site", mode === "site" ? siteHost : (bTab === "map" || bTab === "fill") && brand ? shownHost : null, visible);
 
   const mapWaiting = hosts.reduce((n, h) => n + waitingOn(h), 0);
   const firstMap = shownHost ? siteRow(shownHost) : null;
-  const brandMap = brand && {
+  const gaps = hosts.reduce((n, h) => { const r = siteRow(h); return n + (r ? gainOf(r) : 0); }, 0);
+  const step = (focus: "map" | "fill") => brand && (
+    <BrandSiteStep cfg={cfg} focus={focus} brand={brand} brands={brands ?? []} hosts={hosts} host={shownHost} row={firstMap} loaded={maps !== null}
+      waitingOn={waitingOn} siteRow={siteRow} onHost={setMapHost} proposals={proposals} tab={sTab} onTab={setSTab} onChanged={mapsChanged} />
+  );
+  const brandMap: BrandStep | null = brand && {
     count: mapWaiting ? `${mapWaiting} to approve` : hosts.length > 1 ? `${hosts.length} sites` : firstMap ? mapState(firstMap.status)[0] : hosts.length ? "No map" : "",
     dot: mapWaiting > 0,
-    body: (
-      <BrandMap cfg={cfg} brand={brand} brands={brands ?? []} hosts={hosts} host={shownHost} row={firstMap} loaded={maps !== null}
-        waitingOn={waitingOn} siteRow={siteRow} onHost={setMapHost} proposals={proposals} tab={sTab} onTab={setSTab} onChanged={mapsChanged} />
-    ),
+    body: step("map"),
   };
+  // Fill: the gaps its sites' pages would fill, as last measured (the site list's numbers).
+  const brandFill: BrandStep | null = brand && { count: gaps ? plural(gaps, "gap") : "", dot: false, body: step("fill") };
   const owners = site && brands ? brands.filter((b) => b.sites.some((s) => s.host === site.host && isMaker(s))) : [];
 
   return (
@@ -245,8 +253,8 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
         </div>
 
         <div className="mmi-wb-split-work">
-          {mode === "brand" && (brand && brandMap
-            ? <BrandDrawer key={brand.id} cfg={cfg} brand={brand} onBrand={replaceBrand} tab={bTab} onTab={setBTab} map={brandMap} />
+          {mode === "brand" && (brand && brandMap && brandFill
+            ? <BrandDrawer key={brand.id} cfg={cfg} brand={brand} onBrand={replaceBrand} tab={bTab} onTab={setBTab} map={brandMap} fill={brandFill} />
             : (
               <div className="mmi-wb-split-empty" id="mmi-wb-bs-empty">
                 <p><strong>Choose a brand on the left.</strong></p>
@@ -274,14 +282,30 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
   );
 }
 
-/** An open brand's Map tab: a pill per maker site when it has several, who else a shared site serves, then the site's map. */
-function BrandMap({ cfg, brand, brands, hosts, host, row, loaded, waitingOn, siteRow, onHost, proposals, tab, onTab, onChanged }: {
-  cfg: TitleRulesConfig; brand: Brand; brands: Brand[]; hosts: string[]; host: string | null; row: SiteRow | null; loaded: boolean;
+/**
+ * An open brand's Map or Fill tab: a pill per maker site when it has several, who else a shared site serves, the offer
+ * to switch off a map the brand no longer needs, then the site's panel focused on the step.
+ */
+function BrandSiteStep({ cfg, focus, brand, brands, hosts, host, row, loaded, waitingOn, siteRow, onHost, proposals, tab, onTab, onChanged }: {
+  cfg: TitleRulesConfig; focus: "map" | "fill"; brand: Brand; brands: Brand[]; hosts: string[]; host: string | null; row: SiteRow | null; loaded: boolean;
   waitingOn: (h: string) => number; siteRow: (h: string) => SiteRow | null; onHost: (h: string) => void;
   proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void;
 }) {
+  const [armed, setArmed] = useState<string | null>(null);
+  const [said, setSaid] = useState<Notice | null>(null);
   if (!host) return <p className="mmi-wb-split-why is-blocked" id="mmi-wb-mk-nomap">No maker site is saved, so there is no map yet. Add the maker's site under Sites.</p>;
   const others = brands.filter((b) => b.id !== brand.id && b.sites.some((s) => s.host === host && isMaker(s))).map((b) => b.name);
+  // A map only this brand uses, on a site next to none of its products link to now (its pages moved): offer to switch it off.
+  const idle = brand.sites.filter((s) => isMaker(s) && s.shared <= 1 && s.n <= IDLE_LINKS && (() => { const r = siteRow(s.host); return !!r && !["off", "auto", "refused"].includes(r.status); })());
+  const switchOff = async (h: string) => {
+    if (armed !== h) { setArmed(h); return; }
+    setArmed(null);
+    try {
+      await rest(cfg, "POST", `maps/${encodeURIComponent(h)}/off`, {});
+      setSaid({ text: `${h}'s map switched off: the site is read without it. Turn it back on from its map if it's needed again.`, kind: "ok" });
+      onChanged();
+    } catch (e) { setSaid({ text: msg(e), kind: "error" }); }
+  };
   return (
     <>
       {hosts.length > 1 && (
@@ -289,9 +313,10 @@ function BrandMap({ cfg, brand, brands, hosts, host, row, loaded, waitingOn, sit
           {hosts.map((h) => {
             const w = waitingOn(h);
             const r = siteRow(h);
+            const g = r ? gainOf(r) : 0;
             return (
               <button key={h} type="button" data-mhost={h} className={`mmi-pill${h === host ? " active" : ""}`} aria-pressed={h === host} onClick={() => onHost(h)}>
-                {h} <span className="mmi-pill-count">{w ? `${w} to approve` : r ? mapState(r.status)[0] : "No map"}</span>
+                {h} <span className="mmi-pill-count">{focus === "fill" ? (g ? plural(g, "gap") : r ? "nothing to fill" : "No map") : w ? `${w} to approve` : r ? mapState(r.status)[0] : "No map"}</span>
               </button>
             );
           })}
@@ -299,15 +324,27 @@ function BrandMap({ cfg, brand, brands, hosts, host, row, loaded, waitingOn, sit
       )}
       {others.length > 0 && (
         <p className="mmi-wb-split-why is-info" id="mmi-wb-mk-shared">
-          {host} is also the maker's site of {others.join(", ")}. Its parts and its Fill cover their products too.
+          {focus === "fill"
+            ? <>{host} is also the maker's site of {others.join(", ")}. A Fill on it writes their products too.</>
+            : <>{host} is also the maker's site of {others.join(", ")}. Its parts and its Fill cover their products too.</>}
         </p>
       )}
+      {idle.map((s) => (
+        <div key={s.host} className="notice notice-info inline mmi-wb-mk-idle" data-idle={s.host}>
+          <p>{s.n ? `Only ${plural(s.n, "product")} of ${brand.name}'s link${s.n === 1 ? "s" : ""}` : `None of ${brand.name}'s products link`} to {s.host} now, and no other brand uses it, so its map does next to nothing.{" "}
+            <button type="button" className={`button button-small${armed === s.host ? " is-armed" : ""}`} data-idle-action="off" onClick={() => void switchOff(s.host)}>
+              {armed === s.host ? "Click again to switch it off" : "Switch its map off"}
+            </button>
+          </p>
+        </div>
+      ))}
+      {said && <div className={`notice notice-${said.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-mk-said"><p>{said.text}</p></div>}
       {!loaded ? <p className="mmi-wb-empty-cell">Loading the map…</p>
-        : row ? <SitePanel key={host} cfg={cfg} site={row} proposals={proposals.filter((p) => p.host === host)} tab={tab} onTab={onTab} onChanged={onChanged} />
+        : row ? <SitePanel key={`${focus}:${host}`} cfg={cfg} focus={focus} site={row} proposals={proposals.filter((p) => p.host === host)} tab={tab} onTab={onTab} onChanged={onChanged} />
         : (
           <div className="mmi-wb-split-empty" id="mmi-wb-mk-nomap">
             <p><strong>{host} has no map yet.</strong></p>
-            <p className="description">Its pages are read without one. Pick its parts on its live page in the Chrome extension.</p>
+            <p className="description">{focus === "fill" ? "There is nothing to fill from it until it has one: its pages are read without a map." : "Its pages are read without one. Pick its parts on its live page in the Chrome extension."}</p>
           </div>
         )}
     </>

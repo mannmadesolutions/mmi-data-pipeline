@@ -52,7 +52,7 @@ test("a brand shows its maker sites under it; a site opens the brand on that sit
   expect(param(page, "wb_brand")).toBe("20");
   expect(param(page, "wb_site")).toBe("acme.example");
   // The brand's tabs run in the order the work goes, and Products is called Pages.
-  await expect(drawer(page).locator(":scope > .mmi-wb-split-tabs [data-stab]")).toHaveText([/^Pages/, /^Map/, /^Sites/]);
+  await expect(drawer(page).locator(":scope > .mmi-wb-split-tabs [data-stab]")).toHaveText([/^Pages/, /^Map/, /^Fill/, /^Sites/]);
   await drawer(page).locator('[data-stab="products"]').click();
   expect(param(page, "wb_site")).toBeNull();
   expect(errors).toEqual([]);
@@ -103,5 +103,49 @@ test("an approval on a brand's Map tab updates the site under the brand", async 
   await page.locator('#mmi-wb-sm-proposed [data-proposal="28"] [data-action="approve"]').click();
   await expect(sec.locator('#mmi-wb-bs-rows li[data-site="acme.example"]')).toContainText("Draft map");
   await expect(drawer(page).locator('[data-stab="map"] .mmi-wb-split-dot')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("Map and Fill are steps of their own: the map without its Fill, the Fill with its review and last fills", async ({ page }) => {
+  const { errors } = await open(page, "?wb_brand=20&wb_site=acme.example");
+  const site = page.locator("#mmi-wb-sm-panel");
+  await expect(site).toHaveAttribute("data-host", "acme.example");
+  // Map: parts, pages, text, settings; no Fill button, no Last fills.
+  await expect(site.locator("#mmi-wb-sm-parts")).toBeVisible();
+  await expect(site.locator("#mmi-wb-sm-fill")).toHaveCount(0);
+  await expect(site.locator("[data-stab]")).toHaveText([/^Parts/, /^Pages/, /^Text left out/, /^Settings/]);
+  // Fill: the button, what it waits on, and the last fills, with no tabs of its own.
+  await expect(drawer(page).locator('[data-stab="fill"]')).toContainText("3 gaps");
+  await drawer(page).locator('[data-stab="fill"]').click();
+  expect(param(page, "wb_site")).toBe("acme.example");
+  await expect(site.locator("#mmi-wb-sm-fill")).toBeVisible();
+  await expect(site.locator("#mmi-wb-sm-fill-waits")).toHaveText("2 proposed parts wait under Map: a Fill reads with the map as it is now, so approve them first.");
+  await expect(site.locator(".mmi-wb-sm-fills-head")).toHaveText("Last fills");
+  await expect(site.locator("[data-stab]")).toHaveCount(0);
+  await expect(site.locator("#mmi-wb-sm-parts")).toHaveCount(0);
+  await expect(site.getByRole("button", { name: "Re-read its products" })).toHaveCount(0);
+  await site.locator("#mmi-wb-sm-fill").click();
+  await expect(site.locator("#mmi-wb-sm-review")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a map the brand no longer needs: switch it off, asked again in place", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/mmi-data-pipeline/build/workbench.js*", (r) => r.fulfill({ path: "build/workbench.js", contentType: "text/javascript" }));
+  await new MockBackend().attach(page);
+  const api = new TitleRulesMock();
+  api.makerPages.brands[0]!.sites[0]!.n = 1; // its pages moved: one product still links to acme.example
+  await api.attach(page);
+  await page.goto("/?wb_brand=20&wb_site=acme.example");
+  const idle = page.locator('[data-idle="acme.example"]');
+  await expect(idle).toContainText("Only 1 product of Acme Audio's links to acme.example now, and no other brand uses it");
+  await idle.locator('[data-idle-action="off"]').click();
+  await expect(idle.locator('[data-idle-action="off"]')).toHaveText("Click again to switch it off");
+  expect(api.callsTo("maps/acme.example/off")).toHaveLength(0);
+  await idle.locator('[data-idle-action="off"]').click();
+  await expect(page.locator("#mmi-wb-mk-said")).toContainText("acme.example's map switched off");
+  expect(api.callsTo("maps/acme.example/off")).toHaveLength(1);
+  await expect(idle).toHaveCount(0);
   expect(errors).toEqual([]);
 });

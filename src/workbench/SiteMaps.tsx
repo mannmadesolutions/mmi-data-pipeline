@@ -42,7 +42,16 @@ const TABS: { key: SiteTab; label: string }[] = [
   { key: "parts", label: "Parts" }, { key: "pages", label: "Pages" }, { key: "fills", label: "Last fills" }, { key: "text", label: "Text left out" }, { key: "settings", label: "Settings" },
 ];
 
-export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg: TitleRulesConfig; site: SiteRow; proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void }) {
+/**
+ * focus: an open brand's step (Makers, owner 2026-11-14 step 4). "map" is the map without its Fill (Parts, Pages, Text left
+ * out, Settings); "fill" is the Fill with its review and the last fills. Listed by site, the panel has both.
+ */
+export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }: {
+  cfg: TitleRulesConfig; site: SiteRow; proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void; focus?: "map" | "fill";
+}) {
+  const showMap = focus !== "fill";
+  const showFill = focus !== "map";
+  const shown: SiteTab = focus === "fill" ? "fills" : focus === "map" && tab === "fills" ? "parts" : tab;
   const [gaps, setGaps] = useState<Gaps | null>(null);
   const [runs, setRuns] = useState<FillRunRow[] | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -116,7 +125,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
     void post(`prop:${pr.id}`, `map-proposals/${pr.id}`, { decision: approve ? "approve" : "reject" }, () => (approve ? `${name}: approved as this site's part.` : `${name}: rejected.`));
   };
   const loadText = useCallback(async () => { try { setText(await rest<TextSkips>(cfg, "GET", `maps/${enc(host)}/text`)); } catch (e) { setNotice({ text: msg(e), kind: "error" }); } }, [cfg, host]);
-  useEffect(() => { if (tab === "text" && !text) void loadText(); }, [tab, text, loadText]);
+  useEffect(() => { if (shown === "text" && !text) void loadText(); }, [shown, text, loadText]);
   const skip = async (add: string[], remove: string[]) => {
     setBusy("text");
     try { setText(await rest<TextSkips>(cfg, "POST", `maps/${enc(host)}/text-skip`, { add, remove })); setAddLine(""); } catch (e) { setNotice({ text: msg(e), kind: "error" }); } finally { setBusy(null); }
@@ -152,31 +161,34 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
           </p>
         </div>
         <div className="mmi-wb-split-actions">
-          <button type="button" className="button" disabled={busy !== null} title="Read the site's product list again and look for pages for its products"
-            onClick={() => void post("reread", `maps/${enc(host)}/reread`, {}, () => "Reading the site's products again.")}>Re-read its products</button>
-          {site.status === "off" ? (
+          {showMap && <button type="button" className="button" disabled={busy !== null} title="Read the site's product list again and look for pages for its products"
+            onClick={() => void post("reread", `maps/${enc(host)}/reread`, {}, () => "Reading the site's products again.")}>Re-read its products</button>}
+          {!showMap ? null : site.status === "off" ? (
             <button type="button" className="button" disabled={busy !== null} onClick={() => void post("reopen", `maps/${enc(host)}/reopen`, {}, () => "The map is back as a draft.")}>Turn the map back on</button>
           ) : site.status !== "auto" && site.status !== "refused" ? (
             <button type="button" className="button" disabled={busy !== null} title="The reader then reads this site without its map" onClick={() => void post("off", `maps/${enc(host)}/off`, {}, () => "Map switched off: the site is read without it.")}>Switch the map off</button>
           ) : null}
-          <button type="button" className="button button-primary" id="mmi-wb-sm-fill" disabled={!plan || plan.why !== "" || busy !== null || review !== null}
-            title={plan?.why || "Review the products it writes to first; you can leave any out"} onClick={() => setReview(toFill.map((r) => r.id))}>
-            {plan && plan.why === "" ? fillLabel(plan) : "Fill"}
-          </button>
+          {showFill && (
+            <button type="button" className="button button-primary" id="mmi-wb-sm-fill" disabled={!plan || plan.why !== "" || busy !== null || review !== null}
+              title={plan?.why || "Review the products it writes to first; you can leave any out"} onClick={() => setReview(toFill.map((r) => r.id))}>
+              {plan && plan.why === "" ? fillLabel(plan) : "Fill"}
+            </button>
+          )}
         </div>
       </div>
 
       {/* What the Fill waits on, said where the Fill is (not as grey text beside a grey button). */}
       <div className="mmi-wb-split-lines">
         {!gaps && <p className="mmi-wb-empty-cell">Loading the site's products…</p>}
-        {plan && plan.why !== "" && <p className="mmi-wb-split-why is-blocked" id="mmi-wb-sm-why">{plan.why}</p>}
-        {waiting.length > 0 && <p className="mmi-wb-split-why is-info" id="mmi-wb-sm-parts-hint">{partsHint(waiting.length)}</p>}
+        {showFill && plan && plan.why !== "" && <p className="mmi-wb-split-why is-blocked" id="mmi-wb-sm-why">{plan.why}</p>}
+        {showMap && waiting.length > 0 && <p className="mmi-wb-split-why is-info" id="mmi-wb-sm-parts-hint">{partsHint(waiting.length)}</p>}
+        {focus === "fill" && waiting.length > 0 && <p className="mmi-wb-split-why is-info" id="mmi-wb-sm-fill-waits">{plural(waiting.length, "proposed part")} {waiting.length === 1 ? "waits" : "wait"} under Map: a Fill reads with the map as it is now, so approve them first.</p>}
         {gaps && gaps.pending > 0 && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> {gaps.pending} page{gaps.pending === 1 ? " is" : "s are"} being checked with the map as it is now</p>}
         {reading?.r && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Reading: {reading.r.done} done, {reading.r.working} now, {reading.r.waiting} waiting</p>}
       </div>
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-sm-notice"><p>{notice.text}</p></div>}
 
-      {review && plan && (
+      {showFill && review && plan && (
         <div className="mmi-wb-sm-review" id="mmi-wb-sm-review">
           <p>{plan.confirm ? "Filling confirms this site's draft map first. " : ""}Each product below gets what its page adds; untick one to leave it out. Writers only fill empty or thin fields, and every write can be undone.</p>
           {toFill.some((r) => adds(r).includes("Pictures")) && (
@@ -209,17 +221,20 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
         </div>
       )}
 
-      <SplitTabs id="mmi-wb-sm" label={`${host}: what to look at`} active={tab} onTab={onTab}
-        tabs={TABS.map((t) => ({ ...t, count: tabCount[t.key], dot: tabDot[t.key] }))} />
+      {focus !== "fill" && (
+        <SplitTabs id="mmi-wb-sm" label={`${host}: what to look at`} active={shown} onTab={onTab}
+          tabs={TABS.filter((t) => focus !== "map" || t.key !== "fills").map((t) => ({ ...t, count: tabCount[t.key], dot: tabDot[t.key] }))} />
+      )}
+      {focus === "fill" && <h5 className="mmi-wb-sm-fills-head">Last fills</h5>}
 
-      <div className="mmi-wb-split-panel" id="mmi-wb-sm-tabpanel" role="tabpanel" aria-labelledby={`mmi-wb-sm-tab-${tab}`}>
-        {tab === "parts" && gaps && (
+      <div className="mmi-wb-split-panel" id="mmi-wb-sm-tabpanel" role={focus === "fill" ? undefined : "tabpanel"} aria-labelledby={focus === "fill" ? undefined : `mmi-wb-sm-tab-${shown}`}>
+        {shown === "parts" && gaps && (
           <PartsTab gaps={gaps} proposals={proposals} busy={busy}
             onApproveMany={(ids) => void post("approve-many", "map-proposals/site", { host, ids }, (d) => `${plural(Number(d.approved ?? 0), "part")} approved.${(d.failed as string[] | undefined)?.length ? ` Not approved: ${(d.failed as string[]).join("; ")}` : ""}`)}
             onProposal={decideProposal} onCell={decideCell} />
         )}
 
-        {tab === "pages" && gaps && (
+        {shown === "pages" && gaps && (
           <>
             <p className="description">Whether the site's product pages can be read, with the one fix for each state.</p>
             <ul className="mmi-wb-sm-ready" id="mmi-wb-sm-ready">
@@ -231,7 +246,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
           </>
         )}
 
-        {tab === "fills" && (
+        {shown === "fills" && (
           <>
             {!runs?.length && <p className="description">No fill yet. What a Fill writes shows here, with Undo.</p>}
             {runs?.map((run) => {
@@ -261,7 +276,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
           </>
         )}
 
-        {tab === "text" && (
+        {shown === "text" && (
           <>
             <p className="description">Lines the reader leaves out of descriptions read from this site (shop text, notices, menus).</p>
             {!text && <p className="mmi-wb-empty-cell">Loading…</p>}
@@ -284,7 +299,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged }: { cfg
           </>
         )}
 
-        {tab === "settings" && (
+        {shown === "settings" && (
           <form className="mmi-wb-sm-settings" onSubmit={(e) => { e.preventDefault(); void post("settings", `maps/${enc(host)}/settings`, { pattern, render }, () => "Settings saved."); }}>
             <label htmlFor="mmi-wb-sm-pattern">Its product pages' address</label>
             <input id="mmi-wb-sm-pattern" type="text" placeholder="/products/{slug}/" value={pattern} onChange={(e) => setPattern(e.target.value)} />

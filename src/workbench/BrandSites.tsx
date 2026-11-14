@@ -8,7 +8,7 @@
  *   once for the pages ticked (the sure ones start ticked), then pages gone or moved, no page yet, and the rest. A row
  *   is one line; More opens it as Maker pages decides it. "Find their pages" reads every maker site's own product
  *   list and lists the matches as a batch of their own, the sure ones ticked, saved together.
- * - Map: what Makers hands in (the maker site's map, SiteMaps.tsx's SitePanel).
+ * - Map and Fill: what Makers hands in (the maker site's map, and its Fill: SiteMaps.tsx's SitePanel in each focus).
  * - Sites: each switched to what it is (the maker's own, a partner, a reseller, a store, another brand's), a site
  *   added, the Brand website.
  */
@@ -26,13 +26,14 @@ import { Dashicon, SplitTabs, type SplitTab } from "./ui";
 const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
 const POLL = { ms: 3000, tries: 40 };
 
-export type BrandTab = "products" | "map" | "sites";
+export type BrandTab = "products" | "map" | "fill" | "sites";
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** map: the Map tab's content and its tab's count and dot (Makers draws the maker site's map). */
-export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map }: {
+export interface BrandStep { body: ReactNode; count: string; dot: boolean }
+/** map, fill: those tabs' content, count and dot (Makers draws the maker site's map and its Fill). */
+export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill }: {
   cfg: TitleRulesConfig; brand: Brand; onBrand: (b: Brand) => void; tab: BrandTab; onTab: (t: BrandTab) => void;
-  map: { body: ReactNode; count: string; dot: boolean };
+  map: BrandStep; fill: BrandStep;
 }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -218,12 +219,14 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map }: {
       <SplitTabs id="mmi-wb-bs" label={`${brand.name}: what to look at`} active={tab} onTab={onTab} tabs={[
         { key: "products", label: "Pages", count: toDo(brand) ? `${toDo(brand)} to do` : plural(brand.products, "product"), dot: toDo(brand) > 0 },
         { key: "map", label: "Map", count: map.count, dot: map.dot },
+        { key: "fill", label: "Fill", count: fill.count, dot: fill.dot },
         // No dot for a site whose role isn't set: roles aren't a task (owner 2026-10-23). Only a missing maker site or moved pages.
         { key: "sites", label: "Sites", count: String(brand.sites.length), dot: !hasMaker || (brand.moves ?? []).length > 0 },
       ] satisfies SplitTab<BrandTab>[]} />
 
       <div className="mmi-wb-split-panel" id="mmi-wb-bs-tabpanel" role="tabpanel" aria-labelledby={`mmi-wb-bs-tab-${tab}`}>
         {tab === "map" && map.body}
+        {tab === "fill" && fill.body}
 
         {tab === "sites" && (<>
         <p className="description">Every site its products link to, and what each is. Product data is read only from the maker's own sites and its partners'.</p>
