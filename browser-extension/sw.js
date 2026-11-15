@@ -44,7 +44,7 @@ const ROUTES = 'wp-json/mmpt/v1/';
 const CONNECT_PATH = 'wp-admin/admin.php?page=mmi-product-extension';
 const CONNECT_SLUG = 'mmi-product-extension';
 const BRIDGE_ID = 'mmi-bridge';
-const EXT_PROTOCOL = 12; // ExtBridge::PROTOCOL
+const EXT_PROTOCOL = 13; // ExtBridge::PROTOCOL
 /** What inject may put on a page, in order (map-select.js and live-mapper.js come from mmi-admin's assets/js). */
 const SETS = {
 	mapper: [ 'page-copy.js', 'map-select.js', 'mapper.js', 'live-mapper.js' ],

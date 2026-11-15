@@ -42,6 +42,14 @@
  * pages lack it, says so in one click (`also`: layoutnone); Commit vendor product map (layoutcommit) asks again on the
  * button before it commits. The footer's commit keeps This product only there.
  *
+ * Protocol 13 (owner 2026-11-15, on STARDRIFT: the product box and "Layout A's map" listed the same parts, the row's
+ * tick's purpose was unclear, "Next for this site's map" repeated a part): on a product's page each part is listed once
+ * (`parts`), as This product or its layout's map sees it (`scopes`, a switch), grouped by what happens to it (`groups`,
+ * the quiet ones folded). The header is the product, with Preview and Open; `check` (is this its page) sits under it;
+ * the site map's steps are one line (`progress`), their part's row tagged. One footer commit follows the switch: this
+ * product's changes through their review, where a part is left out (no ticks), or the layout's map through a review of
+ * what committing it writes. A row that opens the mapper says where its pick is saved.
+ *
  * A part's row carries its criteria's selector (`sel`): hovered or focused, what it reads is outlined on the page and
  * brought into view if it is out of sight (owner 2026-11-04: "why don't the corresponding DOM element get highlighted?").
  * A row with no pick here (none, or it finds nothing on this page) carries the two ends of the text read (`find`):
@@ -115,18 +123,29 @@
 		open: 'Product Data',
 		failed: 'Something went wrong.',
 		reloaded: 'The extension was reloaded. Reload this page, then click the button again.',
-		commitHead: [ 'Review and commit the 1 ticked part for:', 'Review and commit the %n ticked parts for:' ],
-		commitNone: 'Tick the parts to commit',
+		reviewChanges: [ 'Review 1 change to this product', 'Review %n changes to this product' ],
+		noChanges: 'Nothing to commit to this product',
+		commitParts: [ 'Commit 1 part to this product', 'Commit %n parts to this product' ],
+		allLeftOut: 'Every part is left out',
+		leaveOut: 'Leave out',
+		putIn: 'Put back in',
+		leftOutCard: 'Left out: this commit doesn’t touch it.',
+		scopeLabel: 'Show the parts for',
+		stepOf: 'Site map · step %n of %t',
+		stepRow: 'It’s the part tagged %t below.',
+		allSteps: 'All steps',
+		hideSteps: 'Hide the steps',
+		showGroup: 'Show',
+		hideGroup: 'Hide',
+		sheetMap: '%l’s map: what committing it does',
+		mapNote: 'Afterwards, Makers → Fill → Last fills lists what it wrote, with Undo.',
 		reviewProduct: 'This product',
 		reviewLayout: '%l’s %n products',
 		reviewSite: 'All %n on this site',
 		reviewOf: 'Review what a commit does to: %s',
 		more: 'More actions',
 		keyToggle: 'What the labels mean',
-		leftOut: 'Left out',
-		leftOutHelp: 'Unticked, so a commit doesn’t touch it. Tick it to include it.',
 		undoHead: 'Can be put back',
-		tickTitle: 'Include this part in the commit',
 		sheetLabel: 'Review',
 		sheetProduct: 'What committing does to this product',
 		sheetLayout: 'What committing does to %l’s %n products',
@@ -171,7 +190,7 @@
 		openPage: 'Open its page',
 		linkedPage: 'Linked vendor URL',
 		notIncluded: 'Not in this commit: %p. They have no pick of %l’s own, so they can’t go to its products. Click the part and save a pick for %l.',
-		noneToCommit: 'None of the ticked parts has a pick of %l’s own, so nothing can go to its products. Click a part and save a pick for %l.',
+		noneToCommit: 'None of these parts has a pick of %l’s own, so nothing can go to its products. Click a part and save a pick for %l.',
 		commitProduct: 'Commit to this product',
 		commitLayout: [ 'Commit to 1 product', 'Commit to %n products' ],
 		commitNoChange: 'Nothing to commit',
@@ -260,6 +279,33 @@
 		.lks { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: -2px 0 6px; font-size: 12px; }
 		.lks a { color: #2271b1; text-decoration: none; }
 		.lks a:hover { text-decoration: underline; }
+		.hd .lks { margin: 4px 0 0; }
+		.chk { margin: 0 0 12px; padding: 2px 10px; border: 1px solid #dcdcde; border-radius: 6px; }
+		.pg { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: #f0f6fc; font-size: 12px; }
+		.pg .pt { display: flex; justify-content: space-between; gap: 8px; color: #50575e; font-weight: 600; }
+		.pg .pt a { color: inherit; text-decoration: none; }
+		.pg .pt a:hover { text-decoration: underline; }
+		.pg .bar { height: 4px; margin: 6px 0; border-radius: 2px; background: #c5d9ed; overflow: hidden; }
+		.pg .bar i { display: block; height: 100%; background: #2271b1; }
+		.pg .stt { font-size: 13px; font-weight: 600; }
+		.pg .v { color: #50575e; }
+		.pg ol { margin: 8px 0 0 18px; padding: 0; color: #50575e; }
+		.pg li.done { text-decoration: line-through; } .pg li.now { color: #1d2327; font-weight: 600; }
+		.sw { display: flex; margin: 0 0 6px; border: 1px solid #2271b1; border-radius: 6px; overflow: hidden; }
+		.sw button { flex: 1; min-height: 30px; padding: 0 8px; border: 0; background: #fff; color: #2271b1; font: inherit; font-weight: 600; cursor: pointer; }
+		.sw button + button { border-left: 1px solid #2271b1; }
+		.sw button[aria-pressed="true"] { background: #2271b1; color: #fff; }
+		.more.st { padding: 0 0 8px; }
+		.grp { margin: 0 0 10px; }
+		.grp .gh { display: flex; align-items: baseline; gap: 6px; margin: 4px 0 2px; }
+		.grp h3 { margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #50575e; }
+		.grp .gh .n { color: #646970; font-size: 12px; }
+		.grp .gh .lk { margin-left: auto; }
+		.grp > .v { color: #646970; font-size: 12px; }
+		.tag { flex: none; margin-left: auto; padding: 1px 6px; border-radius: 10px; background: #2271b1; color: #fff; font-size: 11px; font-weight: 600; line-height: 16px; }
+		.tag + .chip { margin-left: 0; }
+		.pc > h3 .lk { font-size: 13px; font-weight: 400; }
+		.pc.out > h3 { color: #646970; }
 		.row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f0f1; }
 		.row:last-of-type { border-bottom: 0; }
 		.lh { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -284,7 +330,6 @@
 		.th { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 		.th img { width: 48px; height: 48px; object-fit: contain; background: #fff; border: 1px solid #dcdcde; border-radius: 3px; }
 		.more { padding: 6px 0 0; color: #50575e; font-size: 12px; }
-		.row .ck { flex: none; margin: 3px 0 0; width: 15px; height: 15px; cursor: pointer; accent-color: #2271b1; }
 		.row .cr { margin-top: 2px; color: #646970; font-size: 11.5px; overflow-wrap: anywhere; }
 		.lk { padding: 0; border: 0; background: none; color: #2271b1; font: inherit; font-size: 12px; cursor: pointer; }
 		.lk:hover { text-decoration: underline; }
@@ -434,7 +479,8 @@
 	const titles = el( 'div', 't' );
 	const h1 = el( 'h1', '', 'Product Data' );
 	const sub = el( 'div', 's', location.hostname.replace( /^www\./, '' ) + location.pathname );
-	titles.append( h1, sub );
+	const hlinks = el( 'div', 'lks' ); // protocol 13: Preview and Open beside the product's name
+	titles.append( h1, sub, hlinks );
 	const fold = el( 'button', 'ib', '–' );
 	fold.title = MESSAGES.minimize;
 	fold.setAttribute( 'aria-label', MESSAGES.minimize );
@@ -465,7 +511,7 @@
 
 	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
 	// pick (protocol 11): a map step opened this page for one of its parts, so the mapper opens on it once the panel is drawn.
-	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, ticks: {}, ticksFor: 0, more: false, key: false, shown: '', reviews: {}, say: null };
+	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', open: {}, steps: false, panel: null, more: false, key: false, shown: '', reviews: {} };
 
 	/** Open or closed, folded or not: the service worker keeps it for this tab, and puts the panel back on the next page. */
 	const report = () => chrome.runtime.sendMessage( { type: 'panelstate', open: host.style.display !== 'none', folded: box.hidden } ).catch( () => {} );
@@ -576,57 +622,60 @@
 		},
 	};
 
-	/* ── Committing (protocol 7) ────────────────────────────────────────── */
-
-	/** A part's tick: the person's, else the server's default (on where this product gets a change). */
-	function ticked( key, dflt ) {
-		return Object.prototype.hasOwnProperty.call( state.ticks, key ) ? state.ticks[ key ] : ( state.ticks[ key ] = dflt );
-	}
+	/* ── Committing (protocol 7; no ticks since protocol 13) ─────────────── */
 
 	/** The page a product's parts come from: this one, or on our own product page, its linked page (panel.base). */
 	const at = () => state.base || location.href;
 
-	const tickedParts = ( c ) => Object.keys( c.parts || {} ).filter( ( k ) => state.ticks[ k ] );
-
 	/** Words for a count: [ one, many ]. */
 	const counted = ( words, n ) => words[ n === 1 ? 0 : 1 ].replace( '%n', Number( n ).toLocaleString() );
 
-	/** The footer's commit: how many parts are ticked, and a review for this product or for the layout's products. */
+	/** A footer button that opens (and shows it has open) one review. */
+	function opener( scope, label, open, primary ) {
+		const b = el( 'button', primary ? 'b pr' : 'b', label );
+		b.type = 'button';
+		b.dataset.scope = scope;
+		b.setAttribute( 'aria-pressed', String( state.shown === scope ) );
+		b.setAttribute( 'aria-label', MESSAGES.reviewOf.replace( '%s', label ) );
+		b.addEventListener( 'click', open );
+		return b;
+	}
+
+	/**
+	 * The footer's commit: a review of this product's changes (and, from older servers' sections, of the layout's or the
+	 * site's products). Owner 2026-11-15: the ticks only restated "Will change", counted parts that changed nothing and
+	 * shared the row with picking, so the review is where a part is left out.
+	 */
 	function commitBlock( c ) {
 		const box = el( 'div', 'cm' );
-		const head = el( 'div', 'ct' );
 		const acts = el( 'div', 'row2' );
-		const opener = ( scope, label ) => { // filled only while its review is open: that is the state to read
-			const b = el( 'button', 'b', label );
-			b.type = 'button';
-			b.dataset.scope = scope;
-			b.setAttribute( 'aria-pressed', String( state.shown === scope ) );
-			b.setAttribute( 'aria-label', MESSAGES.reviewOf.replace( '%s', label ) );
-			b.addEventListener( 'click', () => toggleReview( scope, c ) );
-			acts.append( b );
-			return b;
-		};
-		const buttons = [ opener( 'product', MESSAGES.reviewProduct ) ];
+		const n = ( c.writes || [] ).length;
+		const mine = opener( 'product', n ? counted( MESSAGES.reviewChanges, n ) : MESSAGES.noChanges, () => toggleReview( 'product', c ), true );
+		mine.disabled = ! n;
+		acts.append( mine );
 		if ( c.layout && c.layout.products > 0 ) {
-			buttons.push( opener( 'layout', MESSAGES.reviewLayout.replace( '%l', c.layout.name ).replace( '%n', c.layout.products ) ) );
+			acts.append( opener( 'layout', MESSAGES.reviewLayout.replace( '%l', c.layout.name ).replace( '%n', c.layout.products ), () => toggleReview( 'layout', c ) ) );
 		}
 		if ( c.site && c.site.products > 1 ) {
-			buttons.push( opener( 'site', MESSAGES.reviewSite.replace( '%n', c.site.products ) ) );
+			acts.append( opener( 'site', MESSAGES.reviewSite.replace( '%n', c.site.products ), () => toggleReview( 'site', c ) ) );
 		}
-		const count = () => {
-			const n = tickedParts( c ).length;
-			head.textContent = n ? counted( MESSAGES.commitHead, n ) : MESSAGES.commitNone;
-			buttons.forEach( ( b ) => {
-				b.disabled = ! n;
-			} );
-		};
-		state.say = () => {
-			count();
-			hideReview(); // what it showed is no longer what's ticked
-		};
-		count();
-		box.append( head, acts );
+		box.append( acts );
 		return box;
+	}
+
+	/** Protocol 13: one commit, for the scope the list shows: this product's changes, or the layout's map. */
+	function commitFor( commit ) {
+		if ( state.scope === 'layout' && commit.layout ) {
+			const m = commit.layout;
+			const box = el( 'div', 'cm' );
+			const acts = el( 'div', 'row2' );
+			const b = opener( 'layoutmap', m.label || '', () => toggleMap( m ), true );
+			b.disabled = ! m.can;
+			acts.append( b );
+			box.append( acts );
+			return box;
+		}
+		return commitBlock( commit.product || {} );
 	}
 
 	/* ── The review (protocol 9) ────────────────────────────────────────── */
@@ -654,10 +703,10 @@
 			hideReview();
 			return;
 		}
-		const parts = tickedParts( c );
+		const parts = scope === 'product' ? [ ...( c.writes || [] ) ] : Object.keys( c.parts || {} ); // this product: its changes; many products: every part, each with a pick of their own
 		const key = [ state.product, parts.join() ].join( '|' );
 		if ( ! state.reviews[ scope ] || state.reviews[ scope ].key !== key ) {
-			state.reviews[ scope ] = { scope, key, c, parts, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
+			state.reviews[ scope ] = { scope, key, c, parts, out: {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
 			lookFor( state.reviews[ scope ], false );
 		}
 		showReview( scope );
@@ -669,6 +718,16 @@
 		drawReview();
 		markReview();
 		sheet.focus();
+	}
+
+	/** Protocol 13: what committing the layout's map does, from the panel's own description (no look needed). */
+	function toggleMap( m ) {
+		if ( state.shown === 'layoutmap' ) {
+			hideReview();
+			return;
+		}
+		state.reviews.layoutmap = { scope: 'layoutmap', key: '', c: {}, m, parts: [], plans: [], data: null, busy: '', error: '', open: {}, examples: {}, all: {} };
+		showReview( 'layoutmap' );
 	}
 
 	/** A review started from the layout section: one part, no product in focus. */
@@ -688,7 +747,7 @@
 	const askType = ( r ) => ( r.scope === 'site' ? 'sitepart' : 'layout' );
 	const whose = ( r ) => ( r.scope === 'site' ? MESSAGES.theSite : r.c.layout.name );
 
-	/** This product: every ticked part, now and after, in one question. */
+	/** This product: each part that changes, now and after, in one question. */
 	async function lookProduct( r ) {
 		const res = await ask( { type: 'example', url: at(), product: r.c.product, parts: r.parts, scope: 'product' } );
 		r.busy = '';
@@ -700,7 +759,7 @@
 		redraw( r );
 	}
 
-	/** The layout's products: each ticked part with a pick of the layout's own, asked in slices with the count showing. */
+	/** The layout's products: each part with a pick of the layout's own, asked in slices with the count showing. */
 	async function lookLayout( r, fresh ) {
 		const c = r.c;
 		const parts = r.parts.filter( ( k ) => c.parts[ k ] && c.parts[ k ][ r.scope ] );
@@ -714,7 +773,7 @@
 				const res = await ask( { type: askType( r ), url: location.href, op: 'plan', part, offset, product: state.product, fresh: fresh ? 1 : 0 } );
 				const d = ( res && res.data ) || {};
 				if ( state.reviews[ r.scope ] !== r ) {
-					return; // ticks or picks changed: another review took over
+					return; // picks changed: another review took over
 				}
 				if ( ! res || ! res.ok ) {
 					r.busy = '';
@@ -841,7 +900,7 @@
 		const c = r.c;
 		const hd = el( 'div', 'shh' );
 		const t = el( 'div', 't' );
-		t.append( el( 'h2', '', r.scope === 'links' ? MESSAGES.sheetLinks : r.scope === 'site' ? MESSAGES.sheetSite.replace( '%n', c.site.products ) : r.scope === 'layout' ? MESSAGES.sheetLayout.replace( '%l', c.layout.name ).replace( '%n', c.layout.products ) : MESSAGES.sheetProduct ), el( 'div', 's', r.scope === 'links' ? MESSAGES.linksSub : MESSAGES.sheetSub ) );
+		t.append( el( 'h2', '', r.scope === 'layoutmap' ? MESSAGES.sheetMap.replace( '%l', r.m.name ) : r.scope === 'links' ? MESSAGES.sheetLinks : r.scope === 'site' ? MESSAGES.sheetSite.replace( '%n', c.site.products ) : r.scope === 'layout' ? MESSAGES.sheetLayout.replace( '%l', c.layout.name ).replace( '%n', c.layout.products ) : MESSAGES.sheetProduct ), el( 'div', 's', r.scope === 'layoutmap' ? r.m.said : r.scope === 'links' ? MESSAGES.linksSub : MESSAGES.sheetSub ) );
 		const x = el( 'button', 'ib', '×' );
 		x.type = 'button';
 		x.title = MESSAGES.hide;
@@ -859,7 +918,9 @@
 			}
 			bd.append( n );
 		}
-		if ( r.scope === 'links' ) {
+		if ( r.scope === 'layoutmap' ) {
+			mapBody( r.m ).forEach( ( n ) => bd.append( n ) );
+		} else if ( r.scope === 'links' ) {
 			if ( r.data ) {
 				const d = r.data;
 				bd.append( el( 'p', 'gl', MESSAGES.linksCounts.replace( '%l', d.listed ).replace( '%t', d.total ).replace( '%c', d.confirmed ) + ( d.waiting ? MESSAGES.linksWaiting.replace( '%w', d.waiting ) : '' ) ) );
@@ -879,19 +940,60 @@
 				bd.append( notice( 'warn', ( r.plans.length ? MESSAGES.notIncluded.replace( '%p', r.left.join( ', ' ) ) : MESSAGES.noneToCommit ).replace( /%l/g, whose( r ) ) ) );
 			}
 		} else if ( r.data ) {
-			r.data.parts.forEach( ( p ) => {
-				const card = el( 'section', 'pc' );
-				const pane = el( 'div', 'ex' );
-				pane.append( exampleBody( p, r.data.product ) );
-				card.append( el( 'h3', '', p.label ), pane );
-				bd.append( card );
-			} );
+			r.data.parts.forEach( ( p ) => bd.append( partCard( r, p ) ) );
 		}
 		sheet.replaceChildren( hd, bd, reviewFoot( r ) );
 		bd.scrollTop = scroll;
 		if ( focused ) {
 			sheet.focus();
 		}
+	}
+
+	/** One part of this product's review: now and after, and Leave out (owner 2026-11-15: in place of the row's tick). */
+	function partCard( r, p ) {
+		const card = el( 'section', 'pc' );
+		const out = !! r.out[ p.key ];
+		const h = el( 'h3', '', p.label );
+		if ( ( r.c.writes || [] ).includes( p.key ) ) {
+			const t = el( 'button', 'lk', out ? MESSAGES.putIn : MESSAGES.leaveOut );
+			t.type = 'button';
+			t.setAttribute( 'aria-pressed', String( out ) );
+			t.addEventListener( 'click', () => {
+				r.out[ p.key ] = ! out;
+				drawReview();
+			} );
+			h.append( t );
+		}
+		card.append( h );
+		if ( out ) {
+			card.classList.add( 'out' );
+			card.append( el( 'p', 'gl', MESSAGES.leftOutCard ) );
+			return card;
+		}
+		const pane = el( 'div', 'ex' );
+		pane.append( exampleBody( p, r.data.product ) );
+		card.append( pane );
+		return card;
+	}
+
+	/** Protocol 13: the layout's map review, part by part, with what it keeps and what blocks it. */
+	function mapBody( m ) {
+		const out = [];
+		( m.blocked || [] ).forEach( ( t ) => out.push( notice( 'warn', t ) ) );
+		if ( m.will && m.can ) {
+			out.push( el( 'p', 'gl', m.will ) );
+		}
+		( m.lines || [] ).forEach( ( x ) => {
+			const g = el( 'div', 'gr ' + ( x.kind || 'same' ) );
+			const gh = el( 'div', 'gh' );
+			gh.append( el( 'b', '', x.label ), el( 'span', 'chip ' + ( x.kind || 'same' ), x.word ) );
+			g.append( gh, el( 'p', '', x.text ) );
+			out.push( g );
+		} );
+		if ( m.keeps ) {
+			out.push( el( 'p', 'gl', m.keeps ) );
+		}
+		return out;
 	}
 
 	/** One part's outcomes on the layout's products. */
@@ -1082,10 +1184,21 @@
 			ft.append( shut );
 			return ft;
 		}
+		if ( r.scope === 'layoutmap' ) {
+			const go = el( 'button', 'b pr', r.m.go || '' );
+			go.type = 'button';
+			go.disabled = ! r.m.can;
+			go.addEventListener( 'click', () => commitMap( r, go ) );
+			const no = el( 'button', 'b', MESSAGES.close );
+			no.type = 'button';
+			no.addEventListener( 'click', hideReview );
+			ft.append( go, no, el( 'div', 's', r.m.can ? MESSAGES.mapNote : '' ) );
+			return ft;
+		}
 		const ids = wide( r ) ? commitIds( r ) : [];
-		const writes = r.scope === 'product' ? r.parts.filter( ( k ) => ( r.c.writes || [] ).includes( k ) ) : [];
+		const writes = r.scope === 'product' ? included( r ) : [];
 		const can = ! r.busy && ( wide( r ) ? ids.length > 0 : writes.length > 0 );
-		const label = r.busy ? MESSAGES.working : ! can ? MESSAGES.commitNoChange : wide( r ) ? counted( MESSAGES.commitLayout, ids.length ) : MESSAGES.commitProduct; // no promise of a commit until it's known
+		const label = r.busy ? MESSAGES.working : wide( r ) ? ( can ? counted( MESSAGES.commitLayout, ids.length ) : MESSAGES.commitNoChange ) : writes.length ? counted( MESSAGES.commitParts, writes.length ) : r.parts.length ? MESSAGES.allLeftOut : MESSAGES.commitNoChange; // no promise of a commit until it's known
 		const go = el( 'button', 'b pr', label );
 		go.type = 'button';
 		go.disabled = ! can;
@@ -1112,15 +1225,25 @@
 		return ft;
 	}
 
-	/** The ticked parts to this product: the page as drawn is stored, and only those parts are written. */
+	/** This product's review: the parts that change and aren't left out. */
+	const included = ( r ) => r.parts.filter( ( k ) => ( r.c.writes || [] ).includes( k ) && ! r.out[ k ] );
+
+	/** The parts the review kept, to this product: the page as drawn is stored, and only those parts are written. */
 	async function commitProduct( r, b ) {
-		const parts = r.parts.filter( ( k ) => ( r.c.writes || [] ).includes( k ) );
+		const parts = included( r );
 		const html = state.base ? '' : pageCopy(); // from our own product page: the stored copy, never this page's HTML
-		if ( html || state.base ) {
-			const res = await working( b, MESSAGES.writing, () => ask( { type: 'write', url: at(), product: r.c.product, expect: parts, only: r.parts, html } ) );
+		if ( parts.length && ( html || state.base ) ) {
+			const res = await working( b, MESSAGES.writing, () => ask( { type: 'write', url: at(), product: r.c.product, expect: parts, only: parts, html } ) );
 			forgetReviews();
 			answered( res, MESSAGES.writeStarted );
 		}
+	}
+
+	/** Protocol 13: the layout's map, committed from its review (the review is the second look the button used to ask for). */
+	async function commitMap( r, b ) {
+		const res = await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: 'commit', layout: r.m.i, product: state.product } ) );
+		forgetReviews();
+		answered( res );
 	}
 
 	/** Each part that writes something to the layout's products, as one batch: one Undo puts them all back. */
@@ -1270,7 +1393,7 @@
 			row.title = r.hint;
 			const run = ( e ) => {
 				if ( e.target.closest( 'button, a, input, textarea' ) ) {
-					return; // a thumbnail's ×, a tick: their own click
+					return; // a thumbnail's ×, a link: their own click
 				}
 				if ( e.type === 'keydown' ) {
 					if ( e.key !== 'Enter' && e.key !== ' ' ) {
@@ -1292,18 +1415,13 @@
 		}
 		const line = el( 'div', 'lh' );
 		line.append( label );
-		const chip = r.status ? el( 'span', 'chip' ) : null;
-		const why = r.status ? el( 'div', 'why' ) : null;
-		/** A part's state in words; a part that would change but is unticked is left out, and says so. */
-		const stateIs = ( on ) => {
-			const out = r.status.kind === 'change' && ! on;
-			chip.className = 'chip ' + ( out ? '' : r.status.kind );
-			chip.textContent = out ? MESSAGES.leftOut : r.status.word;
-			chip.title = out ? MESSAGES.leftOutHelp : r.status.help;
-			why.textContent = r.status.kind === 'missing' || r.status.kind === 'review' ? r.status.help : '';
-			why.hidden = ! why.textContent;
-		};
+		if ( r.tag ) { // protocol 13: the site map's step this part is
+			line.append( el( 'span', 'tag', r.tag ) );
+		}
+		const chip = r.status ? el( 'span', 'chip ' + ( r.status.kind || '' ), r.status.word || '' ) : null;
+		const why = r.status && ( r.status.kind === 'missing' || r.status.kind === 'review' ) && r.status.help ? el( 'div', 'why', r.status.help ) : null;
 		if ( chip ) {
+			chip.title = r.status.help || '';
 			line.append( chip );
 		}
 		txt.append( line );
@@ -1346,29 +1464,6 @@
 				}
 			} );
 			txt.append( th );
-		}
-		if ( r.commit && r.commit.key ) { // protocol 7: the part goes into the next commit when ticked
-			const ck = el( 'input', 'ck' );
-			ck.type = 'checkbox';
-			ck.title = MESSAGES.tickTitle;
-			ck.setAttribute( 'aria-label', MESSAGES.tickTitle + ': ' + ( r.label || '' ) );
-			ck.checked = ticked( r.commit.key, !! r.commit.checked );
-			ck.addEventListener( 'click', ( e ) => e.stopPropagation() ); // the row's own click opens picking
-			ck.addEventListener( 'change', () => {
-				state.ticks[ r.commit.key ] = ck.checked;
-				if ( chip ) {
-					stateIs( ck.checked );
-				}
-				if ( state.say ) {
-					state.say();
-				}
-			} );
-			row.append( ck );
-			if ( chip ) {
-				stateIs( ck.checked );
-			}
-		} else if ( chip ) {
-			stateIs( true );
 		}
 		if ( go ) {
 			txt.append( go );
@@ -1665,7 +1760,7 @@
 		b.type = 'button';
 		b.setAttribute( 'aria-expanded', String( state.key ) );
 		const dl = el( 'dl' );
-		[ ...key, { kind: '', word: MESSAGES.leftOut, help: MESSAGES.leftOutHelp } ].forEach( ( k ) => {
+		key.forEach( ( k ) => {
 			const dt = el( 'dt' );
 			dt.append( el( 'span', 'chip ' + k.kind, k.word ) );
 			dl.append( dt, el( 'dd', '', k.help ) );
@@ -1704,8 +1799,9 @@
 		}
 		const main = all.filter( ( a ) => a.primary );
 		const rest = all.filter( ( a ) => ! a.primary );
-		state.say = null;
-		if ( commit ) {
+		if ( panel.commit ) {
+			foot.append( commitFor( panel.commit ) );
+		} else if ( commit ) {
 			foot.append( commitBlock( commit ) );
 		}
 		const line = el( 'div', 'row2' );
@@ -1740,17 +1836,136 @@
 		}
 	}
 
+	/**
+	 * Protocol 13: the product's page, said once. Is this its page, the site map's step, the scope switch, then each part
+	 * once, grouped by what happens to it in that scope (folded groups say which parts they hold), and what can be put back.
+	 */
+	function listOf( panel ) {
+		const out = [];
+		if ( ( panel.check || [] ).length ) {
+			const chk = el( 'div', 'chk' );
+			panel.check.forEach( ( r ) => chk.append( rowOf( r ) ) );
+			out.push( chk );
+		}
+		if ( panel.progress ) {
+			out.push( progressOf( panel.progress ) );
+		}
+		if ( panel.busy ) {
+			out.push( spinning( panel.busy ) );
+		}
+		const scopes = panel.scopes || [];
+		if ( scopes.length > 1 ) {
+			const sw = el( 'div', 'sw' );
+			sw.setAttribute( 'role', 'group' );
+			sw.setAttribute( 'aria-label', MESSAGES.scopeLabel );
+			scopes.forEach( ( x ) => {
+				const b = el( 'button', '', x.label || '' );
+				b.type = 'button';
+				b.setAttribute( 'aria-pressed', String( state.scope === x.key ) );
+				b.addEventListener( 'click', () => {
+					if ( state.scope !== x.key ) {
+						state.scope = x.key;
+						hideReview(); // its commit was the other scope's
+						draw( state.panel );
+					}
+				} );
+				sw.append( b );
+			} );
+			out.push( sw );
+			const on = scopes.find( ( x ) => x.key === state.scope );
+			if ( on && on.text ) {
+				out.push( el( 'div', 'more st', on.text ) );
+			}
+		}
+		const sc = state.scope;
+		( ( panel.groups || {} )[ sc ] || [] ).forEach( ( [ key, title, fold ] ) => {
+			const parts = panel.parts.filter( ( p ) => p[ sc ] && p[ sc ].group === key );
+			if ( ! parts.length ) {
+				return;
+			}
+			const id = sc + ':' + key;
+			const open = ! fold || !! state.open[ id ];
+			const g = el( 'div', 'grp' );
+			const h = el( 'div', 'gh' );
+			h.append( el( 'h3', '', title ), el( 'span', 'n', String( parts.length ) ) );
+			if ( fold ) {
+				const t = el( 'button', 'lk', open ? MESSAGES.hideGroup : MESSAGES.showGroup );
+				t.type = 'button';
+				t.setAttribute( 'aria-expanded', String( open ) );
+				t.addEventListener( 'click', () => {
+					state.open[ id ] = ! open;
+					draw( state.panel );
+				} );
+				h.append( t );
+			}
+			g.append( h );
+			if ( open ) {
+				parts.forEach( ( p ) => g.append( rowOf( Object.assign( {}, p[ sc ], { tag: p.tag || '' } ) ) ) );
+			} else {
+				g.append( el( 'div', 'v', parts.map( ( p ) => p[ sc ].label ).join( ', ' ) ) );
+			}
+			out.push( g );
+		} );
+		if ( ( panel.undo || [] ).length ) {
+			out.push( undoList( panel.undo ) );
+		}
+		return out;
+	}
+
+	/** Protocol 13: the site map's steps as one line, the next one with its button (or its part's row tagged). */
+	function progressOf( p ) {
+		const box = el( 'div', 'pg' );
+		const top = el( 'div', 'pt' );
+		const head = el( 'span' );
+		const href = p.href ? ownLink( p.href ) : '';
+		const said = MESSAGES.stepOf.replace( '%n', p.n ).replace( '%t', p.of );
+		head.append( href ? link( 'a', '', said, href ) : document.createTextNode( said ) );
+		const t = el( 'button', 'lk', state.steps ? MESSAGES.hideSteps : MESSAGES.allSteps );
+		t.type = 'button';
+		t.setAttribute( 'aria-expanded', String( state.steps ) );
+		t.addEventListener( 'click', () => {
+			state.steps = ! state.steps;
+			draw( state.panel );
+		} );
+		top.append( head, t );
+		const bar = el( 'div', 'bar' );
+		const fill = el( 'i' );
+		fill.style.width = Math.round( 100 * ( p.done || 0 ) / Math.max( 1, p.of || 1 ) ) + '%';
+		bar.append( fill );
+		box.append( top, bar, el( 'div', 'stt', p.title || '' ), el( 'div', 'v', p.why || '' ) );
+		if ( p.part ) {
+			box.append( el( 'div', 'v', MESSAGES.stepRow.replace( '%t', 'Step ' + p.n ) ) );
+		}
+		if ( p.action ) {
+			const acts = el( 'div', 'acts' );
+			acts.append( button( Object.assign( {}, p.action, { primary: true } ) ) );
+			box.append( acts );
+		}
+		if ( state.steps ) {
+			const ol = el( 'ol' );
+			( p.steps || [] ).forEach( ( x ) => ol.append( el( 'li', x.done ? 'done' : x.now ? 'now' : '', x.title ) ) );
+			box.append( ol );
+		}
+		return box;
+	}
+
 	function draw( panel, extra ) {
 		peekOff(); // its row is about to go, and with it the pointer's leaving
 		const scroll = body.scrollTop;
 		const top = panel.href ? ownLink( panel.href ) : ''; // the store's Workbench on this product or site
 		h1.replaceChildren( top ? link( 'a', '', panel.title || 'Product Data', top ) : document.createTextNode( panel.title || 'Product Data' ) );
 		sub.textContent = panel.subtitle || sub.textContent;
+		hlinks.replaceChildren( ...( panel.links || [] ).map( ( l ) => [ l.label || '', ownLink( l.href || '' ) ] ).filter( ( [ , href ] ) => href ).map( ( [ label, href ] ) => link( 'a', '', label + ' ↗', href ) ) );
+		state.panel = panel;
 		state.product = panel.product || state.product;
-		if ( state.ticksFor !== state.product ) { // another product: its own ticks
-			state.ticks = {};
-			state.ticksFor = state.product;
+		if ( state.productFor !== state.product ) { // another product: its own scope, groups and reviews
+			state.productFor = state.product;
+			state.scope = 'product';
+			state.open = {};
 			forgetReviews();
+		}
+		if ( ! ( panel.scopes || [] ).some( ( x ) => x.key === state.scope ) ) {
+			state.scope = 'product';
 		}
 		state.base = panel.base || '';
 		state.look = state.look || !! panel.base; // the server opened it on a job: it stays open as the job goes on
@@ -1763,8 +1978,11 @@
 			body.append( handBar() );
 		}
 		( panel.notices || [] ).forEach( ( n ) => body.append( notice( n.kind, n.text ) ) );
+		if ( Array.isArray( panel.parts ) ) {
+			body.append( ...listOf( panel ) );
+		}
 		( panel.sections || [] ).forEach( ( s ) => {
-			const sec = el( 'div', 'sec' + ( s.actions ? ' product' : '' ) );
+			const sec = el( 'div', 'sec' + ( s.commit || ( s.links && s.links.length ) ? ' product' : '' ) ); // the product's box: not every section that sends `actions: []` (owner 2026-11-15: three sections looked like the product)
 			const h2 = el( 'h2' );
 			const href = s.href ? ownLink( s.href ) : '';
 			h2.append( href ? link( 'a', '', s.title || '', href ) : document.createTextNode( s.title || '' ) );
@@ -2161,6 +2379,14 @@
 			}
 			case 'layout':
 				await layout( a, b );
+				break;
+			case 'review': // protocol 13: the progress line's step is committing this page's layout
+				state.scope = a.scope || 'product';
+				hideReview();
+				draw( state.panel );
+				if ( state.scope === 'layout' && state.panel.commit && state.panel.commit.layout ) {
+					toggleMap( state.panel.commit.layout );
+				}
 				break;
 			case 'layoutnone': // protocol 12: a part isn't on this page's layout (or is again)
 				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: 'none', layout: a.layout, part: a.part || '', undo: a.undo ? 1 : 0, product: state.product } ) ) );

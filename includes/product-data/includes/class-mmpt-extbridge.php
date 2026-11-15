@@ -76,9 +76,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ExtBridge {
 
 	const SLUG         = 'mmi-product-extension'; // mmi- prefix → the shared library adds body.mmi-page and the suite styling
-	const PROTOCOL     = 12;
+	const PROTOCOL     = 13;
 	/** Protocol 12 asking (LayoutMaps: a layout's map, committed as a whole). */
 	private static bool $v12 = false;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
+	/** Protocol 13 asking (one_list(): a product's parts listed once, for this product or its layout). */
+	private static bool $v13 = false;
+	/** Protocol 13: the groups a part falls in, per scope: [ key, heading, folded ]. */
+	const GROUPS = [
+		'product' => [ [ 'change', 'Will change', false ], [ 'look', 'Needs a look', false ], [ 'done', 'Up to date', true ] ],
+		'layout'  => [ [ 'fills', 'Fills products', false ], [ 'look', 'Needs a pick', false ], [ 'done', 'Nothing to fill', true ], [ 'only', 'This product only', true ] ],
+	];
 	const MIN_PROTOCOL = 1;                       // the oldest extension still answered
 	const META         = '_mmpt_ext_tokens';      // [ id => { hash, label, created, used } ]
 	const HEADER       = 'X-MMI-Ext-Token';
@@ -417,12 +424,15 @@ class ExtBridge {
 	 * store_panel(), with a row's `brand`, `site` and a match's `store`, `empty`, `marked`, and the `hand` action.
 	 * Protocol 11: the site's map steps (steps_section()). Protocol 12 (owner 2026-11-15): on a page of a layout, its map
 	 * (template_section(), LayoutMaps), with a row's `also` (layoutnone) and the section's layoutcommit; the footer's
-	 * commit is for this product only there.
+	 * commit is for this product only there. Protocol 13 (owner 2026-11-15): on a product's page, one_list(): each part
+	 * once (`parts`, `scopes`, `groups`), `check`, `progress`, `links`, `undo`, `busy` and `commit` {product, layout};
+	 * no ticks, no layout or steps sections, no "This page" section.
 	 * $product: the product to show (one that uses this page); 0 = the only one, when there is only one.
 	 */
 	public static function panel( string $raw, int $product = 0, array $client = [ 'protocol' => self::PROTOCOL, 'build' => '' ] ): array {
 		self::$v12 = (int) $client['protocol'] >= 12; // the layout's map commits its parts, the site's picks with them
-		$own = (int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
+		self::$v13 = (int) $client['protocol'] >= 13; // the product's parts once, for this product or its layout
+		$own =(int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
 		if ( $own ) {
 			return self::store_panel( $own, $raw, $client );
 		}
@@ -495,16 +505,17 @@ class ExtBridge {
 			'text'  => '',
 		];
 		$v11   = (int) $client['protocol'] >= 11;
-		$tmpl  = self::$v12 && $map && $here && (int) $here['pages'] >= 2 ? self::template_section( $host, (int) $here['i'] ) : null;
+		$one   = self::$v13 && $focus && ! empty( $sections[0]['commit'] ); // protocol 13: one_list() says the layout, the steps and the page once (the site overview, when asked, follows)
+		$tmpl  = ! $one && self::$v12 && $map && $here && (int) $here['pages'] >= 2 ? self::template_section( $host, (int) $here['i'] ) : null;
 		if ( $tmpl ) {
 			$sections[] = $tmpl; // protocol 12: this page's layout's map, after the product, with its commit
 		}
-		$steps = $v11 && ( $brands || $map ) ? self::steps_section( $host, $url, $here, (bool) $focus && ! $site ) : null;
+		$steps = ! $one && $v11 && ( $brands || $map ) ? self::steps_section( $host, $url, $here, (bool) $focus && ! $site ) : null;
 		$ours  = $ids || $propos;
 		if ( $steps ) {
 			$sections[] = $steps; // owner 2026-11-14: on the maker's home page, what to do next comes first; on a product's page, after the product
 		}
-		if ( ! ( $v11 && $site && ! $ours ) ) {
+		if ( ! ( $v11 && $site && ! $ours ) && ! $one ) {
 			$sections[] = $page; // above the site, so its layout is in sight
 		}
 		if ( $site ) {
@@ -569,7 +580,120 @@ class ExtBridge {
 			$actions[]  = [ 'id' => 'map', 'label' => $picked ? 'Change the part' : ( $others ? 'Add the part from this page' : 'Pick the part that applies' ), 'help' => 'Opens the mapper on this page. The page is stored with your pick.', 'kind' => 'map', 'part' => 'requirements', 'primary' => true ];
 		}
 		$out = [ 'title' => self::store_name() . ' · ' . $host, 'href' => Module::workbench_url( [ 'site' => $host ] ), 'subtitle' => self::short_url( $url ), 'notices' => $notices, 'sections' => $sections, 'actions' => $actions, 'product' => $focus ];
+		if ( $one ) {
+			$out = self::one_list( $out, $host, $url, $map && $here && (int) $here['pages'] >= 2 ? $here : null, $here, $stored );
+		}
 		return $poll ? $out + [ 'poll' => $poll ] : $out;
+	}
+
+	/* ── One list of the product's parts (protocol 13) ──────────────────── */
+
+	/**
+	 * Owner 2026-11-15 (the panel on Sick Noise Instruments' STARDRIFT: the product box and "Layout A's map" felt
+	 * duplicative, what a row's tick did was unclear, and "Next for this site's map" repeated a part): on a product's page
+	 * the panel says each part once. The header is the product (Preview and Open beside it), with the site and its layout
+	 * under it; whether this is its page is the line under that (`check`); the site's map steps are one progress line
+	 * (`progress`), their part's row tagged; `parts` holds each part's row as This product sees it and as its layout's
+	 * map sees it (`scopes`), grouped by outcome (GROUPS); one footer commit follows the scope (`commit`): this product
+	 * through the review of its changes, or the layout's map through a review of what committing it writes. No ticks:
+	 * a part is left out in the review. $out: the panel as panel() built it, its product's section first.
+	 * $lay: the page's layout when it has 2+ pages; $here: its layout whatever its size; $stored: the page's stored copy.
+	 */
+	private static function one_list( array $out, string $host, string $url, ?array $lay, ?array $here, ?array $stored ): array {
+		$prod  = array_shift( $out['sections'] );
+		$id    = (int) $out['product'];
+		$name  = $lay ? 'Layout ' . self::letter( (int) $lay['i'] ) : '';
+		$view  = $lay ? LayoutMaps::view( $host, (int) $lay['i'], null, LayoutMaps::CHECK_PAGES ) : null;
+		$lrows = $view ? self::layout_rows( $view, (int) $lay['i'] ) : null;
+		$steps = MapSteps::of( $host );
+		$now   = MapSteps::now( $steps );
+		$step  = $now ? self::step_action( $host, $url, $here, $now ) : null;
+		$spart = $step && $step['kind'] === 'map' ? (string) $step['part'] : ''; // the step is a part on this page: its row is the step
+		$snum  = $now ? (int) array_search( $now, $steps, true ) + 1 : 0;
+		$saves = $name !== '' ? $name : 'the whole site'; // the mapper's default (live-mapper.js): this page's layout, else the site
+
+		/** A row that opens the mapper says where its pick is saved; the step's part saves for the whole site, as the step asks. */
+		$aim   = static function ( array &$r, string $k ) use ( $spart, $snum, $saves ): void {
+			if ( ( $r['action']['kind'] ?? '' ) !== 'map' ) {
+				return;
+			}
+			if ( $k === $spart ) { // owner 2026-11-15: the step's own button saved for the site, the row for the layout, and neither said so
+				$r['action']['scope'] = 'site';
+				$r['hint']            = sprintf( 'Step %d: pick it for the whole site', $snum );
+				return;
+			}
+			$r['hint'] = (string) ( $r['hint'] ?? '' ) . ' · saves for ' . $saves;
+		};
+		$check = [];
+		$parts = [];
+		foreach ( (array) $prod['rows'] as $row ) {
+			$k = (string) ( self::ROW_PART[ $row['label'] ] ?? ( $row['label'] === 'Links in the description' ? 'links' : '' ) );
+			if ( $k === '' ) { // Is this its page?, Its card on this page: about the page, not a part
+				$check[] = $row;
+				continue;
+			}
+			$done = empty( $row['commit']['checked'] );
+			if ( ! $done && ( $row['status']['kind'] ?? '' ) === 'change' ) {
+				$row['status']['help'] = 'Committing this product writes it. The review lets you leave it out.';
+			}
+			$row['group'] = ! $done ? 'change' : ( in_array( $row['status']['kind'] ?? '', [ 'missing', 'review' ], true ) ? 'look' : 'done' );
+			unset( $row['commit'] );
+			$l = $lrows['rows'][ $k ] ?? null;
+			if ( ! $l && $view ) {
+				$l = [ 'label' => $row['label'], 'value' => sprintf( 'Not part of %s’s map: it’s picked and committed for each product, under This product.', $name ), 'state' => '', 'status' => [ 'kind' => '', 'word' => 'This product only', 'help' => '' ], 'group' => 'only' ];
+			}
+			$aim( $row, $k );
+			if ( $l ) {
+				$aim( $l, $k );
+			}
+			$parts[] =[ 'key' => $k, 'tag' => $k === $spart ? sprintf( 'Step %d', $snum ) : '', 'product' => $row ] + ( $l ? [ 'layout' => $l ] : [] );
+		}
+		$out['parts']  = $parts;
+		$out['scopes'] = [ [ 'key' => 'product', 'label' => 'This product' ] ];
+		$out['groups'] = self::GROUPS;
+		$out['check']  = $check;
+		$out['commit'] = [ 'product' => $prod['commit'] ];
+		if ( $view && $lrows ) {
+			$out['scopes'][]         = [ 'key' => 'layout', 'label' => sprintf( '%s · %d %s', $name, $view['products'], $view['products'] === 1 ? 'product' : 'products' ), 'text' => $lrows['said'] ];
+			$out['commit']['layout'] = $lrows['commit'];
+		}
+
+		$out['title']    = (string) $prod['title'];
+		$out['href']     = (string) ( $prod['href'] ?? $out['href'] );
+		$out['links']    = (array) ( $prod['links'] ?? [] );
+		$out['subtitle'] = $host . ( $lay ? sprintf( ' · %s, one of its %d pages', $name, (int) $lay['pages'] ) : ( $here ? ' · a layout of its own' : '' ) );
+		$out['undo']     = (array) ( $prod['undo'] ?? [] );
+		if ( ! empty( $prod['busy'] ) ) {
+			$out['busy'] = (string) $prod['busy'];
+		}
+		if ( (string) ( $prod['text'] ?? '' ) !== '' ) {
+			array_unshift( $out['notices'], [ 'kind' => 'info', 'text' => (string) $prod['text'] ] );
+		}
+		$out['actions'] = array_merge(
+			array_map(
+				static fn( $a ) => ( $a['id'] ?? '' ) === 'store' ? array_merge( $a, [ 'help' => 'Stored copy: ' . self::stored_text( $stored ) . '. Keeps a copy of the page as you see it now, for the store to read.' ] ) : $a,
+				(array) $out['actions']
+			),
+			(array) ( $prod['more'] ?? [] )
+		);
+		if ( $now ) {
+			$out['progress'] = [
+				'n'     => $snum,
+				'of'    => count( $steps ),
+				'done'  => count( array_filter( $steps, static fn( $s ) => $s['done'] ) ),
+				'title' => (string) $now['title'],
+				'why'   => (string) $now['why'],
+				'part'  => $spart,
+				'href'  => Module::workbench_url( [ 'site' => $host ] ),
+				'steps' => array_map( static fn( $s ) => [ 'title' => (string) $s['title'], 'done' => (bool) $s['done'], 'now' => $s['key'] === $now['key'] ], $steps ),
+			];
+			if ( $spart === '' && $step ) {
+				$out['progress']['action'] = $step;
+			} elseif ( $spart === '' && $view && isset( $now['layout'] ) && (int) $now['layout'] === (int) $lay['i'] ) { // committing this page's layout: its review
+				$out['progress']['action'] = [ 'kind' => 'review', 'scope' => 'layout', 'label' => sprintf( 'Review %s’s commit', $name ) ];
+			}
+		}
+		return $out;
 	}
 
 	/** The panel on another page of a choice bundle's list ("…?…[page]=2"): its list section only. null when no choice bundle lists here. */
@@ -783,7 +907,7 @@ class ExtBridge {
 			$notices[] = [ 'kind' => 'info', 'text' => 'Reading its page again. This list follows when it’s done.' ];
 			$poll      = $poll ?: self::POLL_MS;
 		}
-		$notices[] = [ 'kind' => 'info', 'text' => 'This is what its page gives this product, from the stored copy (' . self::stored_text( PageStore::row( $page ) ) . '). Nothing is written until you tick parts and commit them.' ];
+		$notices[] = [ 'kind' => 'info', 'text' => 'This is what its page gives this product, from the stored copy (' . self::stored_text( PageStore::row( $page ) ) . '). Nothing is written until you ' . ( self::$v13 ? 'review its changes and commit them.' : 'tick parts and commit them.' ) ];
 		$actions[] = [ 'id' => 'scrape', 'label' => 'Read its page again', 'help' => 'Fetches it now, if the site lets the server in, and updates this list.', 'kind' => 'scrape', 'product' => $id ];
 		return [ 'section' => $sec, 'poll' => $poll ];
 	}
@@ -969,7 +1093,9 @@ class ExtBridge {
 		$vetoed = is_array( $vetoes ) ? count( (array) ( $vetoes['rules'] ?? [] ) ) : 0;
 		$link   = self::link_record( $id );
 		$canwrite = $writes && $plan['skip'] === '' && ! $running && $status === 'ok';
-		if ( $commit && $plan['skip'] === '' && $status === 'ok' ) {
+		if ( $commit && $plan['skip'] === '' && $status === 'ok' && self::$v13 ) { // protocol 13: the scope switch and the footer say it
+			$notes[] = '';
+		} elseif ( $commit && $plan['skip'] === '' && $status === 'ok' ) {
 			$notes[] = 'Click a part to choose what it reads. Tick the parts to commit, then review them below: nothing is written until you commit in the review.';
 		} elseif ( $canwrite ) {
 			$will    = array_map( static fn( $p, $how ) => ucfirst( $p ) . ( $how === 'review' ? ' (a proposal for Review)' : '' ), array_keys( $writes ), $writes );
@@ -977,7 +1103,7 @@ class ExtBridge {
 		} elseif ( ! $running && $status === 'ok' && $plan['skip'] === '' ) {
 			$notes[] = 'Nothing to write: the product already has what this page gives. Pick a part on the page for anything it misses.';
 		}
-		$sec['text'] = implode( ' ', $notes );
+		$sec['text'] = implode( ' ', array_filter( $notes, static fn( $n ) => $n !== '' ) );
 
 		if ( $canwrite && ! $commit ) {
 			$sec['actions'][] = [ 'id' => 'write', 'label' => 'Write to this product', 'kind' => 'write', 'product' => $id, 'expect' => array_keys( $writes ), 'primary' => true ];
@@ -999,7 +1125,7 @@ class ExtBridge {
 			if ( is_array( $last ) ) {
 				$sec['undo'][] = self::layout_undo( $last, $base );
 			}
-			if ( $lt['status'] !== 'confirmed' ) {
+			if ( $lt['status'] !== 'confirmed' && ! self::$v13 ) { // protocol 13: it wrote nothing, beside a commit that does; the layout's commit confirms it
 				$sec['more'][] = self::layout_confirm( $base, self::letter( $lay['i'] ) );
 			}
 		}
@@ -1239,7 +1365,7 @@ class ExtBridge {
 		} elseif ( $plan === 'no_page' ) {
 			$v .= '';
 		} else {
-			$v .= ' · this page names none';
+			$v .= ' · none read from this page'; // not "names none": the layout's map may say the page shows them and nothing reads them
 		}
 		return [ 'label' => 'System requirements', 'value' => $v, 'state' => self::row_state( (bool) $now, $writes['requirements'] ?? '' ) ];
 	}
@@ -1436,9 +1562,31 @@ class ExtBridge {
 		if ( ! $v ) {
 			return null;
 		}
+		$l    = self::layout_rows( $v, $i );
 		$name = 'Layout ' . $v['letter'];
-		$rows = [];
-		$adds = [];
+		$sec  = [
+			'title'   => sprintf( '%s’s map · %d %s built like this one', $name, $v['products'], $v['products'] === 1 ? 'product' : 'products' ),
+			'href'    => Module::workbench_url( [ 'site' => $host ] ),
+			'rows'    => array_values( array_map( static fn( $r ) => array_diff_key( $r, [ 'group' => 1 ] ), $l['rows'] ) ),
+			'text'    => $l['said'],
+			'actions' => [],
+		];
+		if ( $l['commit']['can'] ) {
+			$sec['actions'][] = [ 'id' => 'layoutcommit', 'kind' => 'layoutcommit', 'layout' => $i, 'label' => 'Commit vendor product map', 'confirm' => sprintf( 'Commit to %s’s %d products? Click again', $name, $v['products'] ), 'primary' => true ];
+		}
+		return $sec;
+	}
+
+	/**
+	 * A layout's map (LayoutMaps::view()) as rows by part, each with its group (GROUPS' layout ones), the line saying
+	 * whether it is committed and what committing does, and the commit as protocol 13's review shows it.
+	 * @return array{rows:array<string,array>,said:string,commit:array}
+	 */
+	private static function layout_rows( array $v, int $i ): array {
+		$name  = 'Layout ' . $v['letter'];
+		$rows  = [];
+		$adds  = [];
+		$lines = [];
 		foreach ( $v['parts'] as $part => $p ) {
 			$n     = $p['counts'];
 			$label = strtolower( $p['label'] );
@@ -1447,7 +1595,7 @@ class ExtBridge {
 					$n['adds'] ? sprintf( 'adds it to %d', $n['adds'] ) : '',
 					$n['has'] ? sprintf( '%d have it', $n['has'] ) : '',
 					$n['unread'] ? sprintf( 'on %d %s, nothing reads it', $n['unread'], $n['unread'] === 1 ? 'page' : 'pages' ) : '',
-					$n['gap'] ? sprintf( '%d without it', $n['gap'] ) : '',
+					$n['gap'] ? ( $part === 'pictures' ? sprintf( '%d with too few pictures', $n['gap'] ) : sprintf( '%d without it', $n['gap'] ) ) : '', // a picture gap is fewer than a gallery, not none (owner 2026-11-15: it read as 27 without pictures)
 					$n['none'] ? sprintf( '%d marked none', $n['none'] ) : '',
 				]
 			);
@@ -1460,6 +1608,7 @@ class ExtBridge {
 				'state'  => '',
 				'status' => $missing ? [ 'kind' => 'review', 'word' => 'Pick it, or mark it not here', 'help' => '' ] : [ 'kind' => $kind, 'word' => $word, 'help' => '' ],
 				'sel'    => $p['sel'],
+				'group'  => $n['adds'] ? 'fills' : ( $missing ? 'look' : 'done' ),
 			];
 			if ( $p['pickable'] && $p['source'] !== 'none' ) {
 				$row['action'] = [ 'kind' => 'map', 'part' => $part ];
@@ -1470,10 +1619,11 @@ class ExtBridge {
 			} elseif ( $p['source'] === 'generic' && $n['gap'] ) {
 				$row['also'] = [ 'label' => 'Not on this layout', 'action' => [ 'kind' => 'layoutnone', 'layout' => $i, 'part' => $part ] ];
 			}
-			$rows[] = $row;
+			$rows[ $part ] = $row;
 			if ( $n['adds'] ) {
 				$adds[] = sprintf( '%s to %d', $label, $n['adds'] );
 			}
+			$lines[] = [ 'label' => $p['label'], 'kind' => $n['adds'] ? 'change' : 'same', 'word' => $n['adds'] ? sprintf( 'Fills %d', $n['adds'] ) : 'Nothing to fill', 'text' => $row['value'] ];
 		}
 		$c    = $v['committed'];
 		$said = match ( $v['status'] ) {
@@ -1482,17 +1632,26 @@ class ExtBridge {
 			default     => 'Not committed yet: its pages read with the site’s map.',
 		};
 		$will = sprintf( 'Commit puts this map in use on its %d pages', $v['pages'] ) . ( $v['fills'] ? sprintf( ' and fills %d of its products with what their pages add (%s), with Undo in Makers → Fill → Last fills.', $v['fills'], implode( ', ', $adds ) ) : ': its products already have what their pages give.' );
-		$sec  = [
-			'title'   => sprintf( '%s’s map · %d %s built like this one', $name, $v['products'], $v['products'] === 1 ? 'product' : 'products' ),
-			'href'    => Module::workbench_url( [ 'site' => $host ] ),
-			'rows'    => $rows,
-			'text'    => trim( $said . ' ' . ( $v['blocked'] ? 'It can’t be committed now. ' . implode( ' ', $v['blocked'] ) : ( $v['status'] === 'committed' ? '' : $will ) ) ),
-			'actions' => [],
+		$can  = ! $v['blocked'] && $v['status'] !== 'committed' && $v['products'];
+		return [
+			'rows'   => $rows,
+			'said'   => trim( $said . ' ' . ( $v['blocked'] ? 'It can’t be committed now. ' . implode( ' ', $v['blocked'] ) : ( $v['status'] === 'committed' ? '' : $will ) ) ),
+			'commit' => [
+				'i'        => $i,
+				'name'     => $name,
+				'products' => (int) $v['products'],
+				'pages'    => (int) $v['pages'],
+				'fills'    => (int) $v['fills'],
+				'can'      => (bool) $can,
+				'said'     => $said,
+				'will'     => $will,
+				'blocked'  => array_values( (array) $v['blocked'] ),
+				'lines'    => $lines,
+				'keeps'    => 'It fills what its products lack (a thin description counts as lacking) and adds new pictures, without replacing what they have. To replace one product’s copy, commit it under This product.',
+				'label'    => $can ? sprintf( 'Review %s’s commit', $name ) : ( $v['status'] === 'committed' ? sprintf( '%s’s map is committed', $name ) : sprintf( '%s can’t be committed yet', $name ) ),
+				'go'       => sprintf( 'Commit %s’s map', $name ),
+			],
 		];
-		if ( ! $v['blocked'] && $v['status'] !== 'committed' && $v['products'] ) {
-			$sec['actions'][] = [ 'id' => 'layoutcommit', 'kind' => 'layoutcommit', 'layout' => $i, 'label' => 'Commit vendor product map', 'confirm' => sprintf( 'Commit to %s’s %d products? Click again', $name, $v['products'] ), 'primary' => true ];
-		}
-		return $sec;
 	}
 
 	/**
@@ -1519,6 +1678,11 @@ class ExtBridge {
 		if ( $op === 'none' ) {
 			$part = sanitize_key( (string) $r->get_param( 'part' ) );
 			$undo = (bool) $r->get_param( 'undo' );
+			if ( ! empty( $r->get_param( 'dry' ) ) ) { // the browser check: nothing marked
+				return isset( LayoutMaps::PARTS[ $part ] )
+					? rest_ensure_response( [ 'message' => sprintf( 'Checked, nothing changed: %s would be marked %s %s’s pages.', VendorMaps::FIELDS[ $part ][0] ?? $part, $undo ? 'on' : 'not on', $name ), 'dry' => true ] )
+					: new \WP_REST_Response( [ 'message' => 'That part can’t be set for a layout.', 'dry' => true ], 400 );
+			}
 			$res  = LayoutMaps::set_none( $host, (int) $lay['i'], $part, ! $undo );
 			if ( is_wp_error( $res ) ) {
 				return new \WP_REST_Response( [ 'message' => $res->get_error_message(), 'panel' => $panel() ], 409 );
