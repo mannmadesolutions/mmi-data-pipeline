@@ -250,8 +250,24 @@
 	const CSS = `
 		:host { all: initial; }
 		* { box-sizing: border-box; }
-		.p { position: fixed; top: 12px; right: 12px; bottom: 12px; width: 380px; display: flex; flex-direction: column; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; overflow: hidden; }
+		.p { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(var(--mmi-dw, 380px), calc(100vw - 24px)); display: flex; flex-direction: column; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; overflow: hidden; }
 		.p[hidden], .pill[hidden] { display: none; }
+		/* Docked as the extension's setting says (dock.js): the side, and the width or height dragged at the inner edge.
+		   The review, the held product's card and the folded pill go where the panel leaves room. */
+		:host([data-dock="left"]) .p { right: auto; left: 12px; }
+		:host([data-dock="top"]) .p, :host([data-dock="bottom"]) .p { left: 12px; width: auto; height: min(var(--mmi-dh, 320px), calc(100vh - 24px)); }
+		:host([data-dock="top"]) .p { bottom: auto; }
+		:host([data-dock="bottom"]) .p { top: auto; }
+		:host([data-dock="left"]) .sh { right: auto; left: calc(var(--mmi-dw, 380px) + 24px); }
+		:host([data-dock="top"]) .sh, :host([data-dock="bottom"]) .sh { left: 12px; right: 12px; width: auto; }
+		:host([data-dock="top"]) .sh { top: min(calc(var(--mmi-dh, 320px) + 24px), calc(100vh - 160px)); }
+		:host([data-dock="bottom"]) .sh { bottom: min(calc(var(--mmi-dh, 320px) + 24px), calc(100vh - 160px)); }
+		:host([data-dock="left"]) .held { right: auto; left: calc(var(--mmi-dw, 380px) + 24px); }
+		:host([data-dock="top"]) .held, :host([data-dock="bottom"]) .held { right: 12px; width: min(320px, calc(100vw - 24px)); max-height: calc(100vh - var(--mmi-dh, 320px) - 48px); }
+		:host([data-dock="top"]) .held { top: calc(var(--mmi-dh, 320px) + 24px); }
+		:host([data-dock="bottom"]) .held { bottom: calc(var(--mmi-dh, 320px) + 24px); }
+		:host([data-dock="left"]) .pill { right: auto; left: 12px; }
+		:host([data-dock="top"]) .pill { bottom: auto; top: 12px; }
 		.peek { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; }
 		.peek i { position: fixed; box-sizing: border-box; border: 3px solid #2f7de1; border-radius: 2px; background: rgba(47,125,225,.12); }
 		.peek i[hidden] { display: none; }
@@ -350,7 +366,7 @@
 		.hand { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid #2271b1; border-radius: 6px; background: #f0f6fc; }
 		.hand b { display: block; width: fit-content; font-weight: 600; cursor: help; text-decoration: underline dotted #2271b1; text-underline-offset: 3px; }
 		.hand b:focus-visible { outline: 2px solid #2271b1; outline-offset: 2px; }
-		.held { position: fixed; right: 404px; width: min(320px, calc(100vw - 428px)); max-height: calc(100vh - 24px); box-sizing: border-box; overflow-y: auto; padding: 12px; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; }
+		.held { position: fixed; right: calc(var(--mmi-dw, 380px) + 24px); width: min(320px, calc(100vw - var(--mmi-dw, 380px) - 48px)); max-height: calc(100vh - 24px); box-sizing: border-box; overflow-y: auto; padding: 12px; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; }
 		.held img, .held .none { display: block; box-sizing: border-box; width: 100%; height: 180px; margin-bottom: 8px; object-fit: contain; background: #f6f7f7; border-radius: 4px; }
 		.held .none { padding-top: 80px; color: #646970; font-size: 12px; text-align: center; }
 		.held .t { font-weight: 600; overflow-wrap: anywhere; }
@@ -401,10 +417,10 @@
 		.ml button:hover { background: #f0f6fc; }
 		.ml b { display: block; font-weight: 600; color: #2271b1; }
 		.ml span { display: block; color: #50575e; font-size: 12px; }
-		.sh { position: fixed; top: 12px; right: 404px; bottom: 12px; width: min(780px, calc(100vw - 428px)); display: flex; flex-direction: column; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; overflow: hidden; }
+		.sh { position: fixed; top: 12px; right: calc(var(--mmi-dw, 380px) + 24px); bottom: 12px; width: min(780px, calc(100vw - var(--mmi-dw, 380px) - 48px)); display: flex; flex-direction: column; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; overflow: hidden; }
 		.sh[hidden] { display: none; }
 		.sh:focus { outline: none; }
-		@media (max-width: 860px) { .sh { right: 12px; width: calc(100vw - 24px); } }
+		@media (max-width: 860px) { .sh, :host([data-dock]) .sh { left: 12px; right: 12px; width: auto; } } /* a narrow window: the review over the panel, wherever it's docked */
 		.shh { display: flex; align-items: flex-start; gap: 8px; padding: 14px 16px 12px; border-bottom: 1px solid #dcdcde; background: #f6f7f7; }
 		.shh .t { flex: 1; min-width: 0; }
 		.shh h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #1d2327; }
@@ -471,7 +487,8 @@
 		}
 		return e;
 	};
-	const style = el( 'style', '', CSS );
+	const DOCK = window.__mmiExtDock || null; // where the panel sits (dock.js), shared with the live mapper
+	const style = el( 'style', '', CSS + ( DOCK ? DOCK.CSS : '' ) );
 	const box = el( 'div', 'p' );
 	box.setAttribute( 'role', 'complementary' );
 	box.setAttribute( 'aria-label', 'MMI Product Data' );
@@ -487,7 +504,8 @@
 	const shut = el( 'button', 'ib', '×' );
 	shut.title = MESSAGES.closePanel;
 	shut.setAttribute( 'aria-label', MESSAGES.closePanel );
-	head.append( titles, fold, shut );
+	const dockMenu = DOCK ? DOCK.menu( 'ib' ) : null;
+	head.append( titles, ...( dockMenu ? [ dockMenu.button ] : [] ), fold, shut );
 	const body = el( 'div', 'bd' );
 	body.setAttribute( 'aria-live', 'polite' );
 	const foot = el( 'div', 'ft' );
@@ -506,8 +524,12 @@
 	let peeking = [];
 	let peekFrame = 0;
 	let peekWait = 0;
-	root.append( style, layer, sheet, box, pill );
+	if ( DOCK ) {
+		box.append( DOCK.grip( host ) );
+	}
+	root.append( style, layer, sheet, box, pill, ...( dockMenu ? [ dockMenu.list ] : [] ) );
 	document.documentElement.appendChild( host );
+	const undock = DOCK ? DOCK.attach( host ) : () => {};
 
 	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
 	// pick (protocol 11): a map step opened this page for one of its parts, so the mapper opens on it once the panel is drawn.
@@ -569,6 +591,10 @@
 		/** Replaced by a newer build's copy: stops and takes its box away. */
 		dispose() {
 			window.clearInterval( follow );
+			undock();
+			if ( dockMenu ) {
+				dockMenu.stop();
+			}
 			host.remove();
 		},
 		toggle() {
@@ -2071,8 +2097,9 @@
 		let card = null;
 		let timer = 0;
 		const place = () => {
-			if ( card ) {
-				card.style.top = Math.max( 12, Math.min( bar.getBoundingClientRect().top, window.innerHeight - 12 - card.offsetHeight ) ) + 'px';
+			if ( card ) { // beside the panel: level with the name; docked top or bottom, the CSS places it under or over the panel
+				const side = ! DOCK || [ 'right', 'left' ].includes( DOCK.get().side );
+				card.style.top = side ? Math.max( 12, Math.min( bar.getBoundingClientRect().top, window.innerHeight - 12 - card.offsetHeight ) ) + 'px' : '';
 			}
 		};
 		const fill = ( res ) => {

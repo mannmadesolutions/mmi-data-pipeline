@@ -73,7 +73,12 @@
 	const THRESHOLDS = { bannerAspect: 1.6, bannerShare: 0.6, menuShare: 0.6, menuItemChars: 40 };
 	const KEYS = { wider: 'p', narrower: 'c', browse: 'b', stop: 'Escape' };
 	const ADMIN_PATH = '/wp-admin/admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=maps'; // + &wb_site=<host>: the Workbench's Site maps, this site open
-	const CHROME_AREAS = 'header, nav, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]';
+	const CHROME_AREAS = 'nav, [role="navigation"], [role="banner"], [role="contentinfo"], [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]';
+	// A header, footer or sidebar is the site's only outside the page's content: a product's own <aside> of details
+	// (sicknoiseinstruments.com's Requires / System box) or an article's <header> is the product's (owner 2026-11-15).
+	// VendorMaps::CHROME_AXIS draws the same line on the server.
+	const LANDMARKS = 'header, footer, aside';
+	const CONTENT_AREAS = 'main, [role="main"], article, .type-product';
 	const SHOP_TEXT = /\b(cookies?|privacy policy|newsletter|subscribe|add to cart|checkout|sign in|log in|free shipping)\b/i;
 	const REQ_WORDS = /\b(mac|macos|os x|windows|win\s?1[01]|ram|cpu|processor|ghz|\d+\s?gb|apple silicon|intel|amd)\b/i;
 	const LOGO_RE = /logo|icon|sprite|badge|payment|avatar|flag/i;
@@ -183,7 +188,6 @@
 		approved: '%part% approved: it is now %scope%’s criteria (found on %found% of %of% stored pages). Commit it from the extension panel to write it to products.',
 		rejected: '%part%: Claude’s proposal rejected. Pick it yourself, or leave it to the general reader.',
 		waiting: ' Claude proposed criteria for %n% part(s): choose one to inspect it on this page.',
-		move: 'Move panel to the other side',
 		close: 'Close the mapper',
 		warnHead: 'Looks wrong for %part%:',
 		show: 'Show',
@@ -240,10 +244,16 @@
 .effect { padding: 7px 9px; border-left: 4px solid #2271b1; background: #f0f6fc; font-size: 12.5px }
 .savedbox { padding: 7px 9px; border: 1px solid #c5d9ed; border-radius: 4px; background: #f6faff; display: grid; gap: 3px }
 .box.hover { border-width: 2px; background: rgba(47,125,225,.08) }
-.tip { position: fixed; left: 0; top: 0; transform: translate(var(--x), var(--y)); max-width: 380px; background: #1d2327; color: #fff; font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word }
+.tip { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none; transform: translate(var(--x), var(--y)); max-width: 380px; background: #1d2327; color: #fff; font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word }
 .tip[hidden], [hidden] { display: none !important }
-.panel { position: fixed; top: 12px; right: 12px; width: 370px; max-height: calc(100vh - 24px); overflow: auto; pointer-events: auto; z-index: 2147483647; background: #fff; color: #1d2327; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; border: 1px solid #c3c4c7; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.3); text-align: left }
-.panel.left { right: auto; left: 12px }
+.panel { position: fixed; top: 12px; right: 12px; width: min(var(--mmi-dw, 380px), calc(100vw - 24px)); max-height: calc(100vh - 24px); display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; z-index: 2147483647; background: #fff; color: #1d2327; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; border: 1px solid #c3c4c7; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.3); text-align: left }
+/* Docked as the extension's setting says (dock.js): the side, and the width or height dragged at the inner edge */
+:host([data-dock="left"]) .panel { right: auto; left: 12px }
+:host([data-dock="top"]) .panel, :host([data-dock="bottom"]) .panel { left: 12px; width: auto; height: min(var(--mmi-dh, 320px), calc(100vh - 24px)) }
+:host([data-dock="bottom"]) .panel { top: auto; bottom: 12px }
+.scroll { flex: 1 1 auto; min-height: 0; overflow: auto }
+/* Test and Save stay in sight at the panel's foot while the pick's details scroll */
+.row.acts { position: sticky; bottom: 0; z-index: 1; padding: 8px 0; background: #fff; border-top: 1px solid #dcdcde }
 .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: #3f7a2b; color: #fff; position: sticky; top: 0; z-index: 1 }
 .head b { flex: 1; font-size: 13.5px }
 .head .host { font-weight: 400; opacity: .85 }
@@ -345,7 +355,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		map: null, products: 0, host: location.hostname.replace( /^www\./, '' ), part: fromRow ? BRIDGE.part : 'pictures', focus: fromRow, greeted: false, ref: 'delivered',
 		picking: fromRow, mode: 'add', proposals: {}, picks: [], stack: [], sel: '', custom: false, matched: [], extras: [], alike: [], layout: null, scope: 'site', dismissed: new Set(), dismissedFor: '', shown: {}, flash: null, skipped: new Set(),
 		hover: null, tipText: '', browse: false, effect: null, showSaved: false, saved: [], pageMode: false, away: '',
-		note: { text: MESSAGES.connecting, type: 'info', busy: true }, test: null, busy: false, left: false, editTimer: 0,
+		note: { text: MESSAGES.connecting, type: 'info', busy: true }, test: null, busy: false, editTimer: 0,
 	};
 
 	/* ── Talking to the store (the extension's bridge) ───────────────────── */
@@ -542,6 +552,15 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		return warnMemo.list;
 	}
 
+	/** In the site's header, menu, footer, sidebar or cookie notice (CHROME_AREAS, LANDMARKS outside CONTENT_AREAS). */
+	function inChrome( el ) {
+		if ( el.closest( CHROME_AREAS ) ) {
+			return true;
+		}
+		const mark = el.closest( LANDMARKS );
+		return !! mark && ! mark.closest( CONTENT_AREAS );
+	}
+
 	function findWarnings() {
 		const k = state.part;
 		const els = state.matched.length ? state.matched : state.picks;
@@ -569,7 +588,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 				add( 'built', kept.length ? fill( say.builtPart, { sel: gone.join( ', ' ) } ) : say.built, topOnly( goneEls ).map( ( el ) => ( { el, label: state.ref === 'stored' ? MESSAGES.stored.spot : MESSAGES.spot.built } ) ), use );
 			}
 		}
-		const chrome = els.filter( ( e ) => e.closest( CHROME_AREAS ) );
+		const chrome = els.filter( inChrome );
 		if ( chrome.length ) {
 			add( 'chrome', w.chrome, chrome.map( ( el ) => ( { el, label: MESSAGES.spot.chrome } ) ) );
 		}
@@ -1302,16 +1321,20 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 	const root = host.attachShadow( { mode: 'open' } );
 	try {
 		const sheet = new CSSStyleSheet();
-		sheet.replaceSync( CSS );
+		sheet.replaceSync( CSS + ( BRIDGE.dock ? BRIDGE.dock.CSS : '' ) );
 		root.adoptedStyleSheets = [ sheet ]; // not subject to the page's style-src policy
 	} catch ( e ) {
-		root.append( h( 'style', { text: CSS } ) );
+		root.append( h( 'style', { text: CSS + ( BRIDGE.dock ? BRIDGE.dock.CSS : '' ) } ) );
 	}
 	const layer = h( 'div', { class: 'layer' } );
-	const tip = h( 'div', { class: 'tip', hidden: true } );
+	const tip = h( 'div', { class: 'tip', hidden: true } ); // over the outlines' labels and the panel: it says what the pointer is on
 	const panel = h( 'aside', { class: 'panel', 'aria-label': MESSAGES.title } );
-	layer.append( tip );
-	root.append( layer, panel );
+	const scroller = h( 'div', { class: 'scroll' } );
+	const DOCK = BRIDGE.dock || null; // the extension's dock setting (dock.js); a test's stand-in bridge has none: the panel stays right
+	const dockMenu = DOCK ? DOCK.menu( 'icon' ) : null;
+	const undock = DOCK ? DOCK.attach( host ) : () => {};
+	panel.append( ...( DOCK ? [ DOCK.grip( host ) ] : [] ), scroller );
+	root.append( layer, panel, tip, ...( dockMenu ? [ dockMenu.list ] : [] ) );
 	document.documentElement.append( host );
 
 	const pool = [];
@@ -1661,7 +1684,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		if ( said ) {
 			box.append( said );
 		}
-		box.append( h( 'div', { class: 'row' },
+		box.append( h( 'div', { class: 'row acts' },
 			h( 'button', { type: 'button', class: 'btn', disabled: ! ready || undefined, onclick: test, text: MESSAGES.test } ),
 			h( 'button', { type: 'button', class: `btn ${ warn.length ? 'warn' : 'primary' }`, disabled: ! ready || undefined, onclick: save, text: ( warn.length ? MESSAGES.saveWarn : fill( MESSAGES.save, { part: partName( k ) } ) ) + ( scoped().layout !== undefined ? ` · ${ fill( MESSAGES.layoutShort, { l: state.layout.letter } ) }` : '' ) } ) ) );
 		return box;
@@ -1674,19 +1697,15 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		const m = state.map;
 		const status = m ? MESSAGES.status[ m.status ] || m.status : '';
 		const working = m || ( state.focus && ! state.greeted ); // a row's part shows while the server answers
-		panel.classList.toggle( 'left', state.left );
 		const note = state.note.busy
 			? h( 'div', { class: `note ${ state.note.type } busy`, role: 'status' }, h( 'span', { class: 'spin', 'aria-hidden': 'true' } ), h( 'span', { text: state.note.text } ) )
 			: h( 'div', { class: `note ${ state.note.type }`, role: 'status', text: state.note.text } );
-		panel.replaceChildren(
+		scroller.replaceChildren(
 			h( 'div', { class: 'head' },
 				state.focus ? h( 'button', { type: 'button', class: 'icon back', title: MESSAGES.backTitle, 'aria-label': MESSAGES.backTitle, text: MESSAGES.back, onclick: teardown } ) : null,
 				h( 'b', {}, `${ MESSAGES.title } `, h( 'span', { class: 'host', text: `· ${ state.host }` } ) ),
 				status ? h( 'span', { class: 'badge', text: status } ) : null,
-				h( 'button', { type: 'button', class: 'icon', title: MESSAGES.move, 'aria-label': MESSAGES.move, text: '⇄', onclick: () => {
-					state.left = ! state.left;
-					render();
-				} } ),
+				dockMenu ? dockMenu.button : null,
 				state.focus ? null : h( 'button', { type: 'button', class: 'icon', title: MESSAGES.close, 'aria-label': MESSAGES.close, text: '×', onclick: teardown } ) ),
 			h( 'div', { class: 'body' },
 				note,
@@ -1713,6 +1732,10 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		window.clearTimeout( effectTimer );
 		shieldFrames( false );
 		LISTEN.forEach( ( [ type, fn ] ) => window.removeEventListener( type, fn, true ) );
+		undock();
+		if ( dockMenu ) {
+			dockMenu.stop();
+		}
 		host.remove();
 		delete window.mmptLiveMapper;
 		if ( BRIDGE.closed ) {

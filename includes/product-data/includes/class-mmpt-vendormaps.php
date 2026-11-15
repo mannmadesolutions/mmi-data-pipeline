@@ -129,7 +129,10 @@ class VendorMaps {
 	const CHROME_SIG  = '/(^|[\s.#_-])(footer|menu|nav|navbar|breadcrumbs?|cookie|newsletter|social|site-header|megamenu)([\s._-]|$)/i'; // a draft never sits in site chrome
 	const VIDEO_RE    = '~(?:youtube(?:-nocookie)?\.com/(?:embed/|watch\?(?:[^"\'\s]*&(?:amp;)?)?v=|shorts/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])|player\.vimeo\.com/video/(\d{5,})|//vimeo\.com/(\d{5,})~i';
 	const VIDEO_ATTR  = '/youtube|video.?id|videoid|yt.?id|embed.?id/i';  // attributes that hold a bare YouTube id (lite-youtube, data-video-id)
-	const CHROME_AXIS = 'ancestor::nav or ancestor::header or ancestor::footer or ancestor::aside or ancestor::script or ancestor::style or ancestor::noscript';
+	// A header, footer or sidebar is the site's only outside the page's content: a product's own <aside> of details or an
+	// article's <header> is the product's (owner 2026-11-15; the live mapper's inChrome() draws the same line).
+	const CONTENT_AXIS = 'ancestor::main or ancestor::article or ancestor::*[@role="main"] or ancestor::*[contains(concat(" ", normalize-space(@class), " "), " type-product ")]';
+	const CHROME_AXIS  = 'ancestor::nav or ancestor::header[not(' . self::CONTENT_AXIS . ')] or ancestor::footer[not(' . self::CONTENT_AXIS . ')] or ancestor::aside[not(' . self::CONTENT_AXIS . ')] or ancestor::script or ancestor::style or ancestor::noscript';
 	const HEALTH_HOOK = 'mmpt_maps_health';
 	const HEALTH_MIN  = 3;    // stored pages a field needs before a check can call it broken
 	const HEALTH_DROP = 0.5;  // broken when it now works on under half the share of pages it did when a person saw it
