@@ -43,6 +43,7 @@ export class MakerPagesMock {
   ];
   filled = false;
   undone = false;
+  layoutCommitted = false; // acme's Layout A map, committed from the extension (LayoutMaps)
   proposals: Proposal[] = [
     { id: 27, host: "acme.example", field: "pictures", layout: -1, scope: "site", sel: "section#hero img", mode: "img", found: 3, of: 3, note: "Checked: the product's banner picture.", checked: "claude", status: "proposed",
       samples: [{ id: 4001, title: "Acme Synth 1 (Download)", url: "https://acme.example/products/synth-1", short: "1 picture", urls: ["https://acme.example/img/hero-1.webp"] }] },
@@ -196,7 +197,7 @@ export class MakerPagesMock {
         mine.forEach((x) => { x.status = "approved"; });
         return { data: { approved: mine.length, failed: [], rows: [] } };
       }
-      case "maps": return { data: { rows: this.sites, fields: {}, modes: {}, fills: [], reasons: {}, runner: { running: false, waiting: 0, note: "", finished_at: "" } } };
+      case "maps": return { data: { rows: this.sites.map((x) => (x.host === "acme.example" ? { ...x, layouts: { layouts: 1, committed: this.layoutCommitted ? 1 : 0 } } : x)), fields: {}, modes: {}, fills: [], reasons: {}, runner: { running: false, waiting: 0, note: "", finished_at: "" } } };
       case "urls/set-many": {
         const done: number[] = [];
         for (const it of body.items as { id: number; url: string }[]) { Object.assign(find(it.id), { current: it.url, verified: true, status: "approved", broken: false, wrong: undefined }); done.push(it.id); }
@@ -255,7 +256,14 @@ export class MakerPagesMock {
             { key: "pick:pictures", title: "Pick its pictures for the whole site on a Layout A page (2 of its 3 pages)", why: "Without a pick the reader finds a gallery (2 or more pictures) on 0 of its 3 stored pages.", done: false, where: "page", url: "https://acme.example/products/synth-1", part: "pictures", layout: 0 },
             { key: "fill", title: "Confirm the map with a Fill", why: "In Makers → Fill: it writes what the pages add to 2 products, and its first run confirms the map.", done: false, where: "makers", tab: "fill" },
           ];
-          return { data: { host, status: s.status, products: 3, no_card: 0, ready: { read: 2, blocked: 0, unread: 1, broken: 0 }, pending: 0, rows, totals: { images: { A: 2, U: 1 } }, layouts: [], parts: {}, writes: {}, at: "", ms: 1, fill, steps } };
+          const part = (label: string, source: string, counts: Record<string, number>) => ({ label, source, sel: source === "site" ? "section#hero img" : "", found: source === "site" ? 3 : 0, of: 3, counts: { adds: 0, has: 0, gap: 0, unread: 0, none: 0, ...counts }, pickable: true });
+          const layoutMaps = host !== "acme.example" ? [] : [{
+            i: 0, letter: "A", pages: 2, url: "https://acme.example/products/synth-1", products: 2, fills: this.layoutCommitted ? 0 : 2,
+            parts: { pictures: part("Pictures", "site", { adds: 2 }), description: part("Description", "generic", { has: 2 }), requirements: part("System requirements", "none", { none: 2 }) },
+            status: this.layoutCommitted ? "committed" : "draft",
+            committed: this.layoutCommitted ? { at: "2026-11-15 04:12:00", who: "Pat Owner", products: 2, scrape: 0, pictures: 2, run: "20261115041200-abcd" } : null,
+          }];
+          return { data: { host, status: s.status, products: 3, no_card: 0, ready: { read: 2, blocked: 0, unread: 1, broken: 0 }, pending: 0, rows, totals: { images: { A: 2, U: 1 } }, layouts: [], parts: {}, writes: {}, at: "", ms: 1, fill, steps, layout_maps: layoutMaps } };
         }
         case "fill": {
           this.filled = true; s.status = "confirmed";

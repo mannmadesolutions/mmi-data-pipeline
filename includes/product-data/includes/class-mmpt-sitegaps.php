@@ -662,6 +662,7 @@ class SiteGaps {
 		$states = Coverage::products( $ids );
 		self::$req_decided = FillRun::kept_requirements( $ids );
 		$none_of           = self::none_decided( $ids );
+		$lay_none          = LayoutMaps::none_by_layout( $host ); // parts a person said a layout's pages don't have
 		$pics   = self::picture_plans( $row );
 		$queued = self::pictures_queued( $ids );
 		$write  = ! empty( Enrichment::settings()['enabled'] );
@@ -704,6 +705,13 @@ class SiteGaps {
 			foreach ( (array) ( $none_of[ $id ] ?? [] ) as $nf => $d ) {
 				if ( isset( $cells[ $nf ] ) && in_array( $cells[ $nf ][0], self::EMPTY, true ) && (string) ( $d['url'] ?? '' ) === (string) $p['url'] ) {
 					$cells[ $nf ] = [ '-', '', $cells[ $nf ][2], 'Its page has none: a person decided its maker doesn’t publish it' ];
+					$none[]       = $nf;
+				}
+			}
+			$li = $unit ? (int) $unit['layout'] : -1;
+			foreach ( $lay_none[ $li ] ?? [] as $nf ) { // the same, said of every page of its layout (LayoutMaps)
+				if ( isset( $cells[ $nf ] ) && $cells[ $nf ][0] === 'G' ) { // a gap only: a page that shows it (S) keeps saying so
+					$cells[ $nf ] = [ '-', '', $cells[ $nf ][2], sprintf( 'Not on Layout %s’s pages: a person decided its pages don’t publish it', LayoutMaps::letter( $li ) ) ];
 					$none[]       = $nf;
 				}
 			}

@@ -15,6 +15,8 @@ export interface SiteRow {
   gaps: { products: number; gain: number; fields: number; proposals: number; pending: number; at: string } | [];
   map_at: string;
   checked: string;
+  /** While its map isn't in use: its layouts of 2+ pages, and how many have their map committed (LayoutMaps::tally()). */
+  layouts?: { layouts: number; committed: number } | null;
 }
 
 export interface MapsReply { rows: SiteRow[]; runner: { running: boolean; waiting: number; note: string; finished_at: string } }
@@ -39,6 +41,32 @@ export interface Gaps {
   parts?: Record<string, { sel: string; mode: string; broken: boolean }> | [];
   /** What the map needs next (MapSteps), as the extension's panel on the site says it. */
   steps?: MapStep[];
+  /** Each layout's map (LayoutMaps::views()): its parts and whether it is committed. */
+  layout_maps?: LayoutMap[];
+}
+
+/** Where a layout's part is read from: its own pick, the site map's, the general reader, or not on its pages. */
+export type LayoutSource = "layout" | "site" | "generic" | "none";
+export interface LayoutPart { label: string; source: LayoutSource; sel: string; found: number; of: number; counts: { adds: number; has: number; gap: number; unread: number; none: number }; pickable: boolean }
+export interface LayoutMap {
+  i: number; letter: string; pages: number; url: string; products: number; fills: number; parts: Record<string, LayoutPart>;
+  status: "committed" | "changed" | "draft"; committed: { at: string; who: string; products: number; scrape: number; pictures: number; run: string } | null;
+}
+
+export const LAYOUT_SOURCE: Record<LayoutSource, [string, string]> = {
+  layout: ["Picked", "success"], site: ["Site's pick", "success"], generic: ["General reader", ""], none: ["Not on this layout", ""],
+};
+
+/**
+ * A site's map state as a badge: its status, or while its map isn't in use and it has layouts, how many of their maps
+ * are committed (owner 2026-11-15: a commit shows in Makers clearly).
+ */
+export function siteState(r: Pick<SiteRow, "status" | "layouts"> | null | undefined, fallback = ""): [string, string] {
+  const l = r?.layouts;
+  if (r && l && l.layouts > 0 && l.committed > 0 && ["needs", "draft", "refused"].includes(r.status)) {
+    return l.committed >= l.layouts ? ["Layouts committed", "success"] : [`${l.committed} of ${l.layouts} layouts committed`, "info"];
+  }
+  return STATUS[r?.status ?? fallback] ?? ["No map", ""];
 }
 
 /** One of a site's map steps. where: page (url + part, picked in the extension), start, send or makers (tab). */

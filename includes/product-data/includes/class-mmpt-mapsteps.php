@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class MapSteps {
 
 	const CACHE_S = 600;
-	const VERSION = 3; // in the cache key: new wording shows at once
+	const VERSION = 6; // in the cache key: new wording shows at once
 	/** The parts the status reads (coverage field => what the step picks). */
 	const WEAK = [
 		'pictures'    => [ 'its pictures', 'a gallery (2 or more pictures)', 'a single picture' ],
@@ -55,7 +55,7 @@ class MapSteps {
 		}
 		$waiting = count( MapProposals::rows( $host, 'proposed' ) );
 		$picks   = array_map( static fn( $f ) => (string) ( $f['sel'] ?? '' ), (array) $map['fields'] );
-		$key     = 'mmpt_map_steps_' . md5( (string) wp_json_encode( [ self::VERSION, $host, $status, $picks, $waiting, $map['coverage']['_at'] ?? '', $map['gaps']['at'] ?? '', SiteGaps::stamp( $host ) ] ) );
+		$key     = 'mmpt_map_steps_' . md5( (string) wp_json_encode( [ self::VERSION, $host, $status, $picks, $waiting, $map['coverage']['_at'] ?? '', $map['gaps']['at'] ?? '', SiteGaps::stamp( $host ), ( (array) get_option( LayoutMaps::OPTION, [] ) )[ $host ] ?? null ] ) );
 		$kept    = get_transient( $key );
 		if ( is_array( $kept ) ) {
 			return $kept;
@@ -71,8 +71,10 @@ class MapSteps {
 		if ( $waiting ) {
 			$steps[] = [ 'key' => 'approve', 'title' => sprintf( 'Approve or reject the %d proposed %s', $waiting, $waiting === 1 ? 'part' : 'parts' ), 'why' => 'Claude found them on the site’s stored pages. Approved, a part is the site’s pick.', 'done' => false, 'where' => 'makers', 'tab' => 'map' ];
 		}
-		$weak  = self::weak_steps( $host, $map, $status, $picks, self::main_layout( $m ) );
-		$steps = array_merge( $steps, $weak, self::page_steps( $m, $weak ), self::fill_step( (array) ( $m['fill'] ?? [] ), $status ) );
+		$main  = self::main_layout( $m );
+		$lays  = in_array( $status, [ 'needs', 'draft', 'refused' ], true ) ? LayoutMaps::views( $host, $m ) : []; // a map in use (or a site that reads fine) needs no layout commits
+		$weak  = self::weak_steps( $host, $map, $status, $picks, $main, $main ? ( array_values( array_filter( $lays, static fn( $l ) => $l['i'] === $main['i'] ) )[0] ?? null ) : null );
+		$steps = array_merge( $steps, $weak, self::page_steps( $m, $weak ), self::layout_steps( $lays, $m ), self::fill_step( self::fill_left( (array) ( $m['fill'] ?? [] ), $lays, $m ), $status, (bool) $lays ) );
 		set_transient( $key, $steps, self::CACHE_S );
 		return $steps;
 	}
@@ -81,7 +83,7 @@ class MapSteps {
 	 * A step per part the status reads that the reader misses without a pick (VendorMaps::status_of()): picked for the
 	 * whole site on a page of the largest layout. On a draft the ones picked stay, ticked.
 	 */
-	private static function weak_steps( string $host, array $map, string $status, array $picks, ?array $main ): array {
+	private static function weak_steps( string $host, array $map, string $status, array $picks, ?array $main, ?array $lay = null ): array {
 		$cov = (array) $map['coverage'];
 		$of  = (int) ( $cov['_of'] ?? 0 );
 		if ( $status !== 'needs' && ! ( $status === 'draft' && $of ) ) {
@@ -93,8 +95,12 @@ class MapSteps {
 			if ( $of && $found / $of >= 0.5 ) {
 				continue; // the reader finds it without a pick (counted without the map, so a weak part stays weak once picked)
 			}
+			$source  = (string) ( $lay['parts'][ $part ]['source'] ?? '' );
+			if ( $source === 'none' ) {
+				continue; // a person said the main layout's pages don't have it (LayoutMaps)
+			}
 			$partly  = (int) ( $cov[ $part ][1] ?? 0 );
-			$picked  = ( $picks[ $part ] ?? '' ) !== '';
+			$picked  = ( $picks[ $part ] ?? '' ) !== '' || $source === 'layout'; // the site's pick, or the layout's own
 			$own     = $picked ? '' : self::layout_only( $host, $part );
 			$where   = $main ? sprintf( ' on a Layout %s page (%d of its %d pages)', self::letter( $main['i'] ), $main['pages'], $of ) : '';
 			$why     = sprintf( 'Without a pick the reader finds %s on %d of its %d stored pages', $whole, $found, $of ) . ( $partly ? sprintf( ', and only %s on %d', $some, $partly ) : '' ) . '.';
@@ -134,12 +140,64 @@ class MapSteps {
 		return $steps;
 	}
 
+	/**
+	 * Each layout of 2+ pages: commit its map (LayoutMaps) on one of its pages, in the extension; done while its commit
+	 * is current.
+	 */
+	private static function layout_steps( array $lays, array $m ): array {
+		$steps = [];
+		$urls  = [];
+		foreach ( (array) ( $m['layouts'] ?? [] ) as $l ) {
+			$urls[ (int) $l['i'] ] = (string) ( $l['samples'][0] ?? '' );
+		}
+		usort( $lays, static fn( $a, $b ) => $b['products'] <=> $a['products'] );
+		foreach ( $lays as $l ) {
+			if ( ! $l['products'] ) {
+				continue;
+			}
+			$done    = $l['status'] === 'committed';
+			$c       = (array) ( $l['committed'] ?? [] );
+			$steps[] = [
+				'key'    => 'layout:' . $l['i'],
+				'title'  => $done ? sprintf( 'Layout %s’s map committed', $l['letter'] ) : sprintf( 'Commit Layout %s’s map (%d %s)', $l['letter'], $l['products'], $l['products'] === 1 ? 'product' : 'products' ),
+				'why'    => $done
+					? sprintf( 'Committed %s%s: its pages read with it, and its products were filled.', mysql2date( 'M j, Y', (string) $c['at'] ), ! empty( $c['who'] ) ? ' by ' . $c['who'] : '' )
+					: ( $l['status'] === 'changed' ? 'Its picks changed since it was committed: commit it again from one of its pages, in the extension.' : 'On one of its pages, in the extension: pick what its pages have, mark what they don’t, then Commit vendor product map.' ),
+				'done'   => $done,
+				'where'  => 'page',
+				'url'    => $urls[ $l['i'] ] ?? '',
+				'part'   => '',
+				'layout' => $l['i'],
+			];
+		}
+		return $steps;
+	}
+
+	/** The Fill's plan without the products of layouts whose map is committed (their commit filled them). */
+	private static function fill_left( array $fill, array $lays, array $m ): array {
+		$done = array_flip( array_column( array_filter( $lays, static fn( $l ) => $l['status'] === 'committed' ), 'i' ) );
+		if ( ! $done ) {
+			return $fill;
+		}
+		$in   = array_flip( array_map( static fn( $r ) => (int) $r['id'], array_filter( (array) $m['rows'], static fn( $r ) => isset( $done[ (int) $r['layout'] ] ) ) ) );
+		$left = static fn( $ids ) => array_values( array_filter( (array) $ids, static fn( $id ) => ! isset( $in[ (int) $id ] ) ) );
+		$fill['scrape']   = $left( $fill['scrape'] ?? [] );
+		$fill['pictures'] = $left( $fill['pictures'] ?? [] );
+		$fill['products'] = count( array_unique( array_merge( $fill['scrape'], $fill['pictures'] ) ) );
+		$fill['confirm']  = false; // a committed layout's map is in use; the site's own Fill is for its other pages
+		$fill['left']     = true;
+		return $fill;
+	}
+
 	/** The Fill: the one that confirms a draft, the one to come once a part is picked, or one with products to fill. */
-	private static function fill_step( array $fill, string $status ): array {
+	private static function fill_step( array $fill, string $status, bool $layouts = false ): array {
 		$n     = (int) ( $fill['products'] ?? 0 );
 		$wait  = (string) ( $fill['why'] ?? '' );
 		$these = sprintf( '%d %s', $n, $n === 1 ? 'product' : 'products' );
 		$base  = [ 'key' => 'fill', 'done' => false, 'where' => 'makers', 'tab' => 'fill' ];
+		if ( $layouts ) { // the layouts' commits put the map in use and fill their products: what is left is the site's other pages
+			return $n && ! empty( $fill['left'] ) ? [ $base + [ 'title' => sprintf( 'Fill the site’s other %s', $these ), 'why' => 'In Makers → Fill: products whose pages are in no committed layout. What the pages add, with Undo.' ] ] : [];
+		}
 		if ( ! empty( $fill['confirm'] ) ) {
 			return [ $base + [ 'title' => 'Confirm the map with a Fill', 'why' => 'In Makers → Fill: it writes what the pages add to ' . $these . ', and its first run confirms the map.' . ( $wait !== '' ? ' Waiting: ' . $wait : '' ) ] ];
 		}

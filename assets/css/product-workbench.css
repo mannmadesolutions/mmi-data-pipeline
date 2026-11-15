@@ -2054,6 +2054,38 @@ tr.mmi-wb-mp-gone .notice {
 .mmi-wb-sm-steps li .button {
     margin-top: 4px;
 }
+/* Each layout's map (LayoutMaps): the steps' look, a row per layout with its state and where each part is read from. */
+.mmi-wb-sm-layouts {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-left: 4px solid #72aee6;
+    background: #f0f6fc;
+}
+.mmi-wb-sm-layouts ul {
+    margin: 0;
+}
+.mmi-wb-sm-layouts li {
+    margin: 8px 0 0;
+}
+.mmi-wb-sm-layouts li.is-committed {
+    border-left: 3px solid #00a32a;
+    padding-left: 8px;
+}
+.mmi-wb-sm-layouts li .description {
+    display: block;
+}
+.mmi-wb-sm-layouts .mmi-wb-sm-step-title {
+    font-weight: 600;
+}
+.mmi-wb-sm-layout-parts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+.mmi-wb-sm-layouts li .button {
+    margin-top: 6px;
+}
 /* The open item's tabs: WordPress's nav tabs in the suite's look, at a section's size. */
 .mmi-page .wrap .mmi-wb-split .mmi-wb-split-tabs {
     display: flex;

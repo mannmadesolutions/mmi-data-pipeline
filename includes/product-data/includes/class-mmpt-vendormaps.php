@@ -1829,6 +1829,59 @@ class VendorMaps {
 	}
 
 	/**
+	 * What the map as the editor holds it (drafts, and its layouts' own picks) would take away on some of the site's
+	 * stored pages, page by page: [ url => [ part => [ was, now ] ] ] for a description gone, fewer than 3 features where
+	 * there were 3, fewer pictures, or requirements, videos or manuals gone. A description pick shorter than the general
+	 * reader's text is no loss: it leaves out what isn't the product's copy, by design (VendorPage::keep_lists()). $urls: the pages to read
+	 * (a layout's). A layout's map is committed only when this is empty (LayoutMaps, owner 2026-11-15).
+	 * $max: read an even spread of at most this many (0: every one).
+	 * @param string[] $urls
+	 */
+	public static function losses( string $host, array $urls, int $max = 0 ): array {
+		$row = self::get( $host );
+		if ( ! $row || ! $urls ) {
+			return [];
+		}
+		$want = array_flip( $urls );
+		$out  = [];
+		foreach ( self::readable( array_values( array_filter( self::pages( $row['host'] ), static fn( $p ) => isset( $want[ $p['url'] ] ) ) ), $max ) as $p ) {
+			self::$bypass = true;
+			try {
+				$was = Coverage::read_page( (string) $p['url'], (string) $p['file'], (string) $p['title'] );
+			} finally {
+				self::$bypass = false;
+			}
+			self::$preview = [ $row['host'] => self::editor_entry( $row ) ];
+			try {
+				$now = Coverage::read_page( (string) $p['url'], (string) $p['file'], (string) $p['title'] );
+			} finally {
+				self::$preview = null;
+			}
+			$lost = [];
+			$d0   = (int) ( $was['description'] ?? 0 );
+			$d1   = (int) ( $now['description'] ?? 0 );
+			if ( $d0 >= self::MIN_TEXT && $d1 < self::MIN_TEXT ) {
+				$lost['description'] = [ $d0, $d1 ];
+			}
+			if ( (int) ( $was['features'] ?? 0 ) >= 3 && (int) ( $now['features'] ?? 0 ) < 3 ) {
+				$lost['features'] = [ (int) $was['features'], (int) ( $now['features'] ?? 0 ) ];
+			}
+			if ( (int) ( $now['images'] ?? 0 ) < (int) ( $was['images'] ?? 0 ) ) {
+				$lost['pictures'] = [ (int) $was['images'], (int) ( $now['images'] ?? 0 ) ];
+			}
+			foreach ( [ 'os' => 'requirements', 'videos' => 'videos', 'manual' => 'manual' ] as $k => $part ) {
+				if ( ! empty( $was[ $k ] ) && empty( $now[ $k ] ) ) {
+					$lost[ $part ] = [ 1, 0 ];
+				}
+			}
+			if ( $lost ) {
+				$out[ (string) $p['url'] ] = $lost;
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * What the reader would find on a site's readable pages if this (draft) map were confirmed:
 	 * each page read with the map standing in for the confirmed ones, nothing stored (read_page()
 	 * writes nothing). Shown before Confirm, because a part can also take something away
@@ -3158,6 +3211,7 @@ class VendorMaps {
 			'zero'     => self::zero_fields( $r ),
 			'reading'  => array_diff_key( (array) ( $r['reading'] ?? [] ), [ '_pictures' => 1 ] ) + ( isset( $r['reading']['_pictures'] ) ? [ '_pictures' => array_diff_key( (array) $r['reading']['_pictures'], [ 'by' => 1 ] ) ] : [] ), // what the reader finds now with the confirmed map (refresh()); empty without one
 			'gaps'     => $r['gaps']['summary'] ?? null, // SiteGaps::summary(): products by page state, products to gain, parts to map
+			'layouts'  => in_array( self::status_of( $r ), [ 'needs', 'draft', 'refused' ], true ) ? LayoutMaps::tally( $r['host'] ) : null, // layouts of 2+ pages, and how many have their map committed
 			'map_at'   => (string) ( ( $r['map_at'] ?? '' ) ?: $r['confirmed_at'] ),
 			'checked'  => (string) $r['checked_at'],
 		];
@@ -3281,7 +3335,8 @@ class VendorMaps {
 						return new \WP_REST_Response( [ 'message' => 'No map for this site yet.' ], 404 );
 					}
 					self::measure_if_stale( (string) $r['host'] );
-					$m['steps'] = MapSteps::of( (string) $r['host'], $m ); // what the map needs next, as the extension's panel says it
+					$m['steps']       = MapSteps::of( (string) $r['host'], $m ); // what the map needs next, as the extension's panel says it
+					$m['layout_maps'] = LayoutMaps::views( (string) $r['host'], $m ); // each layout's map: its parts, and whether it is committed
 					$m['fill']  = array_diff_key( $m['fill'], [ 'scrape' => 1, 'pictures' => 1 ] ) + [ 'scrape' => count( $m['fill']['scrape'] ), 'pictures' => count( $m['fill']['pictures'] ) ];
 					return rest_ensure_response( $m );
 				},

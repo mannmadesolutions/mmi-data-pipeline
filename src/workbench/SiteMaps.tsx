@@ -16,9 +16,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   adds, CELL_ACTION_LABEL, cellActions, CODES, drillRows, fillDone, fillLabel, fillRows, findProducts, idsWith, layoutName, noteBody, noteParts,
-  PART_LABEL, partRows, partsHint, proposalGrid, sliceAt, SLICES, sortParts, STATUS, tallyText, verdictBatches, verdictOf, VERDICTS,
+  PART_LABEL, partRows, partsHint, proposalGrid, sliceAt, SLICES, sortParts, tallyText, verdictBatches, verdictOf, VERDICTS,
   type CellAction, type DrillSort, type FillRunRow, type GapRow, type Gaps, type PartRow, type PartSort, type Proposal,
-  type MapStep, type Reading, type SiteRow, type Tally, type TextSkips,
+  LAYOUT_SOURCE, siteState, type LayoutMap, type MapStep, type Reading, type SiteRow, type Tally, type TextSkips,
 } from "./mapsApi";
 import { openPick, openSite, watchExtension } from "./extension";
 import { msg, type Notice } from "./pageRows";
@@ -146,7 +146,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
     next?.closest("li")?.scrollIntoView({ block: "nearest" });
   };
 
-  const [label, badge] = STATUS[site.status] ?? [site.status, ""];
+  const [label, badge] = siteState(site);
   const plan = gaps?.fill;
   const toFill = gaps ? fillRows(gaps) : [];
   const waiting = proposals.filter((p) => p.status === "proposed");
@@ -198,6 +198,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
         {reading?.r && <p className="description" role="status"><span className="mmi-loading" aria-hidden="true" /> Reading: {reading.r.done} done, {reading.r.working} now, {reading.r.waiting} waiting</p>}
       </div>
       {notice && <div className={`notice notice-${notice.kind === "error" ? "error" : "success"} inline`} role="status" id="mmi-wb-sm-notice"><p>{notice.text}</p></div>}
+      {showMap && gaps?.layout_maps && gaps.layout_maps.length > 0 && <LayoutMaps maps={gaps.layout_maps} />}
       {showMap && gaps?.steps && gaps.steps.some((s) => !s.done) && <MapSteps host={host} steps={gaps.steps} />}
 
       {showFill && review && plan && (
@@ -693,6 +694,45 @@ function MapSteps({ host, steps }: { host: string; steps: MapStep[] }) {
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+/**
+ * Each layout's map (owner 2026-11-15: "if the user commits, I want to see that reflected in [Makers] clearly"): its
+ * products, whether its map is committed (when, by whom, what it filled) or changed since, and where each part is read
+ * from. Its maps are made and committed on one of its pages in the Chrome extension.
+ */
+function LayoutMaps({ maps }: { maps: LayoutMap[] }) {
+  const committed = maps.filter((m) => m.status === "committed").length;
+  return (
+    <div className="mmi-wb-sm-layouts" id="mmi-wb-sm-layouts">
+      <p className="mmi-wb-sm-steps-head"><strong>Its layouts' maps</strong> <span className="description">{committed} of {maps.length} committed · each vendor product page template, committed from one of its pages in the Chrome extension</span></p>
+      <ul>
+        {maps.map((m) => {
+          const c = m.committed;
+          const [word, badge] = m.status === "committed" ? ["Committed", "success"] : m.status === "changed" ? ["Changed since its commit", "warning"] : ["Not committed", ""];
+          return (
+            <li key={m.i} data-layout={m.letter} className={`is-${m.status}`}>
+              <span className="mmi-wb-sm-step-title">Layout {m.letter} · {plural(m.products, "product")}</span>{" "}
+              <span className={`mmi-badge ${badge} inline`}>{word}</span>
+              <span className="description">
+                {c ? `Committed ${c.at.slice(0, 16).replace("T", " ")} UTC${c.who ? ` by ${c.who}` : ""}: ${c.scrape || c.pictures ? `filled ${plural(Math.max(c.scrape, c.pictures), "product")} (pages read ${c.scrape}, pictures ${c.pictures}); Undo under Fill → Last fills.` : "its products already had what its pages give."}` : m.fills ? `A commit fills ${plural(m.fills, "product")} with what their pages add.` : "Its products have what its pages give."}
+              </span>
+              <span className="mmi-wb-sm-layout-parts">
+                {Object.entries(m.parts).map(([k, p]) => {
+                  const [src, sb] = LAYOUT_SOURCE[p.source];
+                  return <span key={k} data-part={k} className={`mmi-badge ${sb} inline`} title={p.sel || undefined}>{p.label}: {src}</span>;
+                })}
+              </span>
+              {m.url && (
+                <button type="button" className="button button-small" data-layout-open={m.letter} title={`Opens ${m.url} with the Chrome extension's panel, where its map is made and committed`}
+                  onClick={() => openPick(m.url, "")}>Open a Layout {m.letter} page ↗</button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

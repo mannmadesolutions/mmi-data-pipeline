@@ -22,7 +22,7 @@ import {
 } from "./brandsApi";
 import { landing } from "./landing";
 import {
-  gainOf, gainProducts, proposalHosts, SITE_VIEWS, siteViewCount, sitesIn, sortSites, STATUS,
+  gainOf, gainProducts, proposalHosts, SITE_VIEWS, siteState, siteViewCount, sitesIn, sortSites,
   type MapsReply, type Proposal, type RailSort, type SiteRow, type SiteView,
 } from "./mapsApi";
 import { useSectionVisible } from "./nav";
@@ -36,8 +36,6 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString
 /** The brand lists the pills show; the rest are in the menu beside the search. */
 const WORK_VIEWS: BrandView[] = ["work", "nomaker"];
 const NO_RUNNER: MapsReply["runner"] = { running: false, waiting: 0, note: "", finished_at: "" };
-/** A map's state in words and badge color; a site with no map row reads "No map". */
-const mapState = (status: string): [string, string] => STATUS[status] ?? ["No map", ""];
 /** A maker site this few of the brand's products link to (and no other brand's) gets "switch its map off". */
 const IDLE_LINKS = 2;
 
@@ -77,7 +75,7 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
   /** A maker site's map state as a badge: the parts waiting on it, or its status ("No map" when it has no map row). */
   const mapBadge = (host: string, map?: string) => {
     const w = waitingOn(host);
-    const [label, badge] = mapState(siteRow(host)?.status ?? map ?? "");
+    const [label, badge] = siteState(siteRow(host), map ?? "");
     return w ? <span className="mmi-badge warning inline">{plural(w, "part")}</span> : <span className={`mmi-badge ${badge} inline`}>{label}</span>;
   };
   const replaceBrand = (b: Brand) => setBrands((bs) => (bs ? bs.map((x) => (x.id === b.id ? b : x)) : bs));
@@ -120,7 +118,7 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
       waitingOn={waitingOn} siteRow={siteRow} onHost={setMapHost} proposals={proposals} tab={sTab} onTab={setSTab} onChanged={mapsChanged} />
   );
   const brandMap: BrandStep | null = brand && {
-    count: mapWaiting ? `${mapWaiting} to approve` : hosts.length > 1 ? `${hosts.length} sites` : firstMap ? mapState(firstMap.status)[0] : hosts.length ? "No map" : "",
+    count: mapWaiting ? `${mapWaiting} to approve` : hosts.length > 1 ? `${hosts.length} sites` : firstMap ? siteState(firstMap)[0] : hosts.length ? "No map" : "",
     dot: mapWaiting > 0,
     body: step("map"),
   };
@@ -224,7 +222,7 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
                   {!maps && <tr><td colSpan={2} className="mmi-wb-empty-cell">Loading sites…</td></tr>}
                   {maps && !siteList.length && <tr><td colSpan={2} className="mmi-wb-empty-cell">Nothing here.</td></tr>}
                   {siteList.map((r) => {
-                    const [label, badge] = mapState(r.status);
+                    const [label, badge] = siteState(r);
                     const waiting = waitingOn(r.host);
                     return (
                       <tr key={r.host} data-host={r.host} data-key={r.host} className={`mmi-wb-split-row${siteHost === r.host ? " is-open" : ""}`} onClick={() => setSiteHost(r.host)}>
@@ -314,7 +312,7 @@ function BrandSiteStep({ cfg, focus, brand, brands, hosts, host, row, loaded, wa
             const g = r ? gainOf(r) : 0;
             return (
               <button key={h} type="button" data-mhost={h} className={`mmi-pill${h === host ? " active" : ""}`} aria-pressed={h === host} onClick={() => onHost(h)}>
-                {h} <span className="mmi-pill-count">{focus === "fill" ? (g ? plural(g, "gap") : r ? "nothing to fill" : "No map") : w ? `${w} to approve` : r ? mapState(r.status)[0] : "No map"}</span>
+                {h} <span className="mmi-pill-count">{focus === "fill" ? (g ? plural(g, "gap") : r ? "nothing to fill" : "No map") : w ? `${w} to approve` : r ? siteState(r)[0] : "No map"}</span>
               </button>
             );
           })}

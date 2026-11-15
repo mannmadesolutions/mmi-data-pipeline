@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { adds, cellActions, choiceBody, drillRows, findProducts, gapKey, layoutName, noteParts, partRows, partsHint, proposalHosts, fillDone, fillLabel, fillRows, gainOf, idsWith, sitesIn, siteViewCount, kindsText, sliceN, sortParts, sortSites, tally, tallyText, tilesOf, waitingParts, waitingSites, type Gaps, type SiteRow, noteBody, proposalGrid, verdictBatches, verdictOf, VERDICTS, type Proposal } from "../../src/workbench/mapsApi";
+import { adds, cellActions, siteState, choiceBody, drillRows, findProducts, gapKey, layoutName, noteParts, partRows, partsHint, proposalHosts, fillDone, fillLabel, fillRows, gainOf, idsWith, sitesIn, siteViewCount, kindsText, sliceN, sortParts, sortSites, tally, tallyText, tilesOf, waitingParts, waitingSites, type Gaps, type SiteRow, noteBody, proposalGrid, verdictBatches, verdictOf, VERDICTS, type Proposal } from "../../src/workbench/mapsApi";
 
 const site = (host: string, status: string, fields: number): SiteRow => ({
   host, status, pattern: "", render: 0, stats: { products: 5, pages: 5, read: 5, refused: 0, blocked: 0, at: "" },
   gaps: fields < 0 ? [] : { products: 5, gain: fields ? 2 : 0, fields, proposals: 0, pending: 0, at: "" }, map_at: "", checked: "",
 });
 const rows = [site("b.example", "draft", 10), site("a.example", "confirmed", 3), site("c.example", "auto", 0), site("d.example", "refused", -1)];
+
+describe("site maps: a site's badge with its layouts' maps", () => {
+  it("says its status, or how many layouts' maps are committed while its map isn't in use", () => {
+    expect(siteState({ status: "needs", layouts: null })).toEqual(["Needs a map", "warning"]);
+    expect(siteState({ status: "draft", layouts: { layouts: 2, committed: 0 } })).toEqual(["Draft map", "info"]);
+    expect(siteState({ status: "draft", layouts: { layouts: 2, committed: 1 } })).toEqual(["1 of 2 layouts committed", "info"]);
+    expect(siteState({ status: "needs", layouts: { layouts: 1, committed: 1 } })).toEqual(["Layouts committed", "success"]);
+    expect(siteState({ status: "confirmed", layouts: { layouts: 1, committed: 1 } })).toEqual(["Map confirmed", "success"]);
+    expect(siteState(null)).toEqual(["No map", ""]);
+    expect(siteState(null, "draft")).toEqual(["Draft map", "info"]);
+  });
+});
 
 describe("site maps: the site list", () => {
   it("gaps to fill: most first; a site never measured has none", () => {

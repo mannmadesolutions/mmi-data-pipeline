@@ -44,7 +44,7 @@ const ROUTES = 'wp-json/mmpt/v1/';
 const CONNECT_PATH = 'wp-admin/admin.php?page=mmi-product-extension';
 const CONNECT_SLUG = 'mmi-product-extension';
 const BRIDGE_ID = 'mmi-bridge';
-const EXT_PROTOCOL = 11; // ExtBridge::PROTOCOL
+const EXT_PROTOCOL = 12; // ExtBridge::PROTOCOL
 /** What inject may put on a page, in order (map-select.js and live-mapper.js come from mmi-admin's assets/js). */
 const SETS = {
 	mapper: [ 'page-copy.js', 'map-select.js', 'mapper.js', 'live-mapper.js' ],
@@ -358,6 +358,7 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 		site: () => api( 'ext/site', { url: String( msg.url || '' ), op: String( msg.op || '' ), product: Number( msg.product ) || 0 } ),
 		layout: () => api( 'ext/layout', { url: String( msg.url || '' ), op: String( msg.op || '' ), part: String( msg.part || '' ), offset: Number( msg.offset ) || 0, product: Number( msg.product ) || 0, batch: String( msg.batch || '' ), fresh: msg.fresh ? 1 : 0 } ),
 		mapping: () => api( 'ext/mapping', { url: String( msg.url || '' ), op: String( msg.op || '' ), product: Number( msg.product ) || 0, was: String( msg.was || '' ), target: String( msg.target || '' ), term: Number( msg.term ) || 0, q: String( msg.q || '' ), html: String( msg.html || '' ), panel: msg.panel ? 1 : 0 } ),
+		layoutmap: () => api( 'ext/layoutmap', { url: String( msg.url || '' ), op: String( msg.op || '' ), layout: Number( msg.layout ) || 0, part: String( msg.part || '' ), undo: msg.undo ? 1 : 0, product: Number( msg.product ) || 0, dry: msg.dry ? 1 : 0 } ),
 		sitepart: () => api( 'ext/sitepart', { url: String( msg.url || '' ), op: String( msg.op || '' ), part: String( msg.part || '' ), offset: Number( msg.offset ) || 0, product: Number( msg.product ) || 0, batch: String( msg.batch || '' ), fresh: msg.fresh ? 1 : 0 } ),
 		held: () => api( 'ext/held', { url: String( msg.url || '' ), product: Number( msg.product ) || 0 } ),
 		hand: () => inHand( sender, String( msg.op || '' ), Number( msg.product ) || 0, String( msg.title || '' ), String( msg.url || '' ) ),
@@ -699,7 +700,7 @@ async function openOverview( sender, host, page = '', part = '', scope = '' ) {
 	if ( page ) { // openpick (a site's map step): that page of the maker's site, the mapper on $part there
 		host = originOf( page ) ? new URL( page ).hostname : '';
 	}
-	if ( ! /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test( host ) || ( s && host === new URL( s.origin ).hostname ) || ( page && ! PARTS.test( part ) ) ) {
+	if ( ! /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test( host ) || ( s && host === new URL( s.origin ).hostname ) || ( page && part && ! PARTS.test( part ) ) ) {
 		return { ok: false, data: { message: MESSAGES.badPage } };
 	}
 	const url = page || `https://${ host }/`;
@@ -707,7 +708,7 @@ async function openOverview( sender, host, page = '', part = '', scope = '' ) {
 	if ( ! s || ! ( await saved() ).token ) {
 		return { ok: true, data: { allowed: false, message: MESSAGES.notConnected } };
 	}
-	const flag = page ? { [ `pick${ tab.id }` ]: { part, scope: scope === 'site' ? 'site' : '', host: bareHost( url ), at: Date.now() } } : { [ `site${ tab.id }` ]: { host } };
+	const flag = page ? ( part ? { [ `pick${ tab.id }` ]: { part, scope: scope === 'site' ? 'site' : '', host: bareHost( url ), at: Date.now() } } : {} ) : { [ `site${ tab.id }` ]: { host } }; // no part: the page with its panel (a layout's map)
 	await chrome.storage.session.set( { [ `panel${ tab.id }` ]: { open: true, folded: false }, ...flag } );
 	return { ok: true, data: { allowed: await allowed( url ) } };
 }

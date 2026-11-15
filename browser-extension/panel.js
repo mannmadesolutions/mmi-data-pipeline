@@ -36,6 +36,12 @@
  * A step on another of the site's pages opens it in this tab (gopick: the service worker carries the part over the
  * load) and the mapper opens there on the step's part, saving for the whole site (scope).
  *
+ * Protocol 12 (owner 2026-11-15: "omit '.row.pick' if they don't exist in the vendor product URL template … a 'Commit
+ * vendor product map' button for whatever template the user is working on with a summary"): on a page of a layout, the
+ * server adds the layout's map (LayoutMaps): each part's row picks it (the mapper, saving for the layout) and, where its
+ * pages lack it, says so in one click (`also`: layoutnone); Commit vendor product map (layoutcommit) asks again on the
+ * button before it commits. The footer's commit keeps This product only there.
+ *
  * A part's row carries its criteria's selector (`sel`): hovered or focused, what it reads is outlined on the page and
  * brought into view if it is out of sight (owner 2026-11-04: "why don't the corresponding DOM element get highlighted?").
  * A row with no pick here (none, or it finds nothing on this page) carries the two ends of the text read (`find`):
@@ -272,6 +278,7 @@
 		.row.pick { cursor: pointer; }
 		.row.pick:hover, .row.pick:focus-visible, .row.shows:hover { background: #f0f6fc; outline: none; box-shadow: inset 0 0 0 1px #72aee6; }
 		.row.pick .go { display: block; margin-top: 2px; color: #2271b1; font-size: 12px; }
+		.row .b.also { margin-top: 4px; padding: 2px 8px; font-size: 12px; }
 		.row .why { margin-top: 2px; color: #50575e; font-size: 12px; }
 		.row.pick:hover .go, .row.pick:focus-visible .go { text-decoration: underline; }
 		.th { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -1309,6 +1316,12 @@
 		if ( r.criteria ) {
 			txt.append( el( 'div', 'cr', r.criteria ) );
 		}
+		if ( r.also && r.also.action ) { // protocol 12: a second thing the row does (a part not on this layout's pages, or back)
+			const also = el( 'button', 'b also', r.also.label || '' );
+			also.type = 'button';
+			also.addEventListener( 'click', () => act( r.also.action, also ) );
+			txt.append( also );
+		}
 		if ( Array.isArray( r.thumbs ) && r.thumbs.length ) {
 			const th = el( 'div', 'th' );
 			r.thumbs.forEach( ( src ) => {
@@ -2148,6 +2161,18 @@
 			}
 			case 'layout':
 				await layout( a, b );
+				break;
+			case 'layoutnone': // protocol 12: a part isn't on this page's layout (or is again)
+				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: 'none', layout: a.layout, part: a.part || '', undo: a.undo ? 1 : 0, product: state.product } ) ) );
+				break;
+			case 'layoutcommit': // protocol 12: the layout's map, committed on a second click (the section says what it does)
+				if ( b.dataset.armed !== '1' ) {
+					b.dataset.armed = '1';
+					b.textContent = a.confirm || a.label || '';
+					break;
+				}
+				forgetReviews();
+				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: 'commit', layout: a.layout, product: state.product } ) ) );
 				break;
 			case 'startmap': // protocol 8: the site's map, then its layouts; the panel asks again until they show
 				state.site = true;

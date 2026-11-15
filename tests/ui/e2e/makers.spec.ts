@@ -121,6 +121,35 @@ test("a site's map steps show on its Map tab, the next one opening its page in t
   expect(errors).toEqual([]);
 });
 
+test("a site's layouts' maps show on its Map tab: not committed, then committed from the extension, with the badge saying so", async ({ page }) => {
+  const { api, errors } = await open(page, "?wb_brand=20&wb_site=acme.example");
+  const box = page.locator("#mmi-wb-sm-layouts");
+  await expect(box).toContainText("0 of 1 committed");
+  const a = box.locator('li[data-layout="A"]');
+  await expect(a).toContainText("Layout A · 2 products");
+  await expect(a.locator(".mmi-badge").first()).toHaveText("Not committed");
+  await expect(a).toContainText("A commit fills 2 products");
+  await expect(a.locator('[data-part="pictures"]')).toHaveText("Pictures: Site's pick");
+  await expect(a.locator('[data-part="requirements"]')).toHaveText("System requirements: Not on this layout");
+  // Its page opens in the extension with the panel (no part: the layout's map section commits it there).
+  await page.evaluate(() => {
+    (window as unknown as { asked: unknown[] }).asked = [];
+    window.addEventListener("message", (e) => { if (e.data?.mmiExt && e.data.from === "page" && e.data.op === "pick") (window as unknown as { asked: unknown[] }).asked.push([e.data.url, e.data.part]); });
+    window.postMessage({ mmiExt: true, from: "extension", op: "here", paired: true, can: ["send", "overview", "pick"] }, location.origin);
+  });
+  await page.waitForTimeout(100);
+  await a.locator('[data-layout-open="A"]').click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { asked: unknown[] }).asked)).toEqual([["https://acme.example/products/synth-1", ""]]);
+  // Committed in the extension: Makers says so on the layout, and the site's badge says its layouts are committed.
+  api.makerPages.layoutCommitted = true;
+  await page.reload();
+  await expect(page.locator('#mmi-wb-sm-layouts li[data-layout="A"] .mmi-badge').first()).toHaveText("Committed");
+  await expect(page.locator("#mmi-wb-sm-layouts")).toContainText("1 of 1 committed");
+  await expect(page.locator('#mmi-wb-sm-layouts li[data-layout="A"]')).toContainText("by Pat Owner: filled 2 products");
+  await expect(page.locator("#mmi-wb-sm-panel .mmi-wb-split-title h4 .mmi-badge")).toHaveText("Layouts committed");
+  expect(errors).toEqual([]);
+});
+
 test("a link to a brand's Fill tab (wb_tab) opens Makers there", async ({ page }) => {
   const { errors } = await open(page, "?wb_sec=makers&wb_brand=20&wb_site=acme.example&wb_tab=fill");
   await expect(drawer(page).locator('[data-stab="fill"]')).toHaveAttribute("aria-selected", "true");

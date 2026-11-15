@@ -76,13 +76,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ExtBridge {
 
 	const SLUG         = 'mmi-product-extension'; // mmi- prefix → the shared library adds body.mmi-page and the suite styling
-	const PROTOCOL     = 11;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
+	const PROTOCOL     = 12;
+	/** Protocol 12 asking (LayoutMaps: a layout's map, committed as a whole). */
+	private static bool $v12 = false;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
 	const MIN_PROTOCOL = 1;                       // the oldest extension still answered
 	const META         = '_mmpt_ext_tokens';      // [ id => { hash, label, created, used } ]
 	const HEADER       = 'X-MMI-Ext-Token';
 	const MAX_TOKENS   = 5;                       // per person; the oldest goes first
 	const IDLE_DAYS    = 90;                      // a token unused this long stops working
-	const TOKEN_ROUTES = [ 'hello', 'page', 'snapshot', 'map', 'write', 'undo', 'pictures', 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape', 'library' ];
+	const TOKEN_ROUTES = [ 'hello', 'page', 'snapshot', 'map', 'write', 'undo', 'pictures', 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape', 'library', 'layoutmap' ];
 	const MAX_PRODUCTS = 20;                      // product rows in one panel
 	const HELD_WORDS   = 40;                      // words of the product's text on the Finding the page card
 	const SAME_TEXT    = 120;                     // opening characters of a description that must be on a page to count as its text
@@ -313,7 +315,7 @@ class ExtBridge {
 		register_rest_route( Rest::NS, '/ext/undo', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, 'undo' ] ] );
 		register_rest_route( Rest::NS, '/ext/pictures', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, 'pictures' ] ] );
 		register_rest_route( Rest::NS, '/ext/library', [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ Library::class, 'ext' ] ] ); // the reference library: pages kept as they are read
-		foreach ( [ 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape' ] as $route ) {
+		foreach ( [ 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape', 'layoutmap' ] as $route ) {
 			register_rest_route( Rest::NS, '/ext/' . $route, [ 'methods' => 'POST', 'permission_callback' => $token, 'callback' => [ __CLASS__, $route ] ] );
 		}
 	}
@@ -413,9 +415,13 @@ class ExtBridge {
 	 * `help` line; `undo` [{text, action}] lists what can be put back; a row's `status` {kind, word, help} says its state
 	 * in words, and `key` explains them. Protocol 10 (owner 2026-11-04: on one of our product pages, link and map in reverse):
 	 * store_panel(), with a row's `brand`, `site` and a match's `store`, `empty`, `marked`, and the `hand` action.
+	 * Protocol 11: the site's map steps (steps_section()). Protocol 12 (owner 2026-11-15): on a page of a layout, its map
+	 * (template_section(), LayoutMaps), with a row's `also` (layoutnone) and the section's layoutcommit; the footer's
+	 * commit is for this product only there.
 	 * $product: the product to show (one that uses this page); 0 = the only one, when there is only one.
 	 */
 	public static function panel( string $raw, int $product = 0, array $client = [ 'protocol' => self::PROTOCOL, 'build' => '' ] ): array {
+		self::$v12 = (int) $client['protocol'] >= 12; // the layout's map commits its parts, the site's picks with them
 		$own = (int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
 		if ( $own ) {
 			return self::store_panel( $own, $raw, $client );
@@ -468,7 +474,7 @@ class ExtBridge {
 				$sections[] = $choice;
 			}
 		}
-		$layout = (int) $client['protocol'] >= 5 && $map && ! ( $focus && (int) $client['protocol'] >= 7 ) ? self::layout_section( $host, $url ) : null; // protocol 7: the product's commit bar commits to the layout
+		$layout = (int) $client['protocol'] >= 5 && $map && ! ( $focus && (int) $client['protocol'] >= 7 ) && ! self::$v12 ? self::layout_section( $host, $url ) : null; // protocol 7: the product's commit bar commits to the layout; 12: the layout's map does
 		if ( $layout ) {
 			$sections[] = $layout;
 		}
@@ -489,6 +495,10 @@ class ExtBridge {
 			'text'  => '',
 		];
 		$v11   = (int) $client['protocol'] >= 11;
+		$tmpl  = self::$v12 && $map && $here && (int) $here['pages'] >= 2 ? self::template_section( $host, (int) $here['i'] ) : null;
+		if ( $tmpl ) {
+			$sections[] = $tmpl; // protocol 12: this page's layout's map, after the product, with its commit
+		}
 		$steps = $v11 && ( $brands || $map ) ? self::steps_section( $host, $url, $here, (bool) $focus && ! $site ) : null;
 		$ours  = $ids || $propos;
 		if ( $steps ) {
@@ -1117,8 +1127,8 @@ class ExtBridge {
 			'product' => $id,
 			'writes'  => array_keys( $writes ),
 			'parts'   => $parts,
-			'layout'  => $lay ? [ 'i' => $lay['i'], 'name' => $name, 'products' => $t ? count( PartFill::layout_products( $host, $t ) ) : self::layout_count( $host, $lay['i'] ) ] : null,
-			'site'    => $site ? [ 'products' => count( VendorMaps::site_products( $host ) ) ] : null,
+			'layout'  => $lay && ! self::$v12 ? [ 'i' => $lay['i'], 'name' => $name, 'products' => $t ? count( PartFill::layout_products( $host, $t ) ) : self::layout_count( $host, $lay['i'] ) ] : null, // protocol 12: the layout's map section commits its products
+			'site'    => $site && ! ( self::$v12 && $lay ) ? [ 'products' => count( VendorMaps::site_products( $host ) ) ] : null,
 		];
 		return [ $lay, $t ];
 	}
@@ -1132,7 +1142,7 @@ class ExtBridge {
 		}
 		$f = $site ? (array) ( $site['fields'][ $k ] ?? [] ) : [];
 		if ( ! empty( $f['sel'] ) && empty( $f['health']['broken'] ) ) {
-			return [ 'source' => 'site', 'sel' => (string) $f['sel'], 'f' => $f, 'text' => sprintf( 'Criteria: the site’s pick, found on %d of %d stored pages%s', (int) ( $f['found'] ?? 0 ), (int) ( $f['of'] ?? 0 ), $name !== '' ? sprintf( '. Pick it for %s to commit it to the layout', $name ) : '' ) ];
+			return [ 'source' => 'site', 'sel' => (string) $f['sel'], 'f' => $f, 'text' => sprintf( 'Criteria: the site’s pick, found on %d of %d stored pages%s', (int) ( $f['found'] ?? 0 ), (int) ( $f['of'] ?? 0 ), $name !== '' && ! self::$v12 ? sprintf( '. Pick it for %s to commit it to the layout', $name ) : '' ) ];
 		}
 		return [ 'source' => 'generic', 'text' => $k === 'features' ? 'Criteria: the lists on this page' : 'Criteria: none picked; the general reader' ];
 	}
@@ -1411,6 +1421,130 @@ class ExtBridge {
 		return [ 'busy' => false, 'text' => $said, 'undo' => $item['status'] === 'applied' ];
 	}
 
+	/* ── A layout's map (protocol 12, LayoutMaps) ─────────────────────────── */
+
+	/** The words for where a layout's part comes from: [ chip word, chip kind ]. */
+	const TEMPLATE_SOURCE = [ 'layout' => [ 'Picked', 'ok' ], 'site' => [ 'Site’s pick', 'ok' ], 'generic' => [ 'General reader', 'same' ], 'none' => [ 'Not on this layout', 'same' ] ];
+
+	/**
+	 * Owner 2026-11-15: on a page of a layout (a vendor product page template), its map as a whole: each part picked here,
+	 * the site's, the general reader's or not on its pages, with what it does on the layout's products; a part the pages
+	 * don't have is marked so in one click; then Commit vendor product map, with what it will write, or why it can't.
+	 */
+	private static function template_section( string $host, int $i ): ?array {
+		$v = LayoutMaps::view( $host, $i, null, LayoutMaps::CHECK_PAGES );
+		if ( ! $v ) {
+			return null;
+		}
+		$name = 'Layout ' . $v['letter'];
+		$rows = [];
+		$adds = [];
+		foreach ( $v['parts'] as $part => $p ) {
+			$n     = $p['counts'];
+			$label = strtolower( $p['label'] );
+			$bits  = array_filter(
+				[
+					$n['adds'] ? sprintf( 'adds it to %d', $n['adds'] ) : '',
+					$n['has'] ? sprintf( '%d have it', $n['has'] ) : '',
+					$n['unread'] ? sprintf( 'on %d %s, nothing reads it', $n['unread'], $n['unread'] === 1 ? 'page' : 'pages' ) : '',
+					$n['gap'] ? sprintf( '%d without it', $n['gap'] ) : '',
+					$n['none'] ? sprintf( '%d marked none', $n['none'] ) : '',
+				]
+			);
+			$how   = [ 'layout' => sprintf( 'This layout’s pick, found on %d of %d of its pages', $p['found'], $p['of'] ), 'site' => sprintf( 'The site’s pick, found on %d of %d stored pages', $p['found'], $p['of'] ), 'generic' => $part === 'features' ? 'The lists on its pages' : 'Nothing picked: the general reader', 'none' => 'Not on its pages: its gaps are closed' ][ $p['source'] ];
+			[ $word, $kind ] = self::TEMPLATE_SOURCE[ $p['source'] ];
+			$missing         = $p['source'] === 'generic' && ( $n['unread'] || ( $n['gap'] && ! $n['has'] && ! $n['adds'] ) );
+			$row             = [
+				'label'  => $p['label'],
+				'value'  => $how . ( $bits ? ' · ' . implode( ', ', $bits ) : '' ),
+				'state'  => '',
+				'status' => $missing ? [ 'kind' => 'review', 'word' => 'Pick it, or mark it not here', 'help' => '' ] : [ 'kind' => $kind, 'word' => $word, 'help' => '' ],
+				'sel'    => $p['sel'],
+			];
+			if ( $p['pickable'] && $p['source'] !== 'none' ) {
+				$row['action'] = [ 'kind' => 'map', 'part' => $part ];
+				$row['hint']   = $p['source'] === 'generic' ? 'Pick it on this page' : 'Change the pick';
+			}
+			if ( $p['source'] === 'none' ) {
+				$row['also'] = [ 'label' => 'It is on this layout', 'action' => [ 'kind' => 'layoutnone', 'layout' => $i, 'part' => $part, 'undo' => 1 ] ];
+			} elseif ( $p['source'] === 'generic' && $n['gap'] ) {
+				$row['also'] = [ 'label' => 'Not on this layout', 'action' => [ 'kind' => 'layoutnone', 'layout' => $i, 'part' => $part ] ];
+			}
+			$rows[] = $row;
+			if ( $n['adds'] ) {
+				$adds[] = sprintf( '%s to %d', $label, $n['adds'] );
+			}
+		}
+		$c    = $v['committed'];
+		$said = match ( $v['status'] ) {
+			'committed' => sprintf( 'Committed %s%s: its pages read with this map.', mysql2date( 'M j, Y', (string) $c['at'] ), ! empty( $c['who'] ) ? ' by ' . $c['who'] : '' ),
+			'changed'   => sprintf( 'Committed %s, and changed since: commit it again to use it as it is now.', mysql2date( 'M j, Y', (string) $c['at'] ) ),
+			default     => 'Not committed yet: its pages read with the site’s map.',
+		};
+		$will = sprintf( 'Commit puts this map in use on its %d pages', $v['pages'] ) . ( $v['fills'] ? sprintf( ' and fills %d of its products with what their pages add (%s), with Undo in Makers → Fill → Last fills.', $v['fills'], implode( ', ', $adds ) ) : ': its products already have what their pages give.' );
+		$sec  = [
+			'title'   => sprintf( '%s’s map · %d %s built like this one', $name, $v['products'], $v['products'] === 1 ? 'product' : 'products' ),
+			'href'    => Module::workbench_url( [ 'site' => $host ] ),
+			'rows'    => $rows,
+			'text'    => trim( $said . ' ' . ( $v['blocked'] ? 'It can’t be committed now. ' . implode( ' ', $v['blocked'] ) : ( $v['status'] === 'committed' ? '' : $will ) ) ),
+			'actions' => [],
+		];
+		if ( ! $v['blocked'] && $v['status'] !== 'committed' && $v['products'] ) {
+			$sec['actions'][] = [ 'id' => 'layoutcommit', 'kind' => 'layoutcommit', 'layout' => $i, 'label' => 'Commit vendor product map', 'confirm' => sprintf( 'Commit to %s’s %d products? Click again', $name, $v['products'] ), 'primary' => true ];
+		}
+		return $sec;
+	}
+
+	/**
+	 * POST /ext/layoutmap {url, layout, op, part, undo}: a part isn't on this page's layout (none, or undo), or commit the
+	 * layout's map (LayoutMaps). Answers with what happened and the panel as it is now.
+	 */
+	public static function layoutmap( \WP_REST_Request $r ): \WP_REST_Response {
+		$old = self::too_old( $r );
+		if ( $old ) {
+			return $old;
+		}
+		$url = self::page_url( (string) $r->get_param( 'url' ) );
+		if ( is_wp_error( $url ) ) {
+			return new \WP_REST_Response( [ 'message' => $url->get_error_message() ], 400 );
+		}
+		$host  = VendorMaps::host( $url );
+		$lay   = MapTypes::layout_of( $host, $url );
+		$panel = static fn() => self::panel( $url, (int) $r->get_param( 'product' ), self::client( $r ) );
+		if ( ! $lay || (int) $lay['pages'] < 2 || (int) $lay['i'] !== (int) $r->get_param( 'layout' ) ) {
+			return new \WP_REST_Response( [ 'message' => 'The site’s pages were grouped again since the panel showed this layout: look at it again.', 'panel' => $panel() ], 409 );
+		}
+		$name = 'Layout ' . self::letter( (int) $lay['i'] );
+		$op   = sanitize_key( (string) $r->get_param( 'op' ) );
+		if ( $op === 'none' ) {
+			$part = sanitize_key( (string) $r->get_param( 'part' ) );
+			$undo = (bool) $r->get_param( 'undo' );
+			$res  = LayoutMaps::set_none( $host, (int) $lay['i'], $part, ! $undo );
+			if ( is_wp_error( $res ) ) {
+				return new \WP_REST_Response( [ 'message' => $res->get_error_message(), 'panel' => $panel() ], 409 );
+			}
+			$label = VendorMaps::FIELDS[ $part ][0] ?? $part;
+			return rest_ensure_response( [ 'message' => $undo ? sprintf( '%s is on %s’s pages again: its gaps there are open.', $label, $name ) : sprintf( '%s isn’t on %s’s pages: its products’ gaps for it are closed, and the map stops asking for it.', $label, $name ), 'panel' => $panel() ] );
+		}
+		if ( $op !== 'commit' ) {
+			return new \WP_REST_Response( [ 'message' => 'Unknown layout action.' ], 400 );
+		}
+		if ( ! empty( $r->get_param( 'dry' ) ) ) { // the browser check: every guard, nothing committed or written
+			$v = LayoutMaps::view( $host, (int) $lay['i'], null, 0 );
+			return $v && ! $v['blocked']
+				? rest_ensure_response( [ 'message' => sprintf( 'Checked: %s’s map would be committed and %d of its %d products filled.', $name, $v['fills'], $v['products'] ), 'dry' => true ] )
+				: new \WP_REST_Response( [ 'message' => $v ? implode( ' ', $v['blocked'] ) : 'That layout is no longer measured.', 'dry' => true ], 409 );
+		}
+		$res = LayoutMaps::commit( $host, (int) $lay['i'] );
+		if ( is_wp_error( $res ) ) {
+			return new \WP_REST_Response( [ 'message' => $res->get_error_message(), 'panel' => $panel() ], 409 );
+		}
+		$wrote = $res['scrape'] || $res['pictures']
+			? sprintf( ' Filling %d of its products now (their pages read %d, pictures %d); Makers → Fill → Last fills lists it, with Undo.', $res['fills'], $res['scrape'], $res['pictures'] )
+			: ( ! $res['writes'] ? ' Nothing was written: writing from vendor pages is switched off (Product Data → Applying).' : ' Its products already have what its pages give.' );
+		return rest_ensure_response( [ 'message' => sprintf( '%s’s map is committed: its %d products’ pages read with it.', $name, $res['products'] ) . $wrote, 'panel' => $panel() ] );
+	}
+
 	/* ── The site's map, step by step (protocol 11) ─────────────────────── */
 
 	/**
@@ -1460,6 +1594,10 @@ class ExtBridge {
 		switch ( $s['where'] ) {
 			case 'page':
 				$there = (string) ( $s['url'] ?? '' );
+				if ( $part === '' ) { // a layout's map: one of its pages, where its section commits it
+					$here_i = $here && (int) $here['pages'] >= 2 ? (int) $here['i'] : -1;
+					return isset( $s['layout'] ) && $here_i === (int) $s['layout'] ? null : ( $there !== '' ? [ 'kind' => 'go', 'url' => $there, 'label' => sprintf( 'Open a Layout %s page', self::letter( (int) ( $s['layout'] ?? 0 ) ) ) ] : null );
+				}
 				$same  = $there !== '' && self::page_key( $there ) === self::page_key( $url );
 				$alike = isset( $s['layout'] ) && $here && (int) $here['i'] === (int) $s['layout'] && (int) $here['pages'] >= 2;
 				if ( $same || $alike || $there === '' ) {

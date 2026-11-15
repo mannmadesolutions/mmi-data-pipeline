@@ -178,7 +178,11 @@ class VendorPage {
 		$ld_blocks = $ld['description'] !== '' ? self::clean_blocks( self::html_to_blocks( $ld['description'] ), $skip ) : [ 'blocks' => [], 'removed' => [] ];
 		$c_len     = self::blocks_len( $container['blocks'] );
 		$l_len     = self::blocks_len( $ld_blocks['blocks'] );
-		if ( $c_len >= self::MIN_TEXT && $c_len >= $l_len * 0.8 ) {
+		if ( $mapped && $c_len >= self::MIN_TEXT ) {
+			// A person's description pick says what the description is: the page's JSON-LD doesn't outbid it for being longer,
+			// and with it the feature lists it kept (sicknoiseinstruments.com NOVARIS 2026-11-15: Features 3 → 0 held the map).
+			$pick = $container + [ 'method' => 'container' ];
+		} elseif ( $c_len >= self::MIN_TEXT && $c_len >= $l_len * 0.8 ) {
 			$pick = $container + [ 'method' => 'container' ];
 		} elseif ( $l_len >= self::MIN_TEXT ) {
 			$pick = $ld_blocks + [ 'method' => 'json_ld' ];
