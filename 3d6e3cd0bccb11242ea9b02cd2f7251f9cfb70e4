@@ -3,6 +3,6 @@ audit pass ship 4 files
 site-rules pass ship 4 files
 shared-lib pass 8 scenarios
 ui-check pass 158
-ui-e2e fail exit 1
-customer-site fail exit 1 on 3d6e3cd as installed
+ui-e2e pass 288
+customer-site pass 27 ok on 3d6e3cd as installed
 page pass 9 features, 12 screenshots; 12 warnings
