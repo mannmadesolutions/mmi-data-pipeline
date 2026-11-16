@@ -332,7 +332,8 @@
 		.fc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 		.fc button.b { min-height: 26px; padding: 0 10px; font-size: 12px; }
 		.fc button.b.on { border-color: #8c8f94; color: #50575e; }
-		.fc .hn { flex-basis: 100%; color: #50575e; font-size: 12px; }
+		.fc .hn, .fc .hs { flex-basis: 100%; color: #50575e; font-size: 12px; }
+		.fc button.b:disabled { border-color: #c3c4c7; border-style: dashed; background: #f6f7f7; color: #8c8f94; opacity: 1; cursor: not-allowed; }
 		.row .src { margin-top: 1px; color: #646970; font-size: 11.5px; }
 		.shh .pv { display: inline-block; margin-top: 4px; color: var(--mmi-accent); font-size: 13px; text-decoration: none; }
 		.shh .pv:hover { text-decoration: underline; }
@@ -2047,10 +2048,16 @@
 		if ( ctl.none && ctl.none.action ) {
 			add( ctl.none, ctl.none.on ? 'b on' : 'b', ( b ) => act( ctl.none.action, b ) );
 		}
+		if ( ctl.go && ctl.go.action ) { // a part the scope doesn't pick: where it is picked
+			add( ctl.go, 'b pr', ( b ) => act( ctl.go.action, b ) );
+		}
 		[ ctl.undo, ctl.redo ].filter( Boolean ).forEach( ( c ) => add( c, 'b', ( b ) => act( c.action, b ) ) );
 		const where = ( r.hint || '' ).split( ' · ' ).slice( 1 ).join( ' · ' );
 		if ( where ) {
 			box.append( el( 'div', 'hn', where.charAt( 0 ).toUpperCase() + where.slice( 1 ) + '.' ) );
+		}
+		if ( ctl.note ) { // what Undo and Redo would take back, or why they can't (owner 2026-11-16: greyed buttons said it only in a tooltip)
+			box.append( el( 'div', 'hs', ctl.note ) );
 		}
 		return box;
 	}
@@ -2536,6 +2543,18 @@
 					toggleMap( state.panel.commit.layout );
 				}
 				break;
+			case 'field': { // protocol 14: a part opened under the other scope (a layout row of a part only a product picks)
+				state.scope = a.scope || 'product';
+				state.field = `${ state.scope }:${ a.part || '' }`;
+				hideReview();
+				draw( state.panel );
+				const row = [ ...body.querySelectorAll( '.row.fld' ) ].find( ( x ) => x.dataset.key === state.field );
+				if ( row ) {
+					row.scrollIntoView( { block: 'nearest' } );
+					row.focus( { preventScroll: true } );
+				}
+				break;
+			}
 			case 'partstep': // protocol 14: Undo or Redo the newest change this page reads the part through
 				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: a.op === 'redo' ? 'redo' : 'undo', part: a.part || '', product: state.product } ) ) );
 				break;

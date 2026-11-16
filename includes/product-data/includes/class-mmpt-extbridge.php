@@ -756,8 +756,10 @@ class ExtBridge {
 				$l    = &$p['layout'];
 				$also = $l['also'] ?? null;
 				unset( $l['also'] );
-				$l['ctl'] = self::part_controls( $host, $k, $sig, $id, $also ? [ 'label' => $also['label'] === 'Not on this layout' ? sprintf( 'Not on %s’s pages', $name ) : sprintf( 'It is on %s’s pages', $name ), 'on' => ! empty( $also['action']['undo'] ), 'action' => $also['action'] ] : null );
-				$g = (string) ( $l['group'] ?? '' );
+				$g        = (string) ( $l['group'] ?? '' );
+				$l['ctl'] = $g === 'only'
+					? self::only_controls( $k, $name )
+					: self::part_controls( $host, $k, $sig, $id, $also ? [ 'label' => $also['label'] === 'Not on this layout' ? sprintf( 'Not on %s’s pages', $name ) : sprintf( 'It is on %s’s pages', $name ), 'on' => ! empty( $also['action']['undo'] ), 'action' => $also['action'] ] : null );
 				if ( isset( $outcome[ $g ] ) ) {
 					$n           = (int) ( $view['parts'][ $k ]['counts']['adds'] ?? 0 );
 					$word        = [ 'fills' => sprintf( 'Fills %d', $n ), 'look' => 'Needs a pick', 'done' => ( $view['parts'][ $k ]['source'] ?? '' ) === 'none' ? 'Not on its pages' : 'Nothing to fill', 'only' => 'This product only' ][ $g ];
@@ -766,7 +768,7 @@ class ExtBridge {
 				}
 				if ( ! empty( $view['losses'][ $k ] ) ) { // the commit waits on this part: its row says why, and what to do
 					$l['group']  = 'look';
-					$l['status'] = [ 'kind' => 'missing', 'word' => 'Fix it to commit', 'help' => (string) $view['losses'][ $k ] . ( empty( $l['ctl']['undo']['off'] ) ? ' Undo puts back the pick before this one.' : '' ) ];
+					$l['status'] = [ 'kind' => 'missing', 'word' => 'Fix it to commit', 'help' => (string) $view['losses'][ $k ] . ( isset( $l['ctl']['undo'] ) && empty( $l['ctl']['undo']['off'] ) ? ' Undo puts back the pick before this one.' : '' ) ];
 				}
 				unset( $l );
 			}
@@ -1928,10 +1930,38 @@ class ExtBridge {
 				? [ 'label' => $word, 'help' => sprintf( '%s %s', $word, $h[ $way ]['said'] ), 'action' => [ 'kind' => 'partstep', 'op' => $way, 'part' => $part ] ]
 				: [ 'label' => $word, 'help' => $way === 'undo' ? 'Nothing to undo: no change to this part was kept.' : 'Nothing to redo.', 'off' => true ];
 		}
+		$ctl['note'] = self::history_note( $part, $h );
 		if ( $none ) {
 			$ctl['none'] = $none;
 		}
 		return $ctl;
+	}
+
+	/**
+	 * Owner 2026-11-16 ("'Undo' and 'Redo' are unresponsive upon click"): what Undo and Redo would put back, said under them,
+	 * so a greyed-out button says why it does nothing instead of only in its tooltip.
+	 */
+	private static function history_note( string $part, array $h ): string {
+		$label = VendorMaps::FIELDS[ $part ][0] ?? $part;
+		if ( ! $h['undo'] && ! $h['redo'] ) {
+			return sprintf( 'Nothing to undo or redo yet: no pick of %s, and no “not here” for it, has been changed for this site, its layout or this product. A commit to this product is taken back from the Undo list under the parts.', $label );
+		}
+		$said = [];
+		foreach ( [ 'undo' => 'Undo', 'redo' => 'Redo' ] as $way => $word ) {
+			$said[] = $h[ $way ] ? sprintf( '%s takes back %s.', $word, $h[ $way ]['said'] ) : ( $way === 'undo' ? 'Nothing older to undo.' : 'Nothing to redo.' );
+		}
+		return implode( ' ', $said );
+	}
+
+	/**
+	 * Owner 2026-11-16: a part that isn't in the layout's map had Undo and Redo that could never do anything there. Its row
+	 * takes you to the part under This product, where it is picked.
+	 */
+	private static function only_controls( string $part, string $name ): array {
+		return [
+			'go'   => [ 'label' => 'Pick it under This product', 'help' => 'Switches to This product and opens this part there.', 'action' => [ 'kind' => 'field', 'scope' => 'product', 'part' => $part ] ],
+			'note' => sprintf( 'Not in %s’s map, so there is nothing to pick, undo or redo here: each product’s %s is picked under This product and committed with it.', $name, VendorMaps::FIELDS[ $part ][0] ?? $part ),
+		];
 	}
 
 	/* ── The site's map, step by step (protocol 11) ─────────────────────── */
