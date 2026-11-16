@@ -73,6 +73,7 @@ class LayoutMaps {
 		if ( ! isset( self::PARTS[ $part ] ) ) {
 			return new \WP_Error( 'mmpt_layout_part', 'That part can’t be set for a layout.' );
 		}
+		$was = ! empty( self::entry( $host, $i )['none'][ $part ] );
 		$res = self::change(
 			$host,
 			$i,
@@ -89,6 +90,7 @@ class LayoutMaps {
 			return $res;
 		}
 		VendorMaps::queue( 'refresh', VendorMaps::host( $host ) ); // the site's numbers follow
+		PartHistory::record( $host, 'layoutnone', (array) ( MapTypes::layout_pages( $host )[ $i ]['sig'] ?? [] ), $part, $was, $on );
 		self::audit( $on ? 'vendor_maps.layout_none' : 'vendor_maps.layout_none_undo', $host, [ 'layout' => $i, 'part' => $part ] );
 		return true;
 	}
@@ -131,7 +133,9 @@ class LayoutMaps {
 			'fills'     => count( array_unique( array_merge( $scrape, $pics ) ) ),
 			'scrape'    => $scrape,
 			'pictures'  => $pics,
-			'blocked'   => $check === null ? [] : self::blocked( $host, $m, (array) $l['urls'], $check ),
+			'blocked'   => $check === null ? [] : array_values( $why = self::blockers( $host, $m, (array) $l['urls'], $check ) ),
+			'losses'    => $check === null ? [] : array_diff_key( $why, [ 'pending' => 1 ] ), // part → why its commit waits on it
+			'recheck'   => ! empty( $m['pending'] ) ? [ 'left' => (int) $m['pending'], 'of' => max( (int) $m['pending'], (int) ( $m['ready']['read'] ?? 0 ) ) ] : null, // the re-read a commit waits on
 			'status'    => ! $commit ? 'draft' : ( (string) ( $commit['stamp'] ?? '' ) === $stamp && ( $t['status'] ?? '' ) === 'confirmed' ? 'committed' : 'changed' ),
 			'committed' => $commit,
 			'stamp'     => $stamp,
@@ -230,10 +234,14 @@ class LayoutMaps {
 		return [ 'label' => VendorMaps::FIELDS[ $part ][0] ?? $part, 'source' => $source, 'sel' => $sel, 'found' => (int) ( ( $source === 'layout' ? $own : $sitef )['found'] ?? 0 ), 'of' => (int) ( ( $source === 'layout' ? $own : $sitef )['of'] ?? 0 ), 'counts' => $n, 'pickable' => $part !== 'features' ];
 	}
 
-	/** What stops a commit: pages still being checked, writing switched off, or anything the map would take away. @return string[] */
-	private static function blocked( string $host, ?array $m, array $urls, int $max ): array {
+	/**
+	 * What stops a commit, keyed: `pending` for the re-read, else each part the map would take away (owner 2026-11-15: "Why not? What
+	 * needs to happen for that to happen?": the panel names the part and says on its row what to do). @return array<string,string>
+	 */
+	private static function blockers( string $host, ?array $m, array $urls, int $max ): array {
 		if ( ! empty( $m['pending'] ) ) {
-			return [ sprintf( '%d of the site’s pages are being checked with the map as it is now: commit when they are done.', (int) $m['pending'] ) ];
+			$of = max( (int) $m['pending'], (int) ( $m['ready']['read'] ?? 0 ) );
+			return [ 'pending' => sprintf( 'The site’s pages are being read again with the map as it is now (%d of %d left), so the review can show what committing really writes. Commit opens when they’re done.', (int) $m['pending'], $of ) ];
 		}
 		$key  = 'mmpt_layout_loss_' . md5( (string) wp_json_encode( [ $host, SiteGaps::stamp( $host ), $urls, $max ] ) );
 		$lost = get_transient( $key );
@@ -253,7 +261,7 @@ class LayoutMaps {
 		$out = [];
 		foreach ( $by as $part => $pages ) {
 			[ $url, $was, $now ] = $pages[0];
-			$out[] = sprintf( '%s: this map reads less than the general reader on %d %s (%s: %s → %s). Pick a larger area for the part that covers it, or set that part back to the general reader.', VendorMaps::FIELDS[ $part ][0] ?? ucfirst( $part ), count( $pages ), count( $pages ) === 1 ? 'page' : 'pages', self::short( $url ), number_format( $was ), number_format( $now ) );
+			$out[ $part ] = sprintf( '%s: this map reads less than the general reader on %d %s (%s: %s → %s). Pick a larger area for the part that covers it, or set that part back to the general reader.', VendorMaps::FIELDS[ $part ][0] ?? ucfirst( $part ), count( $pages ), count( $pages ) === 1 ? 'page' : 'pages', self::short( $url ), number_format( $was ), number_format( $now ) );
 		}
 		return $out;
 	}

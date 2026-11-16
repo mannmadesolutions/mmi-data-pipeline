@@ -135,8 +135,8 @@
 		stepRow: 'It’s the part tagged %t below.',
 		allSteps: 'All steps',
 		hideSteps: 'Hide the steps',
-		showGroup: 'Show',
-		hideGroup: 'Hide',
+		fieldOpen: 'Open this part: pick it, undo or redo, or say it isn’t here',
+		waitPages: '%d of %t pages read',
 		sheetMap: '%l’s map: what committing it does',
 		mapNote: 'Afterwards, Makers → Fill → Last fills lists what it wrote, with Undo.',
 		reviewProduct: 'This product',
@@ -269,56 +269,74 @@
 		:host([data-dock="left"]) .pill { right: auto; left: 12px; }
 		:host([data-dock="top"]) .pill { bottom: auto; top: 12px; }
 		.peek { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; }
-		.peek i { position: fixed; box-sizing: border-box; border: 3px solid #2f7de1; border-radius: 2px; background: rgba(47,125,225,.12); }
+		.peek i { position: fixed; box-sizing: border-box; border: 3px solid var(--mmi-peek); border-radius: 2px; background: var(--mmi-peek-fill); }
 		.peek i[hidden] { display: none; }
 		.hd { display: flex; align-items: flex-start; gap: 8px; padding: 12px 12px 10px 14px; border-bottom: 1px solid #dcdcde; background: #f6f7f7; }
 		.hd .t { flex: 1; min-width: 0; }
 		.hd h1 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 		.hd h1 a { color: inherit; text-decoration: none; }
-		.hd h1 a:hover { color: #2271b1; text-decoration: underline; }
+		.hd h1 a:hover { color: var(--mmi-accent); text-decoration: underline; }
 		.hd .s { margin-top: 2px; color: #646970; font-size: 12px; overflow-wrap: anywhere; }
 		.ib { flex: none; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #50575e; font-size: 16px; line-height: 1; cursor: pointer; }
 		.ib:hover, .ib:focus-visible { border-color: #c3c4c7; background: #fff; outline: none; }
 		.bd { flex: 1; overflow-y: auto; padding: 12px 14px; }
-		.n { margin: 0 0 10px; padding: 8px 10px; border-left: 4px solid #72aee6; background: #f0f6fc; }
+		.n { margin: 0 0 10px; padding: 8px 10px; border-left: 4px solid var(--mmi-accent-line); background: var(--mmi-accent-soft); }
 		.n.warn { border-color: #dba617; background: #fcf9e8; }
 		.n.error { border-color: #d63638; background: #fcf0f1; }
-		.n.ok { border-color: #00a32a; background: #edfaef; }
+		.n.ok { border-color: var(--mmi-accent); background: var(--mmi-accent-soft); }
 		.n button { margin-top: 6px; }
 		.n .nl { display: flex; flex-wrap: wrap; gap: 0 8px; }
 		.sec { margin: 0 0 14px; }
 		.sec.product { padding: 10px 12px; border: 1px solid #c3c4c7; border-radius: 6px; background: #fbfbfc; }
 		h2 { margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #50575e; }
 		.sec.product h2 { text-transform: none; letter-spacing: 0; font-size: 13.5px; color: #1d2327; }
-		h2 a { color: #2271b1; text-decoration: none; }
+		h2 a { color: var(--mmi-accent); text-decoration: none; }
 		h2 a:hover { text-decoration: underline; }
 		.lks { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: -2px 0 6px; font-size: 12px; }
-		.lks a { color: #2271b1; text-decoration: none; }
+		.lks a { color: var(--mmi-accent); text-decoration: none; }
 		.lks a:hover { text-decoration: underline; }
 		.hd .lks { margin: 4px 0 0; }
 		.chk { margin: 0 0 12px; padding: 2px 10px; border: 1px solid #dcdcde; border-radius: 6px; }
-		.pg { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: #f0f6fc; font-size: 12px; }
+		.pg { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: var(--mmi-accent-soft); font-size: 12px; }
 		.pg .pt { display: flex; justify-content: space-between; gap: 8px; color: #50575e; font-weight: 600; }
 		.pg .pt a { color: inherit; text-decoration: none; }
 		.pg .pt a:hover { text-decoration: underline; }
-		.pg .bar { height: 4px; margin: 6px 0; border-radius: 2px; background: #c5d9ed; overflow: hidden; }
-		.pg .bar i { display: block; height: 100%; background: #2271b1; }
+		.pg .bar { height: 4px; margin: 6px 0; border-radius: 2px; background: var(--mmi-accent-track); overflow: hidden; }
+		.pg .bar i { display: block; height: 100%; background: var(--mmi-accent); }
 		.pg .stt { font-size: 13px; font-weight: 600; }
 		.pg .v { color: #50575e; }
 		.pg ol { margin: 8px 0 0 18px; padding: 0; color: #50575e; }
 		.pg li.done { text-decoration: line-through; } .pg li.now { color: #1d2327; font-weight: 600; }
-		.sw { display: flex; margin: 0 0 6px; border: 1px solid #2271b1; border-radius: 6px; overflow: hidden; }
-		.sw button { flex: 1; min-height: 30px; padding: 0 8px; border: 0; background: #fff; color: #2271b1; font: inherit; font-weight: 600; cursor: pointer; }
-		.sw button + button { border-left: 1px solid #2271b1; }
-		.sw button[aria-pressed="true"] { background: #2271b1; color: #fff; }
+		.sw { display: flex; margin: 0 0 6px; border: 1px solid var(--mmi-accent); border-radius: 6px; overflow: hidden; }
+		.sw button { flex: 1; min-height: 30px; padding: 0 8px; border: 0; background: #fff; color: var(--mmi-accent); font: inherit; font-weight: 600; cursor: pointer; }
+		.sw button + button { border-left: 1px solid var(--mmi-accent); }
+		.sw button[aria-pressed="true"] { background: var(--mmi-accent); color: #fff; }
 		.more.st { padding: 0 0 8px; }
-		.grp { margin: 0 0 10px; }
-		.grp .gh { display: flex; align-items: baseline; gap: 6px; margin: 4px 0 2px; }
-		.grp h3 { margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #50575e; }
-		.grp .gh .n { color: #646970; font-size: 12px; }
-		.grp .gh .lk { margin-left: auto; }
-		.grp > .v { color: #646970; font-size: 12px; }
-		.tag { flex: none; margin-left: auto; padding: 1px 6px; border-radius: 10px; background: #2271b1; color: #fff; font-size: 11px; font-weight: 600; line-height: 16px; }
+		/* Protocol 14: the parts as a form, one order whatever their outcome; a row opens for its controls. */
+		.meter { margin: 0 0 8px; color: #50575e; font-size: 12px; }
+		.meter .bar, .wt .bar { height: 6px; margin: 4px 0 0; border-radius: 3px; background: var(--mmi-accent-track); overflow: hidden; }
+		.meter .bar i, .wt .bar i { display: block; height: 100%; background: var(--mmi-accent); transition: width .4s ease; }
+		.wt { margin: 0 0 12px; padding: 8px 10px; border: 1px solid #f0d78a; border-left: 4px solid #dba617; border-radius: 6px; background: #fcf9e8; font-size: 12px; }
+		.wt .wh { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+		.wt .wh b { font-size: 13px; }
+		.wt .bar { background: #f1e3b0; } .wt .bar i { background: #b58a00; }
+		.wt .v { margin-top: 4px; color: #50575e; }
+		.wt .nw { margin-top: 4px; color: #1d2327; }
+		.shb .wt { font-size: 13px; }
+		.frm { margin: 0 0 10px; border-top: 1px solid #f0f0f1; }
+		.row.fld { margin: 0 -6px; padding: 7px 6px; border-radius: 4px; cursor: pointer; }
+		.row.fld:hover, .row.fld:focus-visible { background: var(--mmi-accent-soft); outline: none; box-shadow: inset 0 0 0 1px var(--mmi-accent-line); }
+		.row.fld.open { background: var(--mmi-accent-soft); box-shadow: inset 3px 0 0 var(--mmi-accent); cursor: default; }
+		.row.fld .cv { flex: none; width: 12px; color: var(--mmi-accent); font-size: 11px; line-height: 18px; }
+		.row.fld .lh .l { flex: 1; }
+		.fc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+		.fc button.b { min-height: 26px; padding: 0 10px; font-size: 12px; }
+		.fc button.b.on { border-color: #8c8f94; color: #50575e; }
+		.fc .hn { flex-basis: 100%; color: #50575e; font-size: 12px; }
+		.row .src { margin-top: 1px; color: #646970; font-size: 11.5px; }
+		.shh .pv { display: inline-block; margin-top: 4px; color: var(--mmi-accent); font-size: 13px; text-decoration: none; }
+		.shh .pv:hover { text-decoration: underline; }
+		.tag { flex: none; margin-left: auto; padding: 1px 6px; border-radius: 10px; background: var(--mmi-accent); color: #fff; font-size: 11px; font-weight: 600; line-height: 16px; }
 		.tag + .chip { margin-left: 0; }
 		.pc > h3 .lk { font-size: 13px; font-weight: 400; }
 		.pc.out > h3 { color: #646970; }
@@ -326,20 +344,20 @@
 		.row:last-of-type { border-bottom: 0; }
 		.lh { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 		.chip { flex: none; padding: 1px 8px; border-radius: 10px; background: #f0f0f1; color: #50575e; font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; }
-		.chip.change { background: #d8ebfb; color: #0a4b78; }
-		.chip.ok, .chip.same { background: #e3f4e6; color: #00591a; }
+		.chip.change { background: var(--mmi-accent-tint); color: var(--mmi-accent-ink); }
+		.chip.ok, .chip.same { background: var(--mmi-accent-tint); color: var(--mmi-accent-ink); }
 		.chip.missing { background: #fbe3e4; color: #a12224; }
 		.chip.review, .chip.look { background: #fbf0c9; color: #6d5100; }
 		.row > div { min-width: 0; flex: 1; }
 		.row .l { font-weight: 600; overflow-wrap: anywhere; }
-		.row a.l, .row button.l { color: #2271b1; text-decoration: none; }
+		.row a.l, .row button.l { color: var(--mmi-accent); text-decoration: none; }
 		.row button.l { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 		.row a.l:hover, .row button.l:hover { text-decoration: underline; }
 		.row .v { color: #50575e; font-size: 12px; overflow-wrap: anywhere; }
 		.row.pick, .row.shows { margin: 0 -6px; padding: 6px; border-radius: 4px; }
 		.row.pick { cursor: pointer; }
-		.row.pick:hover, .row.pick:focus-visible, .row.shows:hover { background: #f0f6fc; outline: none; box-shadow: inset 0 0 0 1px #72aee6; }
-		.row.pick .go { display: block; margin-top: 2px; color: #2271b1; font-size: 12px; }
+		.row.pick:hover, .row.pick:focus-visible, .row.shows:hover { background: var(--mmi-accent-soft); outline: none; box-shadow: inset 0 0 0 1px var(--mmi-accent-line); }
+		.row.pick .go { display: block; margin-top: 2px; color: var(--mmi-accent); font-size: 12px; }
 		.row .b.also { margin-top: 4px; padding: 2px 8px; font-size: 12px; }
 		.row .why { margin-top: 2px; color: #50575e; font-size: 12px; }
 		.row.pick:hover .go, .row.pick:focus-visible .go { text-decoration: underline; }
@@ -347,7 +365,7 @@
 		.th img { width: 48px; height: 48px; object-fit: contain; background: #fff; border: 1px solid #dcdcde; border-radius: 3px; }
 		.more { padding: 6px 0 0; color: #50575e; font-size: 12px; }
 		.row .cr { margin-top: 2px; color: #646970; font-size: 11.5px; overflow-wrap: anywhere; }
-		.lk { padding: 0; border: 0; background: none; color: #2271b1; font: inherit; font-size: 12px; cursor: pointer; }
+		.lk { padding: 0; border: 0; background: none; color: var(--mmi-accent); font: inherit; font-size: 12px; cursor: pointer; }
 		.lk:hover { text-decoration: underline; }
 		.ed { margin-top: 2px; }
 		.ma { margin-top: 3px; }
@@ -358,20 +376,20 @@
 		.ma h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
 		.ma .lp { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; padding: 3px 0; font-size: 12px; }
 		.ma .lw { min-width: 0; overflow-wrap: anywhere; }
-		.ma .lw a { color: #2271b1; text-decoration: none; white-space: nowrap; }
+		.ma .lw a { color: var(--mmi-accent); text-decoration: none; white-space: nowrap; }
 		.ma .edf .lp button.b, .ma .pa button.b { margin-top: 0; }
 		.ma .pl2 { margin: 8px 0 3px; color: #50575e; font-size: 12px; }
 		.ma .pa { display: flex; gap: 6px; margin-bottom: 6px; }
 		.ma .pa input { flex: 1; min-width: 0; min-height: 30px; padding: 4px 8px; border: 1px solid #8c8f94; border-radius: 4px; font: inherit; font-size: 12px; }
-		.hand { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid #2271b1; border-radius: 6px; background: #f0f6fc; }
-		.hand b { display: block; width: fit-content; font-weight: 600; cursor: help; text-decoration: underline dotted #2271b1; text-underline-offset: 3px; }
-		.hand b:focus-visible { outline: 2px solid #2271b1; outline-offset: 2px; }
+		.hand { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--mmi-accent); border-radius: 6px; background: var(--mmi-accent-soft); }
+		.hand b { display: block; width: fit-content; font-weight: 600; cursor: help; text-decoration: underline dotted var(--mmi-accent); text-underline-offset: 3px; }
+		.hand b:focus-visible { outline: 2px solid var(--mmi-accent); outline-offset: 2px; }
 		.held { position: fixed; right: calc(var(--mmi-dw, 380px) + 24px); width: min(320px, calc(100vw - var(--mmi-dw, 380px) - 48px)); max-height: calc(100vh - 24px); box-sizing: border-box; overflow-y: auto; padding: 12px; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; }
 		.held img, .held .none { display: block; box-sizing: border-box; width: 100%; height: 180px; margin-bottom: 8px; object-fit: contain; background: #f6f7f7; border-radius: 4px; }
 		.held .none { padding-top: 80px; color: #646970; font-size: 12px; text-align: center; }
 		.held .t { font-weight: 600; overflow-wrap: anywhere; }
 		.held .v { margin-top: 4px; color: #50575e; font-size: 12px; overflow-wrap: anywhere; }
-		.held a { display: inline-block; margin-top: 8px; color: #2271b1; font-size: 12px; text-decoration: none; }
+		.held a { display: inline-block; margin-top: 8px; color: var(--mmi-accent); font-size: 12px; text-decoration: none; }
 		.held a:hover { text-decoration: underline; }
 		.hand > div { flex: 1 1 100%; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
 		.ph3 { margin: 16px 0 4px; font-size: 15px; font-weight: 600; }
@@ -381,7 +399,7 @@
 		.lr b { font-size: 14px; font-weight: 600; }
 		.lr .v { margin-top: 2px; color: #3c434a; font-size: 13px; overflow-wrap: anywhere; }
 		.lr .xl { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 3px; font-size: 13px; }
-		.lr .xl a { color: #2271b1; text-decoration: none; }
+		.lr .xl a { color: var(--mmi-accent); text-decoration: none; }
 		.edf[hidden], .lk[hidden] { display: none; }
 		.ed textarea { display: block; width: 100%; margin: 4px 0 6px; padding: 6px 8px; border: 1px solid #8c8f94; border-radius: 4px; color: #1d2327; font: inherit; resize: vertical; }
 		.ed .row2 { display: flex; gap: 6px; }
@@ -398,24 +416,24 @@
 		.acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 		.th span { position: relative; display: inline-block; }
 		.th button { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: #d63638; color: #fff; font-size: 12px; line-height: 18px; cursor: pointer; }
-		.prog { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid #dcdcde; background: #f0f6fc; font-size: 12.5px; }
-		.prog.ok { background: #edfaef; } .prog.warn { background: #fcf9e8; } .prog.error { background: #fcf0f1; }
+		.prog { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid #dcdcde; background: var(--mmi-accent-soft); font-size: 12.5px; }
+		.prog.ok { background: var(--mmi-accent-soft); } .prog.warn { background: #fcf9e8; } .prog.error { background: #fcf0f1; }
 		.prog[hidden] { display: none; }
 		.prog span.t { flex: 1; }
 		.find { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #c3c4c7; border-radius: 6px; }
 		.find input { width: 100%; min-height: 30px; padding: 4px 8px; border: 1px solid #8c8f94; border-radius: 4px; font: inherit; }
-		.find input:focus { outline: 2px solid #2271b1; outline-offset: 0; }
+		.find input:focus { outline: 2px solid var(--mmi-accent); outline-offset: 0; }
 		.ft { padding: 10px 14px; border-top: 1px solid #dcdcde; background: #f6f7f7; }
 		.ft:empty { display: none; }
 		.ft .ct { margin-bottom: 6px; font-size: 12px; font-weight: 600; }
 		.ft .row2 { display: flex; flex-wrap: wrap; gap: 8px; }
 		.ft .row2 + .row2, .ft .cm + .row2 { margin-top: 8px; }
-		.ft button.b[aria-pressed="true"] { background: #135e96; border-color: #135e96; color: #fff; }
+		.ft button.b[aria-pressed="true"] { background: var(--mmi-accent-hover); border-color: var(--mmi-accent-hover); color: #fff; }
 		.ml { max-height: 40vh; margin: 0 0 8px; overflow-y: auto; border: 1px solid #dcdcde; border-radius: 6px; background: #fff; }
 		.ml button { display: block; width: 100%; padding: 7px 10px; border: 0; border-bottom: 1px solid #f0f0f1; background: none; color: #1d2327; font: inherit; text-align: left; cursor: pointer; }
 		.ml button:last-child { border-bottom: 0; }
-		.ml button:hover { background: #f0f6fc; }
-		.ml b { display: block; font-weight: 600; color: #2271b1; }
+		.ml button:hover { background: var(--mmi-accent-soft); }
+		.ml b { display: block; font-weight: 600; color: var(--mmi-accent); }
 		.ml span { display: block; color: #50575e; font-size: 12px; }
 		.sh { position: fixed; top: 12px; right: calc(var(--mmi-dw, 380px) + 24px); bottom: 12px; width: min(780px, calc(100vw - var(--mmi-dw, 380px) - 48px)); display: flex; flex-direction: column; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; z-index: 2147483647; overflow: hidden; }
 		.sh[hidden] { display: none; }
@@ -433,7 +451,7 @@
 		.pc > h3 span { color: #50575e; font-size: 13px; font-weight: 400; }
 		.pc > p.gl { margin: 0 0 8px; color: #3c434a; font-size: 13px; }
 		.gr { margin: 0 0 8px; padding: 10px 12px; border: 1px solid #dcdcde; border-left-width: 4px; border-radius: 6px; }
-		.gr.change { border-left-color: #2271b1; } .gr.look { border-left-color: #dba617; background: #fffdf5; } .gr.same { border-left-color: #8fbf9c; }
+		.gr.change { border-left-color: var(--mmi-accent); } .gr.look { border-left-color: #dba617; background: #fffdf5; } .gr.same { border-left-color: #8fbf9c; }
 		.gr .gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 		.gr .gh b { font-size: 14px; font-weight: 600; }
 		.gr p { margin: 3px 0 0; color: #3c434a; font-size: 13px; }
@@ -447,7 +465,7 @@
 		.ex .say { font-weight: 600; }
 		.ex .mt { margin: 4px 0; font-size: 13px; }
 		.ex .xl { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 8px; font-size: 13px; }
-		.ex .xl a { color: #2271b1; text-decoration: none; }
+		.ex .xl a { color: var(--mmi-accent); text-decoration: none; }
 		.ex .xl a:hover { text-decoration: underline; }
 		.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 		@media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
@@ -460,14 +478,14 @@
 		.col .ph { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow-y: auto; }
 		.col figure { position: relative; width: 84px; margin: 0; }
 		.col img { display: block; width: 84px; height: 84px; object-fit: contain; border: 1px solid #dcdcde; border-radius: 3px; background: #fff; }
-		.col figcaption { margin-top: 2px; color: #0a4b78; font-size: 11px; font-weight: 600; line-height: 1.2; }
+		.col figcaption { margin-top: 2px; color: var(--mmi-accent-ink); font-size: 11px; font-weight: 600; line-height: 1.2; }
 		.ex .ky { margin-top: 6px; color: #50575e; font-size: 12px; }
-		button.b { min-height: 30px; padding: 0 12px; border: 1px solid #2271b1; border-radius: 4px; background: #fff; color: #2271b1; font: inherit; font-weight: 500; cursor: pointer; }
-		button.b.pr { background: #2271b1; color: #fff; }
-		button.b:hover { background: #f0f6fc; } button.b.pr:hover { background: #135e96; }
+		button.b { min-height: 30px; padding: 0 12px; border: 1px solid var(--mmi-accent); border-radius: 4px; background: #fff; color: var(--mmi-accent); font: inherit; font-weight: 500; cursor: pointer; }
+		button.b.pr { background: var(--mmi-accent); color: #fff; }
+		button.b:hover { background: var(--mmi-accent-soft); } button.b.pr:hover { background: var(--mmi-accent-hover); }
 		button.b:disabled { opacity: .6; cursor: default; }
-		button:focus-visible { outline: 2px solid #2271b1; outline-offset: 1px; }
-		.spin { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; border: 2px solid #c3c4c7; border-top-color: #2271b1; border-radius: 50%; animation: r .8s linear infinite; }
+		button:focus-visible { outline: 2px solid var(--mmi-accent); outline-offset: 1px; }
+		.spin { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; border: 2px solid #c3c4c7; border-top-color: var(--mmi-accent); border-radius: 50%; animation: r .8s linear infinite; }
 		@keyframes r { to { transform: rotate(360deg); } }
 		.pill { position: fixed; right: 12px; bottom: 12px; z-index: 2147483647; padding: 8px 14px; border: 0; border-radius: 18px; background: #1d2327; color: #fff; font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; }
 	`;
@@ -488,7 +506,8 @@
 		return e;
 	};
 	const DOCK = window.__mmiExtDock || null; // where the panel sits (dock.js), shared with the live mapper
-	const style = el( 'style', '', CSS + ( DOCK ? DOCK.CSS : '' ) );
+	const THEME = ( window.__mmiExtTheme || {} ).CSS || ''; // the extension's colours (theme.js)
+	const style = el( 'style', '', THEME + CSS + ( DOCK ? DOCK.CSS : '' ) );
 	const box = el( 'div', 'p' );
 	box.setAttribute( 'role', 'complementary' );
 	box.setAttribute( 'aria-label', 'MMI Product Data' );
@@ -533,7 +552,7 @@
 
 	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
 	// pick (protocol 11): a map step opened this page for one of its parts, so the mapper opens on it once the panel is drawn.
-	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', open: {}, steps: false, panel: null, more: false, key: false, shown: '', reviews: {} };
+	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', field: '', steps: false, panel: null, more: false, key: false, shown: '', reviews: {} };
 
 	/** Open or closed, folded or not: the service worker keeps it for this tab, and puts the panel back on the next page. */
 	const report = () => chrome.runtime.sendMessage( { type: 'panelstate', open: host.style.display !== 'none', folded: box.hidden } ).catch( () => {} );
@@ -696,7 +715,7 @@
 			const box = el( 'div', 'cm' );
 			const acts = el( 'div', 'row2' );
 			const b = opener( 'layoutmap', m.label || '', () => toggleMap( m ), true );
-			b.disabled = ! m.can;
+			b.disabled = ! m.can && ! m.wait && ! m.fix; // waiting on the re-read, or on a part to fix: its review says so
 			acts.append( b );
 			box.append( acts );
 			return box;
@@ -927,6 +946,10 @@
 		const hd = el( 'div', 'shh' );
 		const t = el( 'div', 't' );
 		t.append( el( 'h2', '', r.scope === 'layoutmap' ? MESSAGES.sheetMap.replace( '%l', r.m.name ) : r.scope === 'links' ? MESSAGES.sheetLinks : r.scope === 'site' ? MESSAGES.sheetSite.replace( '%n', c.site.products ) : r.scope === 'layout' ? MESSAGES.sheetLayout.replace( '%l', c.layout.name ).replace( '%n', c.layout.products ) : MESSAGES.sheetProduct ), el( 'div', 's', r.scope === 'layoutmap' ? r.m.said : r.scope === 'links' ? MESSAGES.linksSub : MESSAGES.sheetSub ) );
+		const pv = r.scope === 'product' && c.preview ? ownLink( c.preview.href || '' ) : '';
+		if ( pv ) { // protocol 14: the product as committing makes it, on the store (it was a header link beside Open)
+			t.append( link( 'a', 'pv', ( c.preview.label || '' ) + ' ↗', pv ) );
+		}
 		const x = el( 'button', 'ib', '×' );
 		x.type = 'button';
 		x.title = MESSAGES.hide;
@@ -1005,7 +1028,11 @@
 	/** Protocol 13: the layout's map review, part by part, with what it keeps and what blocks it. */
 	function mapBody( m ) {
 		const out = [];
-		( m.blocked || [] ).forEach( ( t ) => out.push( notice( 'warn', t ) ) );
+		if ( m.wait ) { // protocol 14: the re-read it waits on, as a bar
+			out.push( waitOf( m.wait ) );
+		} else {
+			( m.blocked || [] ).forEach( ( t ) => out.push( notice( 'warn', t ) ) );
+		}
 		if ( m.will && m.can ) {
 			out.push( el( 'p', 'gl', m.will ) );
 		}
@@ -1411,7 +1438,41 @@
 		const href = r.href ? ownLink( r.href ) : '';
 		let label;
 		let go = null;
-		if ( r.action && r.hint ) { // protocol 6: the whole row opens picking for its part
+		const field = !! r.ctl; // protocol 14: a form field, opened for its controls
+		const open = field && state.field === r.key;
+		if ( field ) {
+			row.classList.add( 'fld' );
+			row.classList.toggle( 'open', open );
+			row.dataset.key = r.key;
+			row.tabIndex = 0;
+			row.setAttribute( 'role', 'button' );
+			row.setAttribute( 'aria-expanded', String( open ) );
+			row.title = open ? '' : MESSAGES.fieldOpen;
+			const turn = ( e ) => {
+				if ( e.target.closest( 'button, a, input, textarea' ) ) {
+					return;
+				}
+				if ( e.type === 'keydown' ) {
+					if ( e.key === 'Escape' && open ) {
+						e.stopPropagation();
+					} else if ( e.key !== 'Enter' && e.key !== ' ' ) {
+						return;
+					}
+					e.preventDefault();
+				} else if ( open ) {
+					return; // a click inside an open row is for its controls
+				}
+				state.field = open ? '' : r.key;
+				draw( state.panel );
+				const again = [ ...body.querySelectorAll( '.row.fld' ) ].find( ( x ) => x.dataset.key === r.key ); // (CSS here is the panel's style sheet, not window.CSS)
+				if ( again ) {
+					again.focus( { preventScroll: true } );
+				}
+			};
+			row.addEventListener( 'click', turn );
+			row.addEventListener( 'keydown', turn );
+			label = el( 'div', 'l', r.label || '' );
+		} else if ( r.action && r.hint ) { // protocol 6: the whole row opens picking for its part
 			go = el( 'span', 'go', r.hint + ' ›' );
 			row.classList.add( 'pick' );
 			row.tabIndex = 0;
@@ -1440,6 +1501,9 @@
 			label = href ? link( 'a', 'l', r.label || '', href ) : el( 'div', 'l', r.label || '' );
 		}
 		const line = el( 'div', 'lh' );
+		if ( field ) {
+			line.append( el( 'span', 'cv', open ? '▾' : '▸' ) );
+		}
 		line.append( label );
 		if ( r.tag ) { // protocol 13: the site map's step this part is
 			line.append( el( 'span', 'tag', r.tag ) );
@@ -1459,6 +1523,12 @@
 		}
 		if ( r.criteria ) {
 			txt.append( el( 'div', 'cr', r.criteria ) );
+		}
+		if ( field && r.source && open ) {
+			txt.append( el( 'div', 'src', r.source ) );
+		}
+		if ( open ) {
+			txt.append( fieldControls( r ) );
 		}
 		if ( r.also && r.also.action ) { // protocol 12: a second thing the row does (a part not on this layout's pages, or back)
 			const also = el( 'button', 'b also', r.also.label || '' );
@@ -1864,7 +1934,9 @@
 
 	/**
 	 * Protocol 13: the product's page, said once. Is this its page, the site map's step, the scope switch, then each part
-	 * once, grouped by what happens to it in that scope (folded groups say which parts they hold), and what can be put back.
+	 * once, and what can be put back. Protocol 14: the parts are a form brought into order for the product or its layout,
+	 * in one order whatever their outcome (the chip says it), with how much of it is in order (`meter`) and, for the
+	 * layout, the re-read its commit waits on (`wait`).
 	 */
 	function listOf( panel ) {
 		const out = [];
@@ -1904,38 +1976,83 @@
 			}
 		}
 		const sc = state.scope;
-		( ( panel.groups || {} )[ sc ] || [] ).forEach( ( [ key, title, fold ] ) => {
-			const parts = panel.parts.filter( ( p ) => p[ sc ] && p[ sc ].group === key );
-			if ( ! parts.length ) {
-				return;
-			}
-			const id = sc + ':' + key;
-			const open = ! fold || !! state.open[ id ];
-			const g = el( 'div', 'grp' );
-			const h = el( 'div', 'gh' );
-			h.append( el( 'h3', '', title ), el( 'span', 'n', String( parts.length ) ) );
-			if ( fold ) {
-				const t = el( 'button', 'lk', open ? MESSAGES.hideGroup : MESSAGES.showGroup );
-				t.type = 'button';
-				t.setAttribute( 'aria-expanded', String( open ) );
-				t.addEventListener( 'click', () => {
-					state.open[ id ] = ! open;
-					draw( state.panel );
-				} );
-				h.append( t );
-			}
-			g.append( h );
-			if ( open ) {
-				parts.forEach( ( p ) => g.append( rowOf( Object.assign( {}, p[ sc ], { tag: p.tag || '' } ) ) ) );
-			} else {
-				g.append( el( 'div', 'v', parts.map( ( p ) => p[ sc ].label ).join( ', ' ) ) );
-			}
-			out.push( g );
-		} );
+		if ( sc === 'layout' && panel.wait ) { // what the layout's commit waits on, and how far it is
+			out.push( waitOf( panel.wait ) );
+		}
+		const meter = ( panel.meter || {} )[ sc ];
+		if ( meter ) {
+			out.push( meterOf( meter ) );
+		}
+		const form = el( 'div', 'frm' ); // every part, in one order, whatever its outcome (owner 2026-11-15)
+		panel.parts.filter( ( p ) => p[ sc ] ).forEach( ( p ) => form.append( rowOf( Object.assign( {}, p[ sc ], { tag: p.tag || '', key: `${ sc }:${ p.key }` } ) ) ) );
+		out.push( form );
 		if ( ( panel.undo || [] ).length ) {
 			out.push( undoList( panel.undo ) );
 		}
 		return out;
+	}
+
+	/** Protocol 14: how much of the form is in order, as a line and a bar. */
+	function meterOf( m ) {
+		const box = el( 'div', 'meter' );
+		const bar = el( 'div', 'bar' );
+		const fill = el( 'i' );
+		fill.style.width = `${ Math.round( 100 * ( m.ok || 0 ) / Math.max( 1, m.of || 1 ) ) }%`;
+		bar.append( fill );
+		bar.setAttribute( 'role', 'progressbar' );
+		bar.setAttribute( 'aria-valuemin', '0' );
+		bar.setAttribute( 'aria-valuemax', String( m.of || 0 ) );
+		bar.setAttribute( 'aria-valuenow', String( m.ok || 0 ) );
+		bar.setAttribute( 'aria-label', m.text || '' );
+		box.append( el( 'div', '', m.text || '' ), bar );
+		return box;
+	}
+
+	/** Protocol 14: the re-read a layout's commit waits on: why, how far, what it's doing now. The panel asks again as it goes. */
+	function waitOf( w ) {
+		const box = el( 'div', 'wt' );
+		box.setAttribute( 'role', 'status' );
+		const head = el( 'div', 'wh' );
+		head.append( el( 'b', '', w.title || '' ), el( 'span', '', MESSAGES.waitPages.replace( '%d', w.done || 0 ).replace( '%t', w.of || 0 ) ) );
+		const bar = el( 'div', 'bar' );
+		const fill = el( 'i' );
+		fill.style.width = `${ Math.round( 100 * ( w.done || 0 ) / Math.max( 1, w.of || 1 ) ) }%`;
+		bar.append( fill );
+		bar.setAttribute( 'role', 'progressbar' );
+		bar.setAttribute( 'aria-valuemin', '0' );
+		bar.setAttribute( 'aria-valuemax', String( w.of || 0 ) );
+		bar.setAttribute( 'aria-valuenow', String( w.done || 0 ) );
+		box.append( head, bar, el( 'div', 'nw', w.now || '' ), el( 'div', 'v', w.why || '' ) );
+		return box;
+	}
+
+	/** Protocol 14: an open part's controls: pick it (the mapper or the picker), say it isn't here, Undo, Redo. */
+	function fieldControls( r ) {
+		const box = el( 'div', 'fc' );
+		const add = ( c, cls, run ) => {
+			const b = el( 'button', cls, c.label || '' );
+			b.type = 'button';
+			if ( c.help ) {
+				b.title = c.help;
+			}
+			b.disabled = !! c.off;
+			b.addEventListener( 'click', () => run( b ) );
+			box.append( b );
+			return b;
+		};
+		if ( r.action ) {
+			add( { label: ( r.hint || '' ).split( ' · ' )[ 0 ] || r.label }, 'b pr', ( b ) => act( r.action, b ) );
+		}
+		const ctl = r.ctl || {};
+		if ( ctl.none && ctl.none.action ) {
+			add( ctl.none, ctl.none.on ? 'b on' : 'b', ( b ) => act( ctl.none.action, b ) );
+		}
+		[ ctl.undo, ctl.redo ].filter( Boolean ).forEach( ( c ) => add( c, 'b', ( b ) => act( c.action, b ) ) );
+		const where = ( r.hint || '' ).split( ' · ' ).slice( 1 ).join( ' · ' );
+		if ( where ) {
+			box.append( el( 'div', 'hn', where.charAt( 0 ).toUpperCase() + where.slice( 1 ) + '.' ) );
+		}
+		return box;
 	}
 
 	/** Protocol 13: the site map's steps as one line, the next one with its button (or its part's row tagged). */
@@ -1987,13 +2104,17 @@
 		if ( state.productFor !== state.product ) { // another product: its own scope, groups and reviews
 			state.productFor = state.product;
 			state.scope = 'product';
-			state.open = {};
+			state.field = '';
 			forgetReviews();
 		}
 		if ( ! ( panel.scopes || [] ).some( ( x ) => x.key === state.scope ) ) {
 			state.scope = 'product';
 		}
 		state.base = panel.base || '';
+		if ( state.shown === 'layoutmap' && state.reviews.layoutmap && panel.commit && panel.commit.layout ) { // protocol 14: an open layout review follows the re-read
+			state.reviews.layoutmap.m = panel.commit.layout;
+			drawReview();
+		}
 		state.look = state.look || !! panel.base; // the server opened it on a job: it stays open as the job goes on
 		body.replaceChildren();
 		foot.replaceChildren();
@@ -2414,6 +2535,12 @@
 				if ( state.scope === 'layout' && state.panel.commit && state.panel.commit.layout ) {
 					toggleMap( state.panel.commit.layout );
 				}
+				break;
+			case 'partstep': // protocol 14: Undo or Redo the newest change this page reads the part through
+				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: a.op === 'redo' ? 'redo' : 'undo', part: a.part || '', product: state.product } ) ) );
+				break;
+			case 'pagenone': // protocol 14: a part isn't on this product's page (or is again)
+				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: 'pagenone', part: a.part || '', undo: a.undo ? 1 : 0, product: state.product } ) ) );
 				break;
 			case 'layoutnone': // protocol 12: a part isn't on this page's layout (or is again)
 				answered( await working( b, MESSAGES.working, () => ask( { type: 'layoutmap', url: location.href, op: 'none', layout: a.layout, part: a.part || '', undo: a.undo ? 1 : 0, product: state.product } ) ) );

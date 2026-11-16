@@ -28,7 +28,7 @@
 
 	const CSS = `
 		.dock-grip { position: absolute; z-index: 3; touch-action: none; background: transparent; }
-		.dock-grip:hover, .dock-grip:focus-visible, .dock-grip.on { background: rgba(34,113,177,.35); outline: none; }
+		.dock-grip:hover, .dock-grip:focus-visible, .dock-grip.on { background: var(--mmi-accent-grip); outline: none; }
 		:host(:not([data-dock])) .dock-grip, :host([data-dock="right"]) .dock-grip { left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
 		:host([data-dock="left"]) .dock-grip { right: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
 		:host([data-dock="top"]) .dock-grip { left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
@@ -36,8 +36,8 @@
 		.dock-menu { position: fixed; left: 0; top: 0; transform: translate(var(--mx, 0), var(--my, 0)); z-index: 2147483647; min-width: 150px; padding: 4px; box-sizing: border-box; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.2); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: left; }
 		.dock-menu[hidden] { display: none; }
 		.dock-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-		.dock-menu button:hover, .dock-menu button:focus-visible { background: #f0f6fc; outline: none; }
-		.dock-menu button[aria-pressed="true"] { color: #2271b1; font-weight: 600; }
+		.dock-menu button:hover, .dock-menu button:focus-visible { background: var(--mmi-accent-soft); outline: none; }
+		.dock-menu button[aria-pressed="true"] { color: var(--mmi-accent); font-weight: 600; }
 		.dock-menu .g { width: 16px; font-size: 15px; line-height: 1; text-align: center; }
 		.dock-menu hr { margin: 4px 0; border: 0; border-top: 1px solid #dcdcde; }
 	`;

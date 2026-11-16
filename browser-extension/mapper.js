@@ -34,6 +34,7 @@
 		},
 		pageHtml: () => window.__mmiExtPageHtml(),
 		dock: window.__mmiExtDock || null, // where the panels sit (dock.js): the mapper docks where the panel does
+		theme: window.__mmiExtTheme || null, // the extension's colours (theme.js)
 		saved: () => panel() && panel().refresh(),
 		closed: () => panel() && panel().unfold(),
 		/** Only with a product in hand: leaves the mapper for one-off picks for that product. The panel row is the way in to both. */

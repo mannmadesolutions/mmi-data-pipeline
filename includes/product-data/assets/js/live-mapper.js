@@ -239,10 +239,10 @@
 .box[data-label]:not([data-label=""])::after { content: attr(data-label); position: absolute; left: -2px; top: -19px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 3px; background: var(--c); color: #fff; font: 600 11px/17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: nowrap }
 @keyframes mmpt-lm-flash { 50% { background: rgba(214,54,56,.04) } }
 .box.saved { border-style: dotted }
-.linkbtn { display: block; margin: 8px 0 0; padding: 0; border: 0; background: none; color: #2271b1; font: inherit; font-size: 12.5px; text-align: left; cursor: pointer }
+.linkbtn { display: block; margin: 8px 0 0; padding: 0; border: 0; background: none; color: var(--mmi-accent); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer }
 .linkbtn:hover { text-decoration: underline }
-.effect { padding: 7px 9px; border-left: 4px solid #2271b1; background: #f0f6fc; font-size: 12.5px }
-.savedbox { padding: 7px 9px; border: 1px solid #c5d9ed; border-radius: 4px; background: #f6faff; display: grid; gap: 3px }
+.effect { padding: 7px 9px; border-left: 4px solid var(--mmi-accent); background: var(--mmi-accent-soft); font-size: 12.5px }
+.savedbox { padding: 7px 9px; border: 1px solid var(--mmi-accent-track); border-radius: 4px; background: var(--mmi-accent-soft); display: grid; gap: 3px }
 .box.hover { border-width: 2px; background: rgba(47,125,225,.08) }
 .tip { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none; transform: translate(var(--x), var(--y)); max-width: 380px; background: #1d2327; color: #fff; font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word }
 .tip[hidden], [hidden] { display: none !important }
@@ -261,7 +261,7 @@
 .icon:hover { background: rgba(255,255,255,.18) }
 .icon.back { font-size: 13px; white-space: nowrap; border: 1px solid rgba(255,255,255,.55) }
 .body { padding: 10px 12px; display: grid; gap: 10px }
-.note { padding: 6px 9px; border-left: 4px solid #2271b1; background: #f0f6fc; font-size: 12.5px }
+.note { padding: 6px 9px; border-left: 4px solid var(--mmi-accent); background: var(--mmi-accent-soft); font-size: 12.5px }
 .note.error { border-color: #d63638; background: #fcf0f1 }
 .note.success { border-color: #3f7a2b; background: #edf7ea }
 .note.warning { border-color: #dba617; background: #fcf9e8 }
@@ -272,8 +272,8 @@
 .muted { color: #646970; font-size: 12px }
 .checks { display: grid; gap: 4px; margin-top: 4px }
 .checks .ex { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 2px; font-size: 11.5px }
-.checks .ex a { color: #2271b1; text-decoration: underline; overflow-wrap: anywhere }
-.inspect { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid #c5d9ed; border-radius: 4px; background: #f0f6fc }
+.checks .ex a { color: var(--mmi-accent); text-decoration: underline; overflow-wrap: anywhere }
+.inspect { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--mmi-accent-track); border-radius: 4px; background: var(--mmi-accent-soft) }
 .inspect code { word-break: break-all }
 .inspect .samples { margin: 0; padding-left: 16px; font-size: 12px; display: grid; gap: 3px }
 .part .prop { grid-column: 2; font-size: 12px; color: #6a1b9a }
@@ -302,7 +302,7 @@ button.btn.primary { background: #3f7a2b; color: #fff }
 button.btn.warn { background: #dba617; border-color: #b78a00; color: #1d2327 }
 button.btn.quiet { border-color: #c3c4c7; color: #1d2327; font-weight: 500 }
 button.btn[disabled] { opacity: .45; cursor: not-allowed }
-button:focus-visible, input:focus-visible { outline: 2px solid #2271b1; outline-offset: 1px }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--mmi-accent); outline-offset: 1px }
 input.sel { width: 100%; box-sizing: border-box; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 8px; border: 1px solid #8c8f94; border-radius: 3px; color: #1d2327; background: #fff }
 label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 .picklist { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none }
@@ -317,7 +317,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 .warnbox .wa button { min-height: 22px; padding: 0 8px; border: 1px solid #996800; border-radius: 3px; background: #fff; color: #6d4c00; font: inherit; font-size: 11.5px; cursor: pointer }
 .warnbox .wa button:hover { background: #fff8e1 }
 .foot { border-top: 1px solid #dcdcde; padding-top: 8px; display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px }
-.foot a { color: #2271b1 }
+.foot a { color: var(--mmi-accent) }
 @media (prefers-reduced-motion: no-preference) { .part, button.btn { transition: background-color .12s } }
 `;
 
@@ -1317,14 +1317,16 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 
 	/* ── Drawing ───────────────────────────────────────────────────────── */
 
+	// The extension's colours (theme.js, through the bridge), the mapper's own rules, and the dock controls' (dock.js).
+	const STYLE = ( ( BRIDGE.theme || window.__mmiExtTheme || {} ).CSS || '' ) + CSS + ( BRIDGE.dock ? BRIDGE.dock.CSS : '' );
 	const host = h( 'div', { id: 'mmpt-live-mapper' } );
 	const root = host.attachShadow( { mode: 'open' } );
 	try {
 		const sheet = new CSSStyleSheet();
-		sheet.replaceSync( CSS + ( BRIDGE.dock ? BRIDGE.dock.CSS : '' ) );
+		sheet.replaceSync( STYLE );
 		root.adoptedStyleSheets = [ sheet ]; // not subject to the page's style-src policy
 	} catch ( e ) {
-		root.append( h( 'style', { text: CSS + ( BRIDGE.dock ? BRIDGE.dock.CSS : '' ) } ) );
+		root.append( h( 'style', { text: STYLE } ) );
 	}
 	const layer = h( 'div', { class: 'layer' } );
 	const tip = h( 'div', { class: 'tip', hidden: true } ); // over the outlines' labels and the panel: it says what the pointer is on

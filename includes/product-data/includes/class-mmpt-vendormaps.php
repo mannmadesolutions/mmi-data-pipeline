@@ -2321,6 +2321,7 @@ class VendorMaps {
 		}
 		$fields = $type ? (array) $type['fields'] : $row['fields'];
 		$before = $fields[ $field ] ?? null;
+		$own    = $type ? ( $type['fields'][ $field ] ?? null ) : null; // the layout's own pick before (none: it read the site's)
 		$sel    = trim( (string) preg_replace( '/\s+/', ' ', $sel ) );
 		if ( $sel === '' ) {
 			unset( $fields[ $field ] );
@@ -2355,6 +2356,7 @@ class VendorMaps {
 			}
 			if ( $type ) {
 				MapTypes::set_part( $host, (string) $type['type_key'], $field, $fields[ $field ] ?? null );
+				PartHistory::record( $host, 'layout', (array) ( MapTypes::layout_pages( $host )[ $layout ]['sig'] ?? [] ), $field, $own, $fields[ $field ] ?? null );
 			}
 			return self::get( $host );
 		}
@@ -2366,8 +2368,28 @@ class VendorMaps {
 		}
 		if ( wp_json_encode( $before ) !== wp_json_encode( $fields[ $field ] ?? null ) ) {
 			self::remember( $host, $field, $before );
+			PartHistory::record( $host, 'site', null, $field, $before, $fields[ $field ] ?? null );
 		}
 		return self::save_fields( $host, $row, $fields, $field );
+	}
+
+	/**
+	 * Put the site's part back to $part as it was kept (null: no pick), untested: PartHistory's Undo and Redo, which
+	 * restore a pick that was tested when it was made. @return array|\WP_Error the site's map
+	 */
+	public static function put_part( string $host, string $field, ?array $part ) {
+		$row = self::get( $host );
+		if ( ! $row ) {
+			return new \WP_Error( 'mmpt_map', 'This site has no map.' );
+		}
+		$fields = $row['fields'];
+		if ( $part ) {
+			$fields[ $field ] = $part;
+		} else {
+			unset( $fields[ $field ] );
+		}
+		self::audit( 'vendor_maps.part_put', $row['host'], [ 'field' => $field, 'sel' => (string) ( $part['sel'] ?? '' ) ] );
+		return self::save_fields( $row['host'], $row, $fields, $field ) ?? new \WP_Error( 'mmpt_map', 'The map couldn’t be saved.' );
 	}
 
 	/** A pick on one of the part's kept pages, into $was: that page's pick is replaced, the others stay. @return array|\WP_Error */
@@ -2487,11 +2509,13 @@ class VendorMaps {
 		$all[ $h ] = $list;
 		update_option( self::HISTORY_OPTION, $all, false );
 		$fields = $row['fields'];
+		$was    = $fields[ $field ] ?? null;
 		if ( is_array( $before ) && ! empty( $before['sel'] ) ) {
 			$fields[ $field ] = $before;
 		} else {
 			unset( $fields[ $field ] );
 		}
+		PartHistory::record( $h, 'site', null, $field, $was, $fields[ $field ] ?? null ); // the mapper's Undo is a change the panel can redo or undo
 		self::audit( 'vendor_maps.part_undo', $h, [ 'field' => $field, 'restored' => is_array( $before ) ? (string) ( $before['sel'] ?? '' ) : '' ] );
 		return self::save_fields( $h, $row, $fields, $field );
 	}

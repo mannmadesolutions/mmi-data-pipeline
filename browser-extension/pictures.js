@@ -110,7 +110,8 @@
 		wall: 'This is the site’s bot check, not its page, so nothing was sent.',
 		reloaded: 'The extension was reloaded. Reload this page, then try again.',
 	};
-	const COLORS = { hover: '#1d2327', pick: '#2271b1' };
+	const COLORS = { hover: '#1d2327', pick: 'var(--mmi-accent)' }; // a box's --c (inside the shadow root, where theme.js's tokens are)
+	const THEME = ( window.__mmiExtTheme || {} ).CSS || ''; // the extension's colours (theme.js)
 	const CSS = `
 		:host { all: initial; }
 		* { box-sizing: border-box; }
@@ -119,12 +120,12 @@
 		.box.hover { border-width: 2px; border-style: dashed; background: rgba(34,113,177,.08); }
 		.box.gallery { border-width: 2px; border-style: dashed; }
 		.tag { position: fixed; left: 0; top: 0; transform: translate(var(--x), var(--y)); padding: 1px 6px; border-radius: 3px; font: 600 11px/16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; background: #50575e; white-space: nowrap; }
-		.tag.video, .tag.other { background: #1d2327; } .tag.have, .tag.duplicate { background: #00a32a; } .tag.maybe { background: #996800; } .tag.new, .tag.sharper { background: #2271b1; } .tag.vetoed { background: #d63638; }
+		.tag.video, .tag.other { background: #1d2327; } .tag.have, .tag.duplicate { background: #646970; } .tag.maybe { background: #996800; } .tag.new, .tag.sharper { background: var(--mmi-accent); } .tag.vetoed { background: #d63638; }
 		.pick .k { display: block; font-size: 11px; text-align: center; color: #50575e; }
 		.gal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 		.chip { position: fixed; left: 0; top: 0; transform: translate(var(--x), var(--y)); display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; pointer-events: auto; z-index: 2147483647; background: #1d2327; color: #fff; border-radius: 16px; box-shadow: 0 4px 14px rgba(0,0,0,.3); font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; white-space: nowrap; }
 		.chip button { min-height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: #fff; color: #1d2327; font: inherit; cursor: pointer; }
-		.chip button.pr { background: #2271b1; color: #fff; }
+		.chip button.pr { background: var(--mmi-accent); color: #fff; }
 		.pick .same { display: block; width: 100%; margin-top: 2px; min-height: 20px; padding: 0; border: 1px solid #996800; border-radius: 3px; background: #fff; color: #996800; font-size: 11px; cursor: pointer; }
 		.box[hidden], [hidden] { display: none !important; }
 		.bar { position: fixed; left: 12px; right: 12px; bottom: 12px; max-height: 46vh; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; pointer-events: auto; z-index: 2147483647; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.22); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -146,10 +147,10 @@
 		.muted { color: #646970; font-size: 12px; }
 		.n { padding: 6px 9px; border-left: 4px solid #dba617; background: #fcf9e8; font-size: 12.5px; }
 		.acts { display: flex; gap: 8px; }
-		button.b { min-height: 30px; padding: 0 12px; border: 1px solid #2271b1; border-radius: 4px; background: #fff; color: #2271b1; font: inherit; font-weight: 500; cursor: pointer; }
-		button.b.pr { background: #2271b1; color: #fff; }
+		button.b { min-height: 30px; padding: 0 12px; border: 1px solid var(--mmi-accent); border-radius: 4px; background: #fff; color: var(--mmi-accent); font: inherit; font-weight: 500; cursor: pointer; }
+		button.b.pr { background: var(--mmi-accent); color: #fff; }
 		button.b:disabled { opacity: .6; cursor: default; }
-		button:focus-visible, input:focus-visible { outline: 2px solid #2271b1; outline-offset: 1px; }
+		button:focus-visible, input:focus-visible { outline: 2px solid var(--mmi-accent); outline-offset: 1px; }
 	`;
 
 	const pickFor = window.__mmiExtPickFor || {};
@@ -433,7 +434,7 @@
 	const bar = el( 'div', 'bar' );
 	bar.setAttribute( 'role', 'dialog' );
 	bar.setAttribute( 'aria-label', MESSAGES.title.replace( '%t', pickFor.title || '' ) );
-	root.append( el( 'style', '', CSS ), layer, chip, bar );
+	root.append( el( 'style', '', THEME + CSS ), layer, chip, bar );
 	document.documentElement.appendChild( host );
 
 	const pool = [];

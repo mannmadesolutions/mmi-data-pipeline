@@ -44,17 +44,17 @@ const ROUTES = 'wp-json/mmpt/v1/';
 const CONNECT_PATH = 'wp-admin/admin.php?page=mmi-product-extension';
 const CONNECT_SLUG = 'mmi-product-extension';
 const BRIDGE_ID = 'mmi-bridge';
-const EXT_PROTOCOL = 13; // ExtBridge::PROTOCOL
+const EXT_PROTOCOL = 14; // ExtBridge::PROTOCOL
 /** What inject may put on a page, in order (map-select.js and live-mapper.js come from mmi-admin's assets/js). */
 const SETS = {
-	mapper: [ 'page-copy.js', 'map-select.js', 'dock.js', 'mapper.js', 'live-mapper.js' ],
-	pictures: [ 'page-copy.js', 'map-select.js', 'pictures.js' ],
+	mapper: [ 'page-copy.js', 'map-select.js', 'theme.js', 'dock.js', 'mapper.js', 'live-mapper.js' ],
+	pictures: [ 'page-copy.js', 'map-select.js', 'theme.js', 'pictures.js' ],
 	send: [ 'send.js' ],
 };
 const FOCUS_MS = 15 * 60 * 1000; // a product Next opened is remembered this long
 /** A map part a step may open the mapper on (VendorMaps::FIELDS' keys). */
 const PARTS = /^[a-z_]{2,20}$/;
-const PANEL_FILES = [ 'page-copy.js', 'dock.js', 'panel.js' ]; // dock.js: where the panels sit (one setting for the panel and the mapper)
+const PANEL_FILES = [ 'page-copy.js', 'theme.js', 'dock.js', 'panel.js' ]; // theme.js: the extension's colours; dock.js: where the panels sit (one setting for the panel and the mapper)
 /** Sites where the owner said no to Chrome's prompt: not asked again from the toolbar (the panel still offers it). */
 let declined = new Set();
 chrome.storage.local.get( 'declined' ).then( ( s ) => {

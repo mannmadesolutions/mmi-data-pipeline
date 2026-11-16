@@ -819,6 +819,10 @@ class SiteGaps {
 		if ( class_exists( 'MMI_Audit_Log' ) ) {
 			\MMI_Audit_Log::record( 'mmi-admin', $undo ? 'vendor_maps.page_none_undo' : 'vendor_maps.page_none', [ 'object_type' => 'product', 'object_id' => (string) $id, 'details' => [ 'host' => $host, 'field' => $f, 'url' => $url, 'products' => $ids ] ] );
 		}
+		$part = (string) array_search( $f, PartHistory::PRODUCT_COLS, true );
+		if ( $part !== '' ) {
+			PartHistory::record( $host, 'productnone', $id, $part, $undo, ! $undo );
+		}
 		$n = count( $ids );
 		return [
 			'state' => $undo ? 'undone' : 'decided',

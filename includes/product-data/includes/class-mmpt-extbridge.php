@@ -76,11 +76,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ExtBridge {
 
 	const SLUG         = 'mmi-product-extension'; // mmi- prefix → the shared library adds body.mmi-page and the suite styling
-	const PROTOCOL     = 13;
+	const PROTOCOL     = 14;
 	/** Protocol 12 asking (LayoutMaps: a layout's map, committed as a whole). */
 	private static bool $v12 = false;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
 	/** Protocol 13 asking (one_list(): a product's parts listed once, for this product or its layout). */
 	private static bool $v13 = false;
+	/** Protocol 14 asking (owner 2026-11-15): every part in one order whatever its outcome, each row a form field with Undo, Redo and "not here"; the re-read a commit waits on as a progress bar; one store link. */
+	private static bool $v14 = false;
 	/** Protocol 13: the groups a part falls in, per scope: [ key, heading, folded ]. */
 	const GROUPS = [
 		'product' => [ [ 'change', 'Will change', false ], [ 'look', 'Needs a look', false ], [ 'done', 'Up to date', true ] ],
@@ -124,7 +126,8 @@ class ExtBridge {
 	const SEARCH_MAX   = 12;
 	const CHECK_MAX    = 60;                      // page pictures one picker check compares with the product's
 	const SITE_CACHE_S = 600;                     // the site section, per site and map stamp (plan §13 S1)
-	const SITE_POLL_MS = 8000;                    // the panel asks again this often while the site's map is started or its layouts grouped
+	const SITE_POLL_MS = 8000;
+	const RECHECK_AGAIN_S = 120;                  // a re-read that stopped part-way is queued again once the runner has been idle this long                    // the panel asks again this often while the site's map is started or its layouts grouped
 	const LAYOUT_S     = HOUR_IN_SECONDS;         // a layout part's plan (what writing it does), per pick and stored pages
 	const REVIEW_MAX   = 300;                     // products a review names per outcome
 	const EXAMPLE_CHARS = 6000;                   // text an example shows per side
@@ -432,6 +435,7 @@ class ExtBridge {
 	public static function panel( string $raw, int $product = 0, array $client = [ 'protocol' => self::PROTOCOL, 'build' => '' ] ): array {
 		self::$v12 = (int) $client['protocol'] >= 12; // the layout's map commits its parts, the site's picks with them
 		self::$v13 = (int) $client['protocol'] >= 13; // the product's parts once, for this product or its layout
+		self::$v14 = (int) $client['protocol'] >= 14; // the parts as a form in one order, with Undo / Redo / not here; the re-read as a bar
 		$own =(int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
 		if ( $own ) {
 			return self::store_panel( $own, $raw, $client );
@@ -648,6 +652,10 @@ class ExtBridge {
 			}
 			$parts[] =[ 'key' => $k, 'tag' => $k === $spart ? sprintf( 'Step %d', $snum ) : '', 'product' => $row ] + ( $l ? [ 'layout' => $l ] : [] );
 		}
+		if ( self::$v14 ) {
+			$parts = self::as_form( $parts, $host, $id, $here, $view, $name );
+			$out['meter'] = self::meter( $parts, $name );
+		}
 		$out['parts']  = $parts;
 		$out['scopes'] = [ [ 'key' => 'product', 'label' => 'This product' ] ];
 		$out['groups'] = self::GROUPS;
@@ -661,6 +669,28 @@ class ExtBridge {
 		$out['title']    = (string) $prod['title'];
 		$out['href']     = (string) ( $prod['href'] ?? $out['href'] );
 		$out['links']    = (array) ( $prod['links'] ?? [] );
+		if ( self::$v14 ) { // owner 2026-11-15: Preview and Open side by side read as one link twice. Open stays; Preview is the review's (what committing makes of it)
+			foreach ( $out['links'] as $k => $l ) {
+				if ( str_starts_with( (string) $l['label'], 'Preview on ' ) ) {
+					$out['commit']['product']['preview'] = [ 'label' => 'Preview it on ' . self::store_host(), 'href' => (string) $l['href'] ];
+					unset( $out['links'][ $k ] );
+				}
+			}
+			$out['links'] = array_values( $out['links'] );
+			if ( $view && ! empty( $view['losses'] ) && isset( $out['commit']['layout'] ) ) {
+				$fix = array_map( static fn( $k ) => VendorMaps::FIELDS[ $k ][0] ?? $k, array_keys( (array) $view['losses'] ) );
+				$out['commit']['layout']['label'] = sprintf( 'Fix %s to commit %s', implode( ' and ', $fix ), $name );
+				$out['commit']['layout']['fix']   = true; // its review says why, part by part
+			}
+			if ( $view && ! empty( $view['recheck'] ) ) {
+				$out['wait'] = self::recheck_wait( $host, (array) $view['recheck'] );
+				$out['poll'] = self::SITE_POLL_MS; // the bar moves as the runner reads
+				if ( isset( $out['commit']['layout'] ) ) {
+					$out['commit']['layout']['wait']  = $out['wait'];
+					$out['commit']['layout']['label'] = sprintf( 'Commit opens after the re-read (%d of %d pages)', $out['wait']['done'], $out['wait']['of'] );
+				}
+			}
+		}
 		$out['subtitle'] = $host . ( $lay ? sprintf( ' · %s, one of its %d pages', $name, (int) $lay['pages'] ) : ( $here ? ' · a layout of its own' : '' ) );
 		$out['undo']     = (array) ( $prod['undo'] ?? [] );
 		if ( ! empty( $prod['busy'] ) ) {
@@ -694,6 +724,140 @@ class ExtBridge {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * Protocol 14 (owner 2026-11-15: "committed sitemapping should remain visible and in order at all times … The product
+	 * meta template is a form which must be brought into compliance"): each part keeps its place whatever its outcome,
+	 * its chip says the outcome, and its row carries Undo, Redo and "not here" for its scope (part_controls()).
+	 */
+	private static function as_form( array $parts, string $host, int $id, ?array $here, ?array $view, string $name ): array {
+		$sig     = $here ? (array) ( MapTypes::layout_pages( $host )[ (int) $here['i'] ]['sig'] ?? [] ) : null;
+		$decided = $id ? get_post_meta( $id, SiteGaps::NONE_META, true ) : [];
+		$decided = is_array( $decided ) ? $decided : [];
+		$cells   = $id ? (array) ( SiteGaps::cells_for( [ $id ] )[ $id ]['cells'] ?? [] ) : [];
+		$outcome = [ 'fills' => 'change', 'look' => 'review', 'done' => 'ok', 'only' => '' ];
+		foreach ( $parts as &$p ) {
+			$k   = (string) $p['key'];
+			$col  = PartHistory::PRODUCT_COLS[ $k ] ?? '';
+			$cell = (string) ( $cells[ $col ][0] ?? '' );
+			if ( $cell === '-' && ( $p['product']['group'] ?? '' ) === 'look' ) { // its page has none of it (decided for the product or its layout): in order, nothing to pick
+				$p['product']['group']  = 'done';
+				$p['product']['status'] = [ 'kind' => 'same', 'word' => 'Not on its page', 'help' => (string) ( $cells[ $col ][3] ?? '' ) ];
+			}
+			$none = null;
+			if ( $col !== '' && isset( $decided[ $col ] ) ) {
+				$none = [ 'label' => 'It is on this product’s page', 'on' => true, 'action' => [ 'kind' => 'pagenone', 'part' => $k, 'undo' => 1 ] ];
+			} elseif ( $col !== '' && in_array( $cell, SiteGaps::EMPTY, true ) ) {
+				$none = [ 'label' => 'Not on this product’s page', 'action' => [ 'kind' => 'pagenone', 'part' => $k ] ];
+			}
+			$p['product']['ctl'] = self::part_controls( $host, $k, $sig, $id, $none );
+			if ( isset( $p['layout'] ) ) {
+				$l    = &$p['layout'];
+				$also = $l['also'] ?? null;
+				unset( $l['also'] );
+				$l['ctl'] = self::part_controls( $host, $k, $sig, $id, $also ? [ 'label' => $also['label'] === 'Not on this layout' ? sprintf( 'Not on %s’s pages', $name ) : sprintf( 'It is on %s’s pages', $name ), 'on' => ! empty( $also['action']['undo'] ), 'action' => $also['action'] ] : null );
+				$g = (string) ( $l['group'] ?? '' );
+				if ( isset( $outcome[ $g ] ) ) {
+					$n           = (int) ( $view['parts'][ $k ]['counts']['adds'] ?? 0 );
+					$word        = [ 'fills' => sprintf( 'Fills %d', $n ), 'look' => 'Needs a pick', 'done' => ( $view['parts'][ $k ]['source'] ?? '' ) === 'none' ? 'Not on its pages' : 'Nothing to fill', 'only' => 'This product only' ][ $g ];
+					$l['source'] = (string) ( $l['status']['word'] ?? '' ); // General reader / Picked …: the row's line says it too
+					$l['status'] = [ 'kind' => $outcome[ $g ], 'word' => $word, 'help' => (string) ( $l['status']['help'] ?? '' ) ];
+				}
+				if ( ! empty( $view['losses'][ $k ] ) ) { // the commit waits on this part: its row says why, and what to do
+					$l['group']  = 'look';
+					$l['status'] = [ 'kind' => 'missing', 'word' => 'Fix it to commit', 'help' => (string) $view['losses'][ $k ] . ( empty( $l['ctl']['undo']['off'] ) ? ' Undo puts back the pick before this one.' : '' ) ];
+				}
+				unset( $l );
+			}
+		}
+		unset( $p );
+		return $parts;
+	}
+
+	/** Protocol 14: how much of the form is in order, per scope: [ scope => { ok, of, text } ]. */
+	private static function meter( array $parts, string $name ): array {
+		$count = static function ( string $scope ) use ( $parts ): array {
+			$n = [];
+			foreach ( $parts as $p ) {
+				if ( isset( $p[ $scope ] ) ) {
+					$g       = (string) ( $p[ $scope ]['group'] ?? '' );
+					$n[ $g ] = ( $n[ $g ] ?? 0 ) + 1;
+				}
+			}
+			return $n;
+		};
+		$pr  = $count( 'product' );
+		$of  = array_sum( $pr );
+		$out = [
+			'product' => [
+				'ok'   => $of - (int) ( $pr['look'] ?? 0 ),
+				'of'   => $of,
+				'text' => implode(
+					' · ',
+					array_filter(
+						[
+							sprintf( '%d of %d parts in order', $of - (int) ( $pr['look'] ?? 0 ), $of ),
+							! empty( $pr['change'] ) ? sprintf( '%d change when you commit', $pr['change'] ) : '',
+							! empty( $pr['look'] ) ? sprintf( '%d %s a look', $pr['look'], $pr['look'] === 1 ? 'needs' : 'need' ) : '',
+						]
+					)
+				),
+			],
+		];
+		$ly = $count( 'layout' );
+		if ( $ly ) {
+			$fix           = count( array_filter( $parts, static fn( $p ) => ( $p['layout']['status']['kind'] ?? '' ) === 'missing' ) ); // a pick the commit waits on
+			$pick          = (int) ( $ly['look'] ?? 0 ) - $fix;
+			$of            = array_sum( $ly ) - (int) ( $ly['only'] ?? 0 ); // a part picked for each product isn't the layout's to set
+			$ok            = $of - (int) ( $ly['look'] ?? 0 );
+			$out['layout'] = [
+				'ok'   => $ok,
+				'of'   => $of,
+				'text' => implode(
+					' · ',
+					array_filter(
+						[
+							sprintf( '%d of %d of %s’s parts set', $ok, $of, $name ),
+							$fix ? sprintf( '%d to fix before it commits', $fix ) : '',
+							$pick > 0 ? sprintf( '%d %s a pick, or “not on its pages”', $pick, $pick === 1 ? 'needs' : 'need' ) : '',
+						]
+					)
+				),
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * Protocol 14: the re-read a layout's commit waits on, as the panel's progress bar says it (owner 2026-11-15: "Why not?
+	 * What needs to happen …? What's happening in the background? … show me a progress bar"). A re-read that stopped part
+	 * way (the runner's time ran out, or the server was busy and nothing is queued) is queued again here.
+	 */
+	private static function recheck_wait( string $host, array $re ): array {
+		$rs    = VendorMaps::runner_state();
+		$ended = $rs['finished_at'] !== '' ? time() - (int) strtotime( $rs['finished_at'] . ' UTC' ) : PHP_INT_MAX;
+		$again = ! $rs['running'] && ! $rs['waiting'] && $ended > self::RECHECK_AGAIN_S; // not every poll: a page that won't read fresh would read the site over and over
+		if ( $again ) {
+			VendorMaps::queue( 'refresh', $host );
+		}
+		$note = (string) $rs['note'];
+		$now  = match ( true ) {
+			$again                               => 'It had stopped part-way, so it was started again just now.',
+			str_starts_with( $note, 'waiting' )  => 'Waiting for the server to be less busy: it goes on by itself.',
+			$rs['running'] && $note !== ''       => 'Reading now.',
+			$rs['waiting'] > 0                   => sprintf( 'Queued: %d %s ahead of it.', $rs['waiting'], $rs['waiting'] === 1 ? 'job' : 'jobs' ),
+			default                              => 'Starting.',
+		};
+		$of = max( 1, (int) $re['of'] );
+		return [
+			'title' => 'Reading the site’s pages again',
+			'why'   => sprintf( 'A pick changed how this site’s pages are read, so its %d stored pages are read again with the map as it is now. Commit opens when that’s done, so its review shows what committing really writes. Nothing for you to do: this panel follows it.', $of ),
+			'done'  => $of - (int) $re['left'],
+			'of'    => $of,
+			'left'  => (int) $re['left'],
+			'now'   => $now,
+		];
 	}
 
 	/** The panel on another page of a choice bundle's list ("…?…[page]=2"): its list section only. null when no choice bundle lists here. */
@@ -1670,11 +1834,14 @@ class ExtBridge {
 		$host  = VendorMaps::host( $url );
 		$lay   = MapTypes::layout_of( $host, $url );
 		$panel = static fn() => self::panel( $url, (int) $r->get_param( 'product' ), self::client( $r ) );
+		$op    = sanitize_key( (string) $r->get_param( 'op' ) );
+		if ( in_array( $op, [ 'undo', 'redo', 'pagenone' ], true ) ) { // protocol 14: a part's row, on any page of the site
+			return self::part_op( $r, $url, $host, $lay, $op, $panel );
+		}
 		if ( ! $lay || (int) $lay['pages'] < 2 || (int) $lay['i'] !== (int) $r->get_param( 'layout' ) ) {
 			return new \WP_REST_Response( [ 'message' => 'The site’s pages were grouped again since the panel showed this layout: look at it again.', 'panel' => $panel() ], 409 );
 		}
 		$name = 'Layout ' . self::letter( (int) $lay['i'] );
-		$op   = sanitize_key( (string) $r->get_param( 'op' ) );
 		if ( $op === 'none' ) {
 			$part = sanitize_key( (string) $r->get_param( 'part' ) );
 			$undo = (bool) $r->get_param( 'undo' );
@@ -1707,6 +1874,64 @@ class ExtBridge {
 			? sprintf( ' Filling %d of its products now (their pages read %d, pictures %d); Makers → Fill → Last fills lists it, with Undo.', $res['fills'], $res['scrape'], $res['pictures'] )
 			: ( ! $res['writes'] ? ' Nothing was written: writing from vendor pages is switched off (Product Data → Applying).' : ' Its products already have what its pages give.' );
 		return rest_ensure_response( [ 'message' => sprintf( '%s’s map is committed: its %d products’ pages read with it.', $name, $res['products'] ) . $wrote, 'panel' => $panel() ] );
+	}
+
+	/**
+	 * Protocol 14: a part's row undoes or redoes the newest change this page reads it through (PartHistory), or says the
+	 * part isn't on this product's page (or is, undo). Answers with what happened and the panel as it is now.
+	 */
+	private static function part_op( \WP_REST_Request $r, string $url, string $host, ?array $lay, string $op, callable $panel ): \WP_REST_Response {
+		$part = sanitize_key( (string) $r->get_param( 'part' ) );
+		$id   = absint( $r->get_param( 'product' ) );
+		if ( ! isset( VendorMaps::FIELDS[ $part ] ) ) {
+			return new \WP_REST_Response( [ 'message' => 'Unknown part.' ], 400 );
+		}
+		$label = VendorMaps::FIELDS[ $part ][0];
+		$sig   = $lay ? (array) ( $lay['sig'] ?? MapTypes::layout_pages( $host )[ (int) $lay['i'] ]['sig'] ?? [] ) : null;
+		$dry   = ! empty( $r->get_param( 'dry' ) );
+		if ( $op === 'pagenone' ) {
+			$col  = PartHistory::PRODUCT_COLS[ $part ] ?? '';
+			$undo = (bool) $r->get_param( 'undo' );
+			if ( $col === '' || ! $id ) {
+				return new \WP_REST_Response( [ 'message' => 'That part can’t be marked for one product.' ], 400 );
+			}
+			if ( $dry ) {
+				return rest_ensure_response( [ 'dry' => true, 'message' => sprintf( 'Checked, nothing changed: %s would be marked %s this product’s page.', $label, $undo ? 'on' : 'not on' ) ] );
+			}
+			$res = SiteGaps::decide_none( $host, $id, $col, $undo );
+			return $res['state'] === 'error'
+				? new \WP_REST_Response( [ 'message' => (string) $res['note'], 'panel' => $panel() ], 409 )
+				: rest_ensure_response( [ 'message' => (string) $res['note'], 'panel' => $panel() ] );
+		}
+		$redo = $op === 'redo';
+		if ( $dry ) {
+			$e = PartHistory::state( $host, $part, $sig, $id )[ $redo ? 'redo' : 'undo' ];
+			return $e
+				? rest_ensure_response( [ 'dry' => true, 'message' => sprintf( 'Checked, nothing changed: %s would put back %s.', $redo ? 'Redo' : 'Undo', $e['said'] ) ] )
+				: new \WP_REST_Response( [ 'dry' => true, 'message' => $redo ? 'Nothing to redo for this part.' : 'Nothing to undo for this part.' ], 409 );
+		}
+		$res = PartHistory::step( $host, $part, $sig, $id, $redo );
+		return is_wp_error( $res )
+			? new \WP_REST_Response( [ 'message' => $res->get_error_message(), 'panel' => $panel() ], 409 )
+			: rest_ensure_response( [ 'message' => $res . ' The site’s pages are read again with it: a commit waits for that.', 'panel' => $panel() ] );
+	}
+
+	/**
+	 * Protocol 14: a part's row as a form field. `ctl`: Undo and Redo (PartHistory, the newest change this page reads the
+	 * part through), and "not here" for the scope ($none: the action, or null when the part can't be marked).
+	 */
+	private static function part_controls( string $host, string $part, ?array $sig, int $id, ?array $none ): array {
+		$h   = PartHistory::state( $host, $part, $sig, $id );
+		$ctl = [];
+		foreach ( [ 'undo' => 'Undo', 'redo' => 'Redo' ] as $way => $word ) {
+			$ctl[ $way ] = $h[ $way ]
+				? [ 'label' => $word, 'help' => sprintf( '%s %s', $word, $h[ $way ]['said'] ), 'action' => [ 'kind' => 'partstep', 'op' => $way, 'part' => $part ] ]
+				: [ 'label' => $word, 'help' => $way === 'undo' ? 'Nothing to undo: no change to this part was kept.' : 'Nothing to redo.', 'off' => true ];
+		}
+		if ( $none ) {
+			$ctl['none'] = $none;
+		}
+		return $ctl;
 	}
 
 	/* ── The site's map, step by step (protocol 11) ─────────────────────── */
@@ -2465,6 +2690,7 @@ class ExtBridge {
 				return new \WP_REST_Response( [ 'message' => 'This layout has no pick of its own for that part.' ], 409 );
 			}
 			MapTypes::set_part( $host, (string) $t['type_key'], $field, null );
+			PartHistory::record( $host, 'layout', (array) ( MapTypes::layout_pages( $host )[ $i ]['sig'] ?? [] ), $field, $t['fields'][ $field ], null );
 		} else {
 			$res = VendorMaps::drop_kept( $host, $field, $url ) ?? VendorMaps::set_field( $host, $field, '', '' );
 			if ( is_wp_error( $res ) ) {
