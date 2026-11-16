@@ -63,6 +63,7 @@ final class ProductPreview {
 	const FAKE_SIZE  = 800;        // their width and height: the store's standard picture
 	const SHOWN      = [ 'fill', 'replace', 'refresh', 'maker', 'proposal', 'merge' ]; // actions the product page view applies
 	const SCRAPE_WAIT = 600; // seconds a Scrape now in the server's browser, or a write, may take before it counts as failed
+	const STALE_S     = DAY_IN_SECONDS; // a stored copy this old is read again when our product page's panel opens (read_if_stale())
 	const WRITE_WAIT  = 300; // seconds a write may take before it counts as not finished: the writer can die before it can say so
 	const WRITE_META  = '_mmpt_map_write'; // the product's last write from the editor (write()): what changed, for undo_write()
 
@@ -306,6 +307,31 @@ final class ProductPreview {
 			);
 		}
 		return self::text_sig( $html );
+	}
+
+	/**
+	 * Our product page's panel opening on a product whose stored copy is a day old or more, with no read of it today:
+	 * its page read again by a background runner (one process, never while the server is busy), so the panel shows what
+	 * it gives now (owner 2026-11-16). A copy from the person's browser outlives a read that gives less (PageStore::get()).
+	 * @return array|null the running state (scraped()), or null when nothing was started
+	 */
+	public static function read_if_stale( string $host, int $id ): ?array {
+		$url = self::page_url( $host, $id );
+		if ( $url === '' || self::scraped( $host, $id ) || PageStore::server_busy() ) {
+			return null;
+		}
+		$row = PageStore::row( $url );
+		if ( $row && strtotime( (string) $row['fetched_at'] . ' UTC' ) > time() - self::STALE_S ) {
+			return null;
+		}
+		$key   = self::scraped_key( $host, $id );
+		$state = [ 'state' => 'running', 'at' => current_time( 'mysql', true ) ];
+		set_transient( $key, $state, DAY_IN_SECONDS ); // also what keeps it to one read a day
+		if ( ! Scraper::spawn( 'mmpt maps scrape-now ' . VendorMaps::host( $host ) . ' ' . $id, 'maps-runner.log' ) ) {
+			delete_transient( $key );
+			return null;
+		}
+		return $state;
 	}
 
 	/** The last Scrape now of product $id on $host (scrape()'s answer), or null. */

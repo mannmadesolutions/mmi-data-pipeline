@@ -326,6 +326,30 @@ async function connectPage() {
 	return s ? s.connect : chrome.runtime.getURL( 'connect.html' );
 }
 
+/** Messages that change a product, with the ops of theirs that only read. */
+const CHANGES = { write: [], undo: [], snapshot: [], scrape: [], link: [], veto: [], disclaimer: [], layoutmap: [], pictures: [ 'check' ], mapping: [ 'list', 'brands' ] };
+
+/** An answer that changed the product (a check only changes nothing). */
+function changes( msg, res ) {
+	const reads = CHANGES[ msg.type ];
+	return !! reads && ! reads.includes( String( msg.op || '' ) ) && !! res && res.ok && ! ( res.data && res.data.dry );
+}
+
+/**
+ * The panels open in other tabs on product `id` show it again (owner 2026-11-16: our product page's panel follows a
+ * commit made on the maker's page, and the other way round). Only tabs whose panel is open are asked (panelstate).
+ */
+async function tellOthers( sender, id ) {
+	const from = sender.tab ? sender.tab.id : 0;
+	const open = id > 0 ? await chrome.storage.session.get( null ).catch( () => ( {} ) ) : {};
+	for ( const [ key, v ] of Object.entries( open ) ) {
+		const tabId = Number( ( /^panel(\d+)$/.exec( key ) || [] )[ 1 ] );
+		if ( tabId && tabId !== from && v && v.open ) {
+			chrome.scripting.executeScript( { target: { tabId }, func: ( p ) => window.__mmiExtPanel && window.__mmiExtPanel.changed && window.__mmiExtPanel.changed( p ), args: [ id ] } ).catch( () => {} );
+		}
+	}
+}
+
 /** Messages from the extension's own scripts: bridge.js on the store, connect.html, and panel.js on the page the button was clicked on. */
 chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 	if ( sender.id !== chrome.runtime.id || ! msg || typeof msg.type !== 'string' ) {
@@ -343,7 +367,7 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 			}
 			return status();
 		},
-		page: async () => api( 'ext/page', { url: String( msg.url || '' ), product: Number( msg.product ) || ( await takeFocus( sender, String( msg.url || '' ) ) ), site: msg.site ? 1 : 0, look: msg.look ? 1 : 0 } ),
+		page: async () => api( 'ext/page', { url: String( msg.url || '' ), product: Number( msg.product ) || ( await takeFocus( sender, String( msg.url || '' ) ) ), site: msg.site ? 1 : 0 } ),
 		scrape: () => api( 'ext/scrape', { url: String( msg.url || '' ), product: Number( msg.product ) || 0 } ),
 		snapshot: () => api( 'ext/snapshot', { url: String( msg.url || '' ), html: String( msg.html || '' ), product: Number( msg.product ) || 0 } ),
 		map: () => api( 'ext/map', { url: String( msg.url || '' ), op: String( msg.op || '' ), field: String( msg.field || '' ), sel: String( msg.sel || '' ), mode: String( msg.mode || '' ), html: String( msg.html || '' ), warn: String( msg.warn || '' ), where: String( msg.where || '' ), layout: Number.isInteger( msg.layout ) ? msg.layout : '', lines: ( msg.lines || [] ).slice( 0, 20 ).map( String ), offset: Number( msg.offset ) || 0, proposal: Number( msg.proposal ) || 0, decision: String( msg.decision || '' ) } ),
@@ -382,7 +406,12 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 	if ( ! run ) {
 		return false;
 	}
-	Promise.resolve( run() ).then( reply, () => reply( { ok: false, data: { message: MESSAGES.offline } } ) );
+	Promise.resolve( run() ).then( ( res ) => {
+		reply( res );
+		if ( changes( msg, res ) ) {
+			tellOthers( sender, Number( msg.product ) );
+		}
+	}, () => reply( { ok: false, data: { message: MESSAGES.offline } } ) );
 	return true; // the answer comes later
 } );
 

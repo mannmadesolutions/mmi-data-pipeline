@@ -558,7 +558,7 @@
 
 	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
 	// pick (protocol 11): a map step opened this page for one of its parts, so the mapper opens on it once the panel is drawn.
-	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', field: '', steps: false, panel: null, more: false, key: false, shown: '', reviews: {}, out: {}, outFor: 0 };
+	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', field: '', steps: false, panel: null, more: false, key: false, shown: '', reviews: {}, out: {}, outFor: 0, stale: false };
 
 	/** Open or closed, folded or not: the service worker keeps it for this tab, and puts the panel back on the next page. */
 	const report = () => chrome.runtime.sendMessage( { type: 'panelstate', open: host.style.display !== 'none', folded: box.hidden } ).catch( () => {} );
@@ -600,7 +600,6 @@
 		}
 		if ( location.href !== state.href ) {
 			state.href = location.href;
-			state.look = false;
 			state.base = '';
 			state.product = 0;
 			forgetReviews();
@@ -635,6 +634,20 @@
 		refresh() {
 			forgetReviews();
 			load( true );
+		},
+		/**
+		 * A commit or a stored copy in another tab changed product `id` (owner 2026-11-16: our product page follows a
+		 * commit on the maker's page). A review open here is left alone and the panel follows when it's closed.
+		 */
+		changed( id ) {
+			if ( host.style.display === 'none' || ! id || id !== state.product ) {
+				return;
+			}
+			if ( state.shown ) {
+				state.stale = true;
+				return;
+			}
+			window.__mmiExtPanel.refresh();
 		},
 		/** The mapper handed a part over for one-off picks, for this product only. */
 		pick( part ) {
@@ -740,6 +753,10 @@
 		state.shown = '';
 		sheet.hidden = true;
 		markReview();
+		if ( state.stale ) { // another tab changed the product while the review was open
+			state.stale = false;
+			window.__mmiExtPanel.refresh();
+		}
 	}
 
 	/** What the reviews showed no longer holds: a pick was saved, the page changed, a commit went through. */
@@ -2168,7 +2185,6 @@
 			state.reviews.layoutmap.m = panel.commit.layout;
 			drawReview();
 		}
-		state.look = state.look || !! panel.base; // the server opened it on a job: it stays open as the job goes on
 		body.replaceChildren();
 		foot.replaceChildren();
 		if ( extra ) {
@@ -2407,7 +2423,7 @@
 		if ( ! quiet ) {
 			busy( MESSAGES.loading );
 		}
-		const res = await ask( { type: 'page', url: location.href, product: state.product, site: state.site ? 1 : 0, look: state.look ? 1 : 0 } );
+		const res = await ask( { type: 'page', url: location.href, product: state.product, site: state.site ? 1 : 0 } );
 		if ( res && res.ok ) {
 			draw( res.data );
 		} else if ( ! quiet ) {
@@ -2459,10 +2475,6 @@
 
 	async function act( a, b ) {
 		switch ( a.kind ) {
-			case 'look':
-				state.look = true;
-				await working( b, MESSAGES.working, () => load( true ) );
-				break;
 			case 'scrape':
 				answered( await working( b, MESSAGES.working, () => ask( { type: 'scrape', url: location.href, product: a.product } ) ) );
 				break;
