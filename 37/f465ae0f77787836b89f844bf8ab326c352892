@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+shared-lib pass carried from fcb3096, only browser-extension changed since
+ui-check pass carried from fcb3096, only browser-extension changed since
+customer-site pass carried from fcb3096, only browser-extension changed since
+ui-e2e fail exit 1
+page pass 9 features, 12 screenshots; 12 warnings
+release-audit fail 47 dead (dead-ajax 17, dead-constant 9, dead-function 18, dead-js-function 2, dead-private 1), 0 high, 0 new
+review fail 22 open, 2 fixed, 4 not real
