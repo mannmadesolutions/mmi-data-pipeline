@@ -1,3 +1,4 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+ui-e2e pass 288
