@@ -129,6 +129,10 @@
 		allLeftOut: 'Every part is left out',
 		leaveOut: 'Leave out',
 		putIn: 'Put back in',
+		rowLeaveOut: 'Leave it out of the commit',
+		chipLeftOut: 'Left out',
+		rowPutIn: 'Put it back in the commit',
+		rowLeftOut: 'Left out: committing this product won’t touch it. The review shows the same.',
 		leftOutCard: 'Left out: this commit doesn’t touch it.',
 		scopeLabel: 'Show the parts for',
 		stepOf: 'Site map · step %n of %t',
@@ -553,7 +557,7 @@
 
 	// site: the site overview from the start, for a tab opened from Makers' ↗ (sw.js openOverview())
 	// pick (protocol 11): a map step opened this page for one of its parts, so the mapper opens on it once the panel is drawn.
-	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', field: '', steps: false, panel: null, more: false, key: false, shown: '', reviews: {} };
+	const state = { product: 0, poll: 0, timer: 0, site: !! ( window.__mmiExtStart && window.__mmiExtStart.site ), pick: ( window.__mmiExtStart && window.__mmiExtStart.pick ) || null, allowed: true, href: location.href, productFor: 0, scope: 'product', field: '', steps: false, panel: null, more: false, key: false, shown: '', reviews: {}, out: {}, outFor: 0 };
 
 	/** Open or closed, folded or not: the service worker keeps it for this tab, and puts the panel back on the next page. */
 	const report = () => chrome.runtime.sendMessage( { type: 'panelstate', open: host.style.display !== 'none', folded: box.hidden } ).catch( () => {} );
@@ -740,7 +744,17 @@
 	/** What the reviews showed no longer holds: a pick was saved, the page changed, a commit went through. */
 	function forgetReviews() {
 		state.reviews = {};
+		state.out = {};
 		hideReview();
+	}
+
+	/** This product's parts left out of its commit, shared by its rows and its review (owner 2026-11-16: refuse a wrong change where it shows). */
+	function leftOut() {
+		if ( state.outFor !== state.product ) {
+			state.out = {};
+			state.outFor = state.product;
+		}
+		return state.out;
 	}
 
 	/** Shows or hides a review; a look under way goes on while it's hidden, and is shown again as it stands. */
@@ -752,7 +766,7 @@
 		const parts = scope === 'product' ? [ ...( c.writes || [] ) ] : Object.keys( c.parts || {} ); // this product: its changes; many products: every part, each with a pick of their own
 		const key = [ state.product, parts.join() ].join( '|' );
 		if ( ! state.reviews[ scope ] || state.reviews[ scope ].key !== key ) {
-			state.reviews[ scope ] = { scope, key, c, parts, out: {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
+			state.reviews[ scope ] = { scope, key, c, parts, out: scope === 'product' ? leftOut() : {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
 			lookFor( state.reviews[ scope ], false );
 		}
 		showReview( scope );
@@ -1011,6 +1025,9 @@
 			t.addEventListener( 'click', () => {
 				r.out[ p.key ] = ! out;
 				drawReview();
+				if ( r.scope === 'product' ) {
+					draw( state.panel ); // its row says so too
+				}
 			} );
 			h.append( t );
 		}
@@ -1509,10 +1526,11 @@
 		if ( r.tag ) { // protocol 13: the site map's step this part is
 			line.append( el( 'span', 'tag', r.tag ) );
 		}
-		const chip = r.status ? el( 'span', 'chip ' + ( r.status.kind || '' ), r.status.word || '' ) : null;
+		const leftNow = ( r.key || '' ).startsWith( 'product:' ) && state.outFor === state.product && !! state.out[ r.key.slice( 'product:'.length ) ];
+		const chip = leftNow ? el( 'span', 'chip same', MESSAGES.chipLeftOut ) : r.status ? el( 'span', 'chip ' + ( r.status.kind || '' ), r.status.word || '' ) : null;
 		const why = r.status && ( r.status.kind === 'missing' || r.status.kind === 'review' ) && r.status.help ? el( 'div', 'why', r.status.help ) : null;
 		if ( chip ) {
-			chip.title = r.status.help || '';
+			chip.title = leftNow ? MESSAGES.rowLeftOut : r.status.help || '';
 			line.append( chip );
 		}
 		txt.append( line );
@@ -2045,6 +2063,20 @@
 			add( { label: ( r.hint || '' ).split( ' · ' )[ 0 ] || r.label }, 'b pr', ( b ) => act( r.action, b ) );
 		}
 		const ctl = r.ctl || {};
+		const part = ( r.key || '' ).replace( /^product:/, '' );
+		const writes = ( ( ( state.panel || {} ).commit || {} ).product || {} ).writes || [];
+		let left = false;
+		if ( ( r.key || '' ).startsWith( 'product:' ) && writes.includes( part ) ) { // a change this product's commit would write: refused here as in the review
+			left = !! leftOut()[ part ];
+			const t = add( { label: left ? MESSAGES.rowPutIn : MESSAGES.rowLeaveOut }, left ? 'b on' : 'b', () => {
+				leftOut()[ part ] = ! left;
+				draw( state.panel );
+				if ( state.shown === 'product' ) {
+					drawReview();
+				}
+			} );
+			t.setAttribute( 'aria-pressed', String( left ) );
+		}
 		if ( ctl.none && ctl.none.action ) {
 			add( ctl.none, ctl.none.on ? 'b on' : 'b', ( b ) => act( ctl.none.action, b ) );
 		}
@@ -2055,6 +2087,9 @@
 		const where = ( r.hint || '' ).split( ' · ' ).slice( 1 ).join( ' · ' );
 		if ( where ) {
 			box.append( el( 'div', 'hn', where.charAt( 0 ).toUpperCase() + where.slice( 1 ) + '.' ) );
+		}
+		if ( left ) {
+			box.append( el( 'div', 'hs', MESSAGES.rowLeftOut ) );
 		}
 		if ( ctl.note ) { // what Undo and Redo would take back, or why they can't (owner 2026-11-16: greyed buttons said it only in a tooltip)
 			box.append( el( 'div', 'hs', ctl.note ) );

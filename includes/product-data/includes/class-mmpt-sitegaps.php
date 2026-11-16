@@ -156,11 +156,13 @@ class SiteGaps {
 		$rel      = self::relations( $products );
 		$units    = self::units( $products, $rel );
 		$have     = [];
+		$layout   = []; // each page's layout until cluster() groups them again: a re-read must not leave the panel thinking a page has none
 		if ( $units ) {
 			$in = "'" . implode( "','", array_keys( $units ) ) . "'";
 			// audit-ok: $in is md5 hex page keys from SiteGaps::key()
-			foreach ( $wpdb->get_results( 'SELECT page_key, content_hash, stamp FROM ' . self::table() . " WHERE page_key IN ({$in})", ARRAY_A ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL -- md5 hex only
-				$have[ $r['page_key'] ] = $r['stamp'] . '|' . $r['content_hash'];
+			foreach ( $wpdb->get_results( 'SELECT page_key, content_hash, stamp, layout FROM ' . self::table() . " WHERE page_key IN ({$in})", ARRAY_A ) as $r ) { // phpcs:ignore WordPress.DB.PreparedSQL -- md5 hex only
+				$have[ $r['page_key'] ]    = $r['stamp'] . '|' . $r['content_hash'];
+				$layout[ $r['page_key'] ] = (int) $r['layout'];
 			}
 		}
 		$read    = 0;
@@ -183,7 +185,7 @@ class SiteGaps {
 					'url'          => mb_substr( $u['url'], 0, 500 ),
 					'content_hash' => $u['hash'],
 					'stamp'        => $stamp,
-					'layout'       => -1,
+					'layout'       => $layout[ $key ] ?? -1,
 					'sig'          => wp_json_encode( $reading['sig'] ),
 					'reading'      => wp_json_encode( array_diff_key( $reading, [ 'sig' => 1 ] ) ),
 					'read_at'      => current_time( 'mysql', true ),
