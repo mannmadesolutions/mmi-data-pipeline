@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+shared-lib pass 8 scenarios
+ui-check pass 158
+ui-e2e fail exit 1
+customer-site pass 27 ok on 7ffd565 as installed
+page pass 9 features, 12 screenshots; 12 warnings
+release-audit fail 47 dead (dead-ajax 17, dead-constant 9, dead-function 18, dead-js-function 2, dead-private 1), 0 high, 0 new
+review fail 27 open, 5 fixed, 6 not real
