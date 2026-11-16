@@ -394,7 +394,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 
 	const state = {
 		map: null, products: 0, host: location.hostname.replace( /^www\./, '' ), part: fromRow ? BRIDGE.part : 'pictures', focus: fromRow, greeted: false, ref: 'delivered',
-		picking: fromRow, mode: 'add', proposals: {}, picks: [], stack: [], sel: '', custom: false, matched: [], extras: [], alike: [], layout: null, scope: 'site', dismissed: new Set(), dismissedFor: '', shown: {}, flash: null, shell: null, storedAt: '',
+		picking: fromRow, mode: 'add', proposals: {}, picks: [], stack: [], sel: '', custom: false, matched: [], extras: [], alike: [], layout: null, scope: 'site', dismissed: new Set(), dismissedFor: '', shown: {}, flash: null, shell: null, storedAt: '', testedSel: '',
 		hover: null, tipText: '', browse: false, effect: null, showSaved: false, saved: [], pageMode: false, away: '',
 		note: { text: MESSAGES.connecting, type: 'info', busy: true }, test: null, busy: false, editTimer: 0,
 	};
@@ -533,8 +533,11 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		return live >= THRESHOLDS.shellMinChars && n < live * THRESHOLDS.shellShare ? { n, live } : null;
 	}
 
-	/** After Test or Save stored this page as shown: the reader's copy is asked for again. */
+	/** After Test or Save stored this page as shown: an empty copy is asked for again (a good one stays as it was). */
 	function rereadCopy() {
+		if ( deliveredState !== 'shell' ) {
+			return;
+		}
 		delivered = null;
 		deliveredState = '';
 		state.shell = null;
@@ -742,8 +745,10 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		const alike = ( el ) => state.picks.some( ( p ) => item( p ).parentElement === item( el ).parentElement && p.nodeName === el.nodeName && p.className === el.className );
 		state.alike = extras.filter( alike );
 		state.extras = extras.filter( ( el ) => ! alike( el ) );
-		state.test = null;
-		state.check = null;
+		if ( state.sel !== state.testedSel || ! state.sel ) { // a test answers for its selector: it stands while that does
+			state.test = null;
+			state.check = null;
+		}
 		effectSoon();
 	}
 
@@ -1282,11 +1287,13 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		state.busy = true;
 		state.note = { text: MESSAGES.testing, type: 'info', busy: true };
 		render();
-		const r = await ask( 'test', { field: state.part, sel: state.sel, mode: mode(), html: pageHtml(), ...scoped() } );
+		const sel = state.sel;
+		const r = await ask( 'test', { field: state.part, sel, mode: mode(), html: pageHtml(), ...scoped() } );
 		state.busy = false;
 		if ( r.ok ) {
 			rereadCopy(); // the test stored this page as shown
 			state.test = r.data;
+			state.testedSel = sel;
 			state.note = { text: fill( scoped().layout === undefined ? MESSAGES.tested : MESSAGES.testedLayout, { ...r.data, l: state.layout && state.layout.letter } ), type: r.data.found ? 'success' : 'warning' };
 		} else {
 			state.note = { text: r.message, type: 'error' };
