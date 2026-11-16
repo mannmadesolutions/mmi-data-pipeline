@@ -37,7 +37,8 @@
  *
  * What is saved stays in sight (owner 2026-11-04: "the saved settings are not displayed, making the process confusing"):
  * a part with a saved pick, the layout's own or the site's, opens with it outlined on the page and said in the panel, and
- * Save leaves it there. Hovering a pick in the panel's list outlines it on the page.
+ * Save leaves it there. Hovering a pick in the panel's list, or a saved or proposed selector, outlines what it takes on
+ * the page (peekOn()), and while picking the page scrolls to it when it's out of sight.
  *
  * The extension's panel rows (protocol 6) open the mapper on their part (BRIDGE.part), picking from the first moment,
  * before the server has answered, so a click never reaches the page (owner 2026-11-03: "I was expecting to be able to
@@ -69,7 +70,7 @@
 
 	const PARTS = [ 'pictures', 'description', 'requirements', 'manual', 'videos', 'audio', 'disclaimer', 'contents' ]; // VendorMaps::FIELDS without NOT_MAPPED (features, version: the generic reader); contents names other products (RELATIONS)
 	const COLORS = { pictures: '#2f7de1', description: '#2e7d32', features: '#00897b', requirements: '#8d6e63', version: '#5c6bc0', manual: '#c2185b', videos: '#e65100', audio: '#6a1b9a', disclaimer: '#ad5a00', contents: '#455a64', extra: '#d63638', hover: '#1d2327' };
-	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, thumbs: 4, minPicture: 300, spots: 12, flashMs: 1800, lineChars: 200, measure: 60 };
+	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, snapMs: 250, thumbs: 4, minPicture: 300, spots: 12, flashMs: 1800, lineChars: 200, measure: 60 };
 	const THRESHOLDS = { bannerAspect: 1.6, bannerShare: 0.6, menuShare: 0.6, menuItemChars: 40 };
 	const KEYS = { wider: 'p', narrower: 'c', browse: 'b', stop: 'Escape' };
 	const ADMIN_PATH = '/wp-admin/admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=maps'; // + &wb_site=<host>: the Workbench's Site maps, this site open
@@ -263,8 +264,9 @@
 .linkbtn:hover { text-decoration: underline }
 .effect { padding: 7px 9px; border-left: 4px solid var(--mmi-accent); background: var(--mmi-accent-soft); font-size: 12.5px }
 .savedbox { padding: 7px 9px; border: 1px solid var(--mmi-accent-track); border-radius: 4px; background: var(--mmi-accent-soft); display: grid; gap: 3px }
-.box.hover { border-width: 2px; background: rgba(47,125,225,.08) }
-.tip { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none; transform: translate(var(--x), var(--y)); max-width: 380px; background: #1d2327; color: #fff; font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word }
+/* The hovered element: a dark line between two white ones, seen on a light page and a dark one alike (owner 2026-11-16, minimal.audio) */
+.box.hover { border-width: 2px; background: rgba(47,125,225,.12); box-shadow: 0 0 0 1px #fff, inset 0 0 0 1px #fff }
+.tip { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none; transform: translate(var(--x), var(--y)); max-width: 380px; background: #1d2327; color: #fff; font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; box-shadow: 0 0 0 1px rgba(255,255,255,.55), 0 4px 14px rgba(0,0,0,.35) }
 .tip[hidden], [hidden] { display: none !important }
 .panel { position: fixed; top: 12px; right: 12px; width: min(var(--mmi-dw, 380px), calc(100vw - 24px)); max-height: calc(100vh - 24px); display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; z-index: 2147483647; background: #fff; color: #1d2327; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; border: 1px solid #c3c4c7; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.3); text-align: left }
 /* Docked as the extension's setting says (dock.js): the side, and the width or height dragged at the inner edge */
@@ -1200,7 +1202,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		return h( 'div', { class: 'inspect' },
 			h( 'b', { text: fill( MESSAGES.inspectHead, { part: partName( p.field ), scope } ) } ),
 			open ? null : h( 'span', { class: 'muted', text: MESSAGES.proposalDone[ p.status ] || p.status } ),
-			h( 'code', { text: p.sel } ),
+			peekOn( h( 'code', { text: p.sel } ), () => topOnly( SEL.matchAll( document, p.sel ) || [] ) ),
 			h( 'div', { class: 'muted', text: fill( MESSAGES.inspectFound, p ) } ),
 			p.note ? h( 'div', { text: fill( MESSAGES.inspectNote, { n: p.note } ) } ) : null,
 			...onThisPage( p ),
@@ -1402,8 +1404,8 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		if ( state.picking && state.hover ) {
 			list.push( [ state.hover, 'hover', COLORS.hover ] );
 		}
-		if ( state.peek && state.peek.li.isConnected ) { // a pick hovered in the panel's list
-			list.push( [ state.peek.el, 'hover', COLORS.hover ] );
+		if ( state.peek && state.peek.node.isConnected ) { // a pick or a selector hovered in the panel
+			state.peek.els.forEach( ( el ) => list.push( [ el, 'hover', COLORS.hover ] ) );
 		}
 		return list.slice( 0, LIMITS.boxes );
 	}
@@ -1525,13 +1527,50 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			openTabOf( state.saved[ 0 ] );
 		}
 		effectSoon();
-		const shown = ( el ) => {
-			const r = el.getBoundingClientRect();
-			return r.bottom > 0 && r.top < window.innerHeight;
-		};
-		if ( state.saved.length && ! state.saved.some( shown ) ) {
+		if ( state.saved.length && ! state.saved.some( inView ) ) {
 			state.saved[ 0 ].scrollIntoView( { block: 'center' } );
 		}
+	}
+
+	function inView( el ) {
+		const r = el.getBoundingClientRect();
+		return r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+	}
+
+	/** Its start can be seen: a container picked whole counts as found only where it begins. */
+	function topInView( el ) {
+		const r = el.getBoundingClientRect();
+		return r.top >= 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+	}
+
+	/**
+	 * Hovering a pick or a selector in the panel outlines what it takes on the page, and while picking the page scrolls
+	 * to it when its top edge isn't in sight (owner 2026-11-16: "the hovered 'code' extension element should snap to the
+	 * rendered DOM element"). $els: the elements, or a function finding them as the pointer arrives.
+	 */
+	function peekOn( node, els ) {
+		let snap = 0;
+		node.addEventListener( 'mouseenter', () => {
+			const list = ( typeof els === 'function' ? els() : els ).filter( ( el ) => el && el.isConnected );
+			state.peek = { node, els: list };
+			window.clearTimeout( snap );
+			if ( state.picking ) {
+				snap = window.setTimeout( () => {
+					const shows = list.filter( ( el ) => shownRect( el ) );
+					if ( state.peek && state.peek.node === node && shows.length && ! shows.some( topInView ) ) {
+						const tall = shows[ 0 ].getBoundingClientRect().height > window.innerHeight;
+						shows[ 0 ].scrollIntoView( { block: tall ? 'start' : 'center' } ); // a snap, not a glide; a tall container: its start
+					}
+				}, LIMITS.snapMs ); // a pointer passing over the list doesn't move the page
+			}
+		} );
+		node.addEventListener( 'mouseleave', () => {
+			window.clearTimeout( snap );
+			if ( state.peek && state.peek.node === node ) {
+				state.peek = null;
+			}
+		} );
+		return node;
 	}
 
 	function partRow( k ) {
@@ -1593,13 +1632,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			d.links && d.links.length ? h( 'span', { class: 'muted', text: d.links.map( ( a ) => `${ a.text || MESSAGES.iconLink } ${ fill( MESSAGES.linkTo, { where: a.info ? SEL.linkSaid( a.info ) : a.href } ) }` ).join( ' · ' ) } ) : null,
 			d.videos && d.videos.length ? h( 'span', { class: 'muted', text: d.videos.join( ' · ' ).slice( 0, LIMITS.previewChars ) } ) : null,
 			! d.pictures && ! d.items && ! d.links && ! ( d.videos && d.videos.length ) ? h( 'span', { class: 'muted', text: d.text.slice( 0, LIMITS.previewChars ) } ) : null );
-		li.addEventListener( 'mouseenter', () => {
-			state.peek = { el, li };
-		} );
-		li.addEventListener( 'mouseleave', () => {
-			state.peek = null;
-		} );
-		return li;
+		return peekOn( li, [ el ] );
 	}
 
 	function workArea() {
@@ -1620,7 +1653,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			const own = state.layout && state.layout.own && state.layout.own[ k ] === f;
 			box.append( h( 'div', { class: 'savedbox' },
 				h( 'b', { text: own ? fill( MESSAGES.savedForLayout, { l: state.layout.letter } ) : MESSAGES.savedForSite } ),
-				h( 'code', { text: f.sel } ),
+				peekOn( h( 'code', { text: f.sel } ), () => topOnly( SEL.matchAll( document, f.sel ) || [] ) ),
 				state.showSaved ? h( 'div', { class: 'muted', text: state.saved.length ? fill( MESSAGES.gives, { part: partName( k ), what: SEL.givesLabel( k, SEL.givesOf( k, state.saved ) ) } ) : MESSAGES.savedNone } ) : null ) );
 		}
 		if ( state.proposals[ k ] ) {
