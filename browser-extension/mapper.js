@@ -29,7 +29,7 @@
 		ask( op, payload ) {
 			const page = op === 'hello' ? { html: window.__mmiExtPageHtml() } : {}; // the server finds this page's layout from it when it has no stored copy
 			return chrome.runtime.sendMessage( { type: 'map', op, url: location.href, ...page, ...payload } )
-				.then( ( res ) => ( res && res.ok ? { ok: true, data: res.data } : { ok: false, message: ( res && res.data && res.data.message ) || MESSAGES.failed } ) )
+				.then( ( res ) => ( res && res.ok ? { ok: true, data: res.data } : { ok: false, message: ( res && res.data && res.data.message ) || MESSAGES.failed, data: ( res && res.data ) || {} } ) ) // data: why a save was refused, page by page
 				.catch( () => ( { ok: false, message: MESSAGES.reloaded } ) );
 		},
 		pageHtml: () => window.__mmiExtPageHtml(),

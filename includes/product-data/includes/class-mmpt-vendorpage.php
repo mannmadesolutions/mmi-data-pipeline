@@ -376,7 +376,7 @@ class VendorPage {
 		return $r;
 	}
 
-	private static function dom( string $html, bool $embeds = false ): ?\DOMDocument {
+	private static function dom( string $html, bool $embeds = false, bool $landmarks = false ): ?\DOMDocument {
 		if ( ! class_exists( 'DOMDocument' ) || trim( $html ) === '' ) {
 			return null;
 		}
@@ -400,6 +400,10 @@ class VendorPage {
 			if ( $embeds && $n->nodeName === 'iframe' && preg_match( self::EMBED_SRC, (string) $n->getAttribute( 'src' ) ) ) {
 				$n->nodeValue = ''; // a map's Videos or Audio demos may name it; its fallback words aren't the page's
 				continue;
+			}
+			if ( $landmarks && in_array( $n->nodeName, self::LANDMARKS, true ) && $xp->evaluate( 'boolean(' . VendorMaps::CONTENT_AXIS . ')', $n ) ) {
+				self::$kept_landmarks++;
+				continue; // the product's own box of details, inside the page's content: with_landmarks()
 			}
 			$n->parentNode && $n->parentNode->removeChild( $n );
 		}
@@ -663,7 +667,42 @@ class VendorPage {
 	}
 
 	public static function parse( string $html ): ?\DOMDocument {
-		return self::dom( self::script_content( $html ), true );
+		$doc = self::dom( self::script_content( $html ), true );
+		if ( $doc && preg_match( self::LANDMARK_TAG, $html ) ) {
+			self::$sources      ??= new \WeakMap();
+			self::$sources[ $doc ] = $html;
+		}
+		return $doc;
+	}
+
+	const LANDMARKS    = [ 'header', 'footer', 'aside' ];
+	const LANDMARK_TAG = '/<(?:header|footer|aside)\b/i';
+
+	/** @var \WeakMap<\DOMDocument,string>|null parsed page => its HTML, while the page is in use */
+	private static $sources = null;
+	/** @var \WeakMap<\DOMDocument,\DOMDocument|false>|null parsed page => the same page with its content's landmarks kept */
+	private static $twins = null;
+	/** @var int landmarks the last dom() call kept */
+	private static $kept_landmarks = 0;
+
+	/**
+	 * A page parse()d, with the <header>, <footer> and <aside> inside its content kept (VendorMaps::CONTENT_AXIS): a
+	 * product's own box of details (sicknoiseinstruments.com's Requires / System <aside>, owner 2026-11-16) is the
+	 * product's, and the mapper lets a person pick it. parse() still takes every landmark out, so what maps, layouts and
+	 * drafts already read doesn't change; a pick that finds nothing there is tried here (VendorMaps::doc_matching()).
+	 * Null when the page's content holds none.
+	 */
+	public static function with_landmarks( \DOMDocument $doc ): ?\DOMDocument {
+		if ( ! self::$sources || ! isset( self::$sources[ $doc ] ) ) {
+			return null;
+		}
+		self::$twins ??= new \WeakMap();
+		if ( ! isset( self::$twins[ $doc ] ) ) {
+			self::$kept_landmarks = 0;
+			$twin                 = self::dom( self::script_content( self::$sources[ $doc ] ), true, true );
+			self::$twins[ $doc ]  = $twin && self::$kept_landmarks ? $twin : false;
+		}
+		return self::$twins[ $doc ] ?: null;
 	}
 
 	const EMBED_SRC        = '~youtube(?:-nocookie)?\.com/|youtu\.be/|player\.vimeo\.com/|soundcloud\.com/~i'; // embedded players a map reads: every other frame goes

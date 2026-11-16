@@ -106,7 +106,8 @@ class LiveMapper {
 		$warn = mb_substr( sanitize_text_field( (string) $r->get_param( 'warn' ) ), 0, 300 );
 		$res  = VendorMaps::set_field( $host, $field, $sel, $mode, sanitize_text_field( (string) $r->get_param( 'where' ) ), $src, $warn, 'live', $layout );
 		if ( is_wp_error( $res ) ) {
-			return new \WP_REST_Response( [ 'message' => $res->get_error_message() ], 400 );
+			$why = is_array( $res->get_error_data() ) ? $res->get_error_data() : []; // a pick that reads nothing: the reason, the page read and the test, page by page
+			return new \WP_REST_Response( [ 'message' => $res->get_error_message() ] + array_intersect_key( $why, array_flip( [ 'reason', 'page', 'test' ] ) ), 400 );
 		}
 		if ( class_exists( 'MMI_Audit_Log' ) ) {
 			\MMI_Audit_Log::record( 'mmi-admin', $layout >= 0 ? 'vendor_maps.layout_field' : 'vendor_maps.live', [ 'object_type' => 'vendor_map', 'object_id' => $host, 'details' => [ 'field' => $field, 'mode' => $mode, 'warned' => $warn !== '', 'layout' => $layout, 'via' => 'live' ] ] );

@@ -55,6 +55,7 @@ class VendorMaps {
 	const LOCK         = 'mmpt_maps_runner';
 	const SAMPLE       = 40;   // stored pages a draft reads
 	const TEST_MAX     = 80;   // stored pages a test reads (from a web request too)
+	const ROW_CHARS    = 140;  // characters of what a tested page gave, in the mapper's page-by-page list
 	const MIN_TEXT     = 200;
 	const SHOT_SCRIPT  = 'scripts/product-content/map-sample.js';
 	const SHOT_TIMEOUT = 75;
@@ -1006,6 +1007,23 @@ class VendorMaps {
 	/* ── Evaluating a field on one page ────────────────────────────────── */
 
 	/**
+	 * The parsed page a pick is read on: the page itself, or, when the pick finds nothing on it and finds something
+	 * with the content's own header, footer and aside kept, that one (VendorPage::with_landmarks()). Only ever adds a
+	 * reading where there was none: a pick that already finds something reads what it always did.
+	 */
+	public static function doc_matching( \DOMDocument $doc, string $xp ): \DOMDocument {
+		$hit = static function ( \DOMDocument $d ) use ( $xp ): bool {
+			$n = @( new \DOMXPath( $d ) )->query( $xp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+			return $n && $n->length > 0;
+		};
+		if ( $hit( $doc ) ) {
+			return $doc;
+		}
+		$twin = VendorPage::with_landmarks( $doc );
+		return $twin && $hit( $twin ) ? $twin : $doc;
+	}
+
+	/**
 	 * @return array{found:bool, detail:string, n:int, short:string, urls?:string[]}
 	 */
 	public static function eval_field( string $field, string $sel, string $mode, string $html, string $url, bool $fetch = false, string $src = '' ): array {
@@ -1036,7 +1054,8 @@ class VendorMaps {
 		if ( is_wp_error( $xp ) ) {
 			return $none;
 		}
-		$x = new \DOMXPath( $doc );
+		$doc = self::doc_matching( $doc, $xp );
+		$x   = new \DOMXPath( $doc );
 		if ( $field === 'pictures' ) {
 			$urls  = VendorPage::images_at( $doc, [ $xp ], $url );
 			$label = count( $urls ) . ' picture' . ( count( $urls ) === 1 ? '' : 's' );
@@ -1123,6 +1142,7 @@ class VendorMaps {
 		}
 		$doc = VendorPage::parse( $pg['html'] );
 		$xp  = self::css_to_xpath( (string) $f['sel'] );
+		$doc = $doc && is_string( $xp ) ? self::doc_matching( $doc, $xp ) : $doc;
 		return $doc && is_string( $xp ) ? self::read_part( $k, new \DOMXPath( $doc ), $doc, $xp, $pg['url'] ) : $none;
 	}
 
@@ -1254,6 +1274,7 @@ class VendorMaps {
 			$doc  = VendorPage::parse( $body );
 			$xp   = self::css_to_xpath( $sel );
 			if ( $doc && is_string( $xp ) ) {
+				$doc   = self::doc_matching( $doc, $xp );
 				$nodes = @( new \DOMXPath( $doc ) )->query( $xp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 				foreach ( $nodes ?: [] as $el ) {
 					$part .= (string) $doc->saveHTML( $el );
@@ -1287,6 +1308,7 @@ class VendorMaps {
 		if ( is_wp_error( $xp ) ) {
 			return $out;
 		}
+		$doc   = self::doc_matching( $doc, $xp );
 		$x     = new \DOMXPath( $doc );
 		$nodes = @$x->query( $xp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		if ( ! $nodes ) {
@@ -1506,7 +1528,7 @@ class VendorMaps {
 
 	/**
 	 * A selector on the site's stored pages.
-	 * @return array{found:int, of:int, examples:array<int,array{url:string,detail:string,urls?:string[]}>}
+	 * @return array{found:int, of:int, examples:array<int,array{url:string,detail:string,urls?:string[]}>, rows?:array<int,array{url:string,title:string,found:bool,read:string}>}
 	 */
 	public static function test( string $host, string $field, string $sel, string $mode, int $max = self::TEST_MAX, string $sample = '', string $src = '', ?array $only = null ): array { // $only: these pages only (url → any; one layout's)
 		$pages   = self::pages( $host );
@@ -1526,6 +1548,7 @@ class VendorMaps {
 			}
 			$out['of']++;
 			$r = self::eval_field( $field, $sel, $mode, $html, (string) $p['url'], false, $src );
+			$out['rows'][] = [ 'url' => (string) $p['url'], 'title' => (string) ( $p['title'] ?? '' ), 'found' => (bool) $r['found'], 'read' => mb_substr( (string) ( $r['short'] ?? '' ) !== '' ? (string) $r['short'] : (string) $r['detail'], 0, self::ROW_CHARS ) ]; // page by page, for the mapper's list
 			if ( ! empty( $r['link'] ) ) {
 				$targets[ $r['link'] ] = ( $targets[ $r['link'] ] ?? 0 ) + 1; // one shared page for the whole site, or one per product
 			}
@@ -1590,7 +1613,8 @@ class VendorMaps {
 		if ( ! $doc || ! is_string( $xp ) || $xp === '' ) {
 			return [];
 		}
-		$v = self::read_part( 'contents', new \DOMXPath( $doc ), $doc, $xp, $url );
+		$doc = self::doc_matching( $doc, $xp );
+		$v   = self::read_part( 'contents', new \DOMXPath( $doc ), $doc, $xp, $url );
 		return count( $v ) >= 2 ? $v : [];
 	}
 
@@ -1612,7 +1636,8 @@ class VendorMaps {
 				continue;
 			}
 			++$out['of'];
-			$v = self::read_part( 'contents', new \DOMXPath( $doc ), $doc, $xp, (string) $p['url'] );
+			$doc = self::doc_matching( $doc, $xp );
+			$v   = self::read_part( 'contents', new \DOMXPath( $doc ), $doc, $xp, (string) $p['url'] );
 			if ( count( $v ) >= 2 ) {
 				++$out['found'];
 				$out['names'] += count( $v );
@@ -1657,6 +1682,7 @@ class VendorMaps {
 		if ( ! $doc || is_wp_error( $xp ) ) {
 			return [];
 		}
+		$doc   = self::doc_matching( $doc, $xp );
 		$nodes = @( new \DOMXPath( $doc ) )->query( $xp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		if ( ! $nodes || ! $nodes->length ) {
 			return [];
@@ -2337,13 +2363,7 @@ class VendorMaps {
 			}
 			$t = self::test( $host, $field, $sel, $mode, self::TEST_MAX, '', $src, $only );
 			if ( $t['of'] > 0 && ! $t['found'] ) {
-				return new \WP_Error(
-					'mmpt_map_nothing',
-					$mode === 'page'
-						? sprintf( '%s: nothing found on that page (%s), so it was not saved.', self::FIELDS[ $field ][0], self::source_reading( $src, $sel )['detail'] )
-						: ( $mode === 'sub' ? sprintf( '%s: nothing found on the products\' %s pages read so far, so it was not saved.', self::FIELDS[ $field ][0], $src )
-						: sprintf( '%s: this finds nothing on any of the %d stored pages, so it was not saved. Pick the part again on the stored page, or keep the generic reader.', self::FIELDS[ $field ][0], $t['of'] ) )
-				);
+				return self::nothing_found( $field, $sel, $mode, (string) $src, $t, $layout );
 			}
 			$fields[ $field ] = [ 'sel' => $sel, 'mode' => $mode, 'where' => mb_substr( $where !== '' ? $where : ( ( $fields[ $field ]['mode'] ?? '' ) === $mode ? (string) ( $fields[ $field ]['where'] ?? '' ) : '' ), 0, 200 ), 'source' => 'person', 'found' => $t['found'], 'of' => $t['of'], 'checked_at' => current_time( 'mysql', true ) ] + ( $src !== '' ? [ 'src' => $src ] : [] ) + ( $warn !== '' ? [ 'warn' => mb_substr( $warn, 0, 300 ) ] : [] ) + ( $via !== '' ? [ 'via' => $via ] : [] ) + ( ! empty( $before['live'] ) ? [ 'live' => $before['live'] ] : [] ); // a part in use stays in use with its new picks (as a confirmed map's edit does); a description of where only holds for the same way of reading; warn: what the live mapper flagged and the person saved anyway
 		}
@@ -2371,6 +2391,32 @@ class VendorMaps {
 			PartHistory::record( $host, 'site', null, $field, $before, $fields[ $field ] ?? null );
 		}
 		return self::save_fields( $host, $row, $fields, $field );
+	}
+
+	/**
+	 * Why a pick that reads nothing wasn't saved, naming the page or pages that were read (owner 2026-11-16: "nothing
+	 * found on that page, what page exactly?"). Its data carries the reason, the one page read (mode page) and the
+	 * test, so the mapper lists the pages one by one.
+	 */
+	private static function nothing_found( string $field, string $sel, string $mode, string $src, array $t, int $layout ): \WP_Error {
+		$name = self::FIELDS[ $field ][0];
+		if ( $mode === 'page' ) {
+			$read   = self::source_reading( $src, $sel );
+			$where  = (string) preg_replace( '#^https?://(www\.)?#', '', $src );
+			$reason = ! $read['stored'] ? 'page_unstored' : ( (string) ( $read['part'] ?? '' ) === '' ? 'page_missing' : 'page_empty' );
+			$why    = [
+				'page_unstored' => 'We have no stored copy of that page yet, so there was nothing to read.',
+				'page_missing'  => sprintf( 'What you picked (%s) isn’t in our stored copy of that page.', $sel ),
+				'page_empty'    => 'Your pick is on that page, but nothing in it reads as requirements (an operating system, RAM, CPU or a host program).',
+			][ $reason ];
+			$msg    = sprintf( '%1$s was not saved. This pick is set to give every product one page’s text, so only that page was read: %2$s. %3$s No other page was looked at.', $name, $where, $why );
+			return new \WP_Error( 'mmpt_map_nothing', $msg, [ 'reason' => $reason, 'page' => $src, 'test' => $t ] );
+		}
+		if ( $mode === 'sub' ) {
+			return new \WP_Error( 'mmpt_map_nothing', sprintf( '%s was not saved: nothing found on the products’ %s pages read so far.', $name, $src ), [ 'reason' => 'sub', 'test' => $t ] );
+		}
+		$pages = $layout >= 0 ? sprintf( 'the %d stored pages of layout %s', $t['of'], chr( 65 + $layout ) ) : sprintf( 'the site’s %d stored product pages', $t['of'] );
+		return new \WP_Error( 'mmpt_map_nothing', sprintf( '%s was not saved: this pick finds it on none of %s. Saved, it would replace what the reader finds now with nothing. Pick the part again, or leave it to the general reader.', $name, $pages ), [ 'reason' => 'none', 'test' => $t ] );
 	}
 
 	/**

@@ -151,13 +151,33 @@
 		saved: '%part% saved: found on %found% of %of% stored pages. When the site’s map looks right, confirm it with Fill in Product Data → Site maps.',
 		savedContents: '%part% saved: it names products on %found% of %of% bundle pages. It writes nothing to products. %said%',
 		stop: 'Stop picking',
-		pageMode: 'Use this page’s requirements for every product',
+		give: {
+			head: 'What each product gets',
+			own: 'What its own page says',
+			ownHint: 'The pick is looked for on each product’s page, and each product gets what is found there.',
+			page: 'This page’s text, the same for all',
+			pageHint: 'Only this page is read (%path%). Every product gets what is picked here. For a site that keeps one requirements page for all its products.',
+			pageProduct: 'This is one product’s own page. Its requirements would be given to every product this pick reaches, including products they don’t fit.',
+			instead: 'Read each product’s own page instead',
+		},
+		rows: {
+			head: 'Page by page: found on %found% of %of%',
+			headMissed: 'Page by page: found on %found% of %of%, nothing on %missed%',
+			nothing: 'nothing found',
+			here: 'this page',
+			onePage: 'All %of% pages get the text of one page: %page%',
+		},
 		pageAway: 'Only what you pick here is read, for all of %h%’s products. Leave out what doesn’t apply to them. If a second page has more, pick there too: both are read.',
 		layoutPage: 'This page is layout %l% (%n% pages built like it).',
 		layoutShort: 'layout %l%',
-		scope: 'Save for',
-		scopeLayout: 'Layout %l% only (%n% pages)',
-		scopeSite: 'The whole site',
+		scope: 'Which pages read this pick',
+		scopeLayout: 'Pages built like this one (layout %l%)',
+		scopeLayoutHint: '%n% of the site’s %t% product pages share this page’s build. The others keep what they have.',
+		scopeLayoutHintN: '%n% product pages share this page’s build. The others keep what they have.',
+		scopeSite: 'Every product page on the site',
+		scopeSiteHint: 'All %t% product pages, whatever their build. A layout with a pick of its own keeps it.',
+		scopeSiteHintN: 'All its product pages, whatever their build. A layout with a pick of its own keeps it.',
+		siteShort: 'every page',
 		layoutOwn: 'Layout %l%’s own pick · found on %found% of %of% of its pages',
 		testedLayout: 'Found on %found% of %of% of layout %l%’s pages.',
 		savedLayout: '%part% saved for layout %l%: found on %found% of %of% of its pages. Its products get it when you write it to them (the extension panel’s Layout %l% section) or confirm layout %l%; the rest of the site keeps the site map.',
@@ -305,6 +325,23 @@ button.btn[disabled] { opacity: .45; cursor: not-allowed }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--mmi-accent); outline-offset: 1px }
 input.sel { width: 100%; box-sizing: border-box; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 8px; border: 1px solid #8c8f94; border-radius: 3px; color: #1d2327; background: #fff }
 label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
+/* A question with its answers spelled out: which pages read a pick, and what each product gets */
+fieldset.choices { display: grid; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0 }
+fieldset.choices legend { padding: 0; margin-bottom: 3px; color: #1d2327; font-size: 12px; font-weight: 600 }
+label.choice { display: grid; grid-template-columns: auto 1fr; gap: 1px 7px; align-items: start; padding: 6px 8px; border: 1px solid #dcdcde; border-radius: 4px; font-size: 12.5px; cursor: pointer }
+label.choice:has(input:checked) { border-color: var(--mmi-accent); background: var(--mmi-accent-soft) }
+label.choice input { margin: 2px 0 0 }
+label.choice b { font-weight: 600 }
+label.choice .muted { grid-column: 2 }
+/* A note's own buttons, and the tested pick page by page */
+.note .acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px }
+details.pages { border: 1px solid #dcdcde; border-radius: 4px; font-size: 12px }
+details.pages summary { padding: 6px 8px; font-weight: 600; cursor: pointer }
+details.pages ul { display: grid; gap: 0; max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; border-top: 1px solid #dcdcde }
+details.pages li { display: grid; gap: 1px; padding: 5px 8px 5px 10px; border-left: 4px solid #3f7a2b }
+details.pages li + li { border-top: 1px solid #f0f0f1 }
+details.pages li.miss { border-left-color: #d63638; background: #fcf0f1 }
+details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow-wrap: anywhere }
 .picklist { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none }
 .picklist li { border: 1px solid #dcdcde; border-radius: 4px; padding: 6px 8px; display: grid; gap: 4px; font-size: 12px }
 .picklist .top { display: flex; justify-content: space-between; gap: 6px }
@@ -1033,6 +1070,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		} else {
 			state.map = r.data.map;
 			state.products = r.data.products || 0;
+			state.sitePages = r.data.pages || 0; // the site's stored product pages: what "every page" comes to
 			state.away = r.data.away ? r.data.host : '';
 			state.pageMode = state.pageMode || !! state.away;
 			state.layout = r.data.layout || null;
@@ -1310,7 +1348,13 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			stopPicking( true );
 			showSavedPick();
 		} else {
-			state.note = { text: r.message, type: 'error' };
+			const why = r.data || {};
+			state.test = why.test || state.test; // refused for reading nothing: the pages it was read on, one by one
+			state.rowsOpen = undefined;
+			state.note = { text: r.message, type: 'error', acts: String( why.reason || '' ).startsWith( 'page_' ) && ! state.away ? [ { text: MESSAGES.give.instead, run: () => {
+				state.pageMode = false;
+				test();
+			} } ] : [] };
 		}
 		render();
 	}
@@ -1626,24 +1670,28 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 			box.append( h( 'div', { class: 'muted', text: fill( MESSAGES.takesExtra, { n: state.extras.length } ) } ) );
 		}
 		if ( state.layout && state.layout.pages >= 2 ) {
-			const radio = ( value, text ) => h( 'label', { class: 'check' }, h( 'input', { type: 'radio', name: 'mmpt-lm-scope', value, checked: state.scope === value || undefined, onchange: () => {
+			const total = state.sitePages;
+			box.append( choices( MESSAGES.scope, 'mmpt-lm-scope', state.scope, [
+				{ value: 'layout', title: fill( MESSAGES.scopeLayout, { l: state.layout.letter } ), hint: fill( total ? MESSAGES.scopeLayoutHint : MESSAGES.scopeLayoutHintN, { n: state.layout.pages, t: total } ) },
+				{ value: 'site', title: MESSAGES.scopeSite, hint: fill( total ? MESSAGES.scopeSiteHint : MESSAGES.scopeSiteHintN, { t: total } ) },
+			], ( value ) => {
 				state.scope = value;
-				state.test = null;
 				effectSoon();
-				render();
-			} } ), text );
-			box.append( h( 'div', { class: 'muted', text: MESSAGES.scope } ),
-				radio( 'layout', fill( MESSAGES.scopeLayout, { l: state.layout.letter, n: state.layout.pages } ) ),
-				radio( 'site', MESSAGES.scopeSite ) );
+			} ) );
 		}
 		if ( k === 'requirements' && state.away ) {
 			box.append( h( 'div', { class: 'muted', text: fill( MESSAGES.pageAway, { h: state.away } ) } ) );
 		} else if ( k === 'requirements' ) {
-			box.append( h( 'label', { class: 'check' }, h( 'input', { type: 'checkbox', checked: state.pageMode || undefined, onchange: ( e ) => {
-				state.pageMode = e.target.checked;
-				state.test = null;
-				render();
-			} } ), MESSAGES.pageMode ) );
+			box.append( choices( MESSAGES.give.head, 'mmpt-lm-give', state.pageMode ? 'page' : 'own', [
+				{ value: 'own', title: MESSAGES.give.own, hint: MESSAGES.give.ownHint },
+				{ value: 'page', title: MESSAGES.give.page, hint: fill( MESSAGES.give.pageHint, { path: location.pathname } ) },
+			], ( value ) => {
+				state.pageMode = value === 'page';
+				effectSoon();
+			} ) );
+			if ( state.pageMode && state.products ) {
+				box.append( h( 'div', { class: 'note warning', role: 'note', text: MESSAGES.give.pageProduct } ) );
+			}
 		}
 		box.append( h( 'div', { class: 'row' },
 			h( 'button', { type: 'button', class: 'btn quiet', disabled: ! state.picks.length || state.busy || undefined, onclick: wider, text: MESSAGES.wider } ),
@@ -1673,6 +1721,10 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		if ( state.test && state.test.sample && state.test.sample.detail ) {
 			box.append( h( 'div', { class: 'muted', text: fill( MESSAGES.sample, { detail: state.test.sample.detail } ) } ) );
 		}
+		const byPage = pageRows();
+		if ( byPage ) {
+			box.append( byPage );
+		}
 		if ( state.test && state.check ) {
 			box.append( state.check.busy
 				? h( 'div', { class: 'note busy', text: MESSAGES.checking } )
@@ -1688,8 +1740,54 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		}
 		box.append( h( 'div', { class: 'row acts' },
 			h( 'button', { type: 'button', class: 'btn', disabled: ! ready || undefined, onclick: test, text: MESSAGES.test } ),
-			h( 'button', { type: 'button', class: `btn ${ warn.length ? 'warn' : 'primary' }`, disabled: ! ready || undefined, onclick: save, text: ( warn.length ? MESSAGES.saveWarn : fill( MESSAGES.save, { part: partName( k ) } ) ) + ( scoped().layout !== undefined ? ` · ${ fill( MESSAGES.layoutShort, { l: state.layout.letter } ) }` : '' ) } ) ) );
+			h( 'button', { type: 'button', class: `btn ${ warn.length ? 'warn' : 'primary' }`, disabled: ! ready || undefined, onclick: save, text: ( warn.length ? MESSAGES.saveWarn : fill( MESSAGES.save, { part: partName( k ) } ) ) + ( scoped().layout !== undefined ? ` · ${ fill( MESSAGES.layoutShort, { l: state.layout.letter } ) }` : ( state.layout && state.layout.pages >= 2 ? ` · ${ MESSAGES.siteShort }` : '' ) ) } ) ) );
 		return box;
+	}
+
+	/**
+	 * One question with its answers spelled out, one of them chosen: each answer says in a line what it does (owner
+	 * 2026-11-16: "What does 'the whole site' refer to and how is it different than 'Layout A only'?"). A new answer
+	 * drops the test made under the old one.
+	 */
+	function choices( legend, name, chosen, options, onPick ) {
+		return h( 'fieldset', { class: 'choices' },
+			h( 'legend', { text: legend } ),
+			options.map( ( o ) => h( 'label', { class: 'choice' },
+				h( 'input', { type: 'radio', name, value: o.value, checked: chosen === o.value || undefined, onchange: () => {
+					onPick( o.value );
+					state.test = null;
+					render();
+				} } ),
+				h( 'b', { text: o.title } ),
+				h( 'span', { class: 'muted', text: o.hint } ) ) ) );
+	}
+
+	const samePage = ( url ) => url.replace( /^https?:\/\/(www\.)?/, '' ).replace( /[/?#]+$/, '' ) === `${ location.host.replace( /^www\./, '' ) }${ location.pathname }`.replace( /\/+$/, '' );
+
+	/**
+	 * The tested pick page by page (VendorMaps::test() rows), the pages that give nothing first, each a link to open:
+	 * a count alone ("found on 0 of 28") doesn't say which pages, or what they gave. A pick that gives every product
+	 * one page's text names that page instead.
+	 */
+	function pageRows() {
+		const t = state.test || {};
+		const rows = t.rows || [];
+		if ( ! rows.length ) {
+			return null;
+		}
+		if ( mode() === 'page' ) {
+			const page = ( t.targets || [] )[ 0 ];
+			return page && t.found ? h( 'div', { class: 'muted', text: fill( MESSAGES.rows.onePage, { of: t.of, page: page.url.replace( /^https?:\/\/(www\.)?/, '' ) } ) } ) : null;
+		}
+		const missed = rows.filter( ( r ) => ! r.found );
+		const open = state.rowsOpen === undefined ? missed.length > 0 : state.rowsOpen;
+		return h( 'details', { class: 'pages', open: open || undefined, ontoggle: ( e ) => {
+			state.rowsOpen = e.target.open;
+		} },
+		h( 'summary', { text: fill( missed.length ? MESSAGES.rows.headMissed : MESSAGES.rows.head, { found: rows.length - missed.length, of: rows.length, missed: missed.length } ) } ),
+		h( 'ul', {}, [ ...missed, ...rows.filter( ( r ) => r.found ) ].map( ( r ) => h( 'li', { class: r.found ? 'hit' : 'miss' },
+			h( 'a', { href: r.url, target: '_blank', rel: 'noopener', title: r.url, text: ( r.title || r.url.replace( /^https?:\/\/[^/]+/, '' ) ) + ( samePage( r.url ) ? ` (${ MESSAGES.rows.here })` : '' ) } ),
+			h( 'span', { class: 'muted', text: r.found ? r.read : MESSAGES.rows.nothing } ) ) ) ) );
 	}
 
 	function render( keepFocus ) {
@@ -1701,7 +1799,8 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 12.5px }
 		const working = m || ( state.focus && ! state.greeted ); // a row's part shows while the server answers
 		const note = state.note.busy
 			? h( 'div', { class: `note ${ state.note.type } busy`, role: 'status' }, h( 'span', { class: 'spin', 'aria-hidden': 'true' } ), h( 'span', { text: state.note.text } ) )
-			: h( 'div', { class: `note ${ state.note.type }`, role: 'status', text: state.note.text } );
+			: h( 'div', { class: `note ${ state.note.type }`, role: 'status' }, h( 'span', { text: state.note.text } ),
+				( state.note.acts || [] ).length ? h( 'div', { class: 'acts' }, state.note.acts.map( ( a ) => h( 'button', { type: 'button', class: 'btn', disabled: state.busy || undefined, onclick: a.run, text: a.text } ) ) ) : null );
 		scroller.replaceChildren(
 			h( 'div', { class: 'head' },
 				state.focus ? h( 'button', { type: 'button', class: 'icon back', title: MESSAGES.backTitle, 'aria-label': MESSAGES.backTitle, text: MESSAGES.back, onclick: teardown } ) : null,
