@@ -749,6 +749,11 @@
 		hideReview();
 	}
 
+	/** A review's left-out parts: this product's own set (its rows share it), or the review's. */
+	function outsOf( r ) {
+		return r.scope === 'product' ? leftOut() : r.out;
+	}
+
 	/** This product's parts left out of its commit, shared by its rows and its review (owner 2026-11-16: refuse a wrong change where it shows). */
 	function leftOut() {
 		if ( state.outFor !== state.product ) {
@@ -767,7 +772,7 @@
 		const parts = scope === 'product' ? [ ...( c.writes || [] ) ] : Object.keys( c.parts || {} ); // this product: its changes; many products: every part, each with a pick of their own
 		const key = [ state.product, parts.join() ].join( '|' );
 		if ( ! state.reviews[ scope ] || state.reviews[ scope ].key !== key ) {
-			state.reviews[ scope ] = { scope, key, c, parts, out: scope === 'product' ? leftOut() : {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
+			state.reviews[ scope ] = { scope, key, c, parts, out: {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
 			lookFor( state.reviews[ scope ], false );
 		}
 		showReview( scope );
@@ -1017,14 +1022,15 @@
 	/** One part of this product's review: now and after, and Leave out (owner 2026-11-15: in place of the row's tick). */
 	function partCard( r, p ) {
 		const card = el( 'section', 'pc' );
-		const out = !! r.out[ p.key ];
+		const outs = outsOf( r );
+		const out = !! outs[ p.key ];
 		const h = el( 'h3', '', p.label );
 		if ( ( r.c.writes || [] ).includes( p.key ) ) {
 			const t = el( 'button', 'lk', out ? MESSAGES.putIn : MESSAGES.leaveOut );
 			t.type = 'button';
 			t.setAttribute( 'aria-pressed', String( out ) );
 			t.addEventListener( 'click', () => {
-				r.out[ p.key ] = ! out;
+				outs[ p.key ] = ! out;
 				drawReview();
 				if ( r.scope === 'product' ) {
 					draw( state.panel ); // its row says so too
@@ -1298,7 +1304,7 @@
 	}
 
 	/** This product's review: the parts that change and aren't left out. */
-	const included = ( r ) => r.parts.filter( ( k ) => ( r.c.writes || [] ).includes( k ) && ! r.out[ k ] );
+	const included = ( r ) => r.parts.filter( ( k ) => ( r.c.writes || [] ).includes( k ) && ! outsOf( r )[ k ] );
 
 	/** The parts the review kept, to this product: the page as drawn is stored, and only those parts are written. */
 	async function commitProduct( r, b ) {
