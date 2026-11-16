@@ -193,7 +193,7 @@ class LiveMapper {
 		foreach ( $own as $u ) {
 			$row = PageStore::row( $u );
 			if ( $row && $row['status'] === 'ok' && $row['method'] !== 'http' ) {
-				return [ 'built' => true, 'html' => PageStore::read( (string) $row['html_file'] ) ];
+				return [ 'built' => true, 'html' => PageStore::read( (string) $row['html_file'] ), 'at' => $row['fetched_at'] ? mysql2date( 'M j, Y', (string) $row['fetched_at'] ) : '' ];
 			}
 		}
 		return [ 'built' => true, 'html' => '' ];

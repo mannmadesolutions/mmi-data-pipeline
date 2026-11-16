@@ -48,12 +48,14 @@
  * Warnings point at what set them off (owner 2026-11-02: "links to their DOM locations as well as on-screen
  * alerts/styling identifying them, plus the user needs the ability to either cancel the warning … and the code should
  * be able to filter keywords out"): each lists its spots on the page, outlined in red with a label, with Show (scrolls
- * to the next one) and Dismiss; shop or site text can be left out on this site (the reader's per-site list of lines,
- * MapCheck, through the extension).
+ * to the next one) and Dismiss. Shop and site text (cart, cookies, newsletter, sign-in) isn't warned of (owner 2026-11-16:
+ * "the logic should ignore web copy like that anyway"): the reader leaves those lines out itself (VendorPage::clean_blocks()).
  *
  * Picks are judged against what the reader has (owner 2026-11-04, a maker site whose pages build in the browser): the page as delivered, or, where the
  * server says the pages of this layout are stored as a browser built them (LiveMapper::reads()), our stored copy of this
- * page. Its classes are the ones a selector may use, and something missing from it is what the warning names.
+ * page. Its classes are the ones a selector may use, and something missing from it is what the warning names. A copy
+ * with next to none of the page's text (an app's empty shell, stored before its scripts ran: owner 2026-11-16, minimal.audio)
+ * judges nothing: it is said once, above the picks, and neither limits the classes nor marks the page's elements.
  *
  * Pictures are judged at full size (owner 2026-11-02: "selecting thumbnails will yield low resolutions, however most
  * sites have an easy to guess/determine image URL structure"): each picked picture's full-size copy (map-select.js
@@ -70,8 +72,8 @@
 
 	const PARTS = [ 'pictures', 'description', 'requirements', 'manual', 'videos', 'audio', 'disclaimer', 'contents' ]; // VendorMaps::FIELDS without NOT_MAPPED (features, version: the generic reader); contents names other products (RELATIONS)
 	const COLORS = { pictures: '#2f7de1', description: '#2e7d32', features: '#00897b', requirements: '#8d6e63', version: '#5c6bc0', manual: '#c2185b', videos: '#e65100', audio: '#6a1b9a', disclaimer: '#ad5a00', contents: '#455a64', extra: '#d63638', hover: '#1d2327' };
-	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, snapMs: 250, thumbs: 4, minPicture: 300, spots: 12, flashMs: 1800, lineChars: 200, measure: 60 };
-	const THRESHOLDS = { bannerAspect: 1.6, bannerShare: 0.6, menuShare: 0.6, menuItemChars: 40 };
+	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, snapMs: 250, thumbs: 4, minPicture: 300, flashMs: 1800, lineChars: 200, measure: 60 };
+	const THRESHOLDS = { bannerAspect: 1.6, bannerShare: 0.6, menuShare: 0.6, menuItemChars: 40, shellShare: 0.15, shellMinChars: 400 }; // shell: a copy with under 15% of a page's text (of 400+)
 	const KEYS = { wider: 'p', narrower: 'c', browse: 'b', stop: 'Escape' };
 	const ADMIN_PATH = '/wp-admin/admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=maps'; // + &wb_site=<host>: the Workbench's Site maps, this site open
 	const CHROME_AREAS = 'nav, [role="navigation"], [role="banner"], [role="contentinfo"], [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]';
@@ -80,7 +82,6 @@
 	// VendorMaps::CHROME_AXIS draws the same line on the server.
 	const LANDMARKS = 'header, footer, aside';
 	const CONTENT_AREAS = 'main, [role="main"], article, .type-product';
-	const SHOP_TEXT = /\b(cookies?|privacy policy|newsletter|subscribe|add to cart|checkout|sign in|log in|free shipping)\b/i;
 	const REQ_WORDS = /\b(mac|macos|os x|windows|win\s?1[01]|ram|cpu|processor|ghz|\d+\s?gb|apple silicon|intel|amd)\b/i;
 	const LOGO_RE = /logo|icon|sprite|badge|payment|avatar|flag/i;
 	const OVERLAY_RE = /cookie|consent|usercentrics|onetrust|didomi|cookiebot|gdpr|\bcmp\b|klaviyo|needsclick|privy|justuno|optinmonster|omnisend|wisepops|newsletter/i; // consent managers and sign-up pop-ups that cover the page
@@ -215,7 +216,6 @@
 		showN: 'Show %i%/%n%',
 		dismiss: 'Dismiss',
 		dismissTitle: 'You checked it: save without this warning',
-		leaveOut: 'Leave these lines out on this site',
 		useDelivered: 'Use the delivered copy (%what%)',
 		useDeliveredTitle: 'The same content where the page has it before its scripts run: %sel%',
 		wholeGallery: 'This gallery is drawn by a script, so wherever you click in it, the reader takes all its pictures from the gallery’s own data, at full size.',
@@ -227,8 +227,11 @@
 			useTitle: 'The same content where our stored copy has it: %sel%',
 			inspect: 'Only in our stored copy: the live page has moved or hidden it, and the server reads it there.',
 		},
-		leaveOutTitle: 'The description reader skips these lines on every page of this site from now on (Product Data’s list of lines to leave out)',
-		leftOut: '%n% line(s) left out on this site: the reader skips them on every page of it.',
+		shell: {
+			stored: 'Our stored copy of this page has next to none of its text (%n% of the %live% characters you see%at%): the site fills its pages in with scripts, and this copy was taken before they ran. So nothing on the page is marked against it. Test or Save stores this page as you see it now. Other pages stored the same way give nothing until each is stored from your browser: Test lists them.',
+			delivered: 'This page as the site sends it has next to none of its text (%n% of the %live% characters you see): its scripts fill it in afterwards. So nothing on the page is marked against it. Test or Save stores this page as you see it now; the site’s other pages need storing from your browser too (Store this page, in the panel).',
+			at: ', stored %at%',
+		},
 		fullSizes: 'Read at full size: %n% different picture(s)%w%. A thumbnail is read as its full picture (the shop’s own full-size address), so a slide and its thumbnail count once.',
 		fullWidest: ', up to %w% px wide',
 		measuring: 'Measuring the pictures at full size…',
@@ -239,7 +242,6 @@
 			banner: 'it looks like a full-width banner (a hero or lifestyle photo), not a product picture.',
 			small: '%n% of %of% are under 300 px wide even at full size (the smallest is %w% px).',
 			logo: 'it looks like a logo or icon.',
-			shop: 'it contains shop or site text (cart, cookies, newsletter, sign-in).',
 			menu: 'it looks like a menu: most items are short links.',
 			noReq: 'there are no Mac, Windows, RAM or CPU words in it.',
 			short: 'it gives less than the reader needs (%what%).',
@@ -392,7 +394,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 
 	const state = {
 		map: null, products: 0, host: location.hostname.replace( /^www\./, '' ), part: fromRow ? BRIDGE.part : 'pictures', focus: fromRow, greeted: false, ref: 'delivered',
-		picking: fromRow, mode: 'add', proposals: {}, picks: [], stack: [], sel: '', custom: false, matched: [], extras: [], alike: [], layout: null, scope: 'site', dismissed: new Set(), dismissedFor: '', shown: {}, flash: null, skipped: new Set(),
+		picking: fromRow, mode: 'add', proposals: {}, picks: [], stack: [], sel: '', custom: false, matched: [], extras: [], alike: [], layout: null, scope: 'site', dismissed: new Set(), dismissedFor: '', shown: {}, flash: null, shell: null, storedAt: '',
 		hover: null, tipText: '', browse: false, effect: null, showSaved: false, saved: [], pageMode: false, away: '',
 		note: { text: MESSAGES.connecting, type: 'info', busy: true }, test: null, busy: false, editTimer: 0,
 	};
@@ -440,23 +442,6 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		return allWarnings().filter( ( x ) => ! state.dismissed.has( x.key ) );
 	}
 
-	/** The smallest elements under $els whose text holds shop or site words, each with the words found. */
-	function shopSpots( els ) {
-		const out = [];
-		topOnly( els ).forEach( ( top ) => {
-			[ top, ...top.querySelectorAll( '*' ) ].forEach( ( e ) => {
-				const m = SHOP_TEXT.exec( e.textContent );
-				if ( m && ! Array.from( e.children ).some( ( c ) => SHOP_TEXT.test( c.textContent ) ) && ! state.skipped.has( lineKey( e ) ) ) {
-					out.push( { el: e, label: m[ 0 ] } );
-				}
-			} );
-		} );
-		return out.slice( 0, LIMITS.spots );
-	}
-
-	/** A line as the server's list of lines to leave out compares it (MapCheck::text_key(), roughly). */
-	const lineKey = ( e ) => e.textContent.replace( /\s+/g, ' ' ).trim().toLowerCase().replace( /[\s.…:»›→>!]+$/, '' );
-
 	/**
 	 * A picture's width as the reader takes it: its full-size copy (SEL.bestSrc(): a zoom link, srcset, the shop's
 	 * full-size address), loaded once to measure; null while it loads. A full-size address that doesn't load: the
@@ -495,6 +480,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		const r = await ask( 'reads' );
 		if ( r.ok && r.data.built ) {
 			state.ref = 'stored';
+			state.storedAt = r.data.at || '';
 			return r.data.html || '';
 		}
 		const res = await window.fetch( window.location.href, { credentials: 'include' } );
@@ -517,7 +503,14 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 						deliveredState = 'none'; // this layout's pages hold what scripts built, this page has no copy: Test says what they give
 						return;
 					}
-					delivered = new window.DOMParser().parseFromString( t, 'text/html' );
+					const doc = new window.DOMParser().parseFromString( t, 'text/html' );
+					state.shell = shellOf( doc );
+					if ( state.shell ) {
+						deliveredState = 'shell'; // judges nothing: every class counts, nothing is marked missing
+						render();
+						return;
+					}
+					delivered = doc;
 					deliveredState = 'ok';
 					SEL.setKnown( delivered ); // selectors from the classes the reader has, never a script's ("slick-slide") where it hasn't them
 					if ( ! state.custom && state.picks.length ) {
@@ -530,6 +523,22 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 				} );
 		}
 		return delivered;
+	}
+
+	/** The reader's copy is an empty shell of this page: { n, live } characters of text, or null when it has the page. */
+	function shellOf( doc ) {
+		doc.querySelectorAll( 'script, style, noscript, template' ).forEach( ( e ) => e.remove() );
+		const n = ( doc.body ? doc.body.textContent : '' ).replace( /\s+/g, ' ' ).trim().length;
+		const live = ( document.body ? document.body.innerText : '' ).replace( /\s+/g, ' ' ).trim().length;
+		return live >= THRESHOLDS.shellMinChars && n < live * THRESHOLDS.shellShare ? { n, live } : null;
+	}
+
+	/** After Test or Save stored this page as shown: the reader's copy is asked for again. */
+	function rereadCopy() {
+		delivered = null;
+		deliveredState = '';
+		state.shell = null;
+		SEL.setKnown( null );
 	}
 
 	/** A selector's comma-separated parts (commas inside :not(…) and [attr="…"] stay). */
@@ -584,7 +593,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 	/** allWarnings() once per pick: the outlines are drawn every frame, and finding shop text walks the picks. */
 	let warnMemo = { key: null, list: [] };
 	function allWarnings() {
-		const key = [ state.part, state.sel, state.picks.length, state.matched.length, state.extras.length, state.skipped.size, measured, deliveredState ].join( '|' );
+		const key = [ state.part, state.sel, state.picks.length, state.matched.length, state.extras.length, measured, deliveredState ].join( '|' );
 		if ( warnMemo.key !== key ) {
 			warnMemo = { key, list: findWarnings() };
 		}
@@ -650,12 +659,6 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 				add( 'logo', w.logo, logos.map( ( el ) => ( { el, label: MESSAGES.spot.logo } ) ) );
 			}
 		}
-		if ( k === 'description' ) {
-			const shop = shopSpots( els );
-			if ( shop.length ) {
-				add( 'shop', w.shop, shop );
-			}
-		}
 		if ( k === 'features' ) {
 			const lis = topOnly( els ).flatMap( ( e ) => ( e.nodeName === 'LI' ? [ e ] : Array.from( e.querySelectorAll( 'li' ) ) ) );
 			const linky = lis.filter( ( li ) => li.querySelector( 'a' ) && li.textContent.trim().length < THRESHOLDS.menuItemChars ).length;
@@ -687,22 +690,6 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		state.flashTimer = window.setTimeout( () => {
 			state.flash = null;
 		}, LIMITS.flashMs );
-		render();
-	}
-
-	/** Leave the shop-text lines out on this site: the reader's list of lines to leave out (the extension only). */
-	async function leaveOut( x ) {
-		const lines = [ ...new Set( x.spots.map( ( sp ) => sp.el.textContent.replace( /\s+/g, ' ' ).trim() ).filter( ( t ) => t.length >= 3 && t.length <= LIMITS.lineChars ) ) ];
-		state.busy = true;
-		render();
-		const r = await ask( 'skip', { lines } );
-		state.busy = false;
-		if ( r.ok ) {
-			x.spots.forEach( ( sp ) => state.skipped.add( lineKey( sp.el ) ) );
-			state.note = { text: fill( MESSAGES.leftOut, { n: lines.length } ), type: 'success' };
-		} else {
-			state.note = { text: r.message, type: 'error' };
-		}
 		render();
 	}
 
@@ -1298,6 +1285,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		const r = await ask( 'test', { field: state.part, sel: state.sel, mode: mode(), html: pageHtml(), ...scoped() } );
 		state.busy = false;
 		if ( r.ok ) {
+			rereadCopy(); // the test stored this page as shown
 			state.test = r.data;
 			state.note = { text: fill( scoped().layout === undefined ? MESSAGES.tested : MESSAGES.testedLayout, { ...r.data, l: state.layout && state.layout.letter } ), type: r.data.found ? 'success' : 'warning' };
 		} else {
@@ -1331,6 +1319,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		const r = await ask( 'save', { field: state.part, sel: state.sel, mode: mode(), html: pageHtml(), warn: warn.map( ( x ) => x.text ).join( ' ' ), where: `Picked on the live page ${ location.pathname }`, ...scoped() } );
 		state.busy = false;
 		if ( r.ok ) {
+			rereadCopy(); // the save stored this page as shown
 			state.map = state.map || {};
 			state.map.fields = r.data.fields;
 			state.map.status = r.data.status;
@@ -1729,13 +1718,16 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		box.append( h( 'div', { class: 'row' },
 			h( 'button', { type: 'button', class: 'btn quiet', disabled: ! state.picks.length || state.busy || undefined, onclick: wider, text: MESSAGES.wider } ),
 			h( 'button', { type: 'button', class: 'btn quiet', disabled: ! state.stack.length || state.busy || undefined, onclick: narrower, text: MESSAGES.narrower } ) ) );
+		if ( state.shell ) {
+			const say = state.ref === 'stored' ? MESSAGES.shell.stored : MESSAGES.shell.delivered;
+			box.append( h( 'div', { class: 'note warning', role: 'note', text: fill( say, { n: state.shell.n.toLocaleString(), live: state.shell.live.toLocaleString(), at: state.storedAt ? fill( MESSAGES.shell.at, { at: state.storedAt } ) : '' } ) } ) );
+		}
 		const warn = warnings();
 		if ( warn.length ) {
 			box.append( h( 'div', { class: 'warnbox', role: 'note' }, h( 'b', { text: fill( MESSAGES.warnHead, { part: partName( k ) } ) } ), h( 'ul', {}, warn.map( ( x ) => h( 'li', {},
 				h( 'span', { text: x.text } ),
 				h( 'span', { class: 'wa' },
 					x.spots.length ? h( 'button', { type: 'button', onclick: () => showSpot( x ), text: x.spots.length > 1 ? fill( MESSAGES.showN, { i: ( ( state.shown[ x.key ] || 0 ) % x.spots.length ) + 1, n: x.spots.length } ) : MESSAGES.show } ) : null,
-					x.key === 'shop' && BRIDGE.ask ? h( 'button', { type: 'button', title: MESSAGES.leaveOutTitle, disabled: state.busy || undefined, onclick: () => leaveOut( x ), text: MESSAGES.leaveOut } ) : null,
 					x.use ? h( 'button', { type: 'button', class: 'use', title: fill( state.ref === 'stored' ? MESSAGES.stored.useTitle : MESSAGES.useDeliveredTitle, { sel: x.use.sel } ), onclick: () => {
 						window.clearTimeout( state.editTimer ); // a selector still being typed doesn't come back over it
 						state.sel = x.use.sel;

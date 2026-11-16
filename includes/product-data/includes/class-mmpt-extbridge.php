@@ -33,8 +33,7 @@
  * The token routes are POST only: nginx and Cloudflare never cache a POST, and these requests carry no login cookie
  * for their caches' logged-in bypass to see.
  *   POST /ext/snapshot {url, html, dry}  token: store the page as drawn (dry: check only)
- *   POST /ext/map {url, op, …}            token: the live mapper's hello / test / save (LiveMapper); op skip {lines}: lines
- *        the site's description reader leaves out (MapCheck::set_text_skips())
+ *   POST /ext/map {url, op, …}            token: the live mapper's hello / test / save (LiveMapper)
  *   POST /ext/write {url, product, expect, html, dry}  token: store the page, then Write to this product
  *   POST /ext/undo {url, product, what}   token: undo the last write, picture run or videos added
  *   POST /ext/pictures {url, product, pictures, videos, html, dry}  token: picked pictures and videos to the product
@@ -2578,18 +2577,6 @@ class ExtBridge {
 		}
 		if ( $op === 'clear' ) { // a saved pick taken away, for the site or the layout the mapper is on
 			return self::map_clear( $r, $url );
-		}
-		if ( $op === 'skip' ) { // the mapper's "Leave these lines out on this site": the description reader's list of lines to leave out
-			$lines = array_slice( array_values( array_filter( array_map( static fn( $t ) => trim( sanitize_text_field( (string) $t ) ), (array) $r->get_param( 'lines' ) ) ) ), 0, 20 );
-			if ( ! $lines ) {
-				return new \WP_REST_Response( [ 'message' => 'No lines to leave out.' ], 400 );
-			}
-			$host = VendorMaps::host( $url );
-			$all  = MapCheck::set_text_skips( $host, $lines, [] );
-			if ( class_exists( 'MMI_Audit_Log' ) ) {
-				\MMI_Audit_Log::record( 'mmi-admin', 'vendor_maps.text_skip', [ 'object_type' => 'vendor_site', 'object_id' => $host, 'details' => [ 'added' => count( $lines ), 'via' => 'extension' ] ] );
-			}
-			return rest_ensure_response( [ 'added' => count( $lines ), 'lines' => count( $all ) ] );
 		}
 		if ( $op === 'check' ) { // the pick under Test, checked across the site's stored pages (MapCheck; §6 item 7a). Read-only.
 			$part = sanitize_key( (string) $r->get_param( 'field' ) );

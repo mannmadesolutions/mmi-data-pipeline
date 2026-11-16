@@ -223,6 +223,10 @@
 	 */
 	let known = null;
 	const setKnown = ( doc ) => {
+		if ( ! doc ) {
+			known = null; // the reader's copy is being asked for again: every class counts meanwhile
+			return;
+		}
 		known = { classes: new Set(), ids: new Set() };
 		doc.querySelectorAll( '[class], [id]' ).forEach( ( e ) => {
 			( e.getAttribute( 'class' ) || '' ).split( /\s+/ ).forEach( ( c ) => c && known.classes.add( c ) );
