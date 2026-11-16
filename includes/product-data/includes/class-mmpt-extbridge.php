@@ -1113,6 +1113,7 @@ class ExtBridge {
 		return [
 			'label'  => 'Vendor page',
 			'value'  => $page !== '' ? '“' . self::page_title( $page ) . '” · ' . self::short_url( $page ) : ( $marked ? 'The maker doesn’t publish one' : 'None yet' ),
+			'value_url' => $page !== '' ? esc_url_raw( $page ) : '', // owner 2026-11-16: the page itself, one click away
 			'state'  => '',
 			'status' => $open !== '' ? self::proposed_status( $open ) : ( $m ? [ 'kind' => $m['kind'], 'word' => $m['word'], 'help' => $m['help'] ] : ( $marked ? null : [ 'kind' => 'missing', 'word' => 'Missing', 'help' => 'Nothing can be read for this product until it has a page.' ] ) ),
 			'match'  => [ 'product' => $id, 'title' => $title, 'ok' => $m ? $m['ok'] : false, 'likely' => array_slice( $like, 0, self::LIKELY_MAX ), 'store' => true, 'empty' => ! $m, 'marked' => $marked ],

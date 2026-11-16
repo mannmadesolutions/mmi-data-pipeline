@@ -359,6 +359,7 @@
 		.row button.l { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 		.row a.l:hover, .row button.l:hover { text-decoration: underline; }
 		.row .v { color: #50575e; font-size: 12px; overflow-wrap: anywhere; }
+		.row .v a { color: var(--mmi-accent); text-decoration: underline; }
 		.row.pick, .row.shows { margin: 0 -6px; padding: 6px; border-radius: 4px; }
 		.row.pick { cursor: pointer; }
 		.row.pick:hover, .row.pick:focus-visible, .row.shows:hover { background: var(--mmi-accent-soft); outline: none; box-shadow: inset 0 0 0 1px var(--mmi-accent-line); }
@@ -1534,7 +1535,11 @@
 			line.append( chip );
 		}
 		txt.append( line );
-		if ( r.value ) {
+		if ( r.value && /^https?:\/\//.test( r.value_url || '' ) ) { // a maker's page: the value opens it in a new tab
+			const v = el( 'div', 'v' );
+			v.append( link( 'a', '', r.value, r.value_url ) );
+			txt.append( v );
+		} else if ( r.value ) {
 			txt.append( el( 'div', 'v', r.value ) );
 		}
 		if ( why ) {
