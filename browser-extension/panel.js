@@ -789,7 +789,8 @@
 		const parts = scope === 'product' ? [ ...( c.writes || [] ) ] : Object.keys( c.parts || {} ); // this product: its changes; many products: every part, each with a pick of their own
 		const key = [ state.product, parts.join() ].join( '|' );
 		if ( ! state.reviews[ scope ] || state.reviews[ scope ].key !== key ) {
-			state.reviews[ scope ] = { scope, key, c, parts, out: {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
+			// a product's left-out parts are its own (leftOut()), shared with its rows
+			state.reviews[ scope ] = { scope, key, c, parts, out: scope === 'product' ? null : {}, plans: [], data: null, busy: ' ', error: '', open: {}, examples: {}, all: {} };
 			lookFor( state.reviews[ scope ], false );
 		}
 		showReview( scope );

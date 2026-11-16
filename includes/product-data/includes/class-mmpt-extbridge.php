@@ -1059,7 +1059,7 @@ class ExtBridge {
 		if ( ( $read['state'] ?? '' ) === 'running' ) {
 			$notices[] = [ 'kind' => 'info', 'text' => 'Reading its page again, to see whether it has changed. This list follows when it’s done.' ];
 			$poll      = $poll ?: self::POLL_MS;
-		} elseif ( $just && ( $read['status'] ?? '' ) === 'ok' && $read['changed'] !== null ) {
+		} elseif ( $just && ( $read['status'] ?? '' ) === 'ok' && ( $read['changed'] ?? null ) !== null ) {
 			$notices[] = [ 'kind' => $read['changed'] ? 'ok' : 'info', 'text' => $read['changed'] ? 'Its page was read again just now and has changed: this list is from the new copy.' : 'Its page was read again just now: no change.' ];
 		} elseif ( $just && ( $read['status'] ?? 'ok' ) !== 'ok' ) {
 			$notices[] = [ 'kind' => 'warn', 'text' => 'The site didn’t give the server its page just now, so this list is from the stored copy. To refresh it, open its page and use Store this page.' ];
