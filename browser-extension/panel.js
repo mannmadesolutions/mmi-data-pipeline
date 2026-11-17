@@ -600,6 +600,7 @@
 		}
 		if ( location.href !== state.href ) {
 			state.href = location.href;
+			state.look = false;
 			state.base = '';
 			state.product = 0;
 			forgetReviews();
@@ -2186,6 +2187,7 @@
 			state.reviews.layoutmap.m = panel.commit.layout;
 			drawReview();
 		}
+		state.look = state.look || !! panel.base; // the server opened it on a job: it stays open as the job goes on
 		body.replaceChildren();
 		foot.replaceChildren();
 		if ( extra ) {
@@ -2424,7 +2426,7 @@
 		if ( ! quiet ) {
 			busy( MESSAGES.loading );
 		}
-		const res = await ask( { type: 'page', url: location.href, product: state.product, site: state.site ? 1 : 0 } );
+		const res = await ask( { type: 'page', url: location.href, product: state.product, site: state.site ? 1 : 0, look: state.look ? 1 : 0 } );
 		if ( res && res.ok ) {
 			draw( res.data );
 		} else if ( ! quiet ) {
@@ -2476,6 +2478,10 @@
 
 	async function act( a, b ) {
 		switch ( a.kind ) {
+			case 'look': // Scrape its page, on our own product page: what its page gives, opened on request (owner 2026-11-17)
+				state.look = true;
+				await working( b, MESSAGES.working, () => load( true ) );
+				break;
 			case 'scrape':
 				answered( await working( b, MESSAGES.working, () => ask( { type: 'scrape', url: location.href, product: a.product } ) ) );
 				break;

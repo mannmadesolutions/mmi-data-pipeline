@@ -367,7 +367,7 @@ chrome.runtime.onMessage.addListener( ( msg, sender, reply ) => {
 			}
 			return status();
 		},
-		page: async () => api( 'ext/page', { url: String( msg.url || '' ), product: Number( msg.product ) || ( await takeFocus( sender, String( msg.url || '' ) ) ), site: msg.site ? 1 : 0 } ),
+		page: async () => api( 'ext/page', { url: String( msg.url || '' ), product: Number( msg.product ) || ( await takeFocus( sender, String( msg.url || '' ) ) ), site: msg.site ? 1 : 0, look: msg.look ? 1 : 0 } ),
 		scrape: () => api( 'ext/scrape', { url: String( msg.url || '' ), product: Number( msg.product ) || 0 } ),
 		snapshot: () => api( 'ext/snapshot', { url: String( msg.url || '' ), html: String( msg.html || '' ), product: Number( msg.product ) || 0 } ),
 		map: () => api( 'ext/map', { url: String( msg.url || '' ), op: String( msg.op || '' ), field: String( msg.field || '' ), sel: String( msg.sel || '' ), mode: String( msg.mode || '' ), html: String( msg.html || '' ), warn: String( msg.warn || '' ), where: String( msg.where || '' ), layout: Number.isInteger( msg.layout ) ? msg.layout : '', lines: ( msg.lines || [] ).slice( 0, 20 ).map( String ), offset: Number( msg.offset ) || 0, proposal: Number( msg.proposal ) || 0, decision: String( msg.decision || '' ) } ),

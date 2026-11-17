@@ -97,7 +97,7 @@ class ExtBridge {
 	const HELD_WORDS   = 40;                      // words of the product's text on the Finding the page card
 	const SAME_TEXT    = 120;                     // opening characters of a description that must be on a page to count as its text
 	const BUNDLED      = [ 'map-select.js', 'live-mapper.js' ]; // assets/js files the download carries
-	const JOB_SHOWN    = 900;                     // seconds after a read of its page that our product page still says how it went
+	const JOB_SHOWN    = 900;                     // seconds after a write or a read of its page that our product page still opens on it, with its answer
 	const POLL_MS      = 4000;                    // the panel asks again this often while a write or picture run is under way
 	const MAX_VIDEOS   = 20;
 	const VIDEOS_META  = '_mmpt_ext_videos';      // videos the extension added to a product last { added[], at }, for Undo
@@ -404,7 +404,7 @@ class ExtBridge {
 		if ( $old ) {
 			return $old;
 		}
-		return rest_ensure_response( self::panel( (string) $r->get_param( 'url' ), (int) $r->get_param( 'product' ), self::client( $r ) + [ 'site' => (bool) $r->get_param( 'site' ) ] ) );
+		return rest_ensure_response( self::panel( (string) $r->get_param( 'url' ), (int) $r->get_param( 'product' ), self::client( $r ) + [ 'site' => (bool) $r->get_param( 'site' ), 'look' => (bool) $r->get_param( 'look' ) ] ) );
 	}
 
 	/** The extension asking: its protocol and the download it came from. @return array{protocol:int,build:string} */
@@ -954,6 +954,9 @@ class ExtBridge {
 		$marked  = $page === '' && UrlFinder::is_no_page( $id );
 		$left    = in_array( $id, Exclusions::ids(), true );
 		$linked  = $page !== '' && in_array( strtoupper( (string) get_post_meta( $id, 'vendor_product_url_verified', true ) ), [ 'TRUE', '1' ], true );
+		// What its page gives shows only once Scrape its page is pressed, or while a job of this product is under way
+		// (owner 2026-11-17: 2026-11-16.12 opening it at once was a misreading of "that preview, if open").
+		$client['look'] = $linked && ( ! empty( $client['look'] ) || self::job_here( $id, $page ) );
 		$missing = static fn( string $help ) => [ 'kind' => 'missing', 'word' => 'Missing', 'help' => $help ];
 		$notices = [];
 		$actions = [];
@@ -999,15 +1002,20 @@ class ExtBridge {
 		} elseif ( $page !== '' && self::open_proposal( $id, $page ) !== '' ) {
 			$notices[] = [ 'kind' => 'info', 'text' => 'Next: decide the page proposed for it, under Vendor page. Then open its page to read or pick its parts.' ];
 		} elseif ( $page !== '' && ! $linked ) {
-			$notices[] = [ 'kind' => 'info', 'text' => 'Next: confirm its page under Vendor page. What it gives this product then shows here.' ];
+			$notices[] = [ 'kind' => 'info', 'text' => 'Next: confirm its page under Vendor page. Then Scrape its page shows what it gives this product.' ];
+		} elseif ( $page !== '' && empty( $client['look'] ) ) {
+			$notices[] = [ 'kind' => 'info', 'text' => 'Scrape its page to see what it would bring here, before anything is written. To pick its parts, open its page: the panel there shows this product.' ];
 		}
 
 		$hand = static fn( string $op, string $to ) => [ 'kind' => 'hand', 'op' => $op, 'url' => $to, 'product' => $id, 'title' => $title ];
 		if ( $page !== '' ) {
 			$lead      = self::open_proposal( $id, $page ) === '';
+			if ( $linked && empty( $client['look'] ) ) {
+				$actions[] = [ 'id' => 'look', 'label' => 'Scrape its page', 'help' => 'Shows what its page gives this product. Nothing is written until you commit it.', 'kind' => 'look', 'primary' => $lead ];
+			}
 			$actions[] = [ 'id' => 'visit', 'label' => 'Open its page ↗', 'primary' => $lead && ! $linked ] + $hand( 'visit', SharedPages::anchored( $id, $page ) );
 		}
-		$look = $linked ? self::store_look( $id, $page, $notices, $actions ) : null; // owner 2026-11-16: what its page gives shows at once, no Scrape click
+		$look = ! empty( $client['look'] ) ? self::store_look( $id, $page, $notices, $actions ) : null;
 		foreach ( $sites as $host => $start ) {
 			$actions[] = [ 'id' => 'seek', 'label' => ( $page !== '' ? 'Find its right page on ' : 'Find its page on ' ) . $host . ' ↗', 'help' => 'Opens the site with this product in hand. A Link this URL button follows you there.', 'primary' => $page === '' && ! $marked && $host === $first ] + $hand( 'start', $start );
 		}
@@ -1024,10 +1032,21 @@ class ExtBridge {
 	}
 
 	/**
-	 * What its linked page gives the product, on our own product page: the maker's page's own rows, from the stored copy,
-	 * for this one product, shown as the panel opens (owner 2026-11-16; it took a Scrape click before). A copy a day old or
-	 * more is read again in the background once (ProductPreview::read_if_stale()), and the list follows when it's done; a
-	 * read never replaces a fuller copy from the person's browser (PageStore::get()). Picking parts stays on the maker's page.
+	 * A write or a read of this product under way or just over: the panel opens on it, so a job and its answer survive
+	 * reloading the page (owner 2026-11-06). The server's record, not the page's memory.
+	 */
+	private static function job_here( int $id, string $page ): bool {
+		$read = ProductPreview::scraped( VendorMaps::host( $page ), $id );
+		$w    = ProductPreview::written( $id );
+		return ( $read['state'] ?? '' ) === 'running' || ( $w && ( $w['state'] === 'running' || strtotime( (string) ( $w['at'] ?? '' ) . ' UTC' ) > time() - self::JOB_SHOWN ) );
+	}
+
+	/**
+	 * What its linked page gives the product, on our own product page, once Scrape its page is pressed (owner 2026-11-06:
+	 * to scrape from here, with a summary first): the maker's page's own rows, from the stored copy, for this one product.
+	 * While it's open, a copy a day old or more is read again in the background once (ProductPreview::read_if_stale()),
+	 * the list follows when it's done, and a commit in the maker's tab redraws it (owner 2026-11-16); a read never replaces
+	 * a fuller copy from the person's browser (PageStore::get()). Picking parts stays on the maker's page.
 	 * @return array{section:array,poll:int}
 	 */
 	private static function store_look( int $id, string $page, array &$notices, array &$actions ): array {
@@ -1080,7 +1099,7 @@ class ExtBridge {
 		if ( ! $id || self::store_product( $raw ) !== $id || $page === '' ) {
 			return new \WP_REST_Response( [ 'message' => 'This product has no linked page to read.' ], 400 );
 		}
-		$panel = static fn() => self::store_panel( $id, $raw, self::client( $r ) );
+		$panel = static fn() => self::store_panel( $id, $raw, self::client( $r ) + [ 'look' => true ] );
 		if ( $r->get_param( 'dry' ) ) {
 			return rest_ensure_response( [ 'dry' => true, 'message' => 'Checked, nothing read: ' . self::short_url( $page ) . ' would be read again.', 'panel' => $panel() ] );
 		}
