@@ -28,7 +28,9 @@ class VendorPage {
 	const MAX_TEXT       = 4000;  // a product description, not the whole page
 	const MAX_BLOCKS     = 30;
 	const LOW_RES_EDGE   = 300;   // Image Trim's min_eff: smaller pictures are kept but marked low_res for the reviewer (owner 2026-10-05)
-	const FOCUS          = 0.8;   // a candidate container must hold this share of the best cleaned copy
+	const FOCUS          = 0.8;
+	const PROSE_MIN      = 60;    // a paragraph this long is prose, not a tagline ("Loved by artists"), for summary_over()
+	const SUMMARY_MIN    = 60;    // the least of a page's own summary that summary_over() takes   // a candidate container must hold this share of the best cleaned copy
 	const WALK_LIMIT     = 600;   // raw blocks read per candidate before cleaning (menus come first on some pages)
 
 	/** Containers that hold a product's description, most specific first (class/id/itemprop fragments). */
@@ -45,7 +47,9 @@ class VendorPage {
 	/** Body classes of a shop's category or archive page: Magento, WooCommerce, Shopify. */
 	const LISTING_BODY  = '/<body\b[^>]*\bclass=["\'][^"\']*\b(?:catalog-category-view|tax-product_cat|post-type-archive-product|template-collection)\b/i';
 	const SOCIAL_ITEM   = '/^(?:[\p{L}\d&.\'-]+\s+)?(?:facebook|twitter|x|youtube|instagram|linkedin|tiktok|pinterest|soundcloud|discord|vimeo|threads|bluesky|spotify|twitch|reddit)$/iu';
-	const STOP_HEADINGS = '/^(related|you may also|customers (also|who)|recommended|similar products|more from|reviews?|customer reviews|write a review|faq|frequently asked|compare|bundles? (that|containing)|recently viewed|newsletter|sign up|join (our|the)|follow us|stay (in touch|connected))\b/i';
+	// FAQ headings in the forms makers use (minimal.audio's "Questions? Answers.", 2026-11-17): the answers that follow are
+	// never product copy, and their questions are buttons the reader strips, so the answers read as bare paragraphs.
+	const STOP_HEADINGS = '/^(related|you may also|customers (also|who)|recommended|similar products|more from|reviews?|customer reviews|write a review|faqs?|frequently asked|(your |common )?questions\b|got questions|have (a |any )?questions|any questions|q ?& ?a\b|compare|bundles? (that|containing)|recently viewed|newsletter|sign up|join (our|the)|follow us|stay (in touch|connected))\b/i';
 
 	/** Shop chrome, not product copy. A block matching any of these is removed (and reported). */
 	const BOILERPLATE = [
@@ -182,6 +186,8 @@ class VendorPage {
 			// A person's description pick says what the description is: the page's JSON-LD doesn't outbid it for being longer,
 			// and with it the feature lists it kept (sicknoiseinstruments.com NOVARIS 2026-11-15: Features 3 → 0 held the map).
 			$pick = $container + [ 'method' => 'container' ];
+		} elseif ( ! $mapped && $c_len > 0 && ( $summary = self::summary_over( $container['blocks'], $out['name'], $ld_blocks, $og, $skip, $page_url ) ) ) {
+			$pick = $summary;
 		} elseif ( $c_len >= self::MIN_TEXT && $c_len >= $l_len * 0.8 ) {
 			$pick = $container + [ 'method' => 'container' ];
 		} elseif ( $l_len >= self::MIN_TEXT ) {
@@ -463,6 +469,60 @@ class VendorPage {
 		$keep = array_filter( $read, static fn( $r ) => $r['len'] >= $max * self::FOCUS );
 		usort( $keep, static fn( $a, $b ) => $a['raw'] <=> $b['raw'] );
 		return $keep[0]['c'];
+	}
+
+	/**
+	 * The page's own summary (its JSON-LD description, else its meta description) in place of a generic container that
+	 * isn't the product's copy: at most one paragraph of prose among headings and taglines, and the product's name nowhere
+	 * in it. minimal.audio's Sample Vault (2026-11-17): the reader took another pack's blurb from a picker, two section
+	 * titles and the closing banner over the page's own one-line summary. Null when
+	 * the container may well be the copy, or the page has no summary worth taking.
+	 */
+	private static function summary_over( array $blocks, string $name, array $ld_blocks, array $og, array $skip, string $page ): ?array {
+		if ( (string) wp_parse_url( $page, PHP_URL_FRAGMENT ) !== '' ) {
+			return null; // one of several products on one page (ravegeneration.io/#OTTX): the page's summary is another's
+		}
+		// The page's name as titles carry it ("Wursy. Old-school synthesized Electric Piano | Sampleson", "Soaring Adventure
+		// Bundle - Great String Samples … | Musical Sampling"): any part of it, or its first word, in the copy names the product.
+		$parts = array_filter( array_map( 'trim', preg_split( '/\s*[|—–]\s*|\s+-\s+|(?<=\p{L})\.\s+/u', $name ) ), static fn( $p ) => mb_strlen( $p ) >= 3 );
+		$first = (string) preg_split( '/[\s.,:]+/u', trim( $name ) )[0];
+		if ( mb_strlen( $first ) >= 4 ) {
+			$parts[] = $first;
+		}
+		if ( ! $parts ) {
+			return null;
+		}
+		$prose = 0;
+		$all   = '';
+		foreach ( $blocks as $b ) {
+			$t    = (string) ( $b['text'] ?? '' );
+			$all .= ' ' . $t;
+			if ( $b['type'] === 'paragraph' && mb_strlen( $t ) >= self::PROSE_MIN ) {
+				$prose++;
+			} elseif ( $b['type'] === 'list' ) { // each long item is prose (Modalics' TOC); three items or more are a feature list
+				$items  = (array) $b['items'];
+				$long   = count( array_filter( $items, static fn( $i ) => mb_strlen( (string) $i ) >= self::PROSE_MIN ) );
+				$prose += count( $items ) >= 3 ? max( 2, $long ) : $long;
+			}
+		}
+		if ( $prose > 1 ) {
+			return null;
+		}
+		foreach ( $parts as $p ) {
+			if ( mb_stripos( $all, $p ) !== false ) {
+				return null;
+			}
+		}
+		// A summary the container already opens with is the container's own text, shortened (plugivery.com's Mark Knight
+		// expansion pack: its meta description is the description cut at 290 characters): the container is the copy.
+		$in   = static fn( array $c ) => mb_stripos( self::text( $all ), mb_substr( self::text( implode( ' ', array_column( $c['blocks'], 'text' ) ) ), 0, self::SUMMARY_MIN ) ) !== false;
+		$l_len = self::blocks_len( $ld_blocks['blocks'] );
+		if ( $l_len >= self::SUMMARY_MIN ) {
+			return $in( $ld_blocks ) ? null : $ld_blocks + [ 'method' => $l_len >= self::MIN_TEXT ? 'json_ld' : 'json_ld_short' ];
+		}
+		$meta = trim( (string) ( $og['description'] ?? '' ) );
+		$m    = $meta !== '' ? self::clean_blocks( [ [ 'type' => 'paragraph', 'text' => $meta ] ], $skip ) : [ 'blocks' => [] ];
+		return self::blocks_len( $m['blocks'] ) >= self::SUMMARY_MIN && ! $in( $m ) ? $m + [ 'method' => 'meta_only' ] : null;
 	}
 
 	/**
@@ -1300,7 +1360,13 @@ class VendorPage {
 					if ( $gone ) {
 						array_push( $removed, ...$gone );
 						$k = mb_strtolower( $kept );
-						if ( $kept === '' || isset( $seen[ $k ] ) ) {
+						// What a removed sentence leaves of two words or fewer is a fragment, not copy: the "Yes." of
+						// "Yes. All of our presets and sounds are royalty-free." (minimal.audio, 2026-11-17).
+						$scrap = $kept !== '' && count( preg_split( '/\s+/u', $kept, -1, PREG_SPLIT_NO_EMPTY ) ) < 3;
+						if ( $scrap ) {
+							$removed[] = $kept;
+						}
+						if ( $kept === '' || $scrap || isset( $seen[ $k ] ) ) {
 							continue;
 						}
 						$b['text'] = $kept;
