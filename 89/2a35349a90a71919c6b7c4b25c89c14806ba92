@@ -5,5 +5,5 @@ ui-check pass 158
 ui-e2e pass 288
 customer-site pass 27 ok on 892a353 as installed
 page pass 9 features, 12 screenshots; 12 warnings
-release-audit fail 47 dead (dead-ajax 17, dead-constant 9, dead-function 18, dead-js-function 2, dead-private 1), 0 high, 0 new
-review fail could not ask the site what is published (p on line 71
+release-audit fail 31 dead (dead-ajax 17, dead-constant 9, dead-function 2, dead-js-function 2, dead-private 1), 0 high, 0 new dirty:14
+review fail 24 open, 7 fixed, 11 not real dirty:14
