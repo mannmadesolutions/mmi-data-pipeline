@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+shared-lib pass carried from 706e03e, only browser-extension changed since
+ui-check pass carried from 706e03e, only browser-extension changed since
+ui-e2e pass carried from 706e03e, only browser-extension changed since
+customer-site pass carried from 706e03e, only browser-extension changed since
+page pass 9 features, 12 screenshots; 12 warnings
+release-audit fail 47 dead (dead-ajax 17, dead-constant 9, dead-function 18, dead-js-function 2, dead-private 1), 0 high, 0 new
+review fail 24 open, 7 fixed, 11 not real
