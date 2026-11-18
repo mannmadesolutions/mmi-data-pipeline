@@ -622,31 +622,6 @@ class MMI_Product_Content_Registry {
     }
 
     /**
-     * Rows resolved from any source → the concept's storage shape. Used to
-     * migrate a legacy JetEngine value into its canonical key.
-     *
-     * @return mixed
-     */
-    public static function canonical_from_rows( string $concept, array $rows ) {
-        $shape = self::CONCEPTS[ $concept ]['store'][1] ?? '';
-        switch ( $shape ) {
-            case 'requirements':
-                // Legacy rows are free text ("macOS 10.13 or later"); each becomes one line.
-                return [ 'additional_requirements' => implode( "\n", array_column( $rows, 'value' ) ) ];
-            case 'list':
-            case 'platforms':
-            case 'videos':
-                return array_column( $rows, 'value' );
-            case 'pairs':
-            case 'links':
-                return array_map( static fn( $r ) => [ 'label' => $r['label'], 'value' => $r['text'] ], $rows );
-            case 'text':
-                return (string) ( $rows[0]['value'] ?? '' );
-        }
-        return null;
-    }
-
-    /**
      * Whether $value would change what's stored, compared after normalizing
      * both sides. An editor re-posting the prefilled value must not count as
      * an edit (the stored value may predate normalization, e.g. "VST-3" vs

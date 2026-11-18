@@ -99,7 +99,8 @@ class LayoutMaps {
 	 * Layout $i's map as a person reads it: each part's criteria (its own pick, the site's, the general reader, or not on
 	 * its pages) with what it does on the layout's products now (the gaps), what a commit fills, what blocks it, and
 	 * whether it is committed. $m: SiteGaps::matrix() when the caller has it. $check: what blocks it, read from its pages
-	 * (CHECK_PAGES of them, kept under the map's stamp; 0: every page); null leaves it out (Makers' list, the steps).
+	 * (CHECK_PAGES of them, kept under the map's stamp; 0: every page, over several requests on a large layout); null
+	 * leaves it out (Makers' list, the steps).
 	 */
 	public static function view( string $host, int $i, ?array $m = null, ?int $check = null ): ?array {
 		$host = VendorMaps::host( $host );
@@ -246,7 +247,14 @@ class LayoutMaps {
 		$key  = 'mmpt_layout_loss_' . md5( (string) wp_json_encode( [ $host, SiteGaps::stamp( $host ), $urls, $max ] ) );
 		$lost = get_transient( $key );
 		if ( ! is_array( $lost ) ) {
-			$lost = VendorMaps::losses( $host, $urls, $max );
+			if ( $max || count( $urls ) <= self::CHECK_PAGES ) {
+				$lost = VendorMaps::losses( $host, $urls, $max );
+			} else {
+				[ $lost, $done, $of ] = self::losses_in_steps( $host, $urls, $key );
+				if ( $lost === null ) {
+					return [ 'pending' => sprintf( 'Every page of this layout is being checked for what the map would take away (%d of %d checked). Press Commit again to go on.', $done, $of ) ];
+				}
+			}
 			set_transient( $key, $lost, DAY_IN_SECONDS );
 		}
 		if ( ! $lost ) {
@@ -264,6 +272,28 @@ class LayoutMaps {
 			$out[ $part ] = sprintf( '%s: this map reads less than the general reader on %d %s (%s: %s → %s). Pick a larger area for the part that covers it, or set that part back to the general reader.', VendorMaps::FIELDS[ $part ][0] ?? ucfirst( $part ), count( $pages ), count( $pages ) === 1 ? 'page' : 'pages', self::short( $url ), number_format( $was ), number_format( $now ) );
 		}
 		return $out;
+	}
+
+	/**
+	 * Every page's losses, CHECK_PAGES at a time for up to Background::STEP_S a request, kept under $key's steps: a large
+	 * layout's full check spans Commit clicks instead of one request. @return array{0:?array,1:int,2:int} losses (null:
+	 * not done), pages checked, pages
+	 */
+	private static function losses_in_steps( string $host, array $urls, string $key ): array {
+		$s     = get_transient( $key . '_steps' );
+		$s     = is_array( $s ) ? $s : [ 'done' => 0, 'lost' => [] ];
+		$parts = array_chunk( $urls, self::CHECK_PAGES );
+		$until = microtime( true ) + Background::STEP_S;
+		while ( $s['done'] < count( $parts ) && microtime( true ) < $until ) {
+			$s['lost'] += VendorMaps::losses( $host, $parts[ $s['done'] ], 0 );
+			++$s['done'];
+		}
+		if ( $s['done'] < count( $parts ) ) {
+			set_transient( $key . '_steps', $s, DAY_IN_SECONDS );
+			return [ null, $s['done'] * self::CHECK_PAGES, count( $urls ) ];
+		}
+		delete_transient( $key . '_steps' );
+		return [ $s['lost'], count( $urls ), count( $urls ) ];
 	}
 
 	/** What the layout's map is made of now: a commit of another one is out of date. */
