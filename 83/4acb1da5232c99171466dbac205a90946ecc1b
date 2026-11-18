@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+shared-lib pass 8 scenarios dirty:2
+ui-check pass 158 dirty:2
+ui-e2e fail exit 1 dirty:2
+customer-site pass 27 ok on 834acb1 as installed dirty:2
+page pass 9 features, 12 screenshots; 12 warnings dirty:2
+release-audit fail 2 dead (dead-function 1, dead-js-function 1), 0 high, 0 new dirty:2
+review pass 0 open, 15 fixed, 38 not real dirty:2
