@@ -44,7 +44,7 @@ class Field_Mmi {
 		return 'MMI Product Content';
 	}
 
-	public static function is_active() {
+	public static function is_active() { // audit-ok(dead-function): Bricks calls is_active() on every registered query-filter provider (Query_Filters\Fields::get_active_provider_list()).
 		return class_exists( '\MMI_Product_Content_Registry' );
 	}
 

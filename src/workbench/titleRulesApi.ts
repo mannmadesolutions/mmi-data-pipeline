@@ -228,7 +228,7 @@ export async function storedPageUrl(cfg: TitleRulesConfig, id: number, which: "p
 }
 
 /** Forget the cached nonce (tests). */
-export function resetNonce(): void {
+export function resetNonce(): void { // audit-ok(dead-js-function): tests/ui/titleRulesApi.test.ts calls it after each test to clear the cached nonce.
   nonce = "";
   pending = null;
 }
