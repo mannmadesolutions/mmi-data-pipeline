@@ -261,7 +261,7 @@ class Product_Import_Worker {
             }
 
             // Taxonomy-type fields (product_cat/product_tag) are real term
-            // relationships, not postmeta \u2014 route them through set_taxonomy_field()
+            // relationships, not postmeta \u2014 route them through set_taxonomy_field_ids()
             // (wp_set_object_terms() via WC_Product::set_category_ids()/set_tag_ids())
             // instead of the generic set_product_field()/get_meta() path below, which
             // was writing/reading a literal 'product_cat' meta key this plugin never
@@ -752,24 +752,11 @@ class Product_Import_Worker {
     }
 
     /**
-     * Assign real taxonomy terms to a product for a mapped taxonomy field
-     * (product_cat/product_tag), auto-detecting whether each entry is a term
-     * ID, slug, or name via MMI_Pipeline_Field_Resolver::resolve_term_ids_smart()
-     * (which only creates a missing term where the field's tax_unmapped
-     * setting is 'create'; update_product() now uses resolve_unmapped_term_ids()) —
-     * same resolution the legacy Product_CRUD_Manager::map_categories() path
-     * uses. set_category_ids()/set_tag_ids() are WC_Product CRUD props applied
+     * Assign already-resolved term IDs (e.g. from the Taxonomy Mapping alias
+     * table) to a product for a mapped taxonomy field (product_cat/product_tag).
+     * set_category_ids()/set_tag_ids() are WC_Product CRUD props applied
      * via wp_set_object_terms() on $product->save(), so this is safe to call
      * before a new product has been saved/has an ID yet.
-     */
-    public static function set_taxonomy_field( $product, string $taxonomy, $raw_value ): void {
-        $term_ids = MMI_Pipeline_Field_Resolver::resolve_term_ids_smart( $taxonomy, $raw_value, true );
-        self::set_taxonomy_field_ids( $product, $taxonomy, $term_ids );
-    }
-
-    /**
-     * Same as set_taxonomy_field() but for already-resolved term IDs (e.g.
-     * from the Taxonomy Mapping alias table) — no ID/slug/name auto-detection.
      */
     public static function set_taxonomy_field_ids( $product, string $taxonomy, array $term_ids ): void {
         if ( $taxonomy === 'product_cat' ) {

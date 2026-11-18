@@ -41,7 +41,6 @@ class SiteGaps {
 	const SKEL_DEPTH = 5;
 	const SKEL_MAX   = 400;  // structure tokens kept per page
 	const SAMPLES    = 3;    // sample pages per layout
-	const MIN_DESCRIPTION = 300; // page copy that counts as a description (Coverage::MIN_PAGE_DESCRIPTION)
 
 	/** Coverage attribute → the map part that reads it ('' = none: features and version, VendorMaps::NOT_MAPPED). Order = column order. */
 	const FIELDS = [ 'images' => 'pictures', 'description' => 'description', 'features' => '', 'os' => 'requirements', 'version' => '', 'manual' => 'manual', 'videos' => 'videos', 'audio' => '', 'size' => '' ];

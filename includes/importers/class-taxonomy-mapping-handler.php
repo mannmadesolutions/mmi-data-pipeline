@@ -222,9 +222,9 @@ class Taxonomy_Mapping_Handler {
             }
 
             // Store raw source value so the batch-apply tool can find this product later.
-            // Meta key must match TaxonomyMappingController.php's mmi_apply_taxonomy_mappings
-            // handler, which normalizes a compound '+' field the same way before its own
-            // lookup — a literal '+' here would never match that sanitized key.
+            // Meta key must match apply_saved_mapping() below, which normalizes a
+            // compound '+' field the same way before its own lookup — a literal '+'
+            // here would never match that sanitized key.
             if ( ! $own_locked ) {
                 $plan['src_meta'][ '_mmi_src_' . str_replace( '+', '_', $source_field ) ] = $raw_value;
             }

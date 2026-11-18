@@ -53,9 +53,9 @@ final class Catalog_Phase_Runner {
     /**
      * Whole-section kill switch, on by default. Checked at every real entry
      * point into a run — the AJAX "Update Store Catalog" button
-     * (CatalogUpdateController.php's mmi_catalog_start_run), the scheduled
-     * cron dispatcher (MMI_Pipeline_Cron::run_catalog_update()), and
-     * `wp mmi catalog` (run_all(), below) — rather than duplicating the same
+     * (CatalogUpdateController.php's mmi_catalog_start_run) and the scheduled
+     * cron dispatcher (MMI_Pipeline_Cron::run_catalog_update()) — rather
+     * than duplicating the same
      * MMI_DB::get_setting() call independently at each call site, so a
      * future entry point can't silently forget to check it (see AGENTS.md
      * Rule 11's "one lock, every call site" reasoning, applied here to an
@@ -393,8 +393,7 @@ final class Catalog_Phase_Runner {
      * One MMI_Pipeline_Catalog_Updater instance per run, memoized statically
      * so run_phase()'s per-request calls (AJAX: one per HTTP request; AS
      * chain: one per queued action) still share get_associated_sku_skiplist()'s
-     * memoization within a single PHP process — and so run_all() (one
-     * process, all phases) only builds the updater once.
+     * memoization within a single PHP process.
      */
     private static array $updater_cache = [];
 
@@ -416,44 +415,6 @@ final class Catalog_Phase_Runner {
             $state['total_processed'] += $result['items_processed'];
         }
         Catalog_Run_State::save_state( $run_id, $state );
-    }
-
-    /**
-     * Whole sequence, one PHP process. WP-CLI only — AJAX and cron both run
-     * one phase per request/action via run_phase(), since a full sequence
-     * can exceed both a web request's practical limit and wp-cron.php's 45s
-     * execution ceiling (see AGENTS.md Operational Continuity Rule 12).
-     */
-    public static function run_all( string $owner = 'cli' ): array {
-        if ( ! self::is_enabled() ) {
-            throw new \RuntimeException( 'Catalog Maintenance is disabled (see the section toggle on the Import tab).' );
-        }
-
-        $run_id = Catalog_Run_State::try_acquire( $owner );
-        if ( $run_id === null ) {
-            $lock = Catalog_Run_State::get_lock_row();
-            throw new \RuntimeException( 'A catalog update is already running (started ' . ( $lock['started_at'] ?? 'unknown' ) . ' by ' . ( $lock['owner'] ?? 'unknown' ) . ').' );
-        }
-
-        $phases = self::build_phases();
-        Catalog_Run_State::save_state( $run_id, [
-            'phases'          => $phases,
-            'results'         => [],
-            'current_index'   => 0,
-            'total_processed' => 0,
-            'started_at'      => current_time( 'mysql' ),
-        ] );
-
-        try {
-            foreach ( $phases as $index => $phase_def ) {
-                self::run_phase( $run_id, $index );
-                Catalog_Run_State::reacquire( $run_id ); // heartbeat between phases
-            }
-            return self::finalize( $run_id );
-        } finally {
-            Catalog_Run_State::release( $run_id );
-            unset( self::$updater_cache[ $run_id ] );
-        }
     }
 
     /**

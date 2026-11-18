@@ -1553,25 +1553,6 @@ class ProductImportController {
     }
 
     /**
-     * Fire a non-blocking HTTP POST to wp-cron.php to trigger due cron events.
-     * NOTE: This will have no effect when DISABLE_WP_CRON is true (the default on
-     * this server). Import batching is now JS-driven via handle_process_import_batch.
-     */
-    // audit-ok: target is this site's own wp-cron.php (no rate limit); method has no callers
-    private function spawn_import_cron(): void {
-        if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
-            return; // wp-cron.php immediately dies when this constant is true
-        }
-        $cron_url = add_query_arg('doing_wp_cron', '1', site_url('wp-cron.php'));
-        wp_remote_post($cron_url, [
-            'timeout'    => 0.01,
-            'blocking'   => false,
-            'sslverify'  => apply_filters('https_local_ssl_verify', false),
-            'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . get_bloginfo('url'),
-        ]);
-    }
-
-    /**
      * Get import history
      */
     public function get_import_history() {

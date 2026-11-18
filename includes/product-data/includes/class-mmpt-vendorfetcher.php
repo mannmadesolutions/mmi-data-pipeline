@@ -30,7 +30,6 @@ class VendorFetcher {
 
 	use \MMI_Batch_Watchdog_Trait;
 
-	const BATCH_KEY     = 'mmpt_vendor_fetch';
 	const TICK_HOOK     = 'mmpt_vendor_fetch_tick';
 	const WATCHDOG_HOOK = 'mmpt_vendor_fetch_watchdog';
 	const HOST_GAP_MS   = 4000;

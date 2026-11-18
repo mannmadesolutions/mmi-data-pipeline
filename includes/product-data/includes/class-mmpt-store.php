@@ -400,16 +400,6 @@ class Store {
 	}
 
 	/**
-	 * product_cat terms per product, in one query (a page of the review queue).
-	 *
-	 * @param int[] $ids Product IDs.
-	 * @return array<int,array<int,array{id:int,name:string}>>
-	 */
-	public static function categories_for( array $ids ): array {
-		return self::terms_for( $ids, 'product_cat' );
-	}
-
-	/**
 	 * A taxonomy's terms per product (product_cat, product_brand), in one query.
 	 *
 	 * @param int[] $ids Product IDs.

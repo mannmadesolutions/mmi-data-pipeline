@@ -873,7 +873,7 @@ class MMI_Pipeline_Field_Resolver {
      * product, now or next: JSON {cost, from, to, supplier, promotion}, times as
      * UNIX seconds (null = open-ended). Written by imports that write the
      * product's cost (record_promo_cost()), read by cost_at() and the global
-     * mmi_get_product_cog(), so a sale made while the promotion runs is costed at
+     * mmi_get_product_cog_detail(), so a sale made while the promotion runs is costed at
      * what the supplier charges then, not the regular cost in `cog`.
      */
     public const PROMO_COST_META = '_mmi_promo_cog';
@@ -1900,22 +1900,13 @@ class MMI_Pipeline_Field_Resolver {
     }
 }
 
-if ( ! function_exists( 'mmi_get_product_cog' ) ) {
-    /**
-     * What a product cost us at $at (UNIX time; now when null): the supplier
-     * promotion's cost while one ran, else the regular cost. Null when unknown.
-     * Other MMI plugins call this behind function_exists() and fall back to the
-     * `cog` meta (mmi-distributors' Reverb order costs, Reverb's margins).
-     */
-    function mmi_get_product_cog( int $product_id, ?int $at = null ): ?float {
-        $cost = MMI_Pipeline_Field_Resolver::cost_at( $product_id, $at );
-        return $cost['cost'] ?? null;
-    }
-}
-
 if ( ! function_exists( 'mmi_get_product_cog_detail' ) ) {
     /**
-     * mmi_get_product_cog() with where the figure came from.
+     * What a product cost us at $at (UNIX time; now when null): the supplier
+     * promotion's cost while one ran, else the regular cost, with where the
+     * figure came from. Null when unknown. Other MMI plugins call this behind
+     * function_exists() and fall back to the `cog` meta (mmi-distributors'
+     * Reverb order costs, Reverb's margins).
      *
      * @return array{cost:float,promo:bool,promotion:string}|null
      */

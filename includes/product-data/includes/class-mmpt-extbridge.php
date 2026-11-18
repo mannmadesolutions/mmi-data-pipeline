@@ -412,6 +412,13 @@ class ExtBridge {
 		return [ 'protocol' => (int) $r->get_header( 'x_mmi_ext_protocol' ), 'build' => sanitize_key( (string) $r->get_header( 'x_mmi_ext_build' ) ) ];
 	}
 
+	/** What the asking extension speaks, set before any panel is drawn (panel(), and store_panel() when scrape() draws it alone). */
+	private static function asking( array $client ): void {
+		self::$v12 = (int) $client['protocol'] >= 12; // the layout's map commits its parts, the site's picks with them
+		self::$v13 = (int) $client['protocol'] >= 13; // the product's parts once, for this product or its layout
+		self::$v14 = (int) $client['protocol'] >= 14; // the parts as a form in one order, with Undo / Redo / not here; the re-read as a bar
+	}
+
 	/**
 	 * The panel as data. Protocol 1: { title, subtitle, notices[{kind,text}], sections[{title, rows[{label, value,
 	 * state, href}], text}], actions[{id, label, kind, primary, href}] }. Protocol 2 adds: a section's own `actions`
@@ -432,10 +439,8 @@ class ExtBridge {
 	 * $product: the product to show (one that uses this page); 0 = the only one, when there is only one.
 	 */
 	public static function panel( string $raw, int $product = 0, array $client = [ 'protocol' => self::PROTOCOL, 'build' => '' ] ): array {
-		self::$v12 = (int) $client['protocol'] >= 12; // the layout's map commits its parts, the site's picks with them
-		self::$v13 = (int) $client['protocol'] >= 13; // the product's parts once, for this product or its layout
-		self::$v14 = (int) $client['protocol'] >= 14; // the parts as a form in one order, with Undo / Redo / not here; the re-read as a bar
-		$own =(int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
+		self::asking( $client );
+		$own = (int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
 		if ( $own ) {
 			return self::store_panel( $own, $raw, $client );
 		}
@@ -945,6 +950,7 @@ class ExtBridge {
 	 * the choices made here is written, and the product's parts are still read and committed from its page on the maker's site.
 	 */
 	private static function store_panel( int $id, string $raw, array $client ): array {
+		self::asking( $client );
 		$title   = html_entity_decode( get_the_title( $id ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		$terms   = wp_get_post_terms( $id, 'product_brand' );
 		$terms   = is_array( $terms ) ? $terms : [];

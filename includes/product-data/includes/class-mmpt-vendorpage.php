@@ -28,9 +28,9 @@ class VendorPage {
 	const MAX_TEXT       = 4000;  // a product description, not the whole page
 	const MAX_BLOCKS     = 30;
 	const LOW_RES_EDGE   = 300;   // Image Trim's min_eff: smaller pictures are kept but marked low_res for the reviewer (owner 2026-10-05)
-	const FOCUS          = 0.8;
+	const FOCUS          = 0.8;   // a candidate container must hold this share of the best cleaned copy
 	const PROSE_MIN      = 60;    // a paragraph this long is prose, not a tagline ("Loved by artists"), for summary_over()
-	const SUMMARY_MIN    = 60;    // the least of a page's own summary that summary_over() takes   // a candidate container must hold this share of the best cleaned copy
+	const SUMMARY_MIN    = 60;    // the least of a page's own summary that summary_over() takes
 	const WALK_LIMIT     = 600;   // raw blocks read per candidate before cleaning (menus come first on some pages)
 
 	/** Containers that hold a product's description, most specific first (class/id/itemprop fragments). */
@@ -508,6 +508,7 @@ class VendorPage {
 		if ( $prose > 1 ) {
 			return null;
 		}
+		$all = self::text( $all ); // as the name and the summary are both compared with it
 		foreach ( $parts as $p ) {
 			if ( mb_stripos( $all, $p ) !== false ) {
 				return null;
@@ -515,7 +516,7 @@ class VendorPage {
 		}
 		// A summary the container already opens with is the container's own text, shortened (plugivery.com's Mark Knight
 		// expansion pack: its meta description is the description cut at 290 characters): the container is the copy.
-		$in   = static fn( array $c ) => mb_stripos( self::text( $all ), mb_substr( self::text( implode( ' ', array_column( $c['blocks'], 'text' ) ) ), 0, self::SUMMARY_MIN ) ) !== false;
+		$in   = static fn( array $c ) => mb_stripos( $all, mb_substr( self::text( implode( ' ', array_column( $c['blocks'], 'text' ) ) ), 0, self::SUMMARY_MIN ) ) !== false;
 		$l_len = self::blocks_len( $ld_blocks['blocks'] );
 		if ( $l_len >= self::SUMMARY_MIN ) {
 			return $in( $ld_blocks ) ? null : $ld_blocks + [ 'method' => $l_len >= self::MIN_TEXT ? 'json_ld' : 'json_ld_short' ];
@@ -984,11 +985,6 @@ class VendorPage {
 			}
 		}
 		return $best !== '' ? 'https://' . $best . $path : $path;
-	}
-
-	/** An element's cleaned blocks (paragraphs, lists, headings), as the description reader reads them on $url's site. */
-	public static function element_blocks( \DOMNode $el, string $url = '' ): array {
-		return self::clean_blocks( self::node_blocks( $el ), $url !== '' ? MapCheck::text_skip_set( $url ) : [], $url )['blocks'];
 	}
 
 	/** Every matched element's cleaned blocks, in page order (nested matches read once), as read on $url's site. */

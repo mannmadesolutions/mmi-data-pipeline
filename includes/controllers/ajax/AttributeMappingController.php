@@ -3,7 +3,6 @@
  * Attribute & Variation Mapping AJAX Controller
  *
  * Handles all AJAX actions for the attribute/variation configuration panel:
- *   mmi_get_wc_attributes        — list registered WooCommerce global attributes
  *   mmi_autosave_attribute_config — persist the full attribute config for a profile
  *   mmi_discover_attributes       — scan a sample supplier JSON file and suggest attributes
  *   mmi_create_wc_attribute       — create a new global WC attribute taxonomy on demand
@@ -12,31 +11,6 @@
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
-
-// ── Get registered WooCommerce attributes ────────────────────────────────────
-add_action( 'wp_ajax_mmi_get_wc_attributes', function () {
-    check_ajax_referer( 'mmi_pipeline_import_settings', 'nonce' );
-
-    if ( ! mmi_data_pipeline_user_can() ) {
-        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
-    }
-
-    $attributes = [];
-
-    if ( function_exists( 'wc_get_attribute_taxonomies' ) ) {
-        foreach ( wc_get_attribute_taxonomies() as $tax ) {
-            $attributes[] = [
-                'slug'      => wc_attribute_taxonomy_name( $tax->attribute_name ),
-                'name'      => $tax->attribute_name,  // without pa_ prefix
-                'label'     => $tax->attribute_label,
-                'type'      => $tax->attribute_type,
-                'public'    => (bool) $tax->attribute_public,
-            ];
-        }
-    }
-
-    wp_send_json_success( [ 'attributes' => $attributes ] );
-} );
 
 // ── Autosave entire attribute config for a profile ───────────────────────────
 add_action( 'wp_ajax_mmi_autosave_attribute_config', function () {

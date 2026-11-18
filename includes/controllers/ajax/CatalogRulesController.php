@@ -2,7 +2,7 @@
 /**
  * Catalog Rules Controller
  *
- * AJAX handlers for saving and retrieving the mmi_catalog_rules configuration
+ * AJAX handler for saving the mmi_catalog_rules configuration
  * — the toggle-only settings for the Catalog Updater's Maintenance phases.
  * Brand-level out-of-stock rules (formerly this controller's own
  * brand_oos_rules concept) were retired 2026-09-02 in favor of an
@@ -64,20 +64,6 @@ add_action( 'wp_ajax_mmi_save_catalog_rules', function () {
         // two independently-maintained counts that disagreed by one key.
         'count'   => Catalog_Phase_Runner::get_active_rule_count(),
     ] );
-} );
-
-/* ── Get catalog rules ────────────────────────────────────────────────────── */
-
-add_action( 'wp_ajax_mmi_get_catalog_rules', function () {
-    check_ajax_referer( 'mmi_pipeline_import_settings', 'nonce' );
-
-    if ( ! mmi_data_pipeline_user_can() ) {
-        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
-    }
-
-    $rules = Catalog_Phase_Runner::get_rules();
-
-    wp_send_json_success( [ 'rules' => $rules ] );
 } );
 
 // The dedicated "get brand slugs for the brand-rule dropdown" endpoint

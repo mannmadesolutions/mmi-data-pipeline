@@ -1,6 +1,6 @@
 <?php
 /**
- * Process Log & Recent Activities AJAX Controller
+ * Process Log AJAX Controller
  *
  * Self-contained import log handler for mmi-data-pipeline.
  * Key fixes:
@@ -21,8 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class MMI_Process_Log_Controller {
 
     public static function init(): void {
-        add_action( 'wp_ajax_mmi_get_process_log',       [ __CLASS__, 'handle_get_process_log' ] );
-        add_action( 'wp_ajax_mmi_get_recent_activities', [ __CLASS__, 'handle_get_recent_activities' ] );
+        add_action( 'wp_ajax_mmi_get_process_log', [ __CLASS__, 'handle_get_process_log' ] );
     }
 
     /* ── Process Log ──────────────────────────────────────────────────────── */
@@ -230,74 +229,5 @@ class MMI_Process_Log_Controller {
         }
 
         wp_send_json_success( [ 'log' => implode( "\n\n" . str_repeat( '─', 60 ) . "\n\n", $sections ) ] );
-    }
-
-    /* ── Recent Activities (dashboard widget) ─────────────────────────────── */
-
-    /**
-     * Return HTML for the recent-activities sidebar/widget.
-     *
-     * POST params:
-     *   nonce (string)
-     */
-    public static function handle_get_recent_activities(): void {
-        check_ajax_referer( 'mmi_product_importer_nonce', 'nonce' );
-
-        if ( ! mmi_data_pipeline_user_can( 'manage_options' ) ) {
-            wp_send_json_error( [ 'message' => __( 'Insufficient permissions', 'mmi-data-pipeline' ) ], 403 );
-        }
-
-        $activities = MMI_DB::get_recent_activities( 10 );
-        $html       = '';
-
-        if ( empty( $activities ) ) {
-            $html = '<div class="no-activity"><span class="dashicons dashicons-info"></span> No recent activity</div>';
-        } else {
-            foreach ( $activities as $activity ) {
-                // KEY FIX: use 'activity_type' and 'created_at' — not 'title' or 'timestamp'
-                $type       = $activity['activity_type'] ?? 'unknown';
-                $message    = $activity['message'] ?? '';
-                $created_at = $activity['created_at'] ?? null;
-
-                // Derive a display title from activity_type
-                $title_map = [
-                    'import'        => 'Catalog Import',
-                    'import_error'  => 'Import Error',
-                    'fetch'         => 'Supplier Fetch',
-                    'fetch_error'   => 'Fetch Error',
-                    'catalog'       => 'Catalog Update',
-                    'error'         => 'Error',
-                    'info'          => 'Info',
-                ];
-                $display_title = $title_map[ strtolower( $type ) ] ?? ucwords( str_replace( '_', ' ', $type ) );
-
-                // Icon and status class
-                $is_error = stripos( $type, 'error' ) !== false;
-                $is_warn  = stripos( $type, 'warn' )  !== false;
-                if ( $is_error ) {
-                    $icon_class  = 'dismiss';
-                    $status_class = 'error';
-                } elseif ( $is_warn ) {
-                    $icon_class  = 'warning';
-                    $status_class = 'warning';
-                } else {
-                    $icon_class  = 'yes-alt';
-                    $status_class = 'success';
-                }
-
-                $age = $created_at ? human_time_diff( strtotime( $created_at ) ) . ' ago' : '—';
-
-                $html .= '<div class="activity-item status-' . esc_attr( $status_class ) . '">';
-                $html .= '<div class="activity-icon"><span class="dashicons dashicons-' . esc_attr( $icon_class ) . '"></span></div>';
-                $html .= '<div class="activity-content">';
-                $html .= '<div class="activity-title">' . esc_html( $display_title ) . '</div>';
-                $html .= '<div class="activity-message">' . esc_html( $message ) . '</div>';
-                $html .= '</div>';
-                $html .= '<div class="activity-time">' . esc_html( $age ) . '</div>';
-                $html .= '</div>';
-            }
-        }
-
-        wp_send_json_success( [ 'html' => $html ] );
     }
 }

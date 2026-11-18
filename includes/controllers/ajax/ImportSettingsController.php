@@ -837,32 +837,6 @@ add_action('wp_ajax_mmi_pipeline_get_fields_from_files', function () {
 // discriminator-key/positional-index addressing scheme used for arrays of
 // nested objects (e.g. Xchange's webassets.requirements/long_description).
 
-// Get import profiles
-add_action('wp_ajax_mmi_get_import_profiles', function () {
-    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
-    
-    if (!mmi_data_pipeline_user_can()) {
-        wp_send_json_error(['message' => 'Insufficient permissions']);
-    }
-    
-    // Scoped to direction='import' — the unfiltered list includes
-    // export-created profiles, which would otherwise leak onto this tab's
-    // profile picker with bogus defaults (export creation never sets
-    // sources/import_mode for real import use).
-    $profiles = MMI_DB::get_profiles_by_direction( 'import' );
-
-    // Run the legacy-mode migration at most once per hour.
-    // migrate_profiles_to_modes() only touches profiles with a NULL/empty import_mode
-    // (i.e. created before the mode column existed), so it is a no-op on current installs.
-    // The transient prevents it from running on every page load for large profile sets.
-    if ( false === get_transient( 'mmi_profiles_mode_migration_done' ) ) {
-        MMI_DB::migrate_profiles_to_modes();
-        $profiles = MMI_DB::get_profiles_by_direction( 'import' ); // Refresh after migration.
-    }
-
-    wp_send_json_success($profiles);
-});
-
 // Save import profile
 add_action('wp_ajax_mmi_save_import_profile', function () {
     check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
@@ -1103,44 +1077,6 @@ add_action('wp_ajax_mmi_delete_import_profile', function () {
         'message'        => 'Profile deleted',
         'profile_id'     => $profile_id,
         'profiles_empty' => empty( $remaining_import_profiles ),
-    ]);
-});
-
-// Rename import profile
-add_action('wp_ajax_mmi_rename_import_profile', function () {
-    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
-
-    if (!mmi_data_pipeline_user_can()) {
-        wp_send_json_error(['message' => 'Insufficient permissions']);
-    }
-
-    $profile_id = sanitize_text_field($_POST['profile_id'] ?? '');
-    $name       = sanitize_text_field($_POST['name'] ?? '');
-
-    if (empty($profile_id) || empty($name)) {
-        wp_send_json_error(['message' => 'Profile ID and name required']);
-    }
-
-    $profiles = MMI_DB::get_profiles();
-
-    if (!isset($profiles[$profile_id]) || ($profiles[$profile_id]['direction'] ?? 'import') !== 'import') {
-        wp_send_json_error(['message' => 'Profile not found']);
-    }
-
-    $profiles[$profile_id]['name'] = $name;
-    MMI_DB::set_profiles( $profiles );
-
-    mmi_data_pipeline_audit('import_profile.rename', [
-        'object_type' => 'import_profile',
-        'object_id'   => $profile_id,
-        'outcome'     => 'success',
-        'details'     => ['name' => $name],
-    ]);
-
-    wp_send_json_success([
-        'message'    => 'Profile renamed',
-        'profile_id' => $profile_id,
-        'name'       => $name,
     ]);
 });
 

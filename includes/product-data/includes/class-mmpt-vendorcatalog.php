@@ -457,45 +457,6 @@ class VendorCatalog {
 		return (bool) ( preg_match( UrlFinder::NOT_PRODUCT, $path ) || preg_match( self::WP_NOT_PRODUCT, $path ) || preg_match( self::CONTENT_SECTIONS, $path ) );
 	}
 
-	/**
-	 * Drop stored list rows in a content section (lists kept before CONTENT_SECTIONS), each site's count
-	 * following. $apply false only counts. @return array<string,array{0:int,1:int}> host → [ dropped, left ]
-	 */
-	public static function drop_content_sections( bool $apply ): array {
-		global $wpdb;
-		self::maybe_install();
-		$rows = $wpdb->get_results( 'SELECT host, url_hash, url FROM ' . self::table() . " WHERE host NOT LIKE '" . esc_sql( $wpdb->esc_like( self::STAGE ) ) . "%'", ARRAY_A );
-		$out  = [];
-		$gone = [];
-		foreach ( $rows as $x ) {
-			$host = (string) $x['host'];
-			$out[ $host ] = $out[ $host ] ?? [ 0, 0 ];
-			if ( preg_match( self::CONTENT_SECTIONS, '/' . ltrim( (string) wp_parse_url( (string) $x['url'], PHP_URL_PATH ), '/' ) ) ) {
-				++$out[ $host ][0];
-				$gone[ $host ][] = (string) $x['url_hash'];
-			} else {
-				++$out[ $host ][1];
-			}
-		}
-		$out = array_filter( $out, static fn( $c ) => $c[0] > 0 );
-		if ( $apply && $gone ) {
-			$state = Module::state( self::STATE . '_hosts' );
-			foreach ( $gone as $host => $hashes ) {
-				foreach ( array_chunk( $hashes, 500 ) as $chunk ) {
-					// audit-ok: already batched: one prepared DELETE per 500 hashes per host
-					$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table() . ' WHERE host = %s AND url_hash IN (' . implode( ',', array_fill( 0, count( $chunk ), '%s' ) ) . ')', $host, ...$chunk ) );
-				}
-				if ( isset( $state[ $host ] ) ) {
-					Module::set_state( self::STATE . '_hosts', [ $host => [ 'count' => $out[ $host ][1] ] + $state[ $host ] ] );
-				}
-			}
-			if ( class_exists( 'MMI_Audit_Log' ) ) {
-				\MMI_Audit_Log::record( 'mmi-admin', 'vendor_catalog.content_sections_dropped', [ 'object_type' => 'vendor_catalog', 'object_id' => 'all', 'details' => array_map( static fn( $c ) => $c[0], $out ) ] );
-			}
-		}
-		return $out;
-	}
-
 	/** A sitemap address → a product page of the site, named from its slug; null when it isn't one. */
 	private static function item_from_url( string $u, string $host ): ?array {
 		$path = '/' . ltrim( (string) wp_parse_url( $u, PHP_URL_PATH ), '/' );
@@ -740,55 +701,6 @@ class VendorCatalog {
 		if ( $cur['mi'] >= count( $cur['maps'] ) || $cur['mi'] >= self::SITEMAPS || $cur['n'] >= self::MAX_ITEMS ) {
 			self::next_source( $cur );
 		}
-	}
-
-	/**
-	 * Every page the site's sitemap lists, on this site (WP-CLI: the maps runner). Found the way the drawer's
-	 * "Read its pages" finds them (robots.txt's Sitemap lines, else the usual names; index files followed, at most
-	 * SITEMAPS files), but nothing is left out: a product's manual or system-requirements page is what is wanted
-	 * here (owner 2026-10-21). Paced per host. @return string[]
-	 */
-	public static function all_urls( string $host, int $max = 20000 ): array {
-		$maps   = [];
-		$robots = self::text( 'https://' . $host . '/robots.txt', $host, 30, 'text/plain' );
-		if ( $robots !== null && preg_match_all( '/^\s*sitemap:\s*(\S+)/mi', $robots, $m ) ) {
-			foreach ( $m[1] as $u ) {
-				if ( BrandSites::host( $u ) === BrandSites::host( $host ) ) {
-					$maps[] = $u;
-				}
-			}
-		}
-		$guess = ! $maps;
-		if ( $guess ) {
-			$maps = [ 'https://' . $host . '/sitemap_index.xml', 'https://' . $host . '/sitemap-index.xml', 'https://' . $host . '/sitemap.xml' ];
-		}
-		$urls = [];
-		for ( $i = 0; $i < count( $maps ) && $i < self::SITEMAPS && count( $urls ) < $max; $i++ ) {
-			$xml = self::text( $maps[ $i ], $host, 30, 'application/xml' );
-			if ( $xml === null || ! preg_match_all( '#<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)#i', $xml, $m ) ) {
-				continue;
-			}
-			if ( $guess ) {
-				$maps  = array_slice( $maps, 0, $i + 1 ); // found it: the other usual names aren't read
-				$guess = false;
-			}
-			$locs = array_map( static fn( $u ) => html_entity_decode( $u, ENT_QUOTES | ENT_XML1, 'UTF-8' ), $m[1] );
-			$sub  = stripos( $xml, '<sitemapindex' ) !== false;
-			foreach ( $locs as $u ) {
-				if ( BrandSites::host( $u ) !== BrandSites::host( $host ) ) {
-					continue;
-				}
-				if ( $sub ) {
-					// audit-ok: haystack capped at SITEMAPS (40) sitemap files, checked first
-					if ( count( $maps ) < self::SITEMAPS && ! in_array( $u, $maps, true ) ) {
-						$maps[] = $u;
-					}
-				} elseif ( count( $urls ) < $max ) {
-					$urls[ $u ] = true;
-				}
-			}
-		}
-		return array_keys( $urls );
 	}
 
 	/* ── Sitemap vendors ────────────────────────────────────────────────── */

@@ -292,14 +292,6 @@ final class Rule_Efficacy {
         return $findings;
     }
 
-    /**
-     * Grade for a saved rule from its run history alone (cheap: no catalog
-     * reads), for the page header and the rule list.
-     */
-    public static function grade_from_history( array $runs ): string {
-        return self::result( self::observed( $runs ), 0, 0 )['grade'];
-    }
-
     /* ── Stored grades (what the page reads) ───────────────────────────── */
 
     const SNAPSHOT = 'mmi_standing_rule_efficacy';
@@ -377,25 +369,6 @@ final class Rule_Efficacy {
             }
             $first = $stored['findings'][0] ?? [ 'text' => '' ];
             $out[] = [ 'id' => $rule['id'], 'name' => $rule['name'] !== '' ? $rule['name'] : 'Rule ' . ( $i + 1 ), 'text' => $first['text'] ];
-        }
-        return $out;
-    }
-
-    /**
-     * Stored findings worth showing beside each rule (review and worse), by
-     * rule position, as "what's wrong — what to do" lines.
-     *
-     * @return array<int,string[]>
-     */
-    public static function notices_by_index(): array {
-        $snapshot = self::snapshot();
-        $out      = [];
-        foreach ( Standing_Rules::all() as $i => $rule ) {
-            foreach ( $snapshot[ $rule['id'] ]['findings'] ?? [] as $f ) {
-                if ( self::RANK[ $f['severity'] ] >= self::RANK[ self::REVIEW ] ) {
-                    $out[ $i ][] = $f['text'] . ' ' . $f['fix'];
-                }
-            }
         }
         return $out;
     }

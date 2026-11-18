@@ -7,7 +7,7 @@
  * cascade can trigger once matched, beyond the two original stock actions
  * (force_instock/force_outofstock, still owned by Stock_Override_Resolver's
  * tiered real-time resolution). Everything here is bulk-apply only: it runs
- * from Stock_Override_Resolver::apply_to_catalog()/apply_catalog_page()'s
+ * from Stock_Override_Resolver::apply_catalog_page()'s
  * second, additive per-product pass (see that class), never from the
  * real-time import path — these are post-import catalog-maintenance actions,
  * not import-time stock resolution.
@@ -649,7 +649,7 @@ class Custom_Rule_Actions {
      * admin-typed constant. Works regardless of whether $params['source_field']
      * is part of the profile's normal Field Mapping config; $raw_item is
      * already scoped to the matched product's own feed record by the caller
-     * (apply_to_catalog()/apply_catalog_page(), the same per-product raw item
+     * (apply_catalog_page(), the same per-product raw item
      * condition-matching already uses).
      */
     private static function apply_copy_source_field_to_meta( int $product_id, array $params, array $raw_item ): bool {

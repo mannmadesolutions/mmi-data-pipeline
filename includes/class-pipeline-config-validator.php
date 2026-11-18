@@ -426,59 +426,6 @@ class MMI_Pipeline_Config_Validator {
     }
 
     /**
-     * Render the validation results as an admin-notice-style panel.
-     *
-     * Returns an empty string when there are no issues (caller can echo
-     * unconditionally without an extra empty-check).
-     *
-     * @param array $issues Result of validate().
-     * @return string Escaped HTML.
-     */
-    public static function render_html( array $issues ): string {
-        if ( empty( $issues ) ) {
-            return '';
-        }
-
-        $critical = array_values( array_filter( $issues, fn( $i ) => ( $i['severity'] ?? '' ) === 'critical' ) );
-        $warning  = array_values( array_filter( $issues, fn( $i ) => ( $i['severity'] ?? '' ) === 'warning' ) );
-
-        $panel_class = ! empty( $critical ) ? 'mmi-config-issues-critical' : 'mmi-config-issues-warning';
-
-        ob_start();
-        ?>
-        <div class="mmi-config-issues-panel <?php echo esc_attr( $panel_class ); ?>">
-            <h4 class="mmi-config-issues-heading">
-                <span class="dashicons dashicons-warning"></span>
-                <?php if ( ! empty( $critical ) ) : ?>
-                    Configuration Issues Found — this import may create incomplete or empty products
-                <?php else : ?>
-                    Configuration Warnings
-                <?php endif; ?>
-            </h4>
-            <ul class="mmi-config-issues-list">
-                <?php foreach ( $critical as $issue ) : ?>
-                    <li class="mmi-config-issue mmi-config-issue-critical">
-                        <span class="dashicons dashicons-dismiss"></span>
-                        <?php echo esc_html( $issue['message'] ); ?>
-                    </li>
-                <?php endforeach; ?>
-                <?php foreach ( $warning as $issue ) : ?>
-                    <li class="mmi-config-issue mmi-config-issue-warning">
-                        <span class="dashicons dashicons-flag"></span>
-                        <?php echo esc_html( $issue['message'] ); ?>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-            <p class="mmi-config-issues-footer">
-                Fix these in <strong>Field Mappings</strong> (or <strong>Data Sources</strong> for
-                primary key/feed issues) before running this import or enabling its schedule.
-            </p>
-        </div>
-        <?php
-        return ob_get_clean();
-    }
-
-    /**
      * Validated supplier IDs — mirrors ProductImportController::get_enabled_suppliers().
      *
      * A source counts here the moment it's validated — there is no separate

@@ -45,9 +45,6 @@ final class Product_Workbench {
     /** Meta-key columns the table may show at once ("meta:{key}" sorts and edits). */
     const MAX_META_COLUMNS = 6;
 
-    /** Fields a results row edits in place besides its categories and brand. */
-    const EDITABLE_FIELDS = [ 'title', 'regular', 'sale', 'stock_qty' ];
-
     const QUICK_SEARCH_IN = [ 'title_sku', 'title', 'sku' ];
 
     const STOCK_STATUSES = [ 'instock', 'outofstock', 'onbackorder' ];

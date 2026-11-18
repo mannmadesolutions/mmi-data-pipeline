@@ -386,7 +386,6 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 	};
 	const partName = ( k ) => MESSAGES.parts[ k ] || k;
 	const topOnly = ( els ) => els.filter( ( el ) => ! els.some( ( o ) => o !== el && o.contains( el ) ) );
-	const textOf = ( els ) => topOnly( els ).map( ( el ) => el.textContent.replace( /\s+/g, ' ' ).trim() ).join( ' ' );
 
 	/* ── State ─────────────────────────────────────────────────────────── */
 

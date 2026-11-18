@@ -1719,7 +1719,7 @@ class MMI_Pipeline_Cron {
     /**
      * Resolves a profile_id (a permanent slug, generated once at creation and
      * never updated when a profile is renamed — see ImportSettingsController's
-     * mmi_save_import_profile/_rename_import_profile) to its CURRENT saved
+     * mmi_save_import_profile/_update_import_profile) to its CURRENT saved
      * display name, for anything shown to a human (activity log headlines,
      * failure alerts, the daily digest email). Falls back to ucfirst($profile_id)
      * only when the profile no longer exists (e.g. deleted mid-run), so a label

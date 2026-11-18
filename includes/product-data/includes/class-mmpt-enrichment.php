@@ -58,10 +58,7 @@ class Enrichment {
 	const DB_VERSION   = '2'; // 2: `chosen` (image picker, 2026-10-08)
 	const DB_OPTION    = 'mmpt_enrich_db_version';
 	const THIN_CHARS   = PageEvents::THIN_CHARS;
-
-	/** refresh_for_review() is running: the refreshes it proposes wait for a person (next() skips them). */
-	private static bool $hold = false;
-	const KINDS        = [ 'content', 'image' ];
+	const KINDS       = [ 'content', 'image' ];
 	const SOURCES      = [
 		'content:web_assets'  => 'Description from XChange web-assets (vendor-supplied)',
 		'content:vendor_page' => 'Description from the vendor page fetched now',
@@ -239,20 +236,6 @@ class Enrichment {
 	 * Open rows are refreshed; accepted/rejected/applied/reverted rows keep
 	 * their decision unless the proposal itself changed.
 	 */
-	/**
-	 * Descriptions this module wrote, nobody edited since, and the reader now reads differently: proposed again, held
-	 * for a person in One page's Proposals view (owner 2026-10-26: "refresh … in batches for you to review"), never
-	 * written by the writer on its own. Accepting one writes it with the original kept for Undo.
-	 */
-	public static function refresh_for_review( array $ids ): array {
-		self::$hold = true;
-		try {
-			return self::generate( $ids );
-		} finally {
-			self::$hold = false;
-		}
-	}
-
 	public static function generate( array $only = [] ): array {
 		global $wpdb;
 		self::maybe_install();
@@ -307,8 +290,7 @@ class Enrichment {
 						$c = null; // a site's home page isn't this product's page: its copy is the site's (bitwig.com, 2026-10-21)
 					}
 					if ( $c && $ours ) {
-						// A held refresh is the maker's page read again, never another source standing in for it.
-						if ( ( ! self::$hold || $c['source'] === 'vendor_page' ) && trim( $c['proposed_value'] ) !== trim( (string) $was['proposed_value'] ) ) {
+						if ( trim( $c['proposed_value'] ) !== trim( (string) $was['proposed_value'] ) ) {
 							self::refresh_written( $id, $c, $was, (string) $p['post_content'] );
 							$stats['content']++;
 						}
@@ -483,7 +465,7 @@ class Enrichment {
 				'source_url'     => mb_substr( (string) ( $c['source_url'] ?? '' ), 0, 500 ),
 				'proposed_value' => $c['proposed_value'],
 				'current_value'  => $written,
-				'detail'         => wp_json_encode( [ 'refresh' => 1, 'original' => (string) $was['original_value'], 'locked_by_us' => (int) ( $prev['locked_by_us'] ?? 0 ) ] + ( self::$hold ? [ 'hold' => 1 ] : [] ) ),
+				'detail'         => wp_json_encode( [ 'refresh' => 1, 'original' => (string) $was['original_value'], 'locked_by_us' => (int) ( $prev['locked_by_us'] ?? 0 ) ] ),
 				'composed_at'    => current_time( 'mysql' ),
 				'applied_at'     => null,
 				'reviewed_by'    => null,
@@ -726,7 +708,7 @@ class Enrichment {
 		$auto     = $sources ? $wpdb->prepare( " OR (status = 'proposed' AND source IN (" . implode( ',', array_fill( 0, count( $sources ), '%s' ) ) . '))', ...$sources ) : '';
 		// A product that has pictures changes only to a set a person picked; AVIF rows wait for a CLI run.
 		$skip = " AND NOT ( kind = 'image' AND current_value <> '' AND COALESCE( chosen, '' ) = '' )" . ( ImageConvert::browser_available() ? '' : " AND LOCATE( 'avif_wait', COALESCE( detail, '' ) ) = 0" );
-		$skip .= " AND NOT ( status = 'proposed' AND LOCATE( '\"hold\":1', COALESCE( detail, '' ) ) > 0 )"; // refresh_for_review(): a person decides
+		$skip .= " AND NOT ( status = 'proposed' AND LOCATE( '\"hold\":1', COALESCE( detail, '' ) ) > 0 )"; // a refresh stored as held for review: a person decides
 		$skip .= $only ? ' AND product_id = ' . (int) $only : '';
 		return array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT product_id FROM ' . self::table() . " WHERE kind = %s AND (status = 'accepted'{$auto}){$skip}" . Exclusions::sql_not_excluded() . " ORDER BY FIELD(status,'accepted','proposed'), product_id LIMIT %d", $kind, $limit ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 	}

@@ -1688,9 +1688,8 @@ jQuery(document).ready(function($) {
 
     /**
      * Render a list of pre-flight config issues into $importStatus \u2014 the same
-     * classed panel markup MMI_Pipeline_Config_Validator::render_html() and
-     * the wizard's own renderWizardFieldIssues() already use, rather than a
-     * separate ad-hoc inline-styled block, so all three read as one visual
+     * classed panel markup the wizard's own renderWizardFieldIssues() already
+     * uses, rather than a separate ad-hoc inline-styled block, so both read as one visual
      * language (see mmi-config-issues-* in import-settings.css).
      *
      * Each issue that names a `field` gets a "Go to field \u2192" link, jumping

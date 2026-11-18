@@ -14,7 +14,7 @@
  * - Sites: each switched to what it is (the maker's own, a partner, a reseller, a store, another brand's), a site
  *   added, the Brand website.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   batchesOf, batchKey, bestMatches, drawerRow, hostOf, isMaker, makerHosts, offHosts, PRODUCT_GROUPS, ROLES, rolesBody, roleLabel, shortUrl, SURE, sureIds, ticks, toDo,
   toDoText, type Batch, type Brand, type Match, type ProductGroup, type ProductsReply, type SitePages, type SiteRole,
@@ -179,6 +179,7 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill, siteSt
   const pages = reply ? Math.max(1, Math.ceil(reply.total / (reply.per_page || 50))) : 1;
   const makers = makerHosts(brand);
   const waits = toDoText(brand);
+  const batches = useMemo(() => batchesOf(rows, placed), [rows, placed]);
   return (
     <div className="mmi-wb-split-item" id="mmi-wb-bs-drawer" ref={ref} data-brand={brand.id}>
       <div className="mmi-wb-split-head">
@@ -326,12 +327,11 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill, siteSt
           {finding && <span className="description" role="status">{finding}</span>}
           <button type="button" className="button button-small" id="mmi-wb-bs-deck-open" disabled={!rows.length} aria-pressed={deck !== null}
             title="One product at a time, its pages and evidence side by side, decided from the keyboard"
-            onClick={() => { const order = batchesOf(rows, placed).flatMap((b) => b.rows); setDeck(deck !== null ? null : (order.find((r) => !state[r.id]?.notice) ?? order[0])?.id ?? null); }}>
+            onClick={() => { const order = batches.flatMap((b) => b.rows); setDeck(deck !== null ? null : (order.find((r) => !state[r.id]?.notice) ?? order[0])?.id ?? null); }}>
             {deck !== null ? "Close the one-at-a-time view" : "Look closer, one at a time"}
           </button>
         </div>
         {deck !== null && (() => {
-          const batches = batchesOf(rows, placed);
           return (
             <PageDeck order={batches.flatMap((b) => b.rows)} at={deck} onAt={setDeck} onClose={() => setDeck(null)} cells={cells} state={state}
               labelOf={(id) => batches.find((b) => b.rows.some((r) => r.id === id))?.label ?? ""} evidence={evidence} loadWhy={loadWhy} />
@@ -345,7 +345,7 @@ export function BrandDrawer({ cfg, brand, onBrand, tab, onTab, map, fill, siteSt
               onTick={(id, on) => setFound((f) => (f ? { ...f, ticked: on ? [...f.ticked, id] : f.ticked.filter((x) => x !== id) } : f))}
               onSave={() => void saveFound()} onClear={() => setFound(null)} />
           )}
-          {batchesOf(rows, placed).map((b) => {
+          {batches.map((b) => {
             const closed = shut.has(b.key);
             const live = b.rows.filter((r) => !state[r.id]?.gone);
             const t = live.filter((r) => ticked.has(r.id)).length;

@@ -226,54 +226,6 @@ add_action('wp_ajax_mmi_analyze_uploaded_file', function () {
 // ─── CRUD Operations ────────────────────────────────────────────────────────
 
 /**
- * Get all data sources
- */
-add_action('wp_ajax_mmi_get_data_sources', function () {
-    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
-
-    if (!mmi_data_pipeline_user_can()) {
-        wp_send_json_error(['message' => 'Insufficient permissions']);
-    }
-
-    global $wpdb;
-    $table = $wpdb->prefix . 'mmi_data_sources';
-
-    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
-        wp_send_json_error(['message' => 'Data sources table not found. Please deactivate and reactivate the MMI Hub plugin.']);
-    }
-
-    $sources = $wpdb->get_results(
-        "SELECT * FROM {$table} ORDER BY display_order ASC, supplier_name ASC",
-        ARRAY_A
-    );
-
-    // Decode JSON columns
-    foreach ($sources as &$source) {
-        $source['configuration'] = json_decode($source['configuration'] ?: '{}', true);
-        $source['auth_config'] = json_decode($source['auth_config'] ?: '{}', true);
-        $source['file_config'] = json_decode($source['file_config'] ?: '{}', true);
-        // Strip sensitive credential values from auth_config before sending to frontend
-        if (isset($source['auth_config']['credential_keys'])) {
-            $source['auth_config']['has_credentials'] = true;
-        }
-    }
-
-    // Load endpoints for each source
-    $endpoints_table = $wpdb->prefix . 'mmi_data_source_endpoints';
-    if ($wpdb->get_var("SHOW TABLES LIKE '{$endpoints_table}'") === $endpoints_table) {
-        foreach ($sources as &$source) {
-            // audit-ok: one prepared query per configured data source, a handful of suppliers
-            $source['endpoints'] = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$endpoints_table} WHERE source_id = %d ORDER BY is_primary DESC, id ASC",
-                $source['id']
-            ), ARRAY_A);
-        }
-    }
-
-    wp_send_json_success($sources);
-});
-
-/**
  * Get single data source configuration
  */
 add_action('wp_ajax_mmi_get_data_source', function () {
@@ -1898,36 +1850,6 @@ add_action('wp_ajax_mmi_get_auth_fields', function () {
         'fields' => $fields,
         'html' => mmi_ds_render_auth_fields_html($auth_type, $fields),
     ]);
-});
-
-/**
- * Reorder suppliers (drag & drop)
- */
-add_action('wp_ajax_mmi_reorder_suppliers', function () {
-    check_ajax_referer('mmi_pipeline_import_settings', 'nonce');
-
-    if (!mmi_data_pipeline_user_can()) {
-        wp_send_json_error(['message' => 'Insufficient permissions']);
-    }
-
-    // audit-ok: is_array checked; each ID goes through sanitize_text_field, index cast to int, $wpdb->update
-    $order = $_POST['order'] ?? [];
-    if (!is_array($order)) {
-        wp_send_json_error(['message' => 'Invalid order data']);
-    }
-
-    global $wpdb;
-    $table = $wpdb->prefix . 'mmi_data_sources';
-
-    foreach ($order as $index => $supplier_id) {
-        $wpdb->update(
-            $table,
-            ['display_order' => (int) $index],
-            ['supplier_id' => sanitize_text_field($supplier_id)]
-        );
-    }
-
-    wp_send_json_success(['message' => 'Order saved']);
 });
 
 // ─── Helper Functions ───────────────────────────────────────────────────────

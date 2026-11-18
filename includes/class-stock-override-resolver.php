@@ -297,10 +297,9 @@ class Stock_Override_Resolver {
      * already loops over every real configured data source, not just Xchange/
      * SkuPort — these three helpers are the single place that resolves "which
      * products belong to supplier X" for every consumer in this class
-     * (get_product_ids_by_supplier(), count_products_by_supplier(),
-     * detect_product_supplier(), and the legacy per-item scan's file lookup),
-     * so a rule scoped to any configured supplier works correctly rather than
-     * only the two that happened to exist when this class was first written.
+     * (get_product_ids_by_supplier(), detect_product_supplier(), and the
+     * legacy per-item scan's file lookup), so a rule scoped to any
+     * configured supplier works correctly rather than only the two that happened to exist when this class was first written.
      */
 
     /**
@@ -347,9 +346,8 @@ class Stock_Override_Resolver {
      * supplier SKU-tracking meta is populated, first match wins in
      * get_all_supplier_ids() order — plus the feed-lookup key/value needed
      * to find that product's raw source record. Single implementation
-     * shared by apply_to_catalog() and apply_catalog_page(), replacing what
-     * used to be their own separately-duplicated, Xchange/SkuPort-only
-     * inline detection.
+     * used by apply_catalog_page(), replacing what used to be separately-
+     * duplicated, Xchange/SkuPort-only inline detection.
      *
      * @param  int $product_id
      * @return array{supplier:string, feed_meta_key:string, supplier_sku_val:string}
@@ -443,109 +441,6 @@ class Stock_Override_Resolver {
     /* ── Matched product ID helpers ──────────────────────────────────────── */
 
     /**
-     * Count how many published WC products would be matched by a rule.
-     * Fast SQL COUNT for no-condition rules; feed scan for condition-based rules.
-     *
-     * @param  array $rule  Single rule array (new or old format).
-     * @return int
-     */
-    public static function count_matched_products_for_rule( array $rule ): int {
-        $norm       = self::normalize_rule( $rule );
-        $conditions = $norm['conditions'] ?? [];
-
-        if ( empty( $conditions ) ) {
-            return self::count_products_by_supplier( $norm['supplier'] ?? 'all' );
-        }
-
-        return count( self::get_matched_product_ids_for_rule( $rule ) );
-    }
-
-    /**
-     * Per-condition match breakdown — for debugging why a multi-condition
-     * rule matches fewer (or more) products than expected: each condition's
-     * own match set (as if it were the rule's only condition), plus the
-     * rule's real combined result, each with a capped ID+title sample.
-     * Legacy-format conditions (no 'source' key) aren't broken out
-     * individually — the legacy per-item feed scan only ever evaluates all
-     * of them together — so those return a zero-count placeholder with a
-     * note rather than a wrong/misleading count.
-     *
-     * @param  array $rule          Rule array (old or new format).
-     * @param  int   $sample_limit  Max ID+title pairs returned per condition/combined.
-     * @return array{conditions: array<int,array{count:int,sample:array,unsupported?:bool}>, combined: array{count:int,sample:array}}
-     */
-    public static function get_condition_breakdown( array $rule, int $sample_limit = 100 ): array {
-        $norm       = self::normalize_rule( $rule );
-        $conditions = $norm['conditions'] ?? [];
-
-        // Per-condition FULL id sets (uncapped) — needed so the union table's
-        // per-row "which conditions matched" membership is correct even for a
-        // condition with more matches than fit in the display cap, not just
-        // reconstructable from independently-capped samples.
-        $condition_id_sets = [];
-        $condition_summary = [];
-
-        foreach ( $conditions as $cond ) {
-            $source = $cond['source'] ?? '';
-            $field  = $cond['field']  ?? '';
-
-            if ( $field === '' || $source === '' ) {
-                $condition_id_sets[] = [];
-                $condition_summary[] = [ 'count' => 0, 'unsupported' => true ];
-                continue;
-            }
-
-            $operator = $cond['operator'] ?? 'equals';
-            $value    = (string) ( $cond['value'] ?? '' );
-
-            if ( $source === self::TAXONOMY_SOURCE ) {
-                $ids = self::get_product_ids_by_taxonomy_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ), ! empty( $cond['include_children'] ) );
-            } elseif ( $source === self::POSTMETA_SOURCE ) {
-                $ids = self::get_product_ids_by_postmeta_condition( $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
-            } else {
-                $ids = self::get_product_ids_by_source_field_value( $source, $field, $operator, $value, ! empty( $cond['case_sensitive'] ) );
-            }
-
-            $condition_id_sets[] = $ids;
-            $condition_summary[] = [ 'count' => count( $ids ), 'unsupported' => false ];
-        }
-
-        // Union across every condition, tracking per-product which condition
-        // index(es) matched it — the basis for the unified table's per-row
-        // color-coded condition badges.
-        $membership = [];
-        foreach ( $condition_id_sets as $i => $ids ) {
-            foreach ( $ids as $id ) {
-                $membership[ $id ][] = $i;
-            }
-        }
-
-        $combined_ids = self::get_matched_product_ids_for_rule( $rule );
-        $combined_map = array_fill_keys( $combined_ids, true );
-
-        $union_ids = array_slice( array_keys( $membership ), 0, $sample_limit );
-        $rows      = [];
-        foreach ( $union_ids as $id ) {
-            $title   = get_the_title( $id );
-            $rows[]  = [
-                'id'         => (int) $id,
-                'title'      => $title !== '' ? $title : '(no title)',
-                'conditions' => array_values( $membership[ $id ] ),
-                'in_result'  => isset( $combined_map[ $id ] ),
-            ];
-        }
-
-        return [
-            'conditions'     => $condition_summary,
-            'match_logic'    => $norm['match_logic'] ?? 'all',
-            'union_total'    => count( $membership ),
-            'union_shown'    => count( $union_ids ),
-            'combined_count' => count( $combined_ids ),
-            'rows'           => $rows,
-        ];
-    }
-
-    /**
      * Return the WC product IDs that would be affected by a given rule.
      * Rules with no conditions return all products in the supplier scope.
      *
@@ -590,7 +485,7 @@ class Stock_Override_Resolver {
             // field, a taxonomy, a post field/meta) — it says nothing about
             // WHICH products the rule is allowed to touch at all. The rule's
             // own `supplier` is that separate, real scope, and must still
-            // apply here: apply_to_catalog()/apply_catalog_page()'s
+            // apply here: apply_catalog_page()'s
             // per-product rule_matches_supplier() gate already enforces it
             // during actual execution, so leaving it unapplied here would
             // let this preview/count/breakdown path show a product as
@@ -1095,7 +990,7 @@ class Stock_Override_Resolver {
      * Evaluate a single condition against a live product's own post field or
      * postmeta value — the real-time counterpart to
      * get_product_ids_by_postmeta_condition(), used by resolve() and by
-     * apply_to_catalog()/apply_catalog_page()'s Custom Rule action pass so a
+     * apply_catalog_page()'s Custom Rule action pass so a
      * postmeta condition's actual effect matches what the match-count preview
      * and apply paths already computed via that method.
      *
@@ -1255,62 +1150,6 @@ class Stock_Override_Resolver {
         );
     }
 
-    private static function count_products_by_supplier( string $supplier ): int {
-        global $wpdb;
-        $status_sql = self::status_sql();
-
-        if ( $supplier === 'native' ) {
-            // "Live App Data" — products with no tracked supplier SKU at all
-            // (manually created, or from a channel this plugin doesn't track).
-            $meta_keys = self::native_exclusion_meta_keys();
-            if ( empty( $meta_keys ) ) {
-                // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                return (int) $wpdb->get_var(
-                    "SELECT COUNT(*) FROM {$wpdb->posts} p
-                     WHERE p.post_type = 'product' AND {$status_sql}"
-                );
-                // phpcs:enable
-            }
-            $placeholders = implode( ',', array_fill( 0, count( $meta_keys ), '%s' ) );
-            // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared
-            return (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->posts} p
-                 WHERE p.post_type = 'product' AND {$status_sql}
-                   AND p.ID NOT IN (
-                       SELECT post_id FROM {$wpdb->postmeta}
-                       WHERE meta_key IN ({$placeholders})
-                         AND meta_value != ''
-                   )",
-                ...$meta_keys
-            ) );
-            // phpcs:enable
-        }
-
-        if ( $supplier === 'all' || $supplier === '' ) {
-            // 'all' — every published product, supplier-tracked or not. This
-            // must match apply_to_catalog()/apply_catalog_page()'s own scan
-            // (wc_get_products() with no supplier filter).
-            // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            return (int) $wpdb->get_var(
-                "SELECT COUNT(*) FROM {$wpdb->posts} p
-                 WHERE p.post_type = 'product' AND {$status_sql}"
-            );
-            // phpcs:enable
-        }
-
-        // Any real, configured supplier id — generic, not just xchange/skuport.
-        $meta_key = self::get_supplier_sku_meta_key( $supplier );
-        // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared
-        return (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
-                AND pm.meta_key = %s AND pm.meta_value != ''
-             WHERE p.post_type = 'product' AND {$status_sql}",
-            $meta_key
-        ) );
-        // phpcs:enable
-    }
-
     /**
      * Return product IDs for all published WC products in a supplier scope.
      *
@@ -1350,8 +1189,7 @@ class Stock_Override_Resolver {
         }
 
         if ( $supplier === 'all' || $supplier === '' ) {
-            // Every published product, supplier-tracked or not (see the
-            // identical note in count_products_by_supplier()).
+            // Every published product, supplier-tracked or not.
             // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $ids = $wpdb->get_col(
                 "SELECT p.ID FROM {$wpdb->posts} p
@@ -1394,7 +1232,7 @@ class Stock_Override_Resolver {
     /**
      * Public entry point for evaluate_conditions() — whether a rule (any
      * shape normalize_rule() accepts) matches a given product/raw feed item.
-     * Used by apply_to_catalog()/apply_catalog_page()'s Custom Rule action
+     * Used by apply_catalog_page()'s Custom Rule action
      * pass to decide whether a non-stock rule applies to a product, the same
      * matching logic resolve() already uses for stock rules.
      *
@@ -1654,7 +1492,7 @@ class Stock_Override_Resolver {
             // Only stock actions participate in this tiered, mutually-exclusive
             // real-time resolution — every other Custom Rule action type is a
             // post-import catalog-maintenance action, applied only via
-            // apply_to_catalog()/apply_catalog_page()'s additive second pass.
+            // apply_catalog_page()'s additive second pass.
             if ( ! in_array( $action, self::VALID_OVERRIDES, true ) ) {
                 continue;
             }
@@ -1666,431 +1504,6 @@ class Stock_Override_Resolver {
 
         // ── Tier 3: source data ───────────────────────────────────────────
         return $source_status;
-    }
-
-    /* ── Bulk catalog application ────────────────────────────────────────── */
-
-    /**
-     * Apply override rules to every WooCommerce product in the database.
-     *
-     * Used by the catalog-update override_stock phase. Loads supplier JSON feeds
-     * so that flag_match rules are evaluated against real product data — the same
-     * behaviour as apply_catalog_page().  Previously this method passed an empty
-     * raw_item array, which silently skipped all flag_match rules and caused
-     * overrides to appear as though they weren't being respected after a
-     * feed_sync phase had restored products to in-stock.
-     *
-     * @param  array $rules  Array of rule arrays (same shape as the constructor).
-     * @return array         ['processed' => int, 'changed' => int]
-     */
-    public static function apply_to_catalog( array $rules ): array {
-        if ( empty( $rules ) ) {
-            return [ 'processed' => 0, 'changed' => 0 ];
-        }
-
-        wp_raise_memory_limit( 'wc' );
-
-        // Load supplier feed data once so flag_match rules can be evaluated.
-        $feed_lookup = self::build_feed_lookup_for_rules( $rules );
-
-        $resolver  = new self( $rules );
-        $processed = 0;
-        $changed   = 0;
-        $page      = 1;
-
-        do {
-            $products = wc_get_products( [
-                'status'  => 'publish',
-                'limit'   => 200,
-                'page'    => $page,
-                'return'  => 'objects',
-            ] );
-
-            if ( empty( $products ) ) {
-                break;
-            }
-
-            foreach ( $products as $product ) {
-                $product_id     = $product->get_id();
-                $current_status = $product->get_stock_status();
-
-                // Detect supplier and look up the matching raw feed item so that
-                // flag_match rules can be evaluated (same logic as apply_catalog_page).
-                $detected         = self::detect_product_supplier( $product_id );
-                $supplier         = $detected['supplier'];
-                $feed_meta_key    = $detected['feed_meta_key'];
-                $supplier_sku_val = $detected['supplier_sku_val'];
-
-                $raw_item = ( $feed_meta_key !== '' && $supplier_sku_val !== '' )
-                    ? ( $feed_lookup[ $feed_meta_key ][ $supplier_sku_val ] ?? [] )
-                    : [];
-
-                $resolved = $resolver->resolve( $product_id, $current_status, $raw_item, $supplier );
-                $processed++;
-
-                if ( $resolved !== $current_status ) {
-                    // Write _stock_status directly to postmeta + lookup table
-                    // so WC's validate_props() — which recalculates from qty
-                    // during save() — never runs and cannot override our value.
-                    self::force_stock_status( $product_id, $resolved );
-                    $changed++;
-                }
-
-                if ( self::apply_custom_rule_actions( $rules, $product_id, $raw_item, $supplier ) ) {
-                    $changed++;
-                }
-            }
-
-            // Every product object, its postmeta and its terms stay in WP's
-            // in-process object cache for the rest of the request — ~10 MB
-            // per 200-product page, never released. Across the full catalog
-            // that crossed the 512 MB limit around page 22 and killed every
-            // scheduled override_stock phase from 2026-09-27 on. Only the
-            // per-request copy is dropped; Redis is untouched.
-            $page_size = count( $products );
-            unset( $products );
-            wp_cache_flush_runtime();
-
-            $page++;
-        } while ( $page_size === 200 );
-
-        return [ 'processed' => $processed, 'changed' => $changed ];
-    }
-
-    /**
-     * The additive second pass behind apply_to_catalog()/apply_catalog_page():
-     * every non-stock Custom Rule action (taxonomy, post status, pricing,
-     * managed stock, backorders, ...) whose conditions match this product is
-     * applied independently — unlike the stock tier system above, these
-     * aren't mutually exclusive with each other, so every matching rule
-     * applies rather than only the first.
-     *
-     * @param  array  $rules      Full rule list for this bulk-apply run.
-     * @param  int    $product_id
-     * @param  array  $raw_item   Raw supplier feed record for this product.
-     * @param  string $supplier
-     * @return bool               True if any rule actually changed the product.
-     */
-    private static function apply_custom_rule_actions( array $rules, int $product_id, array $raw_item, string $supplier ): bool {
-        $changed = false;
-
-        foreach ( $rules as $rule ) {
-            $rule_supplier = is_array( $rule ) ? ( $rule['supplier'] ?? 'all' ) : 'all';
-            if ( $rule_supplier !== 'all' && $rule_supplier !== $supplier ) {
-                continue;
-            }
-
-            $normalised = self::normalize_rule( (array) $rule );
-            $action     = $normalised['action'] ?? '';
-
-            if ( empty( $normalised['enabled'] ) ) {
-                continue;
-            }
-
-            if ( $action === '' || Custom_Rule_Actions::is_stock_action( $action ) || ! Custom_Rule_Actions::is_valid( $action ) ) {
-                continue;
-            }
-
-            if ( ! self::rule_matches_product( $normalised, $product_id, $raw_item ) ) {
-                continue;
-            }
-
-            if ( Custom_Rule_Actions::apply( $product_id, $action, $normalised['action_params'] ?? [], $raw_item ) ) {
-                $changed = true;
-            }
-        }
-
-        return $changed;
-    }
-
-    /**
-     * Apply override rules to a single page of WooCommerce products.
-     *
-     * Used by the "Apply Now" AJAX button to process large catalogs in chunks
-     * without hitting PHP execution time limits. The caller should increment
-     * `$page` and repeat until `has_more` is false.
-     *
-     * On `$page === 1` a total product count is included in the response so the
-     * caller can display a deterministic progress bar.
-     *
-     * @param  array $rules       Array of rule arrays (same shape as the constructor).
-     * @param  int   $page        1-based page number.
-     * @param  int   $per_page    Products per page (default 200).
-     * @param  int[] $product_ids Optional pre-filtered product ID list. When provided,
-     *                            only these products are processed (paginated by slicing
-     *                            the array). Omit or pass [] for the normal full-catalog scan.
-     * @return array {
-     *   processed_this_page: int,
-     *   changed_this_page:   int,
-     *   total_products:      int|null  — always set when $product_ids provided; page 1 only for full scan,
-     *   has_more:            bool,
-     *   error?:              string    — present only on exception,
-     * }
-     */
-    public static function apply_catalog_page( array $rules, int $page = 1, int $per_page = 200, array $product_ids = [] ): array {
-        if ( empty( $rules ) ) {
-            return [
-                'processed_this_page' => 0,
-                'changed_this_page'   => 0,
-                'total_products'      => 0,
-                'has_more'            => false,
-            ];
-        }
-
-        try {
-            wp_raise_memory_limit( 'wc' );
-
-            $feed_lookup    = self::build_feed_lookup_for_rules( $rules );
-            $resolver       = new self( $rules );
-            $processed      = 0;
-            $changed        = 0;
-            $using_filter   = ! empty( $product_ids );
-            $total_products = null;
-
-            if ( $using_filter ) {
-                // ── Pre-filtered mode: slice the ID array for this page ───
-                $total_products = count( $product_ids );
-                $offset         = ( $page - 1 ) * $per_page;
-                $chunk          = array_slice( $product_ids, $offset, $per_page );
-
-                if ( empty( $chunk ) ) {
-                    return [
-                        'processed_this_page' => 0,
-                        'changed_this_page'   => 0,
-                        'total_products'      => $total_products,
-                        'has_more'            => false,
-                    ];
-                }
-
-                $products = wc_get_products( [
-                    'status'  => 'publish',
-                    // audit-ok: bounded by 'include' => $chunk, one page of $per_page IDs
-                    'limit'   => -1,
-                    'include' => $chunk,
-                    'return'  => 'objects',
-                ] );
-                $has_more = ( $offset + $per_page ) < $total_products;
-            } else {
-                // ── Full-catalog scan mode ─────────────────────────────── 
-                if ( $page === 1 ) {
-                    $count_result   = wc_get_products( [
-                        'status'   => 'publish',
-                        'limit'    => 1,
-                        'paginate' => true,
-                    ] );
-                    $total_products = (int) ( $count_result->total ?? 0 );
-                }
-
-                $products = wc_get_products( [
-                    'status'  => 'publish',
-                    'limit'   => $per_page,
-                    'page'    => $page,
-                    'return'  => 'objects',
-                ] );
-                $has_more = count( $products ) === $per_page;
-            }
-
-            if ( ! empty( $products ) ) {
-                foreach ( $products as $product ) {
-                    $product_id     = $product->get_id();
-                    $current_status = $product->get_stock_status();
-
-                    // Detect supplier and retrieve the matching raw feed item
-                    // so that flag_match rules can be evaluated correctly.
-                    $detected         = self::detect_product_supplier( $product_id );
-                    $supplier         = $detected['supplier'];
-                    $feed_meta_key    = $detected['feed_meta_key'];
-                    $supplier_sku_val = $detected['supplier_sku_val'];
-
-                    $raw_item = ( $feed_meta_key !== '' && $supplier_sku_val !== '' )
-                        ? ( $feed_lookup[ $feed_meta_key ][ $supplier_sku_val ] ?? [] )
-                        : [];
-
-                    $resolved = $resolver->resolve( $product_id, $current_status, $raw_item, $supplier );
-                    $processed++;
-
-                    if ( $resolved !== $current_status ) {
-                        // Write _stock_status directly to postmeta + lookup table
-                        // so WC's validate_props() — which recalculates from qty
-                        // during save() — never runs and cannot override our value.
-                        self::force_stock_status( $product_id, $resolved );
-                        $changed++;
-                    }
-
-                    if ( self::apply_custom_rule_actions( $rules, $product_id, $raw_item, $supplier ) ) {
-                        $changed++;
-                    }
-                }
-            }
-
-            return [
-                'processed_this_page' => $processed,
-                'changed_this_page'   => $changed,
-                'total_products'      => $total_products,
-                'has_more'            => $has_more,
-            ];
-
-        } catch ( \Throwable $e ) {
-            return [
-                'processed_this_page' => 0,
-                'changed_this_page'   => 0,
-                'total_products'      => null,
-                'has_more'            => false,
-                'error'               => $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
-     * Return a per-rule compliance report for the dashboard.
-     *
-     * For each rule with `condition = 'all'`, a direct DB query counts how many
-     * published WooCommerce products in the rule's supplier scope already have the
-     * expected stock status, producing compliant / non-compliant / overridden totals.
-     *
-     * Flag-match rules are marked 'unavailable' because compliance requires live feed
-     * data that is only present during an import run.
-     *
-     * @param  array $rules  Array of rule arrays (same shape as the constructor).
-     * @return array         Indexed 0…n matching rule positions:
-     *                       - status = 'unavailable' | 'ok' | 'error'
-     *                       - (ok)  total, compliant, non_compliant, overridden, pct
-     *                       - (error) message
-     */
-    public static function get_compliance_report( array $rules ): array {
-        global $wpdb;
-
-        $report = [];
-
-        foreach ( $rules as $idx => $rule ) {
-            $norm       = self::normalize_rule( $rule );
-            $conditions = $norm['conditions'] ?? [];
-            $action     = $norm['action'] ?? '';
-
-            // A "compliant %" figure only means anything for the two stock
-            // actions — every other Custom Rule action type (taxonomy,
-            // price, post status, ...) has no notion of a live stock-status
-            // compliance percentage, so it's marked unavailable rather than
-            // computing a meaningless number.
-            if ( ! in_array( $action, self::VALID_OVERRIDES, true ) ) {
-                $report[ $idx ] = [ 'status' => 'unavailable' ];
-                continue;
-            }
-
-            if ( ! empty( $conditions ) ) {
-                // Single equals condition → feed-based compliance (same as old flag_match).
-                $simple = count( $conditions ) === 1
-                    && ( $conditions[0]['operator'] ?? '' ) === 'equals';
-
-                if ( $simple ) {
-                    $compat_rule = [
-                        'supplier'    => $norm['supplier'],
-                        'condition'   => 'flag_match',
-                        'flag'        => $conditions[0]['field'],
-                        'flag_value'  => $conditions[0]['value'] ?? '',
-                        'action'      => $action,
-                    ];
-                    try {
-                        $report[ $idx ] = self::get_flag_match_compliance( $compat_rule );
-                    } catch ( \Throwable $e ) {
-                        $report[ $idx ] = [ 'status' => 'error', 'message' => $e->getMessage() ];
-                    }
-                } else {
-                    // Multi-condition or non-equals operator requires live feed data.
-                    $report[ $idx ] = [ 'status' => 'unavailable' ];
-                }
-                continue;
-            }
-
-            // No conditions = apply to all products → SQL-based compliance check.
-            try {
-                $supplier        = $norm['supplier'] ?? 'all';
-                $expected_status = ( $action === 'force_instock' ) ? 'instock' : 'outofstock';
-
-                // Build supplier scope subquery — generic across every configured
-                // supplier, not just Xchange/SkuPort (see get_all_supplier_ids()).
-                // Note: 'native' isn't distinguished from 'all' here (pre-existing
-                // gap, not introduced by this generalization) — both currently
-                // require "has at least one tracked supplier SKU," which is the
-                // opposite of what 'native' ("no supplier at all") should mean.
-                if ( $supplier !== 'all' && $supplier !== 'native' && in_array( $supplier, self::get_all_supplier_ids(), true ) ) {
-                    $meta_key      = self::get_supplier_sku_meta_key( $supplier );
-                    $supplier_join = $wpdb->prepare(
-                        "INNER JOIN {$wpdb->postmeta} pm_sup
-                               ON pm_sup.post_id = p.ID
-                              AND pm_sup.meta_key = %s
-                              AND pm_sup.meta_value != ''",
-                        $meta_key
-                    );
-                } else {
-                    // 'all' (and, for now, 'native') — product must have at least
-                    // one tracked supplier SKU, from any configured supplier.
-                    $meta_keys = self::native_exclusion_meta_keys();
-                    if ( empty( $meta_keys ) ) {
-                        $supplier_join = '';
-                    } else {
-                        $placeholders  = implode( ',', array_fill( 0, count( $meta_keys ), '%s' ) );
-                        $supplier_join = $wpdb->prepare(
-                            "INNER JOIN {$wpdb->postmeta} pm_sup
-                                   ON pm_sup.post_id = p.ID
-                                  AND pm_sup.meta_key IN ({$placeholders})
-                                  AND pm_sup.meta_value != ''",
-                            ...$meta_keys
-                        );
-                    }
-                }
-
-                $expected = esc_sql( $expected_status );
-
-                // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                // audit-ok: on-demand admin report, one query only per condition-free stock rule (a few)
-                $row = $wpdb->get_row(
-                    "SELECT
-                         COUNT(DISTINCT p.ID)                                                    AS total,
-                         COUNT(DISTINCT CASE WHEN st.meta_value = '{$expected}'
-                                             AND ppo.meta_value IS NULL  THEN p.ID END)          AS compliant,
-                         COUNT(DISTINCT CASE WHEN st.meta_value != '{$expected}'
-                                             AND ppo.meta_value IS NULL  THEN p.ID END)          AS non_compliant,
-                         COUNT(DISTINCT CASE WHEN ppo.meta_value IS NOT NULL THEN p.ID END)      AS overridden
-                     FROM {$wpdb->posts} p
-                     {$supplier_join}
-                     LEFT JOIN {$wpdb->postmeta} st
-                           ON st.post_id  = p.ID
-                          AND st.meta_key = '_stock_status'
-                     LEFT JOIN {$wpdb->postmeta} ppo
-                           ON ppo.post_id  = p.ID
-                          AND ppo.meta_key = '_mmi_stock_override'
-                          AND ppo.meta_value IN ('force_instock','force_outofstock')
-                     WHERE p.post_type   = 'product'
-                       AND p.post_status = 'publish'",
-                    ARRAY_A
-                );
-                // phpcs:enable
-
-                $total        = (int) ( $row['total']        ?? 0 );
-                $compliant    = (int) ( $row['compliant']    ?? 0 );
-                $non_compliant = (int) ( $row['non_compliant'] ?? 0 );
-                $overridden   = (int) ( $row['overridden']   ?? 0 );
-                $pct          = $total > 0 ? (int) round( ( $compliant / $total ) * 100 ) : 0;
-
-                $report[ $idx ] = [
-                    'status'        => 'ok',
-                    'total'         => $total,
-                    'compliant'     => $compliant,
-                    'non_compliant' => $non_compliant,
-                    'overridden'    => $overridden,
-                    'pct'           => $pct,
-                ];
-
-            } catch ( \Throwable $e ) {
-                $report[ $idx ] = [
-                    'status'  => 'error',
-                    'message' => $e->getMessage(),
-                ];
-            }
-        }
-
-        return $report;
     }
 
     /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -2159,159 +1572,13 @@ class Stock_Override_Resolver {
     }
 
     /**
-     * Compute compliance for a single flag_match rule by scanning the supplier
-     * JSON feed(s) to find products whose flag field matches the rule's target
-     * value, then querying the DB for those products' current stock status.
-     *
-     * Uses the same flag comparison (string cast) as the live resolver.
-     *
-     * @param  array $rule  A single rule array with condition = 'flag_match'.
-     * @return array        Same shape as get_compliance_report()'s per-rule result.
-     */
-    private static function get_flag_match_compliance( array $rule ): array {
-        global $wpdb;
-
-        $supplier          = $rule['supplier']    ?? 'all';
-        $flag              = $rule['flag']        ?? '';
-        $flag_value_target = $rule['flag_value']  ?? '';
-        $action            = $rule['action']      ?? '';
-        $expected_status   = ( $action === 'force_instock' ) ? 'instock' : 'outofstock';
-
-        // Cannot compute without a flag field name
-        if ( $flag === '' ) {
-            return [ 'status' => 'unavailable' ];
-        }
-
-        $json_path = mmi_shared_lib_json_dir();
-
-        // Map supplier slug → [file, sku_meta_key] — every configured supplier,
-        // not just Xchange/SkuPort.
-        $supplier_map = [];
-        foreach ( self::get_all_supplier_ids() as $sid ) {
-            $supplier_map[ $sid ] = [ 'file' => $sid . '-products.json', 'sku_meta' => self::get_supplier_sku_meta_key( $sid ) ];
-        }
-
-        $sources = ( $supplier !== 'all' && isset( $supplier_map[ $supplier ] ) )
-            ? [ $supplier => $supplier_map[ $supplier ] ]
-            : $supplier_map;
-
-        // Collect SKUs of products that match the flag condition, grouped by
-        // the postmeta key used to identify them in the WC database.
-        // [ '_mmi_supplier_sku_xchange' => ['sku1','sku2',...], ... ]
-        $skus_by_meta = [];
-
-        foreach ( $sources as $sup_info ) {
-            $file = $json_path . $sup_info['file'];
-            if ( ! file_exists( $file ) ) {
-                continue;
-            }
-
-            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-            $data = json_decode( file_get_contents( $file ), true );
-            if ( ! is_array( $data ) ) {
-                continue;
-            }
-
-            $items    = $data['products'] ?? $data['items'] ?? ( isset( $data[0] ) ? $data : [] );
-            $meta_key = $sup_info['sku_meta'];
-
-            foreach ( $items as $item ) {
-                // Match using the same string-cast logic as resolve()'s flag_match branch
-                $item_flag_val = (string) ( $item[ $flag ] ?? '' );
-                if ( $item_flag_val !== (string) $flag_value_target ) {
-                    continue;
-                }
-
-                $sku = $item['sku'] ?? $item['product']['sku'] ?? $item['id'] ?? null;
-                if ( $sku === null || $sku === '' ) {
-                    continue;
-                }
-
-                $skus_by_meta[ $meta_key ][] = (string) $sku;
-            }
-
-            if ( ! empty( $skus_by_meta[ $meta_key ] ) ) {
-                $skus_by_meta[ $meta_key ] = array_unique( $skus_by_meta[ $meta_key ] );
-            }
-        }
-
-        if ( empty( $skus_by_meta ) ) {
-            return [
-                'status'        => 'ok',
-                'total'         => 0,
-                'compliant'     => 0,
-                'non_compliant' => 0,
-                'overridden'    => 0,
-                'pct'           => 0,
-            ];
-        }
-
-        // Build dynamic IN clauses for each meta_key → SKU set.
-        // e.g. ( pm_sup.meta_key = %s AND pm_sup.meta_value IN (%s,%s,...) )
-        $or_clauses = [];
-        $prepare_args = [];
-
-        foreach ( $skus_by_meta as $meta_key => $skus ) {
-            $in_placeholders  = implode( ',', array_fill( 0, count( $skus ), '%s' ) );
-            $or_clauses[]     = "( pm_sup.meta_key = %s AND pm_sup.meta_value IN ({$in_placeholders}) )";
-            $prepare_args[]   = $meta_key;
-            $prepare_args     = array_merge( $prepare_args, $skus );
-        }
-
-        $supplier_clause = implode( ' OR ', $or_clauses );
-        $expected        = esc_sql( $expected_status );
-
-        // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $sql = $wpdb->prepare(
-            "SELECT
-                 COUNT(DISTINCT p.ID)                                                                   AS total,
-                 COUNT(DISTINCT CASE WHEN st.meta_value = '{$expected}'
-                                     AND ppo.meta_value IS NULL  THEN p.ID END)                         AS compliant,
-                 COUNT(DISTINCT CASE WHEN (st.meta_value IS NULL OR st.meta_value != '{$expected}')
-                                     AND ppo.meta_value IS NULL  THEN p.ID END)                         AS non_compliant,
-                 COUNT(DISTINCT CASE WHEN ppo.meta_value IS NOT NULL THEN p.ID END)                     AS overridden
-             FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm_sup
-                    ON pm_sup.post_id = p.ID
-                   AND ( {$supplier_clause} )
-             LEFT JOIN {$wpdb->postmeta} st
-                    ON st.post_id  = p.ID
-                   AND st.meta_key = '_stock_status'
-             LEFT JOIN {$wpdb->postmeta} ppo
-                    ON ppo.post_id  = p.ID
-                   AND ppo.meta_key = '_mmi_stock_override'
-                   AND ppo.meta_value IN ('force_instock','force_outofstock')
-             WHERE p.post_type   = 'product'
-               AND p.post_status = 'publish'",
-            ...$prepare_args
-        );
-        // phpcs:enable
-
-        $row           = $wpdb->get_row( $sql, ARRAY_A );
-        $total         = (int) ( $row['total']         ?? 0 );
-        $compliant     = (int) ( $row['compliant']     ?? 0 );
-        $non_compliant = (int) ( $row['non_compliant'] ?? 0 );
-        $overridden    = (int) ( $row['overridden']    ?? 0 );
-        $pct           = $total > 0 ? (int) round( ( $compliant / $total ) * 100 ) : 0;
-
-        return [
-            'status'        => 'ok',
-            'total'         => $total,
-            'compliant'     => $compliant,
-            'non_compliant' => $non_compliant,
-            'overridden'    => $overridden,
-            'pct'           => $pct,
-        ];
-    }
-
-    /**
      * Returns true when the rule applies to the given supplier.
      * A rule with supplier = 'all' matches every supplier.
      */
     private function rule_matches_supplier( array $rule, string $supplier ): bool {
         $rule_supplier = $rule['supplier'] ?? '';
         // A rule scoped to 'native' ("Live App Data") matches only products
-        // apply_to_catalog()/apply_catalog_page() detected as having no
+        // apply_catalog_page() detected as having no
         // tracked supplier SKU — those callers pass 'all' as $supplier for
         // exactly that case (see their own supplier-detection comment).
         if ( $rule_supplier === 'native' ) {

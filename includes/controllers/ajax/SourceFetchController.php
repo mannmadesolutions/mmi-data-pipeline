@@ -25,19 +25,8 @@ use MMI_API_Throttler;
 use MMI_Pipeline_Config_Validator;
 use MMI_Pipeline_Supplier_Fetch_Runner;
 
-/** Action Scheduler group + hook for on-demand single-source fetches. */
-const FETCH_NOW_HOOK  = 'mmi_pipeline_fetch_source_now';
-const FETCH_NOW_GROUP = 'mmi-pipeline-source-fetch';
-
-/**
- * Lock TTL for one on-demand fetch.
- *
- * Per AGENTS.md Rule 4 this matches real runtime, not a comfortable
- * overestimate: a full Xchange pull (vendors + products) measures ~30s, and the
- * 5-minute ceiling for a per-job lock leaves headroom without letting a crashed
- * job block the button for the rest of the day.
- */
-const FETCH_LOCK_TTL = 300;
+/** Action Scheduler hook for on-demand single-source fetches. */
+const FETCH_NOW_HOOK = 'mmi_pipeline_fetch_source_now';
 
 /** Absolute path to the shared feed-cache directory. */
 function json_dir(): string {

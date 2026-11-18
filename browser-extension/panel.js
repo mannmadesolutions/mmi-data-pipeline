@@ -2426,7 +2426,11 @@
 		if ( ! quiet ) {
 			busy( MESSAGES.loading );
 		}
-		const res = await ask( { type: 'page', url: location.href, product: state.product, site: state.site ? 1 : 0, look: state.look ? 1 : 0 } );
+		const href = location.href;
+		const res = await ask( { type: 'page', url: href, product: state.product, site: state.site ? 1 : 0, look: state.look ? 1 : 0 } );
+		if ( href !== location.href ) {
+			return; // the page moved on while this was asked: follow's own load() draws the new one
+		}
 		if ( res && res.ok ) {
 			draw( res.data );
 		} else if ( ! quiet ) {

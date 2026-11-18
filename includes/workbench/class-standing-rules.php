@@ -82,36 +82,6 @@ final class Standing_Rules {
         return 'r' . substr( str_replace( '-', '', wp_generate_uuid4() ), 0, 12 );
     }
 
-    /**
-     * Fields a rule keeps that the rule editor doesn't send (statuses, search
-     * filters, efficacy acknowledgements): carried over from the saved rule
-     * with the same id, so saving from an editor that predates them never
-     * drops them.
-     *
-     * @param  list<array> $incoming Sanitized rules about to be saved.
-     * @return list<array>
-     */
-    public static function carry_over( array $incoming ): array {
-        $saved = [];
-        foreach ( (array) MMI_DB::get_setting( self::SETTING, [] ) as $rule ) {
-            if ( is_array( $rule ) && ! empty( $rule['id'] ) ) {
-                $saved[ $rule['id'] ] = $rule;
-            }
-        }
-        foreach ( $incoming as $i => $rule ) {
-            if ( empty( $rule['id'] ) || ! isset( $saved[ $rule['id'] ] ) ) {
-                $incoming[ $i ]['id'] = ! empty( $rule['id'] ) ? $rule['id'] : self::new_id();
-                continue;
-            }
-            foreach ( [ 'statuses', 'filters', 'efficacy_ack' ] as $key ) {
-                if ( ! array_key_exists( $key, $rule ) && array_key_exists( $key, $saved[ $rule['id'] ] ) ) {
-                    $incoming[ $i ][ $key ] = $saved[ $rule['id'] ][ $key ];
-                }
-            }
-        }
-        return $incoming;
-    }
-
     /** A sanitized rule id, or '' when it isn't one. */
     public static function sanitize_id( $id ): string {
         $id = is_scalar( $id ) ? (string) $id : '';

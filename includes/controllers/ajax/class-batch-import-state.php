@@ -40,24 +40,8 @@ class Batch_Import_State {
      */
     const MAX_FAILURE_DETAILS = 25;
 
-    public static function is_locked(): bool {
-        return (bool) MMI_DB::get_job_state( self::LOCK_KEY );
-    }
-
-    public static function acquire_lock(): void {
-        MMI_DB::set_job_state( self::LOCK_KEY, 1, self::LOCK_TTL );
-    }
-
     public static function release_lock(): void {
         MMI_DB::delete_job_state( self::LOCK_KEY );
-    }
-
-    public static function get_progress(): ?array {
-        return MMI_DB::get_job_state( self::PROGRESS_KEY );
-    }
-
-    public static function set_progress( array $progress ): void {
-        MMI_DB::set_job_state( self::PROGRESS_KEY, $progress, self::LOCK_TTL );
     }
 
     /**

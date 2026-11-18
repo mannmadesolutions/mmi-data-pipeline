@@ -37,9 +37,6 @@ class MapTypes {
 
 	const DB_OPTION  = 'mmpt_map_types_db_version';
 	const DB_VERSION = '2'; // 2: sig (a layout's structure)
-	/** A proposed type needs at least this many of the site's stored pages (owner Q3, 2026-10-25); a layout a person chooses may be any size. */
-	const MIN_PAGES = 5;
-	const KEY_MAX   = 40;
 	/** Pages whose type is remembered per request (a page is read by several parts in a row). */
 	const MEMO_MAX = 64;
 

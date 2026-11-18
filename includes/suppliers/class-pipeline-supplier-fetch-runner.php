@@ -157,7 +157,6 @@ if (PHP_SAPI === 'cli' && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILEN
     // Bootstrap WordPress environment for CLI. wp-load.php already fires
     // 'plugins_loaded' during its own bootstrap, which is what requires this
     // very file (see mmi-data-pipeline.php) — no second require needed.
-    define('WP_USE_THEMES', false);
     require dirname(__DIR__, 5) . '/wp-load.php';
 
     // Simple arg parse for --plugivery-full
