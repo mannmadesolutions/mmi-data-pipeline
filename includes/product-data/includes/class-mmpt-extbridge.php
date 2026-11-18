@@ -412,7 +412,7 @@ class ExtBridge {
 		return [ 'protocol' => (int) $r->get_header( 'x_mmi_ext_protocol' ), 'build' => sanitize_key( (string) $r->get_header( 'x_mmi_ext_build' ) ) ];
 	}
 
-	/** What the asking extension speaks, set before any panel is drawn (panel(), and store_panel() when scrape() draws it alone). */
+	/** What the asking extension speaks, set once before any panel is drawn (store_panel() for our own products, panel() for every other page). */
 	private static function asking( array $client ): void {
 		self::$v12 = (int) $client['protocol'] >= 12; // the layout's map commits its parts, the site's picks with them
 		self::$v13 = (int) $client['protocol'] >= 13; // the product's parts once, for this product or its layout
@@ -439,11 +439,11 @@ class ExtBridge {
 	 * $product: the product to show (one that uses this page); 0 = the only one, when there is only one.
 	 */
 	public static function panel( string $raw, int $product = 0, array $client = [ 'protocol' => self::PROTOCOL, 'build' => '' ] ): array {
-		self::asking( $client );
 		$own = (int) $client['protocol'] >= 10 ? self::store_product( $raw ) : 0;
 		if ( $own ) {
 			return self::store_panel( $own, $raw, $client );
 		}
+		self::asking( $client );
 		$url = self::page_url( $raw );
 		if ( is_wp_error( $url ) ) {
 			return [ 'title' => self::store_name(), 'subtitle' => '', 'notices' => [ [ 'kind' => 'error', 'text' => $url->get_error_message() ] ], 'sections' => [], 'actions' => [] ];
