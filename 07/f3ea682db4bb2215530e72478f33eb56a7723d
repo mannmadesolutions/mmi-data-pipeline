@@ -1,0 +1,9 @@
+lint pass 314 files
+site-rules pass
+shared-lib pass 8 scenarios
+ui-check pass 158
+ui-e2e pass 288
+customer-site pass 27 ok on 07f3ea6 as installed
+page pass 9 features, 12 screenshots; 5 warnings
+release-audit pass 0 dead, 0 high, 0 new
+review pass 0 open, 0 fixed, 0 not real
