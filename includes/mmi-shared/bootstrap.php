@@ -217,7 +217,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.50.2';
+$mmi_shared_lib_this_copy_version = '1.51.2';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -980,6 +980,11 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 					foreach ( $fields as $key => $meta ) {
 						$value = MMI_UI_Styles::published_tokens()[ $key ] ?? $meta['default'];
 						$css_vars[] = $meta['css_var'] . ':' . $value . ';';
+						// WordPress tints its controls with an "r, g, b" triplet
+						// (--wp-admin-theme-color--rgb); keep it in step with the primary.
+						if ( '--mmi-primary' === $meta['css_var'] && preg_match( '/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i', (string) $value, $hex ) ) {
+							$css_vars[] = '--mmi-primary-rgb:' . hexdec( $hex[1] ) . ', ' . hexdec( $hex[2] ) . ', ' . hexdec( $hex[3] ) . ';';
+						}
 					}
 				}
 				if ( $css_vars ) {

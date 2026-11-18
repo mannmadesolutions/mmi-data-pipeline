@@ -175,10 +175,23 @@ class MMI_UI_Styles {
 	 * preview markup already hard-code: header, cards-footers, tables-rows,
 	 * buttons, logs, stat-tiles, pagination, modals, badges,
 	 * collapsible-sections, toggles, toolbar, widget-grid, animations,
-	 * tooltips.
+	 * tooltips. "Brand colours" (brand-colours) has no marker class: it is
+	 * the colour layer under all of them.
 	 */
 	public static function field_schema(): array {
 		return array(
+			// The suite's own colours (shared lib 1.51.0, 2026-11-18). Besides every
+			// var(--mmi-primary) consumer, mmi-suite-common.css → "Admin colour scheme →
+			// suite colours" points WordPress's own controls on MMI screens (links,
+			// secondary buttons, checkboxes, focus rings) at these instead of the
+			// signed-in person's admin colour scheme.
+			'Brand colours' => array(
+				'brand_primary'       => array( 'type' => 'color', 'label' => 'Primary',      'css_var' => '--mmi-primary',         'default' => '#45852C', 'note' => 'Primary buttons, checked boxes, focus rings, active pills and tabs.' ),
+				'brand_primary_hover' => array( 'type' => 'color', 'label' => 'Primary hover', 'css_var' => '--mmi-primary-hover',   'default' => '#3a6f24' ),
+				'brand_primary_dark'  => array( 'type' => 'color', 'label' => 'Primary dark',  'css_var' => '--mmi-primary-dark-20', 'default' => '#2d5a1e', 'note' => 'Text on a pale green wash (a hovered secondary button).' ),
+				'brand_link'          => array( 'type' => 'color', 'label' => 'Link',          'css_var' => '--mmi-link',            'default' => '#3a6f24', 'note' => 'Keep it at 4.5:1 or more on white.' ),
+				'brand_link_hover'    => array( 'type' => 'color', 'label' => 'Link hover',    'css_var' => '--mmi-link-hover',      'default' => '#2d5a1e' ),
+			),
 			'Header'        => array(
 				'header_bg_start'     => array( 'type' => 'color',   'label' => 'Background Start',  'css_var' => '--mmi-header-bg-start',     'default' => '#ffffff' ),
 				'header_bg_end'       => array( 'type' => 'color',   'label' => 'Background End',    'css_var' => '--mmi-header-bg-end',       'default' => '#f8f9fa' ),
@@ -222,7 +235,7 @@ class MMI_UI_Styles {
 			'Stat Tiles'    => array(
 				'stat_bg_start'             => array( 'type' => 'color',   'label' => 'Background Start',       'css_var' => '--mmi-stat-bg-start',              'default' => '#fafafa' ),
 				'stat_bg_end'               => array( 'type' => 'color',   'label' => 'Background End',         'css_var' => '--mmi-stat-bg-end',                'default' => '#f5f5f5' ),
-				'stat_border_color'         => array( 'type' => 'color',   'label' => 'Left Border',            'css_var' => '--mmi-stat-border-color',          'default' => '#2271b1' ),
+				'stat_border_color'         => array( 'type' => 'color',   'label' => 'Left Border',            'css_var' => '--mmi-stat-border-color',          'default' => '#45852C' ),
 				'stat_border_generic_color' => array( 'type' => 'color',   'label' => 'Outer Border',           'css_var' => '--mmi-stat-border-generic-color',  'default' => '#e0e0e0', 'note' => 'Falls back to Cards & Footers\' Border color if unset — set here only to make the stat box\'s border independent of card styling.' ),
 				'stat_padding'              => array( 'type' => 'spacing', 'label' => 'Padding',                'css_var' => '--mmi-stat-padding',               'default' => '18px 20px' ),
 				'stat_radius'               => array( 'type' => 'spacing', 'label' => 'Corner Radius',          'css_var' => '--mmi-stat-radius',                'default' => '8px' ),

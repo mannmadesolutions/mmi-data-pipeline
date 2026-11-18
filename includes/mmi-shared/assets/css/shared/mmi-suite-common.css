@@ -18,17 +18,30 @@
   --mmi-primary: #45852C;
   --mmi-primary-light: #6c8960;
   --mmi-primary-hover: #3a6f24;
+  --mmi-primary-dark-20: #2d5a1e;
+  /* The primary as an "r, g, b" triplet, for rgba() tints (WordPress's
+     --wp-admin-theme-color--rgb). bootstrap.php re-derives it when the Style
+     Manager ships another primary. */
+  --mmi-primary-rgb: 69, 133, 44;
+
+  /* Links on MMI screens (Style Manager → Brand colours). #3a6f24 on white is
+     6.0:1; the primary itself (#45852C) is 4.6:1, too close to the AA line
+     for 13px text. */
+  --mmi-link: #3a6f24;
+  --mmi-link-hover: #2d5a1e;
   
   /* Legacy Green Aliases (for backward compatibility) */
   --mmi-green: #45852C;
   --mmi-green-light: #6c8960;
   --mmi-green-dark: #3a6f24;
   
-  /* Secondary - WordPress Blue */
-  --mmi-secondary: #2271b1;
-  --mmi-secondary-hover: #135e96;
+  /* Secondary: the darker greens (shared lib 1.51.0). Until 2026-11-18 this was
+     WordPress Blue (#2271b1); every consumer was a brand accent (help icon,
+     focus rings, licence key text, dashboard hover), so it follows the brand. */
+  --mmi-secondary: #3a6f24;
+  --mmi-secondary-hover: #2d5a1e;
   
-  /* Accent - Light Blue */
+  /* Accent - Light Blue (no shared consumer; kept for plugin CSS that names it) */
   --mmi-accent: #72aee6;
   
   /* Status Colors */
@@ -285,6 +298,67 @@ body.mmi-page .dashicons::before {
    =================================== */
 body.mmi-page .wrap {
   max-width: 100%;
+}
+
+/* ===================================
+   ADMIN COLOUR SCHEME → SUITE COLOURS (shared lib 1.51.0, 2026-11-18)
+   WordPress 7 paints its own controls from the signed-in person's admin colour
+   scheme: `.button`, `.button-link`, checked checkboxes/radios and focus rings
+   read --wp-admin-theme-color (Modern #3858e9, Default #2271b1, Ocean teal…),
+   and links carry a literal per scheme. Until this block, only .button-primary
+   and input focus were rebranded, so every other WordPress control on an MMI
+   screen showed that person's scheme colour (owner, 2026-11-18: "the WP blue").
+
+   Scope: the page content of MMI screens (`body.mmi-page #wpbody-content`), so
+   the admin menu and admin bar keep the person's own scheme, plus `.mmi-scope`
+   for an MMI box that sits on a WordPress screen (an editor metabox, term
+   fields). All rules are low-specificity (:where() on the scope) so a plugin's
+   own rule for a specific control still wins, and Style Manager → Button
+   Styles (which uses !important) still wins inside its containers.
+   Checked by mmi-admin/scripts/admin-color-check.sh.
+   =================================== */
+body.mmi-page #wpbody-content,
+.mmi-scope {
+  --wp-admin-theme-color: var(--mmi-primary);
+  --wp-admin-theme-color--rgb: var(--mmi-primary-rgb);
+  --wp-admin-theme-color-darker-10: var(--mmi-primary-hover);
+  --wp-admin-theme-color-darker-20: var(--mmi-primary-dark-20);
+}
+
+/* Specificity: each rule below equals WordPress's own (`a`, `.wp-core-ui .button`,
+   `.wp-core-ui .button-link`) and wins only by loading later; the scope and the
+   exclusions sit in :where(). So any plugin rule with a class (`.mmi-rv-pill--primary
+   { color: #fff }`) still wins, as it did against WordPress. Raising these once
+   turned Reverb's dark order buttons' text green (shared lib 1.51.1). */
+
+/* Links. Anchors drawn as controls (buttons, tabs, pills, pager buttons) are left
+   to their own component rules; paginate_links() numbers are links. */
+:where(body.mmi-page #wpbody-content, .mmi-scope) a:where(:not(.button, .nav-tab, .mmi-pill, .mmi-pagination-btn, .mmi-btn-profile, .mmi-action-btn, .page-title-action)) {
+  color: var(--mmi-link);
+}
+:where(body.mmi-page #wpbody-content, .mmi-scope) a:where(:not(.button, .nav-tab, .mmi-pill, .mmi-pagination-btn, .mmi-btn-profile, .mmi-action-btn, .page-title-action)):is(:hover, :focus, :active) {
+  color: var(--mmi-link-hover);
+}
+
+/* Secondary buttons: neutral, green on hover and focus (the Profile button look;
+   owner 2026-11-18). A row of three green-outlined buttons beside the one real
+   primary action read as all-primary. Primary, danger, success, link-style,
+   pressed (.active) and disabled buttons keep their own rules. */
+.wp-core-ui :where(body.mmi-page #wpbody-content, .mmi-scope) .button:where(:not(.button-primary, .button-danger, .button-success, .button-link, .button-link-delete, .mmi-action-btn, .active, :disabled, .disabled, [disabled])) {
+  color: #2c3338;
+  border-color: #c3c4c7;
+  background: #fff;
+}
+.wp-core-ui :where(body.mmi-page #wpbody-content, .mmi-scope) .button:where(:not(.button-primary, .button-danger, .button-success, .button-link, .button-link-delete, .mmi-action-btn, .active, :disabled, .disabled, [disabled])):is(:hover, :focus, :active) {
+  color: var(--mmi-primary-dark-20, #2d5a1e);
+  border-color: var(--mmi-primary, #45852C);
+  background: var(--mmi-primary-lightest, #f0f6ed);
+}
+.wp-core-ui :where(body.mmi-page #wpbody-content, .mmi-scope) .button-link:where(:not(.button-link-delete)) {
+  color: var(--mmi-link);
+}
+.wp-core-ui :where(body.mmi-page #wpbody-content, .mmi-scope) .button-link:where(:not(.button-link-delete)):is(:hover, :focus, :active) {
+  color: var(--mmi-link-hover);
 }
 
 /* ===================================
@@ -990,14 +1064,14 @@ div.wrap div.mmi-header p,
   background: #fcf0f1 !important;
 }
 
-/* Update button: accent blue */
+/* Update button: brand green (was WordPress blue until shared lib 1.51.0) */
 .mmi-update-btn {
-  color: #2271b1 !important;
-  border-color: #2271b1 !important;
+  color: var(--mmi-link, #3a6f24) !important;
+  border-color: var(--mmi-primary, #45852C) !important;
 }
 
 .mmi-update-btn:hover {
-  background: #f0f6fc !important;
+  background: var(--mmi-primary-lightest, #f0f6ed) !important;
 }
 
 /* ── Tier pills ────────────────────────────────────────────────── */
@@ -1161,7 +1235,7 @@ div.wrap div.mmi-header p,
 .mmi-stat-box {
   background: linear-gradient(135deg, var(--mmi-stat-bg-start, #fafafa) 0%, var(--mmi-stat-bg-end, #f5f5f5) 100%);
   border: 1px solid var(--mmi-stat-border-generic-color, var(--mmi-card-border-color, #e0e0e0));
-  border-left: 5px solid var(--mmi-stat-border-color, var(--mmi-secondary));
+  border-left: 5px solid var(--mmi-stat-border-color, var(--mmi-primary));
   padding: var(--mmi-stat-padding, 18px 20px);
   border-radius: var(--mmi-stat-radius, 8px);
   min-height: var(--mmi-stat-min-height, 0);
@@ -2744,7 +2818,7 @@ div.wrap div.mmi-header p,
 /* Light-background spinner (e.g. secondary/white buttons) — the default
    white fill above is invisible there. */
 .mmi-action-btn:not(.button-primary) .mmi-loading {
-    color: var(--mmi-primary, #2271b1);
+    color: var(--mmi-primary, #45852C);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -3565,11 +3639,11 @@ div.wrap div.mmi-header p,
 }
 .mmi-ms-trigger:hover,
 .mmi-multiselect.is-open .mmi-ms-trigger {
-    border-color: var(--mmi-ms-accent, #2271b1);
-    color: var(--mmi-ms-accent, #2271b1);
+    border-color: var(--mmi-ms-accent, var(--mmi-primary, #45852C));
+    color: var(--mmi-ms-accent, var(--mmi-primary, #45852C));
 }
 .mmi-multiselect.is-open .mmi-ms-trigger {
-    background: var(--mmi-ms-accent-bg, #f0f6fc);
+    background: var(--mmi-ms-accent-bg, var(--mmi-primary-lightest, #f0f6ed));
 }
 
 .mmi-ms-badge {
@@ -3579,7 +3653,7 @@ div.wrap div.mmi-header p,
     min-width: 16px;
     height: 16px;
     padding: 0 4px;
-    background: var(--mmi-ms-accent, #2271b1);
+    background: var(--mmi-ms-accent, var(--mmi-primary, #45852C));
     color: #fff;
     border-radius: 8px;
     font-size: 10px;
@@ -3632,15 +3706,15 @@ div.wrap div.mmi-header p,
     transition: background 0.1s ease;
 }
 .mmi-ms-option:hover {
-    background: var(--mmi-ms-accent-bg, #f0f6fc);
-    color: var(--mmi-ms-accent, #2271b1);
+    background: var(--mmi-ms-accent-bg, var(--mmi-primary-lightest, #f0f6ed));
+    color: var(--mmi-ms-accent, var(--mmi-primary, #45852C));
 }
 .mmi-ms-option.is-selected {
-    background: var(--mmi-ms-accent, #2271b1);
+    background: var(--mmi-ms-accent, var(--mmi-primary, #45852C));
     color: #fff;
 }
 .mmi-ms-option.is-selected:hover {
-    background: var(--mmi-ms-accent-dark, #135e96);
+    background: var(--mmi-ms-accent-dark, var(--mmi-primary-hover, #3a6f24));
 }
 .mmi-ms-opt-label {
     flex: 1;
@@ -3703,8 +3777,8 @@ div.wrap div.mmi-header p,
     display: none;
 }
 .mmi-ms-option--check:has(input:checked) {
-    background: var(--mmi-ms-accent-bg, #f0f6fc);
-    color: var(--mmi-ms-accent, #2271b1);
+    background: var(--mmi-ms-accent-bg, var(--mmi-primary-lightest, #f0f6ed));
+    color: var(--mmi-ms-accent, var(--mmi-primary, #45852C));
 }
 
 /* ===================================
@@ -5475,13 +5549,13 @@ button.mmi-cbd-chip:hover {
 }
 
 button.mmi-cbd-chip:focus-visible {
-    outline: 2px solid var(--cbd-color, #2271b1);
+    outline: 2px solid var(--cbd-color, var(--mmi-primary, #45852C));
     outline-offset: 1px;
 }
 
 button.mmi-cbd-chip.is-active {
-    border-color: var(--cbd-color, #2271b1);
-    box-shadow: inset 0 0 0 1px var(--cbd-color, #2271b1);
+    border-color: var(--cbd-color, var(--mmi-primary, #45852C));
+    box-shadow: inset 0 0 0 1px var(--cbd-color, var(--mmi-primary, #45852C));
     font-weight: 600;
 }
 
