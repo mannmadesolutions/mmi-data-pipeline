@@ -1,3 +1,10 @@
 lint pass ship 2 files
 audit pass ship 2 files
 site-rules pass ship 2 files
+shared-lib pass 8 scenarios dirty:2
+ui-check pass 158 dirty:2
+ui-e2e pass 288 dirty:2
+customer-site pass 27 ok on 07744b7 as installed dirty:2
+page pass 9 features, 12 screenshots; 12 warnings dirty:2
+release-audit pass 0 dead, 0 high, 0 new dirty:2
+review pass 0 open, 15 fixed, 38 not real dirty:2
