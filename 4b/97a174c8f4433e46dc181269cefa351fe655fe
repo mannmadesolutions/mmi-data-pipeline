@@ -7,4 +7,4 @@ ui-e2e pass 288
 customer-site pass 27 ok on 4b97a17 as installed
 page pass 9 features, 12 screenshots; 1 warning
 release-audit pass 0 dead, 0 high, 0 new
-review fail 1 open, 0 fixed, 0 not real
+review pass 0 open, 0 fixed, 1 not real
