@@ -12,6 +12,10 @@
     const AJAX_URL = window.mmiTaxMapping?.ajaxUrl || ajaxurl;
     const NONCE    = window.mmiTaxMapping?.nonce   || '';
 
+    /** Narrowest the term picker opens (px); a tree needs room for indented names. */
+    const AC_MIN_WIDTH      = 220;
+    const AC_TREE_MIN_WIDTH = 320;
+
     /* ── Selectors ──────────────────────────────────────────────────────── */
 
     const SELECTORS = {
@@ -237,6 +241,9 @@
 
     /** Timer for autocomplete debounce */
     let acTimer = null;
+
+    /** Hierarchical taxonomy => its whole term tree, fetched once per page (cleared when a term is created). */
+    const termTrees = {};
 
     /** Debounce timer for live rule match-count recompute. */
     let ruleMatchTimer = null;
@@ -1057,7 +1064,7 @@
             $activeInputRow = null;
             $activeRuleRow  = $( this ).closest( 'tr' );
             $activeInput    = $( this );
-            triggerRuleAutocomplete( $( this ) );
+            triggerRuleAutocomplete( $( this ), true );
         } );
 
         $( document ).on( 'input', SELECTORS.RULES_TBODY + ' ' + SELECTORS.RULE_TERM_INPUT, function () {
@@ -1069,20 +1076,13 @@
         } );
     }
 
-    function triggerRuleAutocomplete( $input ) {
+    function triggerRuleAutocomplete( $input, fromFocus ) {
         const $tr      = $input.closest( 'tr' );
         const taxonomy = $tr.find( '.mmi-rule-taxonomy' ).val();
-        const query    = $input.val();
 
-        $.post( AJAX_URL, {
-            action:   'mmi_search_wc_terms',
-            nonce:    NONCE,
-            taxonomy: taxonomy,
-            search:   query,
-        } )
-        .done( function ( resp ) {
+        fetchTerms( taxonomy, $input.val() ).done( function ( found ) {
             if ( $activeInput && $activeInput.is( $input ) ) {
-                renderAutocomplete( resp.data?.terms || [], query, $input, taxonomy );
+                renderAutocomplete( found, pickerQuery( found, $input, fromFocus ), $input, taxonomy );
             }
         } );
     }
@@ -1698,19 +1698,19 @@
     $( document ).on( 'focus', SELECTORS.TBODY + ' .mmi-taxmap-term-input', function () {
         $activeInput    = $( this );
         $activeInputRow = $( this ).closest( 'tr' );
-        triggerAutocomplete( $( this ), $( this ).val() );
+        triggerAutocomplete( $( this ), true );
     } );
 
     $( document ).on( 'input', SELECTORS.TBODY + ' .mmi-taxmap-term-input', function () {
         $activeInput    = $( this );
         $activeInputRow = $( this ).closest( 'tr' );
         clearTimeout( acTimer );
-        acTimer = setTimeout( () => triggerAutocomplete( $( this ), $( this ).val() ), 250 );
+        acTimer = setTimeout( () => triggerAutocomplete( $( this ), false ), 250 );
     } );
 
     $( document ).on( 'keydown', SELECTORS.TBODY + ' .mmi-taxmap-term-input', function ( e ) {
         const $list = $( SELECTORS.AC_LIST );
-        const $items = $list.find( 'li:visible' );
+        const $items = $list.find( 'li.ac-item:visible' );
         if ( $items.length === 0 ) { return; }
 
         const $active = $items.filter( '.ac-active' );
@@ -1865,15 +1865,10 @@
         if ( ! name || ! taxonomy ) { return; }
 
         createLookupTimer = setTimeout( function () {
-            $.post( AJAX_URL, {
-                action:   'mmi_search_wc_terms',
-                nonce:    NONCE,
-                taxonomy: taxonomy,
-                search:   name,
-            } ).done( function ( resp ) {
+            fetchTerms( taxonomy, name ).done( function ( found ) {
                 const current = $.trim( $editor.find( '.mmi-taxmap-create-name' ).val() || '' );
                 if ( ! $editor.closest( 'body' ).length || current !== name ) { return; }
-                const match = ( resp.data?.terms || [] ).find( t => t.name.toLowerCase() === name.toLowerCase() );
+                const match = ( found.tree || found.terms || [] ).find( t => t.name.toLowerCase() === name.toLowerCase() );
                 if ( ! match ) { return; }
                 $confirm.text( 'Map to existing' );
                 setCreateHint(
@@ -2053,33 +2048,125 @@
 
     /* ── Autocomplete ───────────────────────────────────────────────────── */
 
-    function triggerAutocomplete( $input, query ) {
-        // Read the WC taxonomy from the row, fall back to customConfig
-        const $tr     = $input.closest( 'tr' );
-        const taxonomy = $tr.attr( 'data-wc-taxonomy' ) || ( customConfig?.wcTaxonomy ) || 'product_brand';
-
-        $.post( AJAX_URL, {
+    /**
+     * Terms for a picker. A hierarchical taxonomy (product categories) comes
+     * back whole as { tree } and is cached for the page, so typing filters it
+     * here with no further requests; a flat one (brands, thousands of terms)
+     * is searched on the server as { terms }.
+     *
+     * @param {string} taxonomy
+     * @param {string} query
+     * @return {jQuery.Promise<{tree?: Array, terms?: Array}>}
+     */
+    function fetchTerms( taxonomy, query ) {
+        if ( termTrees[ taxonomy ] ) {
+            return $.Deferred().resolve( { tree: termTrees[ taxonomy ] } ).promise();
+        }
+        return $.post( AJAX_URL, {
             action:   'mmi_search_wc_terms',
             nonce:    NONCE,
             taxonomy: taxonomy,
             search:   query,
-        } )
-        .done( function ( resp ) {
+        } ).then( function ( resp ) {
+            const data = resp?.data || {};
+            if ( Array.isArray( data.tree ) ) {
+                termTrees[ taxonomy ] = data.tree;
+                return { tree: data.tree };
+            }
+            return { terms: data.terms || [] };
+        } );
+    }
+
+    /** A created term isn't in the cached tree yet. */
+    function forgetTermTree( taxonomy ) {
+        delete termTrees[ taxonomy ];
+    }
+
+    /**
+     * What the picker filters by. Opening a tree shows all of it (the field
+     * holds the current term's name, which would hide every other term);
+     * typing filters.
+     */
+    function pickerQuery( found, $input, fromFocus ) {
+        return found.tree && fromFocus ? '' : String( $input.val() || '' );
+    }
+
+    /**
+     * The tree rows to show for a query: every term when it is empty;
+     * otherwise each term whose name matches, its ancestors (so where it sits
+     * is visible) and its descendants (typing a parent lists its children).
+     * The tree arrives in depth-first order, so one pass with an ancestor
+     * stack is enough.
+     *
+     * @param {Array<{id:number,name:string,path:string,depth:number,count:number}>} tree
+     * @param {string} query
+     * @return {Array<{term: Object, kind: string}>} kind: 'match' | 'child' | 'context' | 'all'
+     */
+    function filterTermTree( tree, query ) {
+        const q = query.trim().toLowerCase();
+        if ( ! q ) {
+            return tree.map( term => ( { term, kind: 'all' } ) );
+        }
+        const kinds   = new Map();
+        const stack   = [];
+        let underHit  = -1; // depth of the matched term whose subtree we're in
+        tree.forEach( ( term, i ) => {
+            stack.length = term.depth;
+            if ( underHit >= 0 && term.depth <= underHit ) {
+                underHit = -1;
+            }
+            if ( term.name.toLowerCase().includes( q ) ) {
+                kinds.set( i, 'match' );
+                stack.forEach( a => { if ( ! kinds.has( a ) ) { kinds.set( a, 'context' ); } } );
+                if ( underHit < 0 ) {
+                    underHit = term.depth;
+                }
+            } else if ( underHit >= 0 ) {
+                kinds.set( i, 'child' );
+            }
+            stack.push( i );
+        } );
+        return tree.flatMap( ( term, i ) => ( kinds.has( i ) ? [ { term, kind: kinds.get( i ) } ] : [] ) );
+    }
+
+    /** The name, escaped, with the matched part marked. */
+    function highlightMatch( name, query ) {
+        const at = query ? name.toLowerCase().indexOf( query.trim().toLowerCase() ) : -1;
+        if ( at < 0 ) {
+            return escHtml( name );
+        }
+        const end = at + query.trim().length;
+        return `${ escHtml( name.slice( 0, at ) ) }<mark>${ escHtml( name.slice( at, end ) ) }</mark>${ escHtml( name.slice( end ) ) }`;
+    }
+
+    function triggerAutocomplete( $input, fromFocus ) {
+        // Read the WC taxonomy from the row, fall back to customConfig
+        const $tr     = $input.closest( 'tr' );
+        const taxonomy = $tr.attr( 'data-wc-taxonomy' ) || ( customConfig?.wcTaxonomy ) || 'product_brand';
+
+        fetchTerms( taxonomy, $input.val() ).done( function ( found ) {
             if ( $activeInput && $activeInput.is( $input ) ) {
-                renderAutocomplete( resp.data?.terms || [], query, $input, taxonomy );
+                renderAutocomplete( found, pickerQuery( found, $input, fromFocus ), $input, taxonomy );
             }
         } );
     }
 
-    function renderAutocomplete( terms, query, $input, taxonomy ) {
+    /**
+     * @param {{tree?: Array, terms?: Array}} found - fetchTerms()' result.
+     * @param {string} query
+     * @param {jQuery} $input
+     * @param {string} taxonomy
+     */
+    function renderAutocomplete( found, query, $input, taxonomy ) {
         const $ac     = $( SELECTORS.AUTOCOMPLETE );
         const $list   = $( SELECTORS.AC_LIST );
         const $crOpt  = $( SELECTORS.AC_CREATE );
         const $header = $( SELECTORS.AC_HEADER );
+        const isTree  = Array.isArray( found.tree );
 
         if ( taxonomy ) {
             const color = taxonomyChipColor( taxonomy );
-            $header.text( 'Searching: ' + taxonomyLabel( taxonomy ) )
+            $header.text( ( isTree ? 'Pick from: ' : 'Searching: ' ) + taxonomyLabel( taxonomy ) )
                 .attr( 'style', `--chip-bg:${ color.bg }; --chip-text:${ color.text };` )
                 .removeClass( 'mmi-hidden' );
         } else {
@@ -2087,30 +2174,58 @@
         }
 
         $list.empty();
+        $ac.toggleClass( 'is-tree', isTree );
 
-        if ( terms.length ) {
-            $.each( terms, function ( _, term ) {
-                const $li = $( '<li class="ac-item">' )
-                    .html(
+        const termItem = ( term ) => $( '<li class="ac-item">' )
+            .attr( 'data-term-id', term.id )
+            .attr( 'data-term-name', term.name );
+
+        let names = [];
+        if ( isTree ) {
+            // The term this field holds now: marked, and scrolled to when the tree opens.
+            const currentId = parseInt( $input.attr( 'data-term-id' ) || $input.closest( 'tr' ).attr( 'data-wc-term-id' ) || '0', 10 );
+            const rows      = filterTermTree( found.tree, query );
+            rows.forEach( ( { term, kind } ) => {
+                $list.append(
+                    termItem( term )
+                        .addClass( `ac-tree-item is-${ kind }` )
+                        .toggleClass( 'is-current', term.id === currentId )
+                        .toggleClass( 'is-root', term.depth === 0 )
+                        .attr( 'style', `--depth:${ term.depth }` )
+                        .attr( 'title', term.path )
+                        .html(
+                            `<span class="ac-name">${ kind === 'match' ? highlightMatch( term.name, query ) : escHtml( term.name ) }</span>` +
+                            `<span class="ac-count">${ term.count }</span>`
+                        )
+                );
+            } );
+            if ( ! rows.length && query.trim() ) {
+                $list.append( $( '<li class="ac-empty">' ).text( `No term matches "${ query.trim() }".` ) );
+            }
+            names = found.tree.map( t => t.name );
+        } else {
+            ( found.terms || [] ).forEach( term => {
+                $list.append(
+                    termItem( term ).html(
                         `<span class="ac-name">${ escHtml( term.name ) }</span>` +
                         `<span class="ac-count">${ term.count }</span>`
                     )
-                    .attr( 'data-term-id', term.id )
-                    .attr( 'data-term-name', term.name );
-                $list.append( $li );
+                );
             } );
+            names = ( found.terms || [] ).map( t => t.name );
         }
 
         // "Create term" option — only when query is at least 2 chars and no exact match
-        const exactMatch = terms.find( t => t.name.toLowerCase() === query.toLowerCase() );
-        if ( query.length >= 2 && ! exactMatch ) {
-            $crOpt.find( '.create-term-name' ).text( query );
-            $crOpt.removeClass( 'mmi-hidden' ).attr( 'data-create-name', query );
+        const trimmed    = query.trim();
+        const exactMatch = names.some( n => n.toLowerCase() === trimmed.toLowerCase() );
+        if ( trimmed.length >= 2 && ! exactMatch ) {
+            $crOpt.find( '.create-term-name' ).text( trimmed );
+            $crOpt.removeClass( 'mmi-hidden' ).attr( 'data-create-name', trimmed );
         } else {
             $crOpt.addClass( 'mmi-hidden' ).removeAttr( 'data-create-name' );
         }
 
-        if ( ! terms.length && query.length < 2 ) {
+        if ( ! $list.children().length && trimmed.length < 2 ) {
             $ac.addClass( 'mmi-hidden' );
             return;
         }
@@ -2123,8 +2238,12 @@
         $ac.css( {
             top:   rect.bottom + 4,
             left:  rect.left,
-            width: Math.max( $input.outerWidth(), 220 ),
+            width: Math.max( $input.outerWidth(), isTree ? AC_TREE_MIN_WIDTH : AC_MIN_WIDTH ),
         } ).removeClass( 'mmi-hidden' );
+
+        // Opening the whole tree scrolls to the current term; a filtered list starts at the top.
+        const $current = trimmed ? $() : $list.children( '.is-current' ).first();
+        $ac.scrollTop( $current.length ? Math.max( 0, $current[ 0 ].offsetTop - $ac.innerHeight() / 2 ) : 0 );
     }
 
     $( document ).on( 'click', '#mmi-taxmap-autocomplete-list .ac-item', function () {
@@ -2197,6 +2316,7 @@
                 showNotice( 'Could not create term: ' + ( resp.data?.message || 'Unknown error' ), 'error' );
                 return;
             }
+            forgetTermTree( taxonomy );
             $tr.find( SELECTORS.RULE_TERM_INPUT )
                 .val( resp.data.wc_term_name )
                 .attr( 'data-term-id', resp.data.wc_term_id );
@@ -2268,6 +2388,9 @@
 
             const savedTermId   = resp.data.wc_term_id;
             const savedTermName = resp.data.wc_term_name;
+            if ( termId === 0 ) {
+                forgetTermTree( wcTaxonomy );
+            }
             $tr.removeClass( 'is-term-missing' ).data( 'missingTermId', 0 );
             $tr.find( '.col-status .mmi-taxmap-status' ).removeClass( 'status-term-missing' );
 
@@ -2406,6 +2529,9 @@
             if ( ! resp.success ) {
                 showNotice( 'Save failed: ' + ( resp.data?.message || 'Unknown error' ), 'error' );
                 return;
+            }
+            if ( termId === 0 ) {
+                forgetTermTree( wcTaxonomy );
             }
 
             const profileLabel = $( SELECTORS.PROFILE_OPTIONS_TEMPLATE + ` option[value="${ profileId }"]` ).text() || profileId;

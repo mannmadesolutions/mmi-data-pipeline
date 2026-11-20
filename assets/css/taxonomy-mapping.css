@@ -1189,6 +1189,56 @@ th.sort-active .sort-icon {
     padding: 1px 6px;
 }
 
+/* Hierarchical taxonomies (product categories): the picker is the whole tree,
+   indented by depth (--depth set per row), filtered as the person types. */
+.mmi-taxmap-autocomplete.is-tree {
+    --mmi-taxmap-tree-indent: 1rem;
+    max-height: 340px;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-tree-item {
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+    padding-left: calc(0.75rem + var(--depth, 0) * var(--mmi-taxmap-tree-indent));
+    gap: 0.5rem;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-tree-item.is-root .ac-name {
+    font-weight: 600;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-tree-item:not(.is-root) .ac-name::before {
+    content: "└ ";
+    color: var(--mmi-gray-400);
+}
+
+/* An ancestor shown only so a match's place in the tree is visible. */
+.mmi-taxmap-autocomplete-list li.ac-tree-item.is-context .ac-name {
+    color: var(--mmi-gray-500);
+}
+
+.mmi-taxmap-autocomplete-list li.ac-tree-item.is-current {
+    box-shadow: inset 3px 0 0 var(--mmi-primary);
+}
+
+.mmi-taxmap-autocomplete-list li.ac-tree-item.is-current .ac-name::after {
+    content: " (current)";
+    font-weight: 400;
+    color: var(--mmi-gray-500);
+}
+
+.mmi-taxmap-autocomplete-list li.ac-tree-item mark {
+    background: var(--mmi-warning-bg);
+    color: inherit;
+    padding: 0;
+}
+
+.mmi-taxmap-autocomplete-list li.ac-empty {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--mmi-gray-500);
+}
+
 .mmi-taxmap-autocomplete-create {
     padding: 0.45rem 0.75rem;
     border-top: 1px solid #e2e4e7;

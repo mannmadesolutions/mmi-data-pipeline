@@ -156,10 +156,11 @@
             "title": "Taxonomy mapping",
             "caption": "Turn supplier categories and brands into your own terms.",
             "features": [
-                "Map each supplier value to a WooCommerce category or brand once",
+                "Map each supplier value to a WooCommerce category or brand once, picking categories from a searchable tree",
                 "Sample products beside every value, so you can check a mapping before saving it",
                 "Profile variations, alias rules and a filter for unmapped values",
-                "Apply all mappings to existing products in one click"
+                "Apply all mappings to existing products in one click",
+                "Supplier values never turn into stray categories or brands of their own"
             ],
             "screen": [
                 "admin/views/partials/section-taxonomy-mapping.php",

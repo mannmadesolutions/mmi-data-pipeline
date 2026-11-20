@@ -515,7 +515,8 @@ final class Issues {
 		if ( $slug !== '' ) {
 			$args['slug'] = $slug;
 		}
-		$t = wp_insert_term( $name, 'product_brand', $args );
+		// The person typed this name in the Workbench.
+		$t = \MMI_Pipeline_Term_Guard::allow( static fn() => wp_insert_term( $name, 'product_brand', $args ) );
 		if ( is_wp_error( $t ) ) {
 			return new \WP_Error( 'mmpt_bad', $t->get_error_message(), [ 'status' => 400 ] );
 		}
@@ -539,7 +540,7 @@ final class Issues {
 		if ( $parent && ! term_exists( $parent, 'product_cat' ) ) {
 			return new \WP_Error( 'mmpt_bad', __( 'That parent category no longer exists.', 'mmi-data-pipeline' ), [ 'status' => 400 ] );
 		}
-		$t = wp_insert_term( trim( sanitize_text_field( (string) $in['name'] ) ), 'product_cat', [ 'parent' => $parent ] );
+		$t = \MMI_Pipeline_Term_Guard::allow( static fn() => wp_insert_term( trim( sanitize_text_field( (string) $in['name'] ) ), 'product_cat', [ 'parent' => $parent ] ) );
 		if ( is_wp_error( $t ) ) {
 			return new \WP_Error( 'mmpt_bad', $t->get_error_message(), [ 'status' => 400 ] );
 		}

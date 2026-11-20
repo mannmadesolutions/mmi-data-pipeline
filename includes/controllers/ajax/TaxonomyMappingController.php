@@ -114,7 +114,8 @@ add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
     if ( $wc_term_id === 0 && $term_name !== '' && $term_name !== '__skip__' ) {
         $term = get_term_by( 'name', $term_name, $wc_taxonomy );
         if ( ! $term ) {
-            $result = wp_insert_term( $term_name, $wc_taxonomy );
+            // The person confirmed this name in Create & map.
+            $result = MMI_Pipeline_Term_Guard::allow( static fn() => wp_insert_term( $term_name, $wc_taxonomy ) );
             if ( is_wp_error( $result ) ) {
                 wp_send_json_error( [ 'message' => 'Could not create term: ' . $result->get_error_message() ] );
             }
@@ -466,7 +467,8 @@ add_action( 'wp_ajax_mmi_create_wc_term', function () {
 
     $term = get_term_by( 'name', $term_name, $taxonomy );
     if ( ! $term ) {
-        $result = wp_insert_term( $term_name, $taxonomy );
+        // The person typed this name in the alias rule's term picker.
+        $result = MMI_Pipeline_Term_Guard::allow( static fn() => wp_insert_term( $term_name, $taxonomy ) );
         if ( is_wp_error( $result ) ) {
             wp_send_json_error( [ 'message' => 'Could not create term: ' . $result->get_error_message() ] );
         }
@@ -761,6 +763,13 @@ add_action( 'wp_ajax_mmi_search_wc_terms', function () {
 
     $taxonomy = sanitize_text_field( $_POST['taxonomy'] ?? 'product_brand' );
     $search   = sanitize_text_field( $_POST['search']   ?? '' );
+
+    // A hierarchical taxonomy comes back whole, in tree order: the picker
+    // shows it as a tree and filters it in the browser, so where a term sits
+    // is visible and typing costs no further requests.
+    if ( taxonomy_exists( $taxonomy ) && is_taxonomy_hierarchical( $taxonomy ) ) {
+        wp_send_json_success( [ 'tree' => \MannMade\DataPipeline\ProductData\Store::term_tree( $taxonomy ) ] );
+    }
 
     $terms = get_terms( [
         'taxonomy'   => $taxonomy,

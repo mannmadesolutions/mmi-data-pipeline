@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     3.4.6
+ * Version:     3.4.8
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '3.4.6' );
+define( 'MMI_PIPELINE_VERSION', '3.4.8' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -237,6 +237,10 @@ add_action( 'plugins_loaded', function () {
     // change comparison) — single source of truth shared by the importer,
     // the preview generator, and the field-mapping test endpoints.
     require_once MMI_PIPELINE_PATH . 'includes/helpers/class-pipeline-field-resolver.php';
+
+    // Refuses a category/brand named after a raw supplier value, from any caller.
+    require_once MMI_PIPELINE_PATH . 'includes/helpers/class-pipeline-term-guard.php';
+    MMI_Pipeline_Term_Guard::init();
 
     // Hierarchical taxonomy checkbox-tree renderer (Export Step 1 category
     // filter and any future taxonomy-scoped field).

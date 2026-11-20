@@ -423,7 +423,7 @@ class Store {
 		return self::term_tree( 'product_cat' );
 	}
 
-	/** Every term of a taxonomy as a flat, tree-ordered list for the Review table's pickers. */
+	/** Every term of a taxonomy as a flat, tree-ordered list for the Review table's and Taxonomy Mapping's pickers. */
 	public static function term_tree( string $taxonomy ): array {
 		$terms = taxonomy_exists( $taxonomy ) ? get_terms( [ 'taxonomy' => $taxonomy, 'hide_empty' => false, 'orderby' => 'name' ] ) : [];
 		if ( is_wp_error( $terms ) ) {
@@ -438,7 +438,7 @@ class Store {
 			foreach ( $kids[ $parent ] ?? [] as $t ) {
 				$name  = html_entity_decode( $t->name, ENT_QUOTES, 'UTF-8' );
 				$full  = $path === '' ? $name : $path . ' › ' . $name;
-				$out[] = [ 'id' => (int) $t->term_id, 'name' => $name, 'path' => $full, 'depth' => $depth ];
+				$out[] = [ 'id' => (int) $t->term_id, 'name' => $name, 'path' => $full, 'depth' => $depth, 'count' => (int) $t->count ];
 				$walk( (int) $t->term_id, $depth + 1, $full );
 			}
 		};

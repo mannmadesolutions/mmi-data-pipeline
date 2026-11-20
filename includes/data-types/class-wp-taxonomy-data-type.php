@@ -180,7 +180,8 @@ class MMI_WP_Taxonomy_Data_Type implements MMI_Data_Type_Handler {
             if ( $name === '' ) {
                 return [ 'success' => false, 'id' => 0, 'message' => 'name is required to create a term', 'action' => 'error' ];
             }
-            $result = wp_insert_term( $name, $this->taxonomy, $args );
+            // A taxonomy import job: the person chose to import these terms.
+            $result = MMI_Pipeline_Term_Guard::allow( fn() => wp_insert_term( $name, $this->taxonomy, $args ) );
         }
 
         if ( is_wp_error( $result ) ) {
