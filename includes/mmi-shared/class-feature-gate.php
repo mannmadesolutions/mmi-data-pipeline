@@ -51,7 +51,7 @@ final class MMI_Feature_Gate {
 	 * Override a plugin's label or product URL. Optional: every sold MMI
 	 * plugin already has an entry in plugins().
 	 *
-	 * @param string $slug Plugin slug, e.g. 'mmi-data-health'.
+	 * @param string $slug Plugin slug, e.g. 'mmi-seo'.
 	 * @param array{label?:string,product_url?:string} $meta
 	 */
 	public static function register( string $slug, array $meta ): void {
@@ -105,7 +105,6 @@ final class MMI_Feature_Gate {
 		if ( $base === null ) {
 			$base = array(
 				'mmi-accounting'            => 'Accounting',
-				'mmi-data-health'           => 'Data Health',
 				'mmi-data-pipeline'         => 'Data Pipeline',
 				'mmi-distributors'          => 'Distributors',
 				'mmi-email-customizer'      => 'Email Customizer',

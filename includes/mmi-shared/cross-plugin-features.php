@@ -196,16 +196,6 @@ return array(
 		'status'    => 'live',
 	),
 
-	/* ── Provider: mmi-data-health ────── */
-	'health.score' => array(
-		'provider'  => 'mmi-data-health',
-		'consumers' => array( 'mmi-reverb-integration', 'mmi-distributors:xchange', 'mmi-distributors:skuport', 'mmi-distributors:plugivery', 'mmi-seo' ),
-		'title'     => 'Data Health score',
-		'pitch'     => 'Scores every product\'s data and lists exactly what to fix, using checks from each of your MMI plugins.',
-		'kind'      => 'ui',
-		'status'    => 'live',
-	),
-
 	/* ── Provider: mmi-accounting ────── */
 	'accounting.transactions' => array(
 		'provider'  => 'mmi-accounting',
@@ -310,14 +300,6 @@ return array(
 		'title'     => 'Plugivery software delivery',
 		'pitch'     => 'Buys licenses from Plugivery and delivers them, like XChange and SkuPort.',
 		'kind'      => 'background',
-		'status'    => 'planned',
-	),
-	'google.product_health'    => array(
-		'provider'  => 'mmi-google-services',
-		'consumers' => array( 'mmi-data-health' ),
-		'title'     => 'Merchant Center checks in Data Health',
-		'pitch'     => 'Adds Merchant Center GTIN and brand checks to the Data Health score.',
-		'kind'      => 'ui',
 		'status'    => 'planned',
 	),
 	'seo.organization_policy'  => array(
