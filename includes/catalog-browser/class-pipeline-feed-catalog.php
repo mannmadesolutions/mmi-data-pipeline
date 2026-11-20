@@ -561,32 +561,6 @@ abstract class MMI_Pipeline_Feed_Catalog {
         return MMI_Supplier_Promotion::regular_prices( $promo, $cost, $map );
     }
 
-    /* ── Membership ──────────────────────────────────────────────────────── */
-
-    /** @var array<string,int>|null SKU set from the saved index, per request. */
-    private $sku_set = null;
-
-    /**
-     * Whether the last fetched feed lists $sku (MMI_Supplier_Rule_Pack's
-     * "still sold"), or null when there's no feed to ask. Reads the saved
-     * index even when a newer feed hasn't been indexed yet, so a background
-     * scan never parses a multi-MB feed; builds it only if none exists.
-     */
-    public function has_sku( string $sku ): ?bool {
-        if ( $this->sku_set === null ) {
-            $index = $this->read_cache( 'index.json' );
-            if ( empty( $index['rows'] ) ) {
-                try {
-                    $index = $this->index();
-                } catch ( Throwable $e ) {
-                    return null;
-                }
-            }
-            $this->sku_set = array_flip( array_map( 'strval', array_column( $index['rows'] ?? [], 'sku' ) ) );
-        }
-        return $this->sku_set ? isset( $this->sku_set[ $sku ] ) : null;
-    }
-
     /* ── Query ───────────────────────────────────────────────────────────── */
 
     /**

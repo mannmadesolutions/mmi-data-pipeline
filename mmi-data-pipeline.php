@@ -3,7 +3,7 @@
  * Plugin Name: MMI Data Pipeline
  * Plugin URI:  https://mannmade.us
  * Description: Import and export any WordPress or WooCommerce data (products, orders, customers, coupons, users, comments, posts, pages, custom post types and taxonomies) with guided field mapping, taxonomy mapping, supplier data sources, scheduling and run reports. CSV, JSON and XML.
- * Version:     3.4.8
+ * Version:     3.4.9
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Author:      MannMade Solutions
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-define( 'MMI_PIPELINE_VERSION', '3.4.8' );
+define( 'MMI_PIPELINE_VERSION', '3.4.9' );
 define( 'MMI_PIPELINE_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'MMI_PIPELINE_URL',     plugin_dir_url( __FILE__ ) );
 define( 'MMI_PIPELINE_SLUG',    'mmi-data-pipeline' );
@@ -162,10 +162,6 @@ add_action( 'plugins_loaded', function () {
     // canonical keys, so it lives outside the license gate with them.
     require_once MMI_PIPELINE_PATH . 'includes/content/class-product-content-editor.php';
     MMI_Product_Content_Editor::init();
-
-    // The Product Quality rule pack for mmi-data-health moved to mmi-admin
-    // (includes/catalog-rules/) on 2026-09-26: it encodes mannmade.us's own
-    // quality bar, which customers don't get (ADR-0012 part 2).
 } );
 
 // Brand website field on the brand screen (shared library MMI_Brand_Website,
