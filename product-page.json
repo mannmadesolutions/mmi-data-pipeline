@@ -53,6 +53,12 @@
             "since": "2.65.6"
         },
         {
+            "id": "chrome-extension",
+            "text": "Chrome extension: on a maker's product page, see what it gives your product, pick its parts and pictures, and review every change before it's written",
+            "anchor": "file:browser-extension/manifest.json",
+            "since": "3.4.11"
+        },
+        {
             "id": "reference-library",
             "text": "Reference library: help and knowledge-base pages you read in Chrome are kept with their text and dates, ready to search",
             "anchor": "file:includes/product-data/includes/class-mmpt-library.php",
@@ -329,6 +335,50 @@
                 "date": "2026-10-14",
                 "commit": "73ab304"
             }
+        },
+        {
+            "slug": "data-pipeline-extension-panel",
+            "title": "Chrome extension on a maker's page",
+            "caption": "What the maker's page gives your product, part by part.",
+            "features": [
+                "Checks that the page is the product's own before anything is read from it",
+                "Each part's state at a glance: in order, will change, goes to review or missing",
+                "The pictures the page would add, each with a × to leave it off this product",
+                "One button opens a review of every change before anything is written"
+            ],
+            "screen": [
+                "browser-extension/panel.js",
+                "browser-extension/theme.js"
+            ]
+        },
+        {
+            "slug": "data-pipeline-extension-pictures",
+            "title": "Picking pictures on the page",
+            "caption": "Click the maker's pictures; the mapper outlines and shows every one it takes.",
+            "features": [
+                "Click a picture to add it, click it again to take it back out",
+                "Pictures like the ones you picked are outlined and marked “also read”",
+                "A thumbnail of every picture the pick takes, read at full size, a picture shown twice counted once",
+                "Test the pick on the site's stored pages before saving it"
+            ],
+            "screen": [
+                "includes/product-data/assets/js/live-mapper.js",
+                "includes/product-data/assets/js/map-select.js"
+            ]
+        },
+        {
+            "slug": "data-pipeline-extension-review",
+            "title": "Review before writing",
+            "caption": "What a commit would change on your product, before anything is written.",
+            "features": [
+                "Now and after the commit side by side for each part, with the differences highlighted",
+                "Leave any part out of the commit",
+                "A new description goes to Review first: the product doesn't change until it's approved",
+                "Preview the product on your store before you commit"
+            ],
+            "screen": [
+                "browser-extension/panel.js"
+            ]
         }
     ]
 }
