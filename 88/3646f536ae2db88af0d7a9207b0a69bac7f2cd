@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+shared-lib pass 8 scenarios
+ui-check pass 158
+ui-e2e pass 288
+customer-site pass 27 ok on 883646f as installed
+page pass 10 features, 15 screenshots; 3 warnings
+release-audit pass 0 dead, 0 high, 0 new
+review fail 2 open, 0 fixed, 0 not real
