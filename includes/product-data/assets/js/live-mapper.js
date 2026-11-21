@@ -72,7 +72,7 @@
 
 	const PARTS = [ 'pictures', 'description', 'requirements', 'manual', 'videos', 'audio', 'disclaimer', 'contents' ]; // VendorMaps::FIELDS without NOT_MAPPED (features, version: the generic reader); contents names other products (RELATIONS)
 	const COLORS = { pictures: '#2f7de1', description: '#2e7d32', features: '#00897b', requirements: '#8d6e63', version: '#5c6bc0', manual: '#c2185b', videos: '#e65100', audio: '#6a1b9a', disclaimer: '#ad5a00', contents: '#455a64', extra: '#d63638', hover: '#1d2327' };
-	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, snapMs: 250, thumbs: 4, minPicture: 300, flashMs: 1800, lineChars: 200, measure: 60 };
+	const LIMITS = { effectMs: 900, tabChars: 60, picks: 60, boxes: 80, editMs: 350, previewChars: 160, snapMs: 250, thumbs: 4, strip: 12, minPicture: 300, flashMs: 1800, lineChars: 200, measure: 60 };
 	const THRESHOLDS = { bannerAspect: 1.6, bannerShare: 0.6, menuShare: 0.6, menuItemChars: 40, shellShare: 0.15, shellMinChars: 400 }; // shell: a copy with under 15% of a page's text (of 400+)
 	const KEYS = { wider: 'p', narrower: 'c', browse: 'b', stop: 'Escape' };
 	const ADMIN_PATH = '/wp-admin/admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=maps'; // + &wb_site=<host>: the Workbench's Site maps, this site open
@@ -193,6 +193,7 @@
 		inspectNote: 'Claude’s note: %n%',
 		inspectReads: 'What it reads on other products:',
 		inspectNothing: 'nothing',
+		morePictures: '+%n% more',
 		inspectShow: 'Show it on this page',
 		inspectHere: 'On this page it reads:',
 		inspectHereNone: 'On this page it reads nothing.',
@@ -351,6 +352,9 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 .picklist .top { display: flex; justify-content: space-between; gap: 6px }
 .thumbs { display: flex; gap: 4px; flex-wrap: wrap }
 .thumbs img { width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid #dcdcde }
+.thumbs img[hidden] { display: none }
+.thumbs .more { align-self: center; color: #646970; font-size: 12px }
+.samples .thumbs { margin: 3px 0 2px }
 .warnbox { background: #fcf9e8; border: 1px solid #dba617; border-radius: 4px; padding: 7px 9px; font-size: 12.5px }
 .warnbox ul { margin: 4px 0 0; padding-left: 18px }
 .warnbox li { margin: 0 0 4px }
@@ -1179,6 +1183,9 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		} else {
 			const g = SEL.givesOf( p.field, els );
 			out.push( h( 'div', { class: 'muted', text: g.n ? `${ MESSAGES.inspectHere } ${ SEL.givesLabel( p.field, g ) }` : MESSAGES.inspectHereNone } ) );
+			if ( p.field === 'pictures' ) {
+				out.push( thumbStrip( picturesOf( els ) ) );
+			}
 		}
 		if ( deliveredOnly ) {
 			out.push( h( 'div', { class: 'muted', text: state.ref === 'stored' ? MESSAGES.stored.inspect : MESSAGES.inspectDelivered } ) );
@@ -1198,7 +1205,8 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			p.note ? h( 'div', { text: fill( MESSAGES.inspectNote, { n: p.note } ) } ) : null,
 			...onThisPage( p ),
 			( p.samples || [] ).length ? h( 'div', { class: 'muted', text: MESSAGES.inspectReads } ) : null,
-			( p.samples || [] ).length ? h( 'ul', { class: 'samples' }, p.samples.map( ( x ) => h( 'li', {}, h( 'b', { text: x.title } ), ` · ${ x.n ? ( x.short || x.detail ) : MESSAGES.inspectNothing }` ) ) ) : null,
+			( p.samples || [] ).length ? h( 'ul', { class: 'samples' }, p.samples.map( ( x ) => h( 'li', {}, h( 'b', { text: x.title } ), ` · ${ x.n ? ( x.short || x.detail ) : MESSAGES.inspectNothing }`,
+				p.field === 'pictures' ? thumbStrip( ( x.urls || [] ).map( ( src ) => ( { src: String( src ), el: null } ) ) ) : null ) ) ) : null, // MapProposals::readings(): the addresses that product's page gives
 			h( 'div', { class: 'row' },
 				h( 'button', { type: 'button', class: 'btn quiet', disabled: state.busy || undefined, onclick: () => {
 					showProposal( p.field, true );
@@ -1613,6 +1621,40 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		render();
 	}
 
+	/**
+	 * The pictures some elements give, one per picture as the server counts them (a slide and its thumbnail are one):
+	 * [{ src, el }]. src is what the page drew, unless that is a lazy loader's placeholder.
+	 */
+	function picturesOf( els ) {
+		const seen = new Map();
+		SEL.takenFrom( 'pictures', topOnly( els ) ).forEach( ( img ) => {
+			const best = SEL.bestSrc( img );
+			const key = SEL.keyOf( best );
+			const drawn = img.currentSrc || img.getAttribute( 'src' ) || '';
+			if ( key && ! seen.has( key ) ) {
+				seen.set( key, { src: drawn && ! drawn.startsWith( 'data:' ) ? drawn : best, el: img } );
+			}
+		} );
+		return [ ...seen.values() ];
+	}
+
+	/**
+	 * Thumbnails of the pictures a pick takes (owner 2026-11-21: "the user needs to see a thumbnail of what image(s)
+	 * are/were actually selected"). One on this page outlines its picture on hover; a picture that won't load drops out.
+	 */
+	function thumbStrip( pics ) {
+		if ( ! pics.length ) {
+			return null;
+		}
+		const shown = pics.slice( 0, LIMITS.strip ).map( ( p ) => {
+			const img = h( 'img', { src: p.src, alt: '', title: decodeURIComponent( p.src.split( /[?#]/ )[ 0 ].split( '/' ).pop() || p.src ), loading: 'lazy', onerror: ( e ) => {
+				e.currentTarget.hidden = true;
+			} } );
+			return p.el ? peekOn( img, [ p.el ] ) : img;
+		} );
+		return h( 'div', { class: 'thumbs' }, shown, pics.length > shown.length ? h( 'span', { class: 'more', text: fill( MESSAGES.morePictures, { n: pics.length - shown.length } ) } ) : null );
+	}
+
 	function pickItem( el, i ) {
 		const d = SEL.describe( state.part, el );
 		const li = h( 'li', {},
@@ -1649,7 +1691,8 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			box.append( h( 'div', { class: 'savedbox' },
 				h( 'b', { text: own ? fill( MESSAGES.savedForLayout, { l: state.layout.letter } ) : MESSAGES.savedForSite } ),
 				peekOn( h( 'code', { text: f.sel } ), () => topOnly( SEL.matchAll( document, f.sel ) || [] ) ),
-				state.showSaved ? h( 'div', { class: 'muted', text: state.saved.length ? fill( MESSAGES.gives, { part: partName( k ), what: SEL.givesLabel( k, SEL.givesOf( k, state.saved ) ) } ) : MESSAGES.savedNone } ) : null ) );
+				state.showSaved ? h( 'div', { class: 'muted', text: state.saved.length ? fill( MESSAGES.gives, { part: partName( k ), what: SEL.givesLabel( k, SEL.givesOf( k, state.saved ) ) } ) : MESSAGES.savedNone } ) : null,
+				k === 'pictures' ? thumbStrip( picturesOf( state.showSaved ? state.saved : topOnly( SEL.matchAll( document, f.sel ) || [] ) ) ) : null ) ); // shown, or not: what the saved pick takes here
 		}
 		if ( state.proposals[ k ] ) {
 			box.append( inspectBox( state.proposals[ k ] ) );
@@ -1687,6 +1730,7 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			const distinct = new Set( imgs.map( ( i ) => SEL.keyOf( SEL.bestSrc( i ) ) ) ).size;
 			const widest = Math.max( 0, ...widths.filter( ( x ) => x ) );
 			box.append( h( 'div', { class: 'muted', text: widths.includes( null ) ? MESSAGES.measuring : fill( MESSAGES.fullSizes, { n: distinct, w: widest ? fill( MESSAGES.fullWidest, { w: widest } ) : '' } ) } ) );
+			box.append( thumbStrip( picturesOf( state.matched.length ? state.matched : state.picks ) ) ); // everything the selector takes, not only the elements clicked
 			if ( ! state.custom && state.picks.some( ( p ) => p.closest( SEL.GALLERY ) ) ) {
 				box.append( h( 'div', { class: 'muted', text: MESSAGES.wholeGallery } ) );
 			}
