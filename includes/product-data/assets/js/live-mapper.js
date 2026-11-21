@@ -1646,16 +1646,8 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 		if ( ! pics.length ) {
 			return null;
 		}
-		const nameOf = ( src ) => {
-			const name = src.split( /[?#]/ )[ 0 ].split( '/' ).pop() || src;
-			try {
-				return decodeURIComponent( name );
-			} catch ( e ) {
-				return name; // a stray % in the vendor's file name would otherwise throw and stop render()
-			}
-		};
 		const shown = pics.slice( 0, LIMITS.strip ).map( ( p ) => {
-			const img = h( 'img', { src: p.src, alt: '', title: nameOf( p.src ), loading: 'lazy', onerror: ( e ) => {
+			const img = h( 'img', { src: p.src, alt: '', title: decodeURIComponent( p.src.split( /[?#]/ )[ 0 ].split( '/' ).pop() || p.src ), loading: 'lazy', onerror: ( e ) => {
 				e.currentTarget.hidden = true;
 			} } );
 			return p.el ? peekOn( img, [ p.el ] ) : img;
