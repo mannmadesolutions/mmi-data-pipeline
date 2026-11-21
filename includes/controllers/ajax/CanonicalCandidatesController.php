@@ -345,6 +345,73 @@ function mmi_canonical_candidates_parse_associated_ids( $raw ): array {
 }
 
 /**
+ * Every linked set of listings and the listings kept off sale as duplicates, read once per request.
+ * Links count in either direction: a canonical naming its duplicates, or duplicates naming their
+ * canonical (many links have only the second shape, the canonical's own list empty).
+ *
+ * @return array{root: array<int,int>, suppressed: array<int,bool>} root: listing id => an id shared by its whole set.
+ */
+function mmi_canonical_candidates_link_index(): array {
+    static $index = null;
+    if ( $index !== null ) {
+        return $index;
+    }
+    global $wpdb;
+    $parent = [];
+    $find   = static function ( int $id ) use ( &$parent ): int {
+        while ( $parent[ $id ] !== $id ) {
+            $parent[ $id ] = $parent[ $parent[ $id ] ];
+            $id            = $parent[ $id ];
+        }
+        return $id;
+    };
+    $rows = $wpdb->get_results( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = 'associated_product_ids' AND meta_value NOT IN ('', 'a:0:{}')" );
+    foreach ( $rows as $row ) {
+        $owner             = (int) $row->post_id;
+        $parent[ $owner ] ??= $owner;
+        foreach ( mmi_canonical_candidates_parse_associated_ids( $row->meta_value ) as $id ) {
+            $parent[ $id ] ??= $id;
+            $parent[ $find( $id ) ] = $find( $owner );
+        }
+    }
+    $root = [];
+    foreach ( array_keys( $parent ) as $id ) {
+        $root[ $id ] = $find( $id );
+    }
+    $index = [
+        'root'       => $root,
+        'suppressed' => class_exists( 'MMI_Pipeline_Catalog_Updater' ) ? MMI_Pipeline_Catalog_Updater::suppressed_duplicate_ids() : [],
+    ];
+    return $index;
+}
+
+/**
+ * Whether these listings are already one product, needing no link from a person: links tie them all
+ * into one set, and Catalog Maintenance's duplicate rule leaves at most one of them on sale. Checking
+ * only the canonical's own list showed over half of one brand's queue groups as unlinked (2026-11-21).
+ *
+ * @param int[] $ids Listing ids; zeros (feed items not imported) are ignored.
+ */
+function mmi_canonical_candidates_one_product( array $ids ): bool {
+    $ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+    if ( count( $ids ) < 2 ) {
+        return false;
+    }
+    $links  = mmi_canonical_candidates_link_index();
+    $set    = $links['root'][ $ids[0] ] ?? 0;
+    $unsold = 0;
+    foreach ( $ids as $id ) {
+        if ( ! $set || ( $links['root'][ $id ] ?? 0 ) !== $set ) {
+            return false;
+        }
+        if ( ! isset( $links['suppressed'][ $id ] ) && ++$unsold > 1 ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * Recommends a group's canonical member by lowest non-zero dealer_price
  * among RESOLVED members only (a real wc_product_id — an unresolved,
  * feed-only row can't be picked as canonical, matching the review UI's own
@@ -393,30 +460,42 @@ function mmi_canonical_candidates_store_price( int $product_id ): float {
  *
  * Sets each member's store_price and list_price (the feed's MAP, else the store
  * price; list_price_source says which) and returns the group fields. Listings
- * with no price are left out of min/max rather than read as $0.
+ * with no price are left out of min/max rather than read as $0, and so are
+ * listings whose price is a leftover (price_stale): out of stock and gone from
+ * their supplier's feed, so nobody can pay it. Many hold a $55.00 placeholder
+ * (over half of one brand's listings, 2026-11-21), which faked "prices differ".
  *
  * @param  array $members Group members, by reference.
- * @return array{price_min: float, price_max: float, price_spread: float, price_count: int, price_match: bool}
+ * @return array{price_min: float, price_max: float, price_spread: float, price_count: int, price_stale: int, price_match: bool}
  */
 function mmi_canonical_candidates_price_summary( array &$members ): array {
+    $prices = [];
+    $stale  = 0;
     foreach ( $members as &$m ) {
         $map                    = round( (float) ( $m['map_price'] ?? 0 ), 2 );
         $m['store_price']       = mmi_canonical_candidates_store_price( (int) ( $m['wc_product_id'] ?? 0 ) );
         $m['list_price']        = $map > 0 ? $map : $m['store_price'];
         $m['list_price_source'] = $map > 0 ? 'map' : ( $m['store_price'] > 0 ? 'store' : '' );
+        $m['price_stale']       = $m['list_price'] > 0 && ( $m['in_feed'] ?? null ) === false
+            && ! in_array( (string) ( $m['stock_status'] ?? '' ), [ 'instock', 'onbackorder' ], true );
+        if ( $m['price_stale'] ) {
+            $stale++;
+        } elseif ( $m['list_price'] > 0 ) {
+            $prices[] = $m['list_price'];
+        }
     }
     unset( $m );
 
-    $prices = array_values( array_filter( array_column( $members, 'list_price' ), static fn( $p ) => $p > 0 ) );
-    $min    = $prices ? min( $prices ) : 0.0;
-    $max    = $prices ? max( $prices ) : 0.0;
+    $min = $prices ? min( $prices ) : 0.0;
+    $max = $prices ? max( $prices ) : 0.0;
 
     return [
         'price_min'    => $min,
         'price_max'    => $max,
         'price_spread' => round( $max - $min, 2 ),
         'price_count'  => count( $prices ),
-        'price_match'  => count( $prices ) >= 2 && count( $prices ) === count( $members ) && round( $max - $min, 2 ) == 0,
+        'price_stale'  => $stale,
+        'price_match'  => count( $prices ) >= 2 && count( $prices ) === count( $members ) - $stale && round( $max - $min, 2 ) == 0,
     ];
 }
 
@@ -527,29 +606,9 @@ function mmi_canonical_candidates_scan( bool $force_refresh = false ): array {
             continue;
         }
 
-        // Already fully resolved when one resolved member is canonical and its
-        // associated_product_ids already covers every other resolved member.
-        $already_linked = false;
-        foreach ( $group['members'] as $member ) {
-            if ( empty( $member['is_canonical'] ) ) {
-                continue;
-            }
-            // Real associated_product_ids storage shape is a nested repeater-
-            // style array on this install (see mmi_canonical_candidates_parse_
-            // associated_ids()'s own docblock) — a naive array_map('intval', ...)
-            // on that shape silently produces [1,1,1], not real product IDs,
-            // which previously made this check false-negative for every
-            // already-linked group in that shape.
-            $assoc     = get_post_meta( $member['wc_product_id'], 'associated_product_ids', true );
-            $assoc_ids = mmi_canonical_candidates_parse_associated_ids( $assoc );
-            $others    = array_diff( $resolved_ids, [ $member['wc_product_id'] ] );
-            if ( empty( array_diff( $others, $assoc_ids ) ) ) {
-                $already_linked = true;
-                break;
-            }
-        }
+        $already_linked = mmi_canonical_candidates_one_product( $resolved_ids );
 
-        $recommended            = mmi_canonical_candidates_recommend( $group['members'] );
+        $recommended           = mmi_canonical_candidates_recommend( $group['members'] );
         $recommended_product_id = $recommended['wc_product_id'] ?? null;
         foreach ( $group['members'] as &$member ) {
             $member['is_recommended'] = $recommended_product_id !== null
@@ -651,32 +710,35 @@ add_action( 'wp_ajax_mmi_scan_duplicate_candidates', function () {
 } );
 
 /* ── Dismiss a candidate group — not actually a duplicate ─────────────────── */
+// One queue row can hold several sources' groups of the same listings (group_keys[]); each is dismissed.
 add_action( 'wp_ajax_mmi_dismiss_duplicate_group', function () {
     check_ajax_referer( CANONICAL_CANDIDATES_NONCE, 'nonce' );
     if ( ! mmi_data_pipeline_user_can() ) {
         wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
     }
 
-    $group_key = sanitize_text_field( $_POST['group_key'] ?? '' );
-    if ( $group_key === '' ) {
+    $group_keys = array_values( array_filter( array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['group_keys'] ?? $_POST['group_key'] ?? [] ) ) ) );
+    if ( ! $group_keys ) {
         wp_send_json_error( [ 'message' => 'Missing group_key' ] );
     }
 
     // An older-listing group is dismissed pair by pair, so a new old listing of the product still shows.
-    if ( preg_match( '/^older-(\d+)$/', $group_key, $older ) ) {
-        $group = mmi_canonical_candidates_review_index()['groups'][ $group_key ] ?? null;
-        mmi_canonical_candidates_dismiss_older( (int) $older[1], array_diff( array_map( 'intval', (array) ( $group['product_ids'] ?? [] ) ), [ (int) $older[1] ] ) );
-        wp_send_json_success( [ 'message' => 'Dismissed' ] );
+    $older = array_values( preg_grep( '/^older-\d+$/', $group_keys ) );
+    $plain = array_values( array_diff( $group_keys, $older ) );
+    if ( $plain ) {
+        $dismissed = (array) MMI_DB::get_setting( 'mmi_canonical_candidates_dismissed', [] );
+        MMI_DB::set_setting( 'mmi_canonical_candidates_dismissed', array_values( array_unique( array_merge( $dismissed, $plain ) ) ) );
+        $dropped = array_flip( $plain );
+        mmi_canonical_candidates_drop_from_review_index( static fn( string $key ) => isset( $dropped[ $key ] ) );
     }
-
-    $dismissed = (array) MMI_DB::get_setting( 'mmi_canonical_candidates_dismissed', [] );
-    if ( ! in_array( $group_key, $dismissed, true ) ) {
-        $dismissed[] = $group_key;
-        MMI_DB::set_setting( 'mmi_canonical_candidates_dismissed', $dismissed );
+    foreach ( $older as $group_key ) {
+        $live_id = (int) substr( $group_key, strlen( 'older-' ) );
+        $group   = mmi_canonical_candidates_review_index()['groups'][ $group_key ] ?? null;
+        mmi_canonical_candidates_dismiss_older( $live_id, array_diff( array_map( 'intval', (array) ( $group['product_ids'] ?? [] ) ), [ $live_id ] ) );
     }
-    mmi_canonical_candidates_drop_from_review_index( static fn( string $key ) => $key === $group_key );
 
     delete_transient( 'mmi_canonical_candidates_scan_cache' );
+    delete_transient( 'mmi_canonical_existing_groups_scan_cache' );
 
     /** Fires when a decision changes which listings count as one product. */
     do_action( 'mmi_duplicate_groups_changed' );
@@ -1407,7 +1469,7 @@ function mmi_canonical_candidates_mpn_groups( array $feed_index ): array {
     $groups = [];
     foreach ( $by as $key => $ids ) {
         $ids = array_values( array_unique( $ids ) );
-        if ( count( $ids ) < 2 || isset( $dismissed[ 'mpn-' . $key ] ) ) {
+        if ( count( $ids ) < 2 || isset( $dismissed[ 'mpn-' . $key ] ) || mmi_canonical_candidates_one_product( $ids ) ) {
             continue;
         }
         [ $brand, $mpn ] = explode( '|', $key, 2 );
@@ -1416,19 +1478,7 @@ function mmi_canonical_candidates_mpn_groups( array $feed_index ): array {
             $members[] = mmi_canonical_candidates_build_existing_member( $id, get_post_meta( $id, 'canonical', true ) === 'TRUE', $feed_index );
         }
         $canonicals = array_values( array_filter( $members, static fn( $m ) => ! empty( $m['is_canonical'] ) ) );
-        // Already one group: a canonical member whose links cover every other member.
-        $linked = false;
-        foreach ( $canonicals as $c ) {
-            $assoc = mmi_canonical_candidates_parse_associated_ids( get_post_meta( $c['wc_product_id'], 'associated_product_ids', true ) );
-            if ( ! array_diff( array_diff( $ids, [ $c['wc_product_id'] ] ), $assoc ) ) {
-                $linked = true;
-                break;
-            }
-        }
-        if ( $linked && count( $canonicals ) === 1 ) {
-            continue; // fully linked: already in the queue as a legacy group
-        }
-        $recommended            = mmi_canonical_candidates_recommend( $members );
+        $recommended           = mmi_canonical_candidates_recommend( $members );
         $recommended_product_id = $recommended['wc_product_id'] ?? null;
         foreach ( $members as &$member ) {
             $member['is_recommended'] = $recommended_product_id !== null && $member['wc_product_id'] === $recommended_product_id;
@@ -1483,7 +1533,7 @@ function mmi_canonical_candidates_title_groups( array $feed_index ): array {
     $groups = [];
     foreach ( $by as $key => $ids ) {
         $ids = array_values( array_unique( $ids ) );
-        if ( count( $ids ) < 2 || isset( $dismissed[ 'title-' . $key ] ) || isset( $dismissed[ $key ] ) ) {
+        if ( count( $ids ) < 2 || isset( $dismissed[ 'title-' . $key ] ) || isset( $dismissed[ $key ] ) || mmi_canonical_candidates_one_product( $ids ) ) {
             continue;
         }
         $members = [];
@@ -1491,18 +1541,7 @@ function mmi_canonical_candidates_title_groups( array $feed_index ): array {
             $members[] = mmi_canonical_candidates_build_existing_member( $id, get_post_meta( $id, 'canonical', true ) === 'TRUE', $feed_index );
         }
         $canonicals = array_values( array_filter( $members, static fn( $m ) => ! empty( $m['is_canonical'] ) ) );
-        $linked     = false;
-        foreach ( $canonicals as $c ) {
-            $assoc = mmi_canonical_candidates_parse_associated_ids( get_post_meta( $c['wc_product_id'], 'associated_product_ids', true ) );
-            if ( ! array_diff( array_diff( $ids, [ $c['wc_product_id'] ] ), $assoc ) ) {
-                $linked = true;
-                break;
-            }
-        }
-        if ( $linked && count( $canonicals ) === 1 ) {
-            continue; // already one linked group: the queue shows it as that group
-        }
-        $recommended            = mmi_canonical_candidates_recommend( $members );
+        $recommended           = mmi_canonical_candidates_recommend( $members );
         $recommended_product_id = $recommended['wc_product_id'] ?? null;
         foreach ( $members as &$member ) {
             $member['is_recommended'] = $recommended_product_id !== null && $member['wc_product_id'] === $recommended_product_id;

@@ -254,7 +254,7 @@ function mmi_canonical_candidates_older_pairs( array $feed_index ): array {
                     }
                 }
             }
-            if ( isset( $dismissed[ "older-{$pick}-{$id}" ] ) ) {
+            if ( isset( $dismissed[ "older-{$pick}-{$id}" ] ) || mmi_canonical_candidates_one_product( [ $pick, $id ] ) ) {
                 continue;
             }
             $l = $live[ $key ][ $pick ];

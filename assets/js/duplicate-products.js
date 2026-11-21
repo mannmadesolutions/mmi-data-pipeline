@@ -299,11 +299,11 @@
     function referencePrice( members, canonicalId ) {
         const counts = new Map();
         members.forEach( ( m ) => {
-            const p = Number( m.list_price ) || 0;
+            const p = m.price_stale ? 0 : ( Number( m.list_price ) || 0 );
             if ( p > 0 ) { counts.set( p.toFixed( 2 ), ( counts.get( p.toFixed( 2 ) ) || 0 ) + 1 ); }
         } );
         const canon    = members.find( ( m ) => m.wc_product_id && m.wc_product_id === canonicalId );
-        const canonKey = canon && Number( canon.list_price ) > 0 ? Number( canon.list_price ).toFixed( 2 ) : '';
+        const canonKey = canon && ! canon.price_stale && Number( canon.list_price ) > 0 ? Number( canon.list_price ).toFixed( 2 ) : '';
         let best = '';
         let bestN = 0;
         counts.forEach( ( n, key ) => {
@@ -312,10 +312,15 @@
         return Number( best ) || 0;
     }
 
-    /** 'match' | 'off' | 'none' — how one listing's price compares with the reference. */
+    /**
+     * 'match' | 'off' | 'none' | 'stale' — how one listing's price compares with the
+     * reference. 'stale': out of stock and gone from its supplier's feed, so its
+     * price (often a $55 placeholder) is a leftover nobody can pay; never compared.
+     */
     function priceState( member, refPrice ) {
         const p = Number( member.list_price ) || 0;
         if ( ! p ) { return 'none'; }
+        if ( member.price_stale ) { return 'stale'; }
         return p.toFixed( 2 ) === refPrice.toFixed( 2 ) ? 'match' : 'off';
     }
 
@@ -333,7 +338,8 @@
      * card): what the prices say about this group, at a glance.
      */
     function buildPriceVerdict( group, refPrice ) {
-        const n     = group.members.length;
+        const stale = Number( group.price_stale ) || 0;
+        const n     = group.members.length - stale;
         const count = Number( group.price_count ) || 0;
         const off   = group.members.filter( ( m ) => priceState( m, refPrice ) === 'off' ).length;
         let headline, figure, note;
@@ -344,9 +350,9 @@
         } else if ( ! count ) {
             headline = 'No prices to compare';
             figure   = '—';
-            note     = 'No listing has a MAP or store price';
+            note     = stale ? 'The only prices are old ones nobody can pay' : 'No listing has a MAP or store price';
         } else if ( group.price_match ) {
-            headline = `Same price on all ${ n } listings`;
+            headline = stale ? `Same price on the ${ n } current listings` : `Same price on all ${ n } listings`;
             figure   = formatPrice( group.price_min );
             note     = 'Matching prices back up the match';
         } else if ( group.price_spread > 0 ) {
@@ -381,6 +387,11 @@
         );
         if ( states.has( 'off' ) ) { $legend.append( $( '<span class="mmi-dupes-key mmi-dupes-key--off">' ).text( 'Different price' ) ); }
         if ( states.has( 'none' ) ) { $legend.append( $( '<span class="mmi-dupes-key mmi-dupes-key--none">' ).text( 'No price' ) ); }
+        if ( states.has( 'stale' ) ) {
+            $legend.append( $( '<span class="mmi-dupes-key mmi-dupes-key--stale">' )
+                .attr( 'title', 'Out of stock and gone from its supplier’s feed: a leftover price nobody can pay, left out of the comparison' )
+                .text( 'Old price, not compared' ) );
+        }
         $legend.append( $( '<span class="mmi-dupes-legend-note">' ).text( 'MAP from the supplier feed, else the store price' ) );
         return $legend;
     }
@@ -409,7 +420,7 @@
 
         const cost     = Number( member.dealer_price ) || 0;
         const isLowest = !! ctx.lowestId && member.wc_product_id === ctx.lowestId;
-        const subParts = [ member.list_price_source === 'map' ? 'MAP' : ( member.list_price_source === 'store' ? 'Store price' : 'No price' ) ];
+        const subParts = [ state === 'stale' ? 'Old price, not compared' : ( member.list_price_source === 'map' ? 'MAP' : ( member.list_price_source === 'store' ? 'Store price' : 'No price' ) ) ];
         const store    = Number( member.store_price ) || 0;
         if ( member.list_price_source === 'map' && store > 0 && store.toFixed( 2 ) !== price.toFixed( 2 ) ) {
             subParts.push( `store ${ formatPrice( store ) }` );
@@ -422,7 +433,7 @@
                 .text( `${ isLowest ? 'lowest cost' : 'cost' } ${ formatPrice( cost ) }` ) );
         }
 
-        const width = price > 0 && ctx.maxPrice > 0 ? Math.max( 3, Math.round( price / ctx.maxPrice * 100 ) ) : 0;
+        const width = state !== 'stale' && price > 0 && ctx.maxPrice > 0 ? Math.max( 3, Math.round( price / ctx.maxPrice * 100 ) ) : 0;
 
         const $li = $( '<li class="mmi-dupes-listing">' )
             .addClass( 'is-price-' + state )
@@ -465,7 +476,7 @@
             refPrice,
             canonicalId,
             lowestId: lowestCostId( group.members ),
-            maxPrice: Math.max( 0, ...group.members.map( ( m ) => Number( m.list_price ) || 0 ) ),
+            maxPrice: Math.max( 0, ...group.members.map( ( m ) => ( m.price_stale ? 0 : Number( m.list_price ) || 0 ) ) ),
         };
     }
 
@@ -734,38 +745,68 @@
     }
 
     /**
-     * Merges the sources and re-renders — see allGroups' own comment. A "Same MPN"
-     * group (source 'mpn') replaces any Fresh match or Legacy group whose listings it
-     * already contains, so one product is one row (a Fresh match and a Same MPN row both
-     * holding #7403 and #18553 was the 2026-09-30 report). The replaced rows are named
-     * on the MPN group as `covers`, for its review hint.
+     * Which row holds a product when several sources group the same listings:
+     * the strongest evidence first. Older-listing rows aren't folded; their
+     * bulk Link action works on their own rows.
+     */
+    const SOURCE_RANK = { mpn: 0, legacy: 1, candidate: 2, title: 3 };
+
+    /** How a folded row is named in the holding row's review hint. */
+    const COVER_LABELS = {
+        mpn:       ( g ) => `the same part number match (${ g.match || '' })`,
+        legacy:    ( g ) => `the existing linked group of #${ g.canonical_product_id }`,
+        candidate: () => 'the brand + name match',
+        title:     () => 'the same-title match',
+    };
+
+    /**
+     * Merges the sources and re-renders — see allGroups' own comment. A row whose
+     * listings all sit in another row folds into it, so one product is one row (a
+     * Fresh match, a Same title and a Same MPN row all holding #7403 and #18553 was
+     * the 2026-09-30 report). The holder is the row with the most listings, the
+     * stronger source on a tie: a Same title row holding a Legacy link's listings
+     * plus the one still unlinked is that product's row. The holder keeps what it
+     * replaced: `covers` for its review hint, `alsoSources` for its Source cell,
+     * `coveredKeys` so Dismiss dismisses every source's group.
      */
     function mergeAndRender() {
-        const merged = [ ...existingGroups, ...candidateGroups ];
-        const idsOf  = ( g ) => ( g.members || [] ).map( ( m ) => m.wc_product_id ).filter( Boolean );
-        const mpn    = merged.filter( ( g ) => g.source === 'mpn' );
-        const legacy = merged.filter( ( g ) => g.source === 'legacy' );
-        const fresh  = merged.filter( ( g ) => g.source === 'candidate' );
-        mpn.forEach( ( g ) => { g.covers = []; g.nothing_on_sale = false; g.sale_candidate_id = 0; } );
-        const contains = ( outer, ids ) => {
-            const set = new Set( idsOf( outer ) );
-            return ids.every( ( id ) => set.has( id ) );
-        };
+        const merged   = [ ...existingGroups, ...candidateGroups ];
+        const idsOf    = ( g ) => ( g.members || [] ).map( ( m ) => m.wc_product_id ).filter( Boolean );
+        // A group with a feed item not imported yet can't be judged as contained, or hold another.
+        const foldable = ( g ) => g.source in SOURCE_RANK && ( g.members || [] ).length > 0 && g.members.every( ( m ) => m.wc_product_id );
+        merged.forEach( ( g ) => { g.covers = []; g.coveredKeys = []; g.alsoSources = []; } );
+        merged.filter( ( g ) => g.source !== 'legacy' ).forEach( ( g ) => { g.nothing_on_sale = false; g.sale_candidate_id = 0; } );
+
+        // Rows by listing id, so a row's possible holders are only the rows sharing its first listing.
+        const entries = merged.filter( foldable ).map( ( g ) => ( { group: g, ids: idsOf( g ), set: new Set( idsOf( g ) ) } ) );
+        const byId    = new Map();
+        entries.forEach( ( e ) => e.ids.forEach( ( id ) => { if ( ! byId.has( id ) ) { byId.set( id, [] ); } byId.get( id ).push( e ); } ) );
+        const outranks = ( a, b ) => a.set.size !== b.set.size ? a.set.size > b.set.size
+            : ( SOURCE_RANK[ a.group.source ] !== SOURCE_RANK[ b.group.source ] ? SOURCE_RANK[ a.group.source ] < SOURCE_RANK[ b.group.source ] : a.group.group_key < b.group.group_key );
+        // A Legacy row opens the manage-links panel, so it holds only rows already linked; a row
+        // still to decide (two of its listings on sale) stays a row of its own.
+        const canHold  = ( o, e ) => o.group.source !== 'legacy' || !! e.group.already_linked;
+        const holderOf = new Map();
+        entries.forEach( ( e ) => {
+            let best = null;
+            ( byId.get( e.ids[ 0 ] ) || [] ).forEach( ( o ) => {
+                if ( o !== e && canHold( o, e ) && outranks( o, e ) && e.ids.every( ( id ) => o.set.has( id ) ) && ( ! best || outranks( o, best ) ) ) { best = o; }
+            } );
+            if ( best ) { holderOf.set( e.group, best.group ); }
+        } );
+
         allGroups = merged.filter( ( g ) => {
-            if ( g.source === 'mpn' || ! ( g.members || [] ).length || ! g.members.every( ( m ) => m.wc_product_id ) ) {
-                return true; // a group with an unimported feed item can't be judged as contained
-            }
-            const ids   = idsOf( g );
-            const owner = mpn.find( ( m ) => contains( m, ids ) );
+            const owner = holderOf.get( g );
             if ( ! owner ) {
-                // A brand + name match whose listings are all already in one linked
-                // group is that group (the 2026-09-30 "Avid" / "AVID" AudioScore
-                // Ultimate pair): the Legacy row manages it.
-                // A same-title group is shown only when no linked group or feed match already holds its listings.
-                return ! ( ( g.source === 'candidate' || g.source === 'title' ) && legacy.some( ( l ) => contains( l, ids ) ) )
-                    && ! ( g.source === 'title' && fresh.some( ( c ) => c.members.every( ( m ) => m.wc_product_id ) && contains( c, ids ) ) );
+                return true;
             }
-            owner.covers.push( g.source === 'legacy' ? `the existing linked group of #${ g.canonical_product_id }` : ( g.source === 'title' ? 'the same-title match' : 'the brand + name match' ) );
+            owner.covers.push( COVER_LABELS[ g.source ]( g ) );
+            if ( ! owner.alsoSources.includes( g.source ) ) {
+                owner.alsoSources.push( g.source );
+            }
+            if ( g.source !== 'legacy' ) {
+                owner.coveredKeys.push( g.group_key );
+            }
             if ( g.nothing_on_sale ) {
                 owner.nothing_on_sale      = true;
                 owner.no_sale_canonical_id = g.canonical_product_id;
@@ -1287,8 +1328,9 @@
     function buildPriceCell( group ) {
         const $td   = $( '<td class="col-spread">' );
         const count = Number( group.price_count ) || 0;
+        const stale = Number( group.price_stale ) || 0;
         if ( ! count ) {
-            return $td.addClass( 'is-empty' ).attr( 'title', 'No listing in this group has a MAP or store price' ).text( '—' );
+            return $td.addClass( 'is-empty' ).attr( 'title', stale ? 'The only prices are old ones nobody can pay (out of stock, gone from the supplier’s feed)' : 'No listing in this group has a MAP or store price' ).text( '—' );
         }
         if ( group.price_spread > 0 ) {
             $td.text( `${ formatPrice( group.price_min ) } – ${ formatPrice( group.price_max ) }` );
@@ -1299,7 +1341,7 @@
             }
         }
         if ( count < group.members.length && group.source !== 'older' ) {
-            $td.attr( 'title', `${ count } of ${ group.members.length } listings have a price` );
+            $td.attr( 'title', `${ count } of ${ group.members.length } listings have a current price${ stale ? `; ${ stale } old price${ stale === 1 ? '' : 's' } not compared` : '' }` );
         }
         return $td;
     }
@@ -1337,24 +1379,32 @@
      * group's own real member data, rather than living in a now-removed
      * Actions column.
      */
+    /** The Source cell's badge for each source. */
+    const SOURCE_BADGES = {
+        legacy:    { cls: 'info',    label: 'Legacy link',   title: () => 'A real, pre-existing canonical/associated_product_ids link found directly in the database' },
+        mpn:       { cls: 'success', label: 'Same MPN',      title: ( g ) => `Same brand and manufacturer part number (${ g.match || '' }) — the strongest evidence of one product listed more than once` },
+        older:     { cls: 'info',    label: 'Older listing', title: () => 'An old listing no supplier carries any more, beside a listing of the same product on sale' },
+        title:     { cls: 'warning', label: 'Same title',    title: () => 'Listed under the same brand and title in this store; nothing else groups them, so check they are one product before linking' },
+        candidate: { cls: 'warning', label: 'Fresh match',   title: () => 'Detected by matching brand + product name across live supplier feeds' },
+    };
+
+    /** The row's own source badge, then a small one per source whose group of the same listings it holds. */
+    function buildSourceCell( group ) {
+        const own = SOURCE_BADGES[ group.source ] || SOURCE_BADGES.candidate;
+        const $td = $( '<td class="col-source">' ).append(
+            $( '<span class="mmi-badge">' ).addClass( own.cls ).attr( 'title', own.title( group ) ).text( own.label )
+        );
+        ( group.alsoSources || [] ).forEach( ( source ) => {
+            $td.append( ' ', $( '<span class="mmi-badge mmi-dupes-also">' )
+                .attr( 'title', `Also grouped by ${ SOURCE_BADGES[ source ].label }: this row holds that group’s listings too` )
+                .text( `+ ${ SOURCE_BADGES[ source ].label }` ) );
+        } );
+        return $td;
+    }
+
     function buildGroupRow( group ) {
         const statusClass = group.nothing_on_sale ? 'status-nosale' : ( group.already_linked ? 'status-linked' : 'status-new' );
         const statusLabel = group.nothing_on_sale ? 'Nothing on sale' : ( group.already_linked ? 'Linked' : 'New' );
-        const isLegacy     = group.source === 'legacy';
-        const isMpn        = group.source === 'mpn';
-        const isOlder      = group.source === 'older';
-        const isTitle      = group.source === 'title';
-        const sourceClass  = isLegacy || isOlder ? 'info' : ( isMpn ? 'success' : 'warning' );
-        const sourceLabel  = isLegacy ? 'Legacy link' : ( isMpn ? 'Same MPN' : ( isOlder ? 'Older listing' : ( isTitle ? 'Same title' : 'Fresh match' ) ) );
-        const sourceTitle  = isLegacy
-            ? 'A real, pre-existing canonical/associated_product_ids link found directly in the database'
-            : ( isMpn
-                ? `Same brand and manufacturer part number (${ group.match || '' }) — the strongest evidence of one product listed more than once`
-                : ( isOlder
-                    ? 'An old listing no supplier carries any more, beside a listing of the same product on sale'
-                    : ( isTitle
-                        ? 'Listed under the same brand and title in this store; nothing else groups them, so check they are one product before linking'
-                        : 'Detected by matching brand + product name across live supplier feeds' ) ) );
 
         const $tr = $( '<tr class="mmi-dupes-row" role="button" tabindex="0">' )
             .toggleClass( 'is-not-sold', group.availability === 'notsold' )
@@ -1376,7 +1426,7 @@
         $tr.append( $( '<td class="col-members">' ).text( group.members.length ) );
         $tr.append( buildPriceCell( group ) );
         $tr.append( buildStockCell( group ) );
-        $tr.append( $( `<td class="col-source"><span class="mmi-badge ${ sourceClass }" title="${ escHtml( sourceTitle ) }">${ sourceLabel }</span></td>` ) );
+        $tr.append( buildSourceCell( group ) );
         $tr.append( $( `<td class="col-status"><span class="mmi-dupes-status ${ statusClass }">${ statusLabel }</span></td>` ) );
 
         return $tr;
@@ -1893,10 +1943,13 @@
 
     function dismissGroup( groupKey, $row ) {
         $row.addClass( 'is-saving' );
+        // The row's own group and every other source's group of the same listings it holds.
+        const entry = allGroups.find( g => g.group_key === groupKey ) || {};
+        const keys  = new Set( [ groupKey, ...( entry.coveredKeys || [] ) ] );
         $.post( AJAX_URL, {
-            action:    'mmi_dismiss_duplicate_group',
-            nonce:     NONCE,
-            group_key: groupKey,
+            action:     'mmi_dismiss_duplicate_group',
+            nonce:      NONCE,
+            group_keys: [ ...keys ],
         } )
         .done( function ( resp ) {
             if ( ! resp.success ) {
@@ -1904,7 +1957,10 @@
                 showNotice( 'Dismiss failed: ' + ( resp.data?.message || 'Unknown error' ), 'error' );
                 return;
             }
-            allGroups = allGroups.filter( g => g.group_key !== groupKey );
+            const kept = ( g ) => ! keys.has( g.group_key );
+            allGroups       = allGroups.filter( kept );
+            candidateGroups = candidateGroups.filter( kept );
+            existingGroups  = existingGroups.filter( kept );
             updateStats();
             sortAndRerender();
         } )
