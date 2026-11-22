@@ -318,7 +318,10 @@ class MMI_Plugin_Update_Client {
             // mmi-admin is staff-only internal tooling, never in the public
             // catalog (see MMI_Extension_Status::INTERNAL_SLUGS) — excluding
             // it here too just avoids a wasted catalog lookup per request.
-            if ( strpos( $file, 'mmi-' ) === 0 && strpos( $file, 'mmi-admin/' ) !== 0 ) {
+            // An mmi-* plugin without the bundled library is released on
+            // WordPress.org, which alone may update it (directory guideline 8).
+            if ( strpos( $file, 'mmi-' ) === 0 && strpos( $file, 'mmi-admin/' ) !== 0
+                && file_exists( WP_PLUGIN_DIR . '/' . dirname( $file ) . '/includes/mmi-shared/bootstrap.php' ) ) {
                 $mmi[ $file ] = $data;
             }
         }
