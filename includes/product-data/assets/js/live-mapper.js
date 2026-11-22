@@ -1647,7 +1647,14 @@ details.pages a { color: var(--mmi-accent); text-decoration: underline; overflow
 			return null;
 		}
 		const shown = pics.slice( 0, LIMITS.strip ).map( ( p ) => {
-			const img = h( 'img', { src: p.src, alt: '', title: decodeURIComponent( p.src.split( /[?#]/ )[ 0 ].split( '/' ).pop() || p.src ), loading: 'lazy', onerror: ( e ) => {
+			const file = p.src.split( /[?#]/ )[ 0 ].split( '/' ).pop() || p.src;
+			let title = file;
+			try {
+				title = decodeURIComponent( file );
+			} catch ( e ) {
+				// A stray % in the vendor's file name would otherwise throw and stop render().
+			}
+			const img = h( 'img', { src: p.src, alt: '', title, loading: 'lazy', onerror: ( e ) => {
 				e.currentTarget.hidden = true;
 			} } );
 			return p.el ? peekOn( img, [ p.el ] ) : img;
