@@ -169,7 +169,13 @@ test("a title flag's fix opens the title editor; Escape closes a panel", async (
 
 test("results table: a No brand chip opens the brand panel in its row", async ({ page }) => {
   const { api, backend } = await open(page, "data");
+  // Product 1002 is already on the opening page of every product: wait for the search's own results, or they
+  // land after the chip's click and close its panel (a new page of results closes an open editor).
+  const count = page.locator("#mmi-wb-count");
+  await expect(count).toHaveText("120 products found");
   await page.locator("#mmi-wb-q").fill("test plug-in 2");
+  await expect(count).not.toHaveText("120 products found");
+  await expect(page.locator("#mmi-wb-rows.mmi-wb-loading")).toHaveCount(0);
   const r = page.locator("#mmi-wb-rows tr[data-id='1002']");
   await expect(r).toBeVisible();
   await r.locator('.mmi-health-chip[data-check="no_brand"]').click();
