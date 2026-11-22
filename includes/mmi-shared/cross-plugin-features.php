@@ -252,6 +252,14 @@ return array(
 		'kind'      => 'background',
 		'status'    => 'live',
 	),
+	'seo.ai_speed_advice' => array(
+		'provider'  => 'mmi-seo',
+		'consumers' => array( 'mmi-google-services' ),
+		'title'     => 'Ask AI about a PageSpeed finding',
+		'pitch'     => 'Reads your pages\' PageSpeed evidence with the AI set up in MMI SEO and proposes fixes you can try before turning them on.',
+		'kind'      => 'ui',
+		'status'    => 'live',
+	),
 
 	/* ── Planned (documentation only, never rendered) ────── */
 	'seo.registry_schema'      => array(
