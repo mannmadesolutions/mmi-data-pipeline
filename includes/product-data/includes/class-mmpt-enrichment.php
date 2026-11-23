@@ -134,16 +134,20 @@ class Enrichment {
 	 * 2.0.0): published products outside seo_ready_ids() by the step that holds them, and every product left out
 	 * (Exclusions) as not_sold. Codes: no_url, url_unverified (a proposed page waits for a person), no_page (a
 	 * person said the maker publishes none), not_read, gone, moved, refused, no_copy, read_failed, not_applied (read,
-	 * the description not applied). One query, as PageReview reads the same rows.
+	 * the description not applied). One query, as PageReview reads the same rows, kept for the request.
 	 *
 	 * @param array<int,string> $states Another plugin's answer, kept if given.
 	 * @return array<int,string>
 	 */
 	public static function seo_source_states( $states ) {
+		static $memo = null;
 		if ( is_array( $states ) && $states ) {
 			return $states;
 		}
-		$ready = self::seo_ready_ids( null );
+		if ( $memo !== null ) {
+			return $memo;
+		}
+		$ready = self::ready_ids();
 		if ( ! is_array( $ready ) ) {
 			return is_array( $states ) ? $states : [];
 		}
@@ -181,6 +185,7 @@ class Enrichment {
 		foreach ( Exclusions::ids() as $id ) {
 			$out[ (int) $id ] = 'not_sold';
 		}
+		$memo = $out;
 		return $out;
 	}
 
@@ -193,17 +198,19 @@ class Enrichment {
 	 * @return int[]|null
 	 */
 	public static function seo_ready_ids( $answer ) {
+		return is_array( $answer ) ? $answer : self::ready_ids();
+	}
+
+	/** This module's own ready set (seo_ready_ids()), never another plugin's answer. @return int[]|null null before the table exists */
+	private static function ready_ids(): ?array {
 		static $memo = null;
-		if ( is_array( $answer ) ) {
-			return $answer;
-		}
 		if ( $memo !== null ) {
 			return $memo;
 		}
 		global $wpdb;
 		$t = self::table();
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $t ) ) !== $t ) {
-			return $answer;
+			return null;
 		}
 		$memo = array_map( 'intval', (array) $wpdb->get_col( "SELECT DISTINCT e.product_id FROM {$t} e JOIN {$wpdb->posts} p ON p.ID = e.product_id AND p.post_type = 'product' AND p.post_status = 'publish' WHERE e.kind = 'content' AND e.status = 'applied' AND e.source IN ('vendor_page','family_copy')" ) ); // phpcs:ignore WordPress.DB.PreparedSQL -- table name only
 		return $memo;

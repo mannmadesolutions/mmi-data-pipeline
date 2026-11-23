@@ -1773,6 +1773,23 @@ class VendorMaps {
 			unset( $fields[ $f ] ); // the generic reader does as well or better
 		}
 		$stats = self::stats( $h, $all ) + [ 'shells' => $shells, 'at' => current_time( 'mysql', true ) ];
+		// A person's save while this measured (a pick, a clear, Confirm) stands: the row as it is now, only the drafter's
+		// own parts redrafted (customer-site 2026-11-23: a Videos pick saved during a draft was written over).
+		$now = self::get( $h );
+		if ( $now ) {
+			$own = static fn( ?array $r, string $f ) => ( $r['status'] ?? '' ) === 'confirmed' || ( $r['fields'][ $f ]['source'] ?? '' ) === 'person' || isset( self::RELATIONS[ $f ] ) || ! isset( self::MODES[ $f ] );
+			foreach ( array_unique( array_merge( array_keys( $fields ), array_keys( (array) $now['fields'] ) ) ) as $f ) {
+				if ( $own( $now, $f ) || $own( $row, $f ) ) {
+					if ( isset( $now['fields'][ $f ] ) ) {
+						$fields[ $f ] = $now['fields'][ $f ];
+					} else {
+						unset( $fields[ $f ] );
+					}
+				}
+			}
+			$render = max( $render, (int) $now['render'] );
+			$row    = $now;
+		}
 		$wpdb->replace(
 			self::table(),
 			[
