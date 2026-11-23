@@ -127,6 +127,62 @@ class Enrichment {
 		add_action( self::DAILY_HOOK, [ __CLASS__, 'daily_detached' ] );
 		add_filter( 'mmi_seo_product_data_coverage', [ __CLASS__, 'seo_coverage' ] );
 		add_filter( 'mmi_seo_product_data_ready_ids', [ __CLASS__, 'seo_ready_ids' ] );
+		add_filter( 'mmi_seo_product_source_states', [ __CLASS__, 'seo_source_states' ] );
+	}
+
+	/**
+	 * MMI SEO's question "why doesn't this product have its maker's description yet?" (its Meta health stages,
+	 * 2.0.0): published products outside seo_ready_ids() by the step that holds them, and every product left out
+	 * (Exclusions) as not_sold. Codes: no_url, url_unverified (a proposed page waits for a person), no_page (a
+	 * person said the maker publishes none), not_read, gone, moved, refused, no_copy, read_failed, not_applied (read,
+	 * the description not applied). One query, as PageReview reads the same rows.
+	 *
+	 * @param array<int,string> $states Another plugin's answer, kept if given.
+	 * @return array<int,string>
+	 */
+	public static function seo_source_states( $states ) {
+		if ( is_array( $states ) && $states ) {
+			return $states;
+		}
+		$ready = self::seo_ready_ids( null );
+		if ( ! is_array( $ready ) ) {
+			return is_array( $states ) ? $states : [];
+		}
+		global $wpdb;
+		$ready = array_flip( $ready );
+		$out   = [];
+		$c     = UrlFinder::table();
+		$rows  = $wpdb->get_results(
+			"SELECT p.ID id, COALESCE( u.meta_value, '' ) url, COALESCE( v.meta_value, '' ) verified, COALESCE( d.fetch_status, '' ) fs, COALESCE( d.vendor_url, '' ) read_url, COALESCE( c.approved, 0 ) approved, COALESCE( c.proposed, 0 ) proposed
+			 FROM {$wpdb->posts} p
+			 LEFT JOIN {$wpdb->postmeta} u ON u.post_id = p.ID AND u.meta_key = 'vendor_product_url'
+			 LEFT JOIN {$wpdb->postmeta} v ON v.post_id = p.ID AND v.meta_key = 'vendor_product_url_verified'
+			 LEFT JOIN " . Descriptions::table() . " d ON d.product_id = p.ID
+			 LEFT JOIN ( SELECT product_id, MAX( status = 'approved' ) approved, MAX( status = 'candidate' ) proposed FROM {$c} GROUP BY product_id ) c ON c.product_id = p.ID
+			 WHERE p.post_type = 'product' AND p.post_status = 'publish'", // phpcs:ignore WordPress.DB.PreparedSQL -- table names only
+			ARRAY_A
+		);
+		$read = [ 'read' => 'not_applied', 'manual' => 'not_applied', 'not_read' => 'not_read', 'changed' => 'not_read', 'no_copy' => 'no_copy', 'gone' => 'gone', 'moved' => 'moved', 'offsite' => 'moved', 'loop' => 'moved', 'refused' => 'refused', 'robots' => 'refused' ];
+		foreach ( (array) $rows as $r ) {
+			$id = (int) $r['id'];
+			if ( isset( $ready[ $id ] ) ) {
+				continue;
+			}
+			$url  = (string) $r['url'];
+			$fs   = (string) $r['fs'];
+			$sure = (int) $r['approved'] || ( str_starts_with( $url, 'http' ) && UrlFinder::is_verified( (string) $r['verified'] ) );
+			if ( $fs === UrlFinder::NO_PAGE ) {
+				$out[ $id ] = 'no_page';
+			} elseif ( ! $sure ) {
+				$out[ $id ] = (int) $r['proposed'] || str_starts_with( $url, 'http' ) ? 'url_unverified' : 'no_url';
+			} else {
+				$out[ $id ] = $read[ PageReview::result_of( $fs, (string) $r['read_url'], $url, (string) $r['verified'] ) ] ?? 'read_failed';
+			}
+		}
+		foreach ( Exclusions::ids() as $id ) {
+			$out[ (int) $id ] = 'not_sold';
+		}
+		return $out;
 	}
 
 	/**
