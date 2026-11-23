@@ -105,6 +105,8 @@ class BrandSites {
 	public static function register_hooks(): void {
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
 		add_filter( 'mmi_seo_fetch_page', [ __CLASS__, 'seo_fetch' ], 10, 2 );
+		// A brand with no Brand website: the site Product Data already knows for it, for a person to accept (MMI SEO's drawer).
+		add_filter( 'mmi_brand_website_suggestion', [ __CLASS__, 'website_suggestion' ], 10, 2 );
 		// A product's vendor URL changed (set, approved, cleared, adopted by the finder): the picture is stale.
 		foreach ( [ 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ] as $hook ) {
 			add_action( $hook, [ __CLASS__, 'url_changed' ], 10, 3 );
@@ -190,6 +192,35 @@ class BrandSites {
 	/** Does the brand have a maker site: a Brand website, or a site saved as official or partner? */
 	private static function has_maker_site( int $term_id ): bool {
 		return self::website_host( $term_id ) !== '' || (bool) array_intersect( self::roles()[ $term_id ] ?? [], [ 'official', 'partner' ] );
+	}
+
+	/**
+	 * `mmi_brand_website_suggestion`: for a brand with no Brand website, the site Product Data knows for it
+	 * (UrlFinder::brand_sites(): a site saved as official or partner, the site its name is known by, or where most
+	 * of its products' confirmed maker pages are) and why, for a person to accept. Never saved from here.
+	 *
+	 * @param mixed $suggestion What an earlier answer gave.
+	 * @return mixed array{url:string, host:string, why:string}, or $suggestion when nothing is known.
+	 */
+	public static function website_suggestion( $suggestion, $term_id ) {
+		$term_id = (int) $term_id;
+		$term    = get_term( $term_id, 'product_brand' );
+		if ( ! $term instanceof \WP_Term || self::website_host( $term_id ) !== '' ) {
+			return $suggestion;
+		}
+		$site = UrlFinder::brand_sites( [ $term_id => $term->name ] )[ $term_id ] ?? [ 'host' => '', 'from' => '' ];
+		$host = self::host( explode( '/', (string) $site['host'] )[0] );
+		if ( $host === '' ) {
+			return $suggestion;
+		}
+		$role = self::roles()[ $term_id ][ $host ] ?? '';
+		$why  = match ( true ) {
+			$role === 'official' => __( 'saved as its official site under Brands & sites', 'mmi-data-pipeline' ),
+			$role === 'partner'  => __( 'saved as a partner site under Brands & sites', 'mmi-data-pipeline' ),
+			$site['from'] === 'named' => __( 'the site this brand is known by', 'mmi-data-pipeline' ),
+			default => __( 'where most of its products\' confirmed maker pages are', 'mmi-data-pipeline' ),
+		};
+		return [ 'url' => 'https://' . explode( '/', (string) $site['host'] )[0] . '/', 'host' => $host, 'why' => $why ];
 	}
 
 	/** The brand's Brand website, as a host ('' when unset). */
@@ -806,6 +837,17 @@ class BrandSites {
 			}
 		}
 		self::$roles = null;
+		// The first official site saved for a brand with no Brand website becomes it: one place says where the maker
+		// is, so MMI SEO (which reads only the Brand website) doesn't call the brand site-less (2026-11-23, Arobas Music).
+		if ( class_exists( 'MMI_Brand_Website' ) && self::website_host( $term_id ) === '' ) {
+			foreach ( $roles as $host => $role ) {
+				$host = self::host( (string) $host );
+				if ( $role === 'official' && $host !== '' ) {
+					\MMI_Brand_Website::set( $term_id, 'https://' . $host . '/' );
+					break;
+				}
+			}
+		}
 		$was_gone    = self::is_gone( $term_id );
 		if ( $gone === true && ! self::has_maker_site( $term_id ) ) {
 			update_term_meta( $term_id, self::GONE, [ 'at' => current_time( 'mysql', true ), 'by' => get_current_user_id() ] );
