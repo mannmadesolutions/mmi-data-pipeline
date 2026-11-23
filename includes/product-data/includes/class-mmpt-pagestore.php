@@ -454,15 +454,23 @@ class PageStore {
 	 * A good copy already stored that reads more is kept (reads_less()): the answer is that copy, with `kept` and what
 	 * each copy reads (`reads`, `reads_new`).
 	 *
+	 * Fires `mmi_pipeline_page_captured` ($url) once a good copy is stored, so a reader that was refused this page (MMI
+	 * SEO's brand home pages) can read it again now instead of at its next retry.
+	 *
 	 * @return array{status:string,code:int,html:string,title:string,from_store:bool,kept?:bool,reads?:array,reads_new?:array}
 	 */
 	public static function capture( string $url, string $html ): array {
 		self::maybe_install();
 		$kept = self::good_copy( self::row( $url ) );
 		if ( $kept && self::reads_less( $html, $kept['html'], $url ) ) {
-			return [ 'kept' => true, 'reads' => self::reads( $kept['html'], $url ), 'reads_new' => self::reads( $html, $url ) ] + $kept;
+			$out = [ 'kept' => true, 'reads' => self::reads( $kept['html'], $url ), 'reads_new' => self::reads( $html, $url ) ] + $kept;
+		} else {
+			$out = self::save( $url, strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) ), 200, 'ok', $html, 'capture' );
 		}
-		return self::save( $url, strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) ), 200, 'ok', $html, 'capture' );
+		if ( ( $out['status'] ?? '' ) === 'ok' ) {
+			do_action( 'mmi_pipeline_page_captured', $url );
+		}
+		return $out;
 	}
 
 	/** What the reader gets from a page: its text (characters) and pictures. @return array{text:int,pictures:int} */
