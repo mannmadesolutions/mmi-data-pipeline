@@ -209,7 +209,7 @@ class BrandSites {
 			return $suggestion;
 		}
 		$site = UrlFinder::brand_sites( [ $term_id => $term->name ] )[ $term_id ] ?? [ 'host' => '', 'from' => '' ];
-		$host = self::host( explode( '/', (string) $site['host'] )[0] );
+		$host = self::host( (string) $site['host'] );
 		if ( $host === '' ) {
 			return $suggestion;
 		}
