@@ -1,3 +1,10 @@
 lint pass ship 2 files
 audit pass ship 2 files
 site-rules pass ship 2 files
+shared-lib pass 8 scenarios
+ui-check pass 158
+ui-e2e pass 288
+customer-site pass 27 ok on 1e9baaf as installed
+page pass 10 features, 15 screenshots; 3 warnings
+release-audit pass 0 dead, 0 high, 0 new
+review fail 1 open, 0 fixed, 0 not real
