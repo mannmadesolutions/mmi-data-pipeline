@@ -125,7 +125,6 @@ class Enrichment {
 	public static function register_hooks(): void {
 		add_action( self::HOOK, [ __CLASS__, 'run_batch' ] );
 		add_action( self::DAILY_HOOK, [ __CLASS__, 'daily_detached' ] );
-		add_filter( 'mmi_seo_product_data_coverage', [ __CLASS__, 'seo_coverage' ] );
 		add_filter( 'mmi_seo_product_data_ready_ids', [ __CLASS__, 'seo_ready_ids' ] );
 		add_filter( 'mmi_seo_product_source_states', [ __CLASS__, 'seo_source_states' ] );
 	}
@@ -186,24 +185,9 @@ class Enrichment {
 	}
 
 	/**
-	 * MMI SEO's question "how many products have product data good enough to write SEO from?" (its Meta
-	 * health accounting of AI sources): published products whose description is the maker's, written by this
-	 * module from the maker's page or the family copy, and still in use (applied, not reverted).
-	 *
-	 * @param array|null $answer Another plugin's answer, kept if given.
-	 * @return array{with:int, what:string}|null
-	 */
-	public static function seo_coverage( $answer ) {
-		if ( is_array( $answer ) ) {
-			return $answer;
-		}
-		$ids = self::seo_ready_ids( null );
-		return $ids === null ? $answer : [ 'with' => count( $ids ), 'what' => __( "a description from the maker's page", 'mmi-data-pipeline' ) ];
-	}
-
-	/**
-	 * The same products by ID, for MMI SEO to write AI drafts only for products with their maker's description
-	 * (`mmi_seo_product_data_ready_ids`). One query, kept for the request.
+	 * Published products whose description is the maker's, written by this module from the maker's page or the
+	 * family copy and still applied: MMI SEO writes AI drafts only for these (`mmi_seo_product_data_ready_ids`).
+	 * One query, kept for the request.
 	 *
 	 * @param int[]|null $answer Another plugin's answer, kept if given.
 	 * @return int[]|null
