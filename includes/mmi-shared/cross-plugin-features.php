@@ -310,6 +310,14 @@ return array(
 		'kind'      => 'background',
 		'status'    => 'planned',
 	),
+	'pipeline.seo_sources'     => array(
+		'provider'  => 'mmi-data-pipeline',
+		'consumers' => array( 'mmi-seo' ),
+		'title'     => 'Why products aren\'t ready for SEO',
+		'pitch'     => 'Shows why each product has no maker\'s description yet (no page found, page gone, site refused, not applied) and opens the place to fix it.',
+		'kind'      => 'ui',
+		'status'    => 'live',
+	),
 	'seo.organization_policy'  => array(
 		'provider'  => 'mmi-google-services',
 		'consumers' => array( 'mmi-seo' ),

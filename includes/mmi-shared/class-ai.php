@@ -131,6 +131,38 @@ if ( ! class_exists( 'MMI_AI' ) ) :
 		/* ── Settings ────────────────────────────────────────────────────── */
 
 		/** A setting ('provider', 'openai_api_key', …). */
+		/** The last call this request made: { model, input, output, usd (null when not reported), at }, or null (last()). */
+		private static $last = null;
+
+		/**
+		 * The last call this request made, for a caller that keeps its own record of what calls cost (mmi-seo's
+		 * estimator). usd is the price the provider reports for the call (the Claude CLI's total_cost_usd: what the
+		 * same tokens would bill on the API), or null when it reports none.
+		 *
+		 * @return array{model:string, input:int, output:int, usd:float|null, at:int}|null
+		 */
+		public static function last(): ?array {
+			return self::$last;
+		}
+
+		private static function remember( string $model, int $input, int $output, ?float $usd ): void {
+			self::$last = array( 'model' => $model, 'input' => $input, 'output' => $output, 'usd' => $usd, 'at' => time() );
+		}
+
+		/**
+		 * The plan's own usage windows, as the site last read them (filter 'mmi_ai_plan_usage': a site that can read
+		 * its Claude sign-in answers), or null when nothing answers.
+		 *
+		 * @return array{five_hour:float, seven_day:float, extra_on:bool, at:int}|null
+		 */
+		public static function plan_usage(): ?array {
+			$u = apply_filters( 'mmi_ai_plan_usage', null );
+			if ( ! is_array( $u ) || ! isset( $u['five_hour'], $u['seven_day'] ) ) {
+				return null;
+			}
+			return array( 'five_hour' => (float) $u['five_hour'], 'seven_day' => (float) $u['seven_day'], 'extra_on' => ! empty( $u['extra_on'] ), 'at' => (int) ( $u['at'] ?? 0 ) );
+		}
+
 		public static function get( string $key, $default = false ) {
 			self::move_legacy_settings();
 			return MMI_Settings::get( self::PREFIX . $key, $default );
@@ -521,6 +553,7 @@ if ( ! class_exists( 'MMI_AI' ) ) :
 			}
 			$reply = self::read_reply( $slug, $body );
 			self::record_usage( true, $reply['input'], $reply['output'] );
+			self::remember( $model, $reply['input'], $reply['output'], null );
 			self::log( 'info', sprintf( '[AI] %s %s %s: %d in, %d out tokens, %d ms', $slug, $model, $purpose, $reply['input'], $reply['output'], (int) ( ( microtime( true ) - $start ) * 1000 ) ) );
 
 			if ( trim( $reply['text'] ) === '' ) {
@@ -541,6 +574,7 @@ if ( ! class_exists( 'MMI_AI' ) ) :
 				return $reply;
 			}
 			self::record_usage( true, $reply['input'], $reply['output'] );
+			self::remember( (string) ( $reply['model'] ?? '' ) !== '' ? (string) $reply['model'] : MMI_AI_Claude_Code::model(), $reply['input'], $reply['output'], $reply['usd'] ?? null );
 			self::log( 'info', sprintf( '[AI] %s plan %s %s: %d in, %d out tokens, %d ms', self::provider(), MMI_AI_Claude_Code::model(), $purpose, $reply['input'], $reply['output'], (int) ( ( microtime( true ) - $start ) * 1000 ) ) );
 			return isset( $reply['answer']['text'] ) && count( $reply['answer'] ) === 1 ? (string) $reply['answer']['text'] : (string) wp_json_encode( $reply['answer'] );
 		}
@@ -614,6 +648,7 @@ if ( ! class_exists( 'MMI_AI' ) ) :
 					return $r;
 				}
 				self::record_usage( true, $r['input'], $r['output'] );
+				self::remember( (string) ( $r['model'] ?? '' ) !== '' ? (string) $r['model'] : ( (string) ( $args['model'] ?? '' ) ?: MMI_AI_Claude_Code::model() ), $r['input'], $r['output'], $r['usd'] ?? null );
 				self::log( 'info', sprintf( '[AI] %s plan %s %s: %d in, %d out tokens, %d ms', $slug, (string) ( $args['model'] ?? '' ), $purpose, $r['input'], $r['output'], (int) ( ( microtime( true ) - $start ) * 1000 ) ) );
 				return $r;
 			}
@@ -654,6 +689,7 @@ if ( ! class_exists( 'MMI_AI' ) ) :
 			}
 			$reply = self::read_reply( $slug, $decoded );
 			self::record_usage( true, $reply['input'], $reply['output'] );
+			self::remember( $model, $reply['input'], $reply['output'], null );
 			self::log( 'info', sprintf( '[AI] %s %s %s: %d in, %d out tokens, %d ms', $slug, $model, $purpose, $reply['input'], $reply['output'], (int) ( ( microtime( true ) - $start ) * 1000 ) ) );
 			$answer = self::json_from( $reply['text'] );
 			if ( ! $answer ) {

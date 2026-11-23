@@ -68,6 +68,17 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 		);
 		const DEFAULT_MODEL = 'haiku';
 
+		/** Seconds no call may run past in this request (cap_timeout()); 0 = none. */
+		private static $cap = 0;
+
+		/**
+		 * Keep every call in this request under $seconds (a background job inside the cron runner's limit). The
+		 * caller's own longer timeout is cut to it; 0 lifts the cap.
+		 */
+		public static function cap_timeout( int $seconds ): void {
+			self::$cap = max( 0, $seconds );
+		}
+
 		/** Home directory of the user PHP runs as (where the CLI keeps its sign-in). */
 		public static function home(): string {
 			$home = (string) getenv( 'HOME' );
@@ -214,6 +225,7 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 		public static function complete_content( string $system, array $content, array $schema, string $model = '', int $timeout = 0, bool $thinking = false, string $purpose = '' ) {
 			$model   = $model !== '' ? $model : self::model();
 			$timeout = $timeout > 0 ? $timeout : self::TIMEOUT;
+			$timeout = self::$cap > 0 ? min( $timeout, self::$cap ) : $timeout;
 			if ( self::paused_at() ) {
 				return new WP_Error(
 					'mmi_ai_paused',
@@ -256,6 +268,8 @@ if ( ! class_exists( 'MMI_AI_Claude_Code' ) ) :
 			}
 			$usage = (array) ( $out['usage'] ?? array() );
 			return array(
+				'usd'    => isset( $out['total_cost_usd'] ) ? (float) $out['total_cost_usd'] : null, // what the same tokens would bill on the API
+				'model'  => implode( ',', array_keys( (array) ( $out['modelUsage'] ?? array() ) ) ),
 				'answer' => $answer,
 				'input'  => (int) ( $usage['input_tokens'] ?? 0 ) + (int) ( $usage['cache_read_input_tokens'] ?? 0 ) + (int) ( $usage['cache_creation_input_tokens'] ?? 0 ),
 				'output' => (int) ( $usage['output_tokens'] ?? 0 ),
