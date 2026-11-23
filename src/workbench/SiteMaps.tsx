@@ -48,7 +48,7 @@ const TABS: { key: SiteTab; label: string }[] = [
  * out, Settings); "fill" is the Fill with its review and the last fills. Listed by site, the panel has both.
  */
 export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }: {
-  cfg: TitleRulesConfig; site: SiteRow; proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void; focus?: "map" | "fill";
+  cfg: TitleRulesConfig; site: SiteRow; proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => Promise<void>; focus?: "map" | "fill";
 }) {
   const showMap = focus !== "fill";
   const showFill = focus !== "map";
@@ -101,8 +101,8 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
     try {
       const d = await rest<Record<string, unknown>>(cfg, "POST", path, body);
       setNotice({ text: done(d), kind: "ok" });
-      onChanged();
-      await load();
+      // The buttons stay off until the site list and the proposals are back too: a decided row leaves in the same render they return.
+      await Promise.all([onChanged(), load()]);
       return d;
     } catch (e) { setNotice({ text: msg(e), kind: "error" }); return null; } finally { setBusy(null); }
   };

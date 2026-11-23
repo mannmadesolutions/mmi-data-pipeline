@@ -63,12 +63,13 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
   useEffect(() => {
     rest<{ brands: Brand[] }>(cfg, "GET", "brand-sites").then((d) => setBrands(d.brands)).catch((e) => { setBrands([]); setNotice({ text: msg(e), kind: "error" }); });
   }, [cfg]);
-  const loadMaps = useCallback(() => {
-    rest<MapsReply>(cfg, "GET", "maps").then(setMaps).catch((e) => { setMaps({ rows: [], runner: NO_RUNNER }); setNotice({ text: msg(e), kind: "error" }); });
-  }, [cfg]);
-  const loadProposals = useCallback(() => { rest<{ rows: Proposal[] }>(cfg, "GET", "map-proposals").then((d) => setProposals(d.rows)).catch(() => {}); }, [cfg]);
-  useEffect(() => { loadMaps(); loadProposals(); }, [loadMaps, loadProposals]);
-  const mapsChanged = () => { loadMaps(); loadProposals(); };
+  const loadMaps = useCallback(() => (
+    rest<MapsReply>(cfg, "GET", "maps").then(setMaps).catch((e) => { setMaps({ rows: [], runner: NO_RUNNER }); setNotice({ text: msg(e), kind: "error" }); })
+  ), [cfg]);
+  const loadProposals = useCallback(() => rest<{ rows: Proposal[] }>(cfg, "GET", "map-proposals").then((d) => setProposals(d.rows)).catch(() => {}), [cfg]);
+  useEffect(() => { void loadMaps(); void loadProposals(); }, [loadMaps, loadProposals]);
+  // Resolves once the site list and the proposals are back, so a panel keeps its buttons off until they are.
+  const mapsChanged = () => Promise.all([loadMaps(), loadProposals()]).then(() => {});
 
   const waitingOn = (host: string) => proposals.filter((p) => p.host === host && p.status === "proposed").length;
   const siteRow = (host: string): SiteRow | null => maps?.rows.find((r) => r.host === host) ?? null;
@@ -285,7 +286,7 @@ export function Makers({ cfg }: { cfg: TitleRulesConfig }) {
 function BrandSiteStep({ cfg, focus, brand, brands, hosts, host, row, loaded, waitingOn, siteRow, onHost, proposals, tab, onTab, onChanged }: {
   cfg: TitleRulesConfig; focus: "map" | "fill"; brand: Brand; brands: Brand[]; hosts: string[]; host: string | null; row: SiteRow | null; loaded: boolean;
   waitingOn: (h: string) => number; siteRow: (h: string) => SiteRow | null; onHost: (h: string) => void;
-  proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => void;
+  proposals: Proposal[]; tab: SiteTab; onTab: (t: SiteTab) => void; onChanged: () => Promise<void>;
 }) {
   const [armed, setArmed] = useState<string | null>(null);
   const [said, setSaid] = useState<Notice | null>(null);
@@ -299,7 +300,7 @@ function BrandSiteStep({ cfg, focus, brand, brands, hosts, host, row, loaded, wa
     try {
       await rest(cfg, "POST", `maps/${encodeURIComponent(h)}/off`, {});
       setSaid({ text: `${h}'s map switched off: the site is read without it. Turn it back on from its map if it's needed again.`, kind: "ok" });
-      onChanged();
+      void onChanged();
     } catch (e) { setSaid({ text: msg(e), kind: "error" }); }
   };
   return (
