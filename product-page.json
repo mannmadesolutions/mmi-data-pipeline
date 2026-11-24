@@ -47,6 +47,12 @@
             "since": ""
         },
         {
+            "id": "catalog-compare",
+            "text": "Compare up to six supplier products side by side: prices, names and every feed field, with differences highlighted",
+            "anchor": "function:compare",
+            "since": "3.5.0"
+        },
+        {
             "id": "product-content",
             "text": "Product content: suggested titles, descriptions and pictures from the maker's own pages, reviewed before they're written",
             "anchor": "file:includes/product-data/boot.php",

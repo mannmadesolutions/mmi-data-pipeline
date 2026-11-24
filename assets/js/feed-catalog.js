@@ -6,6 +6,15 @@
  * filters, sorts and pages. The freshness strip is
  * refreshed every 5 s while a fetch runs and every 60 s otherwise, paused
  * while the browser tab is hidden.
+ *
+ * Compare: up to COMPARE_MAX products ticked in the first column, from any
+ * search, filter or page, kept per catalog (both views) and shown side by
+ * side above the table: prices with the gap to the first product, our
+ * listing, and every feed field, rows that differ highlighted.
+ *
+ * Links can open the tab on a search (?fc_q=), a row's details
+ * (?fc_open=<row key>) or a comparison (?fc_compare=<key>,<key>), as the
+ * Data Pipeline's duplicates review does.
  */
 (function ($) {
     'use strict';
@@ -58,6 +67,18 @@
 
     const rowKey = (r) => String(r.key ?? r.sku);
 
+    const COMPARE_MAX = 6;
+    // Compared as text: tags gone, spaces collapsed, case ignored.
+    const norm = (v) => String(v ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    const num = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v));
+    // Name words that say nothing about which item it is.
+    const NAME_NOISE = new Set(['download', 'esd', 'electronic', 'delivery', 'digital', 'software', 'the', 'by', 'for', 'and', 'of', 'a', 'with', 'plugin', 'plug', 'in', 'ins', 'vst', 'vst3', 'au', 'aax']);
+    // Name words that make two otherwise equal names different items.
+    const EDITION_WORDS = new Set(['upgrade', 'upg', 'crossgrade', 'xgrade', 'update', 'edu', 'education', 'educational', 'academic', 'student', 'teacher', 'institution', 'institutional', 'nfr', 'competitive', 'bundle', 'collection', 'suite', 'lite', 'le', 'se', 'intro', 'artist', 'standard', 'std', 'pro', 'ultimate', 'complete', 'studio', 'essential', 'essentials', 'expansion', 'addon', 'add', 'subscription', 'perpetual', 'rent', 'rental', 'license', 'licence', 'seat', 'seats', 'user', 'users', 'site', 'multi', 'single', 'full', 'version', 'boxed', 'box']);
+    const nameWords = (name, skip) => [...new Set(String(name || '').toLowerCase().replace(/&/g, ' ').split(/[^a-z0-9]+/))]
+        .filter((w) => w && !NAME_NOISE.has(w) && !skip.has(w));
+    const isEditionWord = (w) => EDITION_WORDS.has(w) || /^v?\d/.test(w);
+
     function FeedCatalog($root) {
         this.$root = $root;
         this.cfg = $root.data('config');
@@ -71,6 +92,13 @@
         this.pollTimer = null;
         this.wasFetching = false;
         this.lastStatus = null;
+        // One more column than the config: the compare tick.
+        this.span = this.cfg.columns.length + 1;
+        this.compareStoreKey = `mmiFeedCatalogCompare_${this.cfg.source}`;
+        this.picks = [];
+        this.rowsByKey = {};
+        this.compareOpen = false;
+        this.compareRequest = null;
         this.init();
     }
 
@@ -93,6 +121,7 @@
             // Filters are lists now; a saved single value from before becomes one.
             const asList = (v) => (Array.isArray(v) ? v : (v ? [String(v)] : []));
             Object.keys(this.state.f || {}).forEach((k) => { this.state.f[k] = asList(this.state.f[k]); });
+            this.loadPicks();
             this.applyUrlFilters();
             ['promo', 'on_site', 'check'].forEach((key) => {
                 this.state[key] = asList(this.state[key]).filter((v) => (this.fixed[key] || []).includes(v));
@@ -141,16 +170,21 @@
                 this.load();
             });
             this.$('.mmi-fc-tbody').on('click', 'tr.mmi-fc-row', (e) => {
-                if ($(e.target).is('a, a *, button, button *') || window.getSelection().toString().length > 0) {
+                if ($(e.target).is('a, a *, button, button *, input, .mmi-fc-td-pick') || window.getSelection().toString().length > 0) {
                     return;
                 }
                 this.toggle(String($(e.currentTarget).data('sku')));
             });
             this.$('.mmi-fc-fetch').on('click', () => this.fetchNow());
             document.addEventListener('visibilitychange', () => this.schedulePoll());
+            this.initCompare();
 
             this.syncControls();
+            this.renderPicks();
             this.load();
+            if (this.openCompareOnLoad) {
+                this.openCompare();
+            }
         },
 
         /**
@@ -159,17 +193,20 @@
          */
         applyUrlFilters: function () {
             const picked = {};
-            new URLSearchParams(window.location.search).forEach((value, name) => {
+            const params = new URLSearchParams(window.location.search);
+            this.applyUrlActions(params);
+            params.forEach((value, name) => {
                 // fc[brand][] or, after WordPress rewrites the address, fc[brand][0].
                 const m = name.match(/^fc\[([a-z_]+)\]\[\d*\]$/);
                 if (m && value !== '') {
                     (picked[m[1]] = picked[m[1]] || []).push(value);
                 }
             });
-            if (!Object.keys(picked).length) {
+            const q = (params.get('fc_q') || '').trim();
+            if (!Object.keys(picked).length && !q) {
                 return;
             }
-            Object.assign(this.state, { q: '', f: {}, promo: [], on_site: [], check: [] });
+            Object.assign(this.state, { q, f: {}, promo: [], on_site: [], check: [] });
             Object.entries(picked).forEach(([key, values]) => {
                 if (key in this.fixed) {
                     this.state[key] = values;
@@ -177,6 +214,33 @@
                     this.state.f[key] = values;
                 }
             });
+        },
+
+        /**
+         * One-off link actions: ?fc_open=<row key> opens that row's details
+         * once it is on the page; ?fc_compare=<key>,<key> replaces the
+         * compare picks and opens the comparison. Both are taken out of the
+         * address so a reload doesn't undo what was changed since.
+         */
+        applyUrlActions: function (params) {
+            const open = (params.get('fc_open') || '').trim();
+            const compare = (params.get('fc_compare') || '').split(',').map((k) => k.trim()).filter(Boolean);
+            if (open) {
+                this.openSku = open;
+                this.scrollToOpen = true;
+            }
+            if (compare.length) {
+                const known = Object.fromEntries(this.picks.map((p) => [p.key, p]));
+                this.picks = [...new Set(compare)].slice(0, COMPARE_MAX).map((key) => known[key] || { key, product: key, source: '', sku: '' });
+                this.savePicks();
+                this.openCompareOnLoad = true;
+            }
+            if ((open || compare.length) && window.history.replaceState) {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('fc_open');
+                url.searchParams.delete('fc_compare');
+                window.history.replaceState(window.history.state, '', url.toString());
+            }
         },
 
         // ── Multi-select filters (shared .mmi-multiselect markup) ──────────
@@ -360,7 +424,7 @@
         },
 
         renderEmpty: function (html) {
-            this.$('.mmi-fc-tbody').html(`<tr><td colspan="${this.cfg.columns.length}" class="mmi-fc-empty">${html}</td></tr>`);
+            this.$('.mmi-fc-tbody').html(`<tr><td colspan="${this.span}" class="mmi-fc-empty">${html}</td></tr>`);
         },
 
         cell: function (col, r) {
@@ -429,19 +493,27 @@
                 return;
             }
             const cols = this.cfg.columns;
+            this.rowsByKey = {};
             this.$('.mmi-fc-tbody').html(rows.map((r) => {
                 const key = rowKey(r);
+                this.rowsByKey[key] = r;
                 const open = this.openSku === key;
+                const pick = `<td class="mmi-fc-td-pick"><input type="checkbox" class="mmi-fc-pick" value="${esc(key)}" aria-label="${esc(`Compare ${r.product || r.sku}`)}"></td>`;
                 const tds = cols.map((c) => `<td class="mmi-fc-td-${c.type}">${this.cell(c, r)}</td>`).join('');
-                return `<tr class="mmi-fc-row${open ? ' is-open' : ''}" data-sku="${esc(key)}">${tds}</tr>${open ? this.detailRowHtml(key) : ''}`;
+                return `<tr class="mmi-fc-row${open ? ' is-open' : ''}" data-sku="${esc(key)}">${pick}${tds}</tr>${open ? this.detailRowHtml(key) : ''}`;
             }).join(''));
+            this.syncPickBoxes();
             if (this.openSku && this.$('.mmi-fc-detail-row').length) {
                 this.loadDetail(this.openSku);
+                if (this.scrollToOpen) {
+                    this.scrollToOpen = false;
+                    this.$('tr.mmi-fc-row.is-open')[0].scrollIntoView({ block: 'center' });
+                }
             }
         },
 
         detailRowHtml: function (sku) {
-            return `<tr class="mmi-fc-detail-row" data-sku="${esc(sku)}"><td colspan="${this.cfg.columns.length}"><div class="mmi-fc-detail"><p class="mmi-fc-empty"><span class="mmi-loading"></span> Loading…</p></div></td></tr>`;
+            return `<tr class="mmi-fc-detail-row" data-sku="${esc(sku)}"><td colspan="${this.span}"><div class="mmi-fc-detail"><p class="mmi-fc-empty"><span class="mmi-loading"></span> Loading…</p></div></td></tr>`;
         },
 
         toggle: function (sku) {
@@ -511,6 +583,339 @@
                 <thead><tr>${cols.map(([label]) => `<th${money_col(label)}>${label}</th>`).join('')}</tr></thead>
                 <tbody>${promos.map((p) => `<tr>${cols.map(([label, , cell]) => `<td${money_col(label)}>${cell(p)}</td>`).join('')}</tr>`).join('')}</tbody>
             </table></div>`;
+        },
+
+        // ── Compare ─────────────────────────────────────────────────────────
+        loadPicks: function () {
+            try {
+                const saved = JSON.parse(localStorage.getItem(this.compareStoreKey) || '[]');
+                this.picks = Array.isArray(saved) ? saved.filter((p) => p && typeof p.key === 'string').slice(0, COMPARE_MAX) : [];
+            } catch (e) {
+                this.picks = [];
+            }
+        },
+
+        savePicks: function () {
+            try {
+                localStorage.setItem(this.compareStoreKey, JSON.stringify(this.picks));
+            } catch (e) { /* storage unavailable */ }
+        },
+
+        isPicked: function (key) {
+            return this.picks.some((p) => p.key === key);
+        },
+
+        initCompare: function () {
+            this.$('.mmi-fc-tbody').on('change', '.mmi-fc-pick', (e) => this.setPick(e.currentTarget.value, e.currentTarget.checked));
+            // The whole cell is the target, not just the box.
+            this.$('.mmi-fc-tbody').on('click', '.mmi-fc-td-pick', (e) => {
+                if (!$(e.target).is('input')) {
+                    $(e.currentTarget).find('.mmi-fc-pick:enabled').trigger('click');
+                }
+            });
+            this.$('.mmi-fc-compare-chips').on('click', '.mmi-fc-chip-remove', (e) => this.setPick(String($(e.currentTarget).data('key')), false));
+            this.$('.mmi-fc-compare-open').on('click', () => this.openCompare());
+            this.$('.mmi-fc-compare-clear').on('click', () => {
+                this.picks = [];
+                this.savePicks();
+                this.renderPicks();
+                this.closeCompare();
+            });
+            this.$('.mmi-fc-compare-close').on('click', () => this.closeCompare());
+            this.$('.mmi-fc-compare-only-diff').on('change', () => this.applyOnlyDiff());
+            this.$('.mmi-fc-compare-body').on('click', '.mmi-fc-cmp-remove', (e) => this.setPick(String($(e.currentTarget).data('key')), false));
+            this.$('.mmi-fc-compare-body').on('click', '.mmi-fc-cmp-first', (e) => {
+                const key = String($(e.currentTarget).data('key'));
+                this.picks.sort((a, b) => (a.key === key ? -1 : (b.key === key ? 1 : 0)));
+                this.savePicks();
+                this.renderPicks();
+                this.loadCompare();
+            });
+        },
+
+        setPick: function (key, on) {
+            if (on && !this.isPicked(key)) {
+                if (this.picks.length >= COMPARE_MAX) {
+                    this.syncPickBoxes();
+                    return;
+                }
+                const r = this.rowsByKey[key] || {};
+                this.picks.push({ key, product: r.product || key, source: r.source || '', sku: r.sku || '' });
+            } else if (!on) {
+                this.picks = this.picks.filter((p) => p.key !== key);
+            }
+            this.savePicks();
+            this.renderPicks();
+            if (this.compareOpen) {
+                if (this.picks.length) {
+                    this.loadCompare();
+                } else {
+                    this.closeCompare();
+                }
+            }
+        },
+
+        /** The ticks in the table follow the picks; a full set disables the rest. */
+        syncPickBoxes: function () {
+            const full = this.picks.length >= COMPARE_MAX;
+            this.$('.mmi-fc-pick').each((i, box) => {
+                const on = this.isPicked(box.value);
+                box.checked = on;
+                box.disabled = full && !on;
+                box.title = full && !on ? `Up to ${COMPARE_MAX} products: remove one to add another` : '';
+                $(box).closest('tr').toggleClass('is-picked', on);
+            });
+        },
+
+        /** The bar under the table: one chip per pick, kept while searching and paging. */
+        renderPicks: function () {
+            const n = this.picks.length;
+            this.$('.mmi-fc-compare-bar').prop('hidden', n === 0);
+            this.$('.mmi-fc-compare-count').text(`${n} of ${COMPARE_MAX}`);
+            this.$('.mmi-fc-compare-open').prop('disabled', n < 2);
+            this.$('.mmi-fc-compare-chips').html(this.picks.map((p) => {
+                const label = [p.product, p.source].filter(Boolean).join(' · ');
+                return `<span class="mmi-fc-chip" title="${esc(`${label}${p.sku ? ` · SKU ${p.sku}` : ''}`)}"><span class="mmi-fc-chip-label">${esc(label)}</span><button type="button" class="mmi-fc-chip-remove" data-key="${esc(p.key)}" aria-label="${esc(`Remove ${p.product} from the comparison`)}">×</button></span>`;
+            }).join(''));
+            this.syncPickBoxes();
+        },
+
+        openCompare: function () {
+            if (!this.picks.length) {
+                return;
+            }
+            this.compareOpen = true;
+            this.$('.mmi-fc-compare').prop('hidden', false);
+            this.loadCompare();
+            const top = this.$('.mmi-fc-compare').offset().top - 50;
+            window.scrollTo({ top, behavior: 'smooth' });
+        },
+
+        closeCompare: function () {
+            this.compareOpen = false;
+            if (this.compareRequest) {
+                this.compareRequest.abort();
+            }
+            this.$('.mmi-fc-compare').prop('hidden', true);
+            this.$('.mmi-fc-compare-body').empty();
+        },
+
+        loadCompare: function () {
+            if (this.compareRequest) {
+                this.compareRequest.abort();
+            }
+            const $body = this.$('.mmi-fc-compare-body');
+            if (!$body.children().length) {
+                $body.html('<p class="mmi-fc-empty"><span class="mmi-loading"></span> Loading…</p>');
+            }
+            $body.addClass('mmi-fc-loading');
+            this.compareRequest = this.ajax('compare', { keys: this.picks.map((p) => p.key) }).done((res) => {
+                if (!res.success) {
+                    $body.html(`<p class="mmi-fc-empty">${esc(res.data?.message || 'Could not load the comparison.')}</p>`);
+                    return;
+                }
+                // Labels from the feed, for picks that came in by link.
+                res.data.items.forEach((it) => {
+                    const p = this.picks.find((x) => x.key === it.key);
+                    if (p && it.row) {
+                        Object.assign(p, { product: it.row.product || p.product, source: it.row.source || p.source, sku: it.row.sku || p.sku });
+                    }
+                });
+                this.savePicks();
+                this.renderPicks();
+                $body.html(this.compareHtml(res.data.items));
+                $body.find('.mmi-fc-cmp-text a[href^="http"], .mmi-fc-cmp-list a[href^="http"]').attr({ target: '_blank', rel: 'noopener noreferrer' });
+                this.applyOnlyDiff();
+            }).fail((xhr, textStatus) => {
+                if (textStatus !== 'abort') {
+                    $body.html(`<p class="mmi-fc-empty">Could not load the comparison (HTTP ${xhr.status || 'error'}).</p>`);
+                }
+            }).always(() => $body.removeClass('mmi-fc-loading'));
+        },
+
+        /** "Only differences" hides equal rows, and a section left with none. */
+        applyOnlyDiff: function () {
+            const only = this.$('.mmi-fc-compare-only-diff').prop('checked');
+            const $rows = this.$('.mmi-fc-cmp > tbody > tr');
+            $rows.filter('.is-same, .is-solo').prop('hidden', only);
+            $rows.filter('.mmi-fc-cmp-section').each((i, el) => {
+                const $own = $(el).nextUntil('.mmi-fc-cmp-section');
+                el.hidden = $own.length > 0 && $own.toArray().every((r) => r.hidden);
+            });
+        },
+
+        /**
+         * The comparison table: one column per product, the first being
+         * what the others are measured against (name words, price gaps).
+         * A row is `is-diff` when its values aren't all the same, `is-same`
+         * when they are (hidden by "Only differences"); `is-solo` for a feed
+         * field only one product has (hidden too); `always` rows are
+         * neither (the name check, pictures, links).
+         */
+        compareHtml: function (items) {
+            const found = items.filter((it) => !it.missing);
+            const missing = items.filter((it) => it.missing);
+            const lost = missing.length
+                ? `<div class="notice notice-warning inline mmi-fc-cmp-missing"><p>No longer in the feed: ${missing.map((it) => `<code>${esc(it.key)}</code> <button type="button" class="button-link mmi-fc-cmp-remove" data-key="${esc(it.key)}">Remove</button>`).join(', ')}</p></div>`
+                : '';
+            if (!found.length) {
+                return `${lost}<p class="mmi-fc-empty">Nothing to compare.</p>`;
+            }
+            const rows = found.map((it) => it.row);
+            const details = found.map((it) => it.detail || { fields: {}, text: [], lists: [], images: [] });
+            const out = [];
+            const section = (title) => out.push({ section: title });
+            // cells: html per product; values: what's compared (default: the html as text).
+            const add = (label, cells, opts = {}) => {
+                const values = opts.values || cells;
+                const filled = values.map(norm);
+                const kind = opts.always ? 'always' : (opts.solo ? 'is-solo' : (new Set(filled).size > 1 ? 'is-diff' : 'is-same'));
+                out.push({ label, cells, kind, title: opts.title || '' });
+            };
+            const first = rows[0];
+
+            // Same item? Name words against the first product's.
+            if (rows.length > 1) {
+                const skip = new Set();
+                rows.forEach((r) => String(r.brand || '').toLowerCase().split(/[^a-z0-9]+/).forEach((w) => w && skip.add(w)));
+                const base = nameWords(first.product, skip);
+                section('Same item?');
+                add('Name words', rows.map((r, i) => {
+                    if (i === 0) {
+                        return '<span class="mmi-fc-muted">The others are measured against this one.</span>';
+                    }
+                    const words = nameWords(r.product, skip);
+                    const shared = words.filter((w) => base.includes(w)).length;
+                    const score = words.length + base.length ? (2 * shared) / (words.length + base.length) : 1;
+                    const only = words.filter((w) => !base.includes(w));
+                    const lacks = base.filter((w) => !words.includes(w));
+                    const edition = [...only, ...lacks].some(isEditionWord);
+                    const tone = edition ? 'warning' : (score >= 0.8 ? 'success' : (score >= 0.5 ? 'warning' : 'error'));
+                    const list = (ws) => ws.map((w) => (isEditionWord(w) ? `<strong class="mmi-fc-cmp-edition">${esc(w)}</strong>` : esc(w))).join(', ');
+                    return `<span class="mmi-badge ${tone}">${Math.round(score * 100)}% of words match</span>`
+                        + (only.length ? `<span class="mmi-fc-cmp-words">Only here: ${list(only)}</span>` : '')
+                        + (lacks.length ? `<span class="mmi-fc-cmp-words">Not here: ${list(lacks)}</span>` : '')
+                        + (edition ? '<span class="mmi-fc-cmp-words mmi-fc-cmp-edition">Edition, upgrade or version words differ</span>' : '');
+                }), { always: true, title: 'Brand words and words like "download" are left out. Words that change the edition (upgrade, EDU, Pro, a version number…) are in bold.' });
+            }
+
+            // Prices: each against the first product.
+            const gap = (v, b) => {
+                if (v === null || b === null || b <= 0) {
+                    return '';
+                }
+                const d = v - b;
+                if (Math.abs(d) < 0.005) {
+                    return '<span class="mmi-fc-cmp-gap">same as first</span>';
+                }
+                return `<span class="mmi-fc-cmp-gap ${d > 0 ? 'is-up' : 'is-down'}">${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(2)} (${d > 0 ? '+' : '−'}${Math.abs(Math.round((d / b) * 100))}%)</span>`;
+            };
+            const moneyRow = (label, get, opts = {}) => {
+                const vals = rows.map((r) => num(get(r)));
+                const present = vals.filter((v) => v !== null);
+                const low = opts.lowest && present.length > 1 && new Set(present).size > 1 ? Math.min(...present) : null;
+                add(label, vals.map((v, i) => (v === null ? '—'
+                    : `<strong>${money(v, rows[i].currency)}</strong>${low !== null && v === low ? ' <span class="mmi-badge success">lowest</span>' : ''}${i > 0 ? gap(v, vals[0]) : ''}`)),
+                { values: vals.map((v) => (v === null ? '' : v.toFixed(2))), title: opts.title || '' });
+            };
+            section('Prices');
+            moneyRow('Cost', (r) => r.cost, { lowest: true, title: 'Our regular cost from the distributor, before any promotion.' });
+            moneyRow('MAP', (r) => r.map, { title: 'Regular MAP, before any promotion.' });
+            moneyRow('MSRP', (r) => r.msrp);
+            add('Promotion', rows.map((r) => (r.promo
+                ? `${money(r.promo.price, r.currency)} <span class="mmi-badge ${r.promo.state === 'active' ? 'success' : 'info'}">${r.promo.state === 'active' ? 'now' : `from ${esc(shortDate(r.promo.start) || r.promo.start)}`}</span>${r.promo.end ? ` <span class="mmi-fc-sub">to ${esc(shortDate(r.promo.end) || r.promo.end)}</span>` : ''}${r.promo.name ? `<span class="mmi-fc-cmp-words">${esc(r.promo.name)}</span>` : ''}`
+                : '—')), { values: rows.map((r) => (r.promo ? `${r.promo.price}|${r.promo.state}|${r.promo.end}` : '')) });
+            // Margin at MAP on what we'd pay today (a running promotion's cost).
+            const margins = rows.map((r) => {
+                const map = num(r.map);
+                const cost = r.promo && r.promo.state === 'active' && num(r.promo.price) !== null ? num(r.promo.price) : num(r.cost);
+                return map && cost !== null ? { amount: map - cost, pct: ((map - cost) / map) * 100 } : null;
+            });
+            add('Margin at MAP', margins.map((m) => (m ? `${money(m.amount)} <span class="mmi-fc-sub">${Math.round(m.pct)}%</span>` : '—')),
+                { values: margins.map((m) => (m ? m.amount.toFixed(2) : '')), title: 'MAP minus what we pay today (a running promotion\'s cost, else the regular cost).' });
+
+            section('On our site');
+            add('Listing', rows.map((r) => (r.site_id
+                ? `<span class="mmi-badge ${r.site_status === 'publish' ? 'success' : 'warning'}">${r.site_status === 'publish' ? 'Published' : esc(r.site_status)}</span> <span class="mmi-fc-sub">#${esc(r.site_id)}</span>`
+                : '<span class="mmi-fc-muted">Not listed</span>')), { values: rows.map((r) => (r.site_id ? `${r.site_id}|${r.site_status}` : '')) });
+            moneyRow('Our price', (r) => r.our_price);
+            add('Our stock', rows.map((r) => (!r.site_id ? '—' : (r.our_stock === 'instock' ? 'In stock' : esc(r.our_stock || '—')))));
+            add('Links', rows.map((r) => (r.site_id
+                ? `${r.edit_url ? `<a href="${esc(r.edit_url)}" target="_blank" rel="noopener">Edit</a>` : ''}${r.view_url ? ` · <a href="${esc(r.view_url)}" target="_blank" rel="noopener">View</a>` : ''}`
+                : '—')), { always: true });
+
+            // The table's own columns, then every feed field by name.
+            section('Feed');
+            add('SKU', rows.map((r) => esc(r.sku)));
+            const shown = new Set(['sku', 'product', 'cost', 'map', 'msrp', 'promo', 'site']);
+            this.cfg.columns.filter((c) => !shown.has(c.key) && ['text', 'code', 'date', 'money'].includes(c.type)).forEach((c) => {
+                if (c.type === 'money') {
+                    moneyRow(c.label, (r) => r[c.key], { title: c.title });
+                } else {
+                    add(c.label, rows.map((r) => (r[c.key] === null || r[c.key] === undefined || r[c.key] === '' ? '—' : esc(r[c.key]))), { title: c.title });
+                }
+            });
+            const labels = [];
+            details.forEach((d) => Object.keys(d.fields || {}).forEach((k) => {
+                if (!labels.includes(k) && k !== 'Distributor') {
+                    labels.push(k);
+                }
+            }));
+            // Distributors name their fields differently: a field only one
+            // product has can't disagree, so those come last, unhighlighted.
+            const has = (d, k) => (d.fields || {})[k] !== undefined && (d.fields || {})[k] !== '';
+            const shared = details.length > 1 ? labels.filter((k) => details.filter((d) => has(d, k)).length > 1) : labels;
+            const solo = labels.filter((k) => !shared.includes(k));
+            const fieldRow = (k, opts) => add(k, details.map((d) => {
+                const v = (d.fields || {})[k];
+                if (!has(d, k)) {
+                    return '—';
+                }
+                return URL_VALUE.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener noreferrer">${esc(v.replace(/^https?:\/\//, ''))}</a>` : esc(v);
+            }), opts);
+            shared.forEach((k) => fieldRow(k));
+            if (solo.length) {
+                section('In one feed only');
+                solo.forEach((k) => fieldRow(k, { solo: true }));
+            }
+
+            section('Content');
+            add('Pictures', details.map((d) => ((d.images || []).length
+                ? `<div class="mmi-fc-cmp-gallery">${d.images.slice(0, 6).map((src) => `<a href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="" loading="lazy"></a>`).join('')}</div>`
+                : '<span class="mmi-fc-muted">None in the feed</span>')), { always: true });
+            add('Description', details.map((d) => ((d.text || []).length
+                ? `<div class="mmi-fc-cmp-text">${d.text.map((t) => `<h5>${esc(t.label)}</h5>${t.html}`).join('')}</div>`
+                : '—')));
+            const listLabels = [];
+            details.forEach((d) => (d.lists || []).forEach((l) => {
+                if (!listLabels.includes(l.label)) {
+                    listLabels.push(l.label);
+                }
+            }));
+            listLabels.forEach((label) => add(label, details.map((d) => {
+                const l = (d.lists || []).find((x) => x.label === label);
+                return l ? `<ul class="mmi-fc-cmp-list">${l.items.map((i) => `<li>${i}</li>`).join('')}</ul>` : '—';
+            })));
+
+            const head = rows.map((r, i) => {
+                const img = r.image || (details[i].images || [])[0];
+                return `<th scope="col"><div class="mmi-fc-cmp-card">
+                    <div class="mmi-fc-cmp-img">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : '<span class="dashicons dashicons-format-image" aria-hidden="true"></span>'}</div>
+                    <strong class="mmi-fc-cmp-name">${esc(r.product)}</strong>
+                    <span class="mmi-fc-sub">${esc([r.source, r.brand, `SKU ${r.sku}`].filter(Boolean).join(' · '))}</span>
+                    <span class="mmi-fc-cmp-actions">${i === 0 ? '<span class="mmi-badge info">First</span>' : `<button type="button" class="button-link mmi-fc-cmp-first" data-key="${esc(found[i].key)}">Measure against this</button>`}<button type="button" class="button-link mmi-fc-cmp-remove" data-key="${esc(found[i].key)}">Remove</button></span>
+                </div></th>`;
+            }).join('');
+            const body = out.map((row) => (row.section
+                ? `<tr class="mmi-fc-cmp-section"><th colspan="${rows.length + 1}" scope="colgroup">${esc(row.section)}</th></tr>`
+                : `<tr class="${row.kind}"><th scope="row"${row.title ? ` title="${esc(row.title)}"` : ''}>${esc(row.label)}</th>${row.cells.map((c) => `<td>${c}</td>`).join('')}</tr>`)).join('');
+            const diffs = out.filter((r) => r.kind === 'is-diff').length;
+            const summary = rows.length > 1
+                ? `<p class="mmi-fc-cmp-summary">${diffs ? `${diffs} row${diffs === 1 ? '' : 's'} differ.` : 'Every compared row is the same.'}</p>`
+                : '<p class="mmi-fc-cmp-summary">Tick another product in the table to compare it with this one.</p>';
+            return `${lost}${summary}<div class="mmi-fc-cmp-wrap"><table class="mmi-fc-cmp" style="--mmi-fc-cmp-cols:${rows.length}">
+                <thead><tr><th scope="col" class="mmi-fc-cmp-corner">${rows.length} of ${COMPARE_MAX}</th>${head}</tr></thead>
+                <tbody>${body}</tbody></table></div>`;
         },
 
         // ── Freshness strip + Fetch now ─────────────────────────────────────

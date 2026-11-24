@@ -636,11 +636,62 @@ a.mmi-dupes-listing-title:focus-visible {
 }
 
 .mmi-dupes-listing-meta {
+    display: flex;
+    align-items: center;
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.75rem;
     color: var(--mmi-dupes-muted);
+}
+
+/* Supplier, maker and visibility shorten; the SKU and its icon stay whole. */
+.mmi-dupes-meta-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmi-dupes-meta-sku {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.mmi-dupes-catalog-link {
+    display: inline-flex;
+    color: var(--mmi-dupes-muted);
+    text-decoration: none;
+}
+
+.mmi-dupes-catalog-link:hover,
+.mmi-dupes-catalog-link:focus {
+    color: var(--mmi-primary, #45852C);
+}
+
+.mmi-dupes-catalog-link .dashicons {
+    width: 15px;
+    height: 15px;
+    font-size: 15px;
+}
+
+/* "Compare side by side" under the legend. */
+.mmi-dupes-compare {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--mmi-dupes-muted);
+}
+
+.mmi-dupes-compare .button .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    vertical-align: -3px;
 }
 
 /* Availability badge (shared .mmi-badge) after the title and id. */

@@ -10,6 +10,30 @@
 
     const AJAX_URL = window.mmiDupes?.ajaxUrl || ajaxurl;
     const NONCE    = window.mmiDupes?.nonce   || '';
+    // The Distributors catalog (mmi-distributors), when it's active: {url, sources: {xchange: 'XChange', …}}.
+    const CATALOG  = window.mmiDupes?.catalog?.url ? window.mmiDupes.catalog : null;
+
+    /** A listing's row key in the Distributors catalog ("xchange:1175-251"), or '' when it has none. */
+    function catalogKey( member ) {
+        return CATALOG && member.sku && CATALOG.sources[ member.supplier ] ? `${ member.supplier }:${ member.sku }` : '';
+    }
+
+    /** The Distributors catalog's address with these query args added. */
+    function catalogUrl( args ) {
+        const url = new URL( CATALOG.url, window.location.origin );
+        Object.entries( args ).forEach( ( [ name, value ] ) => url.searchParams.append( name, value ) );
+        return url.toString();
+    }
+
+    /** Icon after a listing's SKU: opens it in the Distributors catalog, in a new tab. */
+    function catalogLink( member ) {
+        const key = catalogKey( member );
+        if ( ! key ) { return null; }
+        const label = `Open SKU ${ member.sku } in the Distributors catalog (new tab)`;
+        return $( '<a class="mmi-dupes-catalog-link" target="_blank" rel="noopener">' )
+            .attr( { href: catalogUrl( { fc_q: member.sku, 'fc[source][]': CATALOG.sources[ member.supplier ], fc_open: key } ), title: label, 'aria-label': label } )
+            .append( '<span class="dashicons dashicons-products" aria-hidden="true"></span>' );
+    }
 
     const SELECTORS = {
         APP:            '#mmi-dupes-app',
@@ -397,6 +421,22 @@
     }
 
     /**
+     * "Compare side by side": the group's feed listings next to each other
+     * in the Distributors catalog (new tab), for when prices or names
+     * aren't apples to apples. Needs two listings the catalog has.
+     */
+    function buildCompareLink( group ) {
+        const keys = [ ...new Set( group.members.map( catalogKey ).filter( Boolean ) ) ].slice( 0, 6 );
+        if ( keys.length < 2 ) { return null; }
+        return $( '<p class="mmi-dupes-compare">' ).append(
+            $( '<a class="button button-small" target="_blank" rel="noopener">' )
+                .attr( 'href', catalogUrl( { fc_compare: keys.join( ',' ) } ) )
+                .append( '<span class="dashicons dashicons-columns" aria-hidden="true"></span> ', document.createTextNode( 'Compare side by side' ) ),
+            $( '<span class="mmi-dupes-compare-note">' ).text( 'Opens these listings next to each other in the Distributors catalog: names, prices and every feed field, differences highlighted.' )
+        );
+    }
+
+    /**
      * One listing row: thumbnail, title + facts, a bar sized against the
      * group's highest price, the price, and the row's controls ($controls).
      */
@@ -413,9 +453,15 @@
                 .text( title || `#${ member.wc_product_id }` )
             : $( '<span class="mmi-dupes-listing-title">' ).text( title || 'Not imported yet' );
 
-        const facts = [ member.supplier, member.vendor, member.sku ? `SKU ${ member.sku }` : '' ];
+        // Supplier and maker shorten first; the SKU and its catalog icon stay
+        // whole. Separators start with a no-break space: flex items drop a plain leading one.
+        const facts = [ member.supplier, member.vendor ].filter( Boolean ).join( ' · ' );
+        const $meta = $( '<span class="mmi-dupes-listing-meta">' ).append( $( '<span class="mmi-dupes-meta-text">' ).text( facts ) );
+        if ( member.sku ) {
+            $meta.append( $( '<span class="mmi-dupes-meta-sku">' ).append( document.createTextNode( `${ facts ? '\u00a0· ' : '' }SKU ${ member.sku }` ), catalogLink( member ) ) );
+        }
         if ( resolved && member.visibility && member.visibility !== 'visible' ) {
-            facts.push( VISIBILITY_LABELS[ member.visibility ] || member.visibility );
+            $meta.append( $( '<span class="mmi-dupes-meta-text">' ).text( `\u00a0· ${ VISIBILITY_LABELS[ member.visibility ] || member.visibility }` ) );
         }
 
         const cost     = Number( member.dealer_price ) || 0;
@@ -452,7 +498,7 @@
                     resolved ? $( '<span class="mmi-dupes-listing-id">' ).text( '#' + member.wc_product_id ) : null,
                     buildAvailabilityBadge( member )
                 ),
-                $( '<span class="mmi-dupes-listing-meta">' ).text( facts.filter( Boolean ).join( ' · ' ) )
+                $meta
             ),
             $( '<div class="mmi-dupes-bar" aria-hidden="true">' ).append(
                 $( '<span class="mmi-dupes-bar-fill">' ).css( '--mmi-dupes-bar-w', width + '%' )
@@ -472,6 +518,8 @@
         hints.filter( Boolean ).forEach( ( h ) => $box.append( $( '<p class="mmi-dupes-review-hint">' ).text( h ) ) );
         const $legend = buildPriceLegend( group, refPrice );
         if ( $legend ) { $box.append( $legend ); }
+        const $compare = buildCompareLink( group );
+        if ( $compare ) { $box.append( $compare ); }
         return {
             refPrice,
             canonicalId,

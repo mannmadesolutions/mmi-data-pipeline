@@ -302,6 +302,7 @@ class MMI_Pipeline_Admin {
             wp_localize_script( 'mmi-pipeline-dupes-js', 'mmiDupes', [
                 'ajaxUrl' => admin_url( 'admin-ajax.php' ),
                 'nonce'   => wp_create_nonce( 'mmi_pipeline_canonical_candidates' ),
+                'catalog' => self::distributors_catalog_link(),
             ] );
 
             self::load_on_first_use( 'mmi-pipeline-dupes-js', [
@@ -342,6 +343,29 @@ class MMI_Pipeline_Admin {
      *
      * @return array<string, mixed>
      */
+    /**
+     * Where the duplicates review opens a listing's SKU and "Compare side
+     * by side": the Distributors page's All › Catalog (mmi-distributors),
+     * with each feed's name for its Distributor filter. Empty when that
+     * plugin isn't active or the user can't open it, so no link shows.
+     *
+     * @return array{url?:string,sources?:array<string,string>}
+     */
+    private static function distributors_catalog_link(): array {
+        if ( ! class_exists( 'MMI_Distributors_Page' ) || ! method_exists( 'MMI_Distributors_Page', 'catalog' ) || ! method_exists( 'MMI_Distributors_Page', 'url' ) ) {
+            return [];
+        }
+        $group = MMI_Distributors_Page::catalog();
+        if ( ! $group instanceof MMI_Pipeline_Feed_Catalog_Group || ! $group->user_can() ) {
+            return [];
+        }
+        $sources = [];
+        foreach ( $group->members() as $id => $member ) {
+            $sources[ $id ] = $member->label();
+        }
+        return $sources ? [ 'url' => MMI_Distributors_Page::url( 'all', 'catalog' ), 'sources' => $sources ] : [];
+    }
+
     private static function build_export_settings_data(): array {
         $current_profile = isset( $_GET['profile'] ) ? sanitize_text_field( wp_unslash( $_GET['profile'] ) ) : '';
 

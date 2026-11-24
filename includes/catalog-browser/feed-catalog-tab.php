@@ -82,22 +82,47 @@ if ( ! defined( 'ABSPATH' ) ) {
             </div>
         </div>
 
+        <?php
+        // Compare: products ticked anywhere in the catalog, whatever the
+        // filters, side by side here (feed-catalog.js fills it). In place,
+        // above the table, so the list stays where it was.
+        ?>
+        <div class="mmi-fc-compare" hidden>
+            <div class="mmi-fc-compare-head">
+                <h4><span class="dashicons dashicons-columns" aria-hidden="true"></span> <?php esc_html_e( 'Side by side', 'mmi-data-pipeline' ); ?></h4>
+                <span class="mmi-fc-compare-note mmi-fc-muted"><?php esc_html_e( 'Highlighted rows differ. Name words and price gaps are measured against the first product.', 'mmi-data-pipeline' ); ?></span>
+                <label class="mmi-fc-compare-diff"><input type="checkbox" class="mmi-fc-compare-only-diff" /> <?php esc_html_e( 'Only differences', 'mmi-data-pipeline' ); ?></label>
+                <button type="button" class="button mmi-fc-compare-close"><?php esc_html_e( 'Close', 'mmi-data-pipeline' ); ?></button>
+            </div>
+            <div class="mmi-fc-compare-body" aria-live="polite"></div>
+        </div>
+
         <div class="mmi-fc-pager mmi-fc-pager--top"></div>
         <div class="mmi-fc-table-wrap">
             <?php // "-pct" in the id: saved widths from the old pixel layout are dropped. ?>
             <table class="mmi-fc-table" id="mmi-fc-<?php echo esc_attr( $catalog->id() . ( $config['view'] === 'promotions' ? '-promotions' : '' ) ); ?>-table-pct" data-mmi-resizable>
                 <thead>
                     <tr>
+                        <th class="check-column mmi-fc-col-pick" title="<?php esc_attr_e( 'Tick products to compare side by side (up to 6, from any search or page)', 'mmi-data-pipeline' ); ?>"><span class="dashicons dashicons-columns" aria-hidden="true"></span><span class="screen-reader-text"><?php esc_html_e( 'Compare', 'mmi-data-pipeline' ); ?></span></th>
                         <?php foreach ( $config['columns'] as $col ) : ?>
                             <th data-sort-key="<?php echo esc_attr( $col['key'] ); ?>" data-resize-col="<?php echo esc_attr( $col['key'] ); ?>" class="sortable mmi-fc-col-<?php echo esc_attr( $col['type'] ); ?>"<?php echo $col['title'] !== '' ? ' title="' . esc_attr( $col['title'] ) . '"' : ''; ?>><?php echo esc_html( $col['label'] ); ?><span class="sort-icon"></span></th>
                         <?php endforeach; ?>
                     </tr>
                 </thead>
                 <tbody class="mmi-fc-tbody">
-                    <tr><td colspan="<?php echo (int) count( $config['columns'] ); ?>" class="mmi-fc-empty"><span class="mmi-loading"></span> <?php echo esc_html( $config['view'] === 'promotions' ? __( 'Loading promotions…', 'mmi-data-pipeline' ) : __( 'Loading the catalog…', 'mmi-data-pipeline' ) ); ?></td></tr>
+                    <tr><td colspan="<?php echo (int) count( $config['columns'] ) + 1; ?>" class="mmi-fc-empty"><span class="mmi-loading"></span> <?php echo esc_html( $config['view'] === 'promotions' ? __( 'Loading promotions…', 'mmi-data-pipeline' ) : __( 'Loading the catalog…', 'mmi-data-pipeline' ) ); ?></td></tr>
                 </tbody>
             </table>
         </div>
         <div class="mmi-fc-pager mmi-fc-pager--bottom"></div>
+
+        <div class="mmi-fc-compare-bar" hidden>
+            <span class="mmi-fc-compare-bar-label"><span class="dashicons dashicons-columns" aria-hidden="true"></span> <?php esc_html_e( 'Compare', 'mmi-data-pipeline' ); ?> <span class="mmi-fc-compare-count"></span></span>
+            <span class="mmi-fc-compare-chips"></span>
+            <span class="mmi-fc-compare-bar-actions">
+                <button type="button" class="button button-primary mmi-fc-compare-open" disabled><?php esc_html_e( 'Compare side by side', 'mmi-data-pipeline' ); ?></button>
+                <button type="button" class="button mmi-fc-compare-clear"><?php esc_html_e( 'Clear', 'mmi-data-pipeline' ); ?></button>
+            </span>
+        </div>
     </div>
 </div>

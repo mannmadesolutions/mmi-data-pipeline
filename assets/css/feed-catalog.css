@@ -340,6 +340,282 @@
     color: var(--mmi-text-secondary, #646970);
 }
 
+/* ── Compare: the tick column, the bar under the table, the panel ─────── */
+.mmi-fc .mmi-fc-table > thead > tr > th.mmi-fc-col-pick {
+    width: 36px;
+    padding: 8px 0;
+    text-align: center;
+    cursor: default;
+}
+.mmi-fc-col-pick .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-table > tbody > tr > td.mmi-fc-td-pick {
+    padding: 8px 0;
+    text-align: center;
+    cursor: pointer;
+}
+.mmi-fc-td-pick input {
+    margin: 0;
+}
+.mmi-fc-row.is-picked > td.mmi-fc-td-pick {
+    box-shadow: inset 3px 0 0 var(--mmi-success, #45852C);
+}
+.mmi-fc-compare-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+}
+.mmi-fc-compare-bar[hidden] {
+    display: none;
+}
+.mmi-fc-compare-bar-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.mmi-fc-compare-count {
+    font-weight: 400;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-compare-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1 1 300px;
+    min-width: 0;
+}
+.mmi-fc-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 280px;
+    padding: 2px 2px 2px 10px;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 14px;
+    background: var(--mmi-gray-100, #f6f7f7);
+    font-size: 12px;
+}
+.mmi-fc-chip-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.mmi-fc-chip-remove {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-left: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--mmi-text-secondary, #646970);
+    font-size: 15px;
+    line-height: 22px;
+    cursor: pointer;
+}
+.mmi-fc-chip-remove:hover,
+.mmi-fc-chip-remove:focus {
+    background: var(--mmi-gray-300, #dcdcde);
+    color: var(--mmi-error-text, #721c24);
+}
+.mmi-fc-compare-bar-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.mmi-fc-compare {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 4px;
+    background: #fff;
+}
+.mmi-fc-compare[hidden] {
+    display: none;
+}
+.mmi-fc-compare-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin-bottom: 8px;
+}
+.mmi-fc-compare-head h4 {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+}
+.mmi-fc-compare-note {
+    font-size: 12px;
+}
+.mmi-fc-compare-diff {
+    margin-left: auto;
+    white-space: nowrap;
+}
+.mmi-fc-compare-body.mmi-fc-loading {
+    opacity: 0.55;
+}
+.mmi-fc-cmp-summary {
+    margin: 0 0 8px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-cmp-missing {
+    margin: 0 0 8px !important;
+}
+/* Scrolls sideways on a narrow screen rather than squeezing six columns. */
+.mmi-fc-cmp-wrap {
+    overflow-x: auto;
+}
+.mmi-fc-cmp {
+    width: 100%;
+    min-width: calc(160px + var(--mmi-fc-cmp-cols, 2) * 190px);
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+.mmi-fc-cmp th,
+.mmi-fc-cmp td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--mmi-gray-200, #f0f0f1);
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+}
+.mmi-fc-cmp > thead > tr > th {
+    border-bottom: 1px solid var(--mmi-gray-300, #dcdcde);
+    font-weight: 400;
+}
+.mmi-fc-cmp > thead > tr > th.mmi-fc-cmp-corner,
+.mmi-fc-cmp > tbody > tr > th {
+    width: 160px;
+    color: var(--mmi-text-secondary, #646970);
+    font-weight: 600;
+}
+.mmi-fc-cmp > tbody > tr > th[title] {
+    cursor: help;
+}
+.mmi-fc-cmp-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.mmi-fc-cmp-img {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 110px;
+    margin-bottom: 4px;
+    border: 1px solid var(--mmi-gray-200, #f0f0f1);
+    border-radius: 4px;
+    background: var(--mmi-gray-50, #f9f9f9);
+}
+.mmi-fc-cmp-img img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.mmi-fc-cmp-img .dashicons {
+    color: var(--mmi-gray-300, #dcdcde);
+}
+.mmi-fc-cmp-name {
+    font-size: 14px;
+}
+.mmi-fc-cmp-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin-top: 4px;
+    font-size: 12px;
+}
+.mmi-fc-cmp-section > th {
+    padding-top: 12px !important;
+    background: var(--mmi-gray-100, #f6f7f7);
+    color: var(--mmi-text-primary, #1d2327) !important;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+/* A row whose values differ. */
+.mmi-fc-cmp > tbody > tr.is-diff > th {
+    box-shadow: inset 3px 0 0 var(--mmi-warning, #dba617);
+}
+.mmi-fc-cmp > tbody > tr.is-diff > td {
+    background: var(--mmi-warning-bg, #fff8e5);
+}
+/* A field only one product's feed has: nothing to disagree with. */
+.mmi-fc-cmp > tbody > tr.is-solo > td {
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-cmp-gap {
+    display: block;
+    font-size: 12px;
+    color: var(--mmi-text-secondary, #646970);
+}
+.mmi-fc-cmp-gap.is-up {
+    color: var(--mmi-error-text, #721c24);
+}
+.mmi-fc-cmp-gap.is-down {
+    color: var(--mmi-success-text, #2e5a1c);
+}
+.mmi-fc-cmp-words {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+}
+.mmi-fc-cmp-edition {
+    color: var(--mmi-warning-text, #8a5a00);
+}
+.mmi-fc-cmp-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.mmi-fc-cmp-gallery img {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 3px;
+    background: #fff;
+}
+.mmi-fc-cmp-text {
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 12px;
+}
+.mmi-fc-cmp-text h5 {
+    margin: 0 0 4px;
+}
+.mmi-fc-cmp-text img {
+    max-width: 100%;
+    height: auto;
+}
+.mmi-fc-cmp-list {
+    max-height: 180px;
+    margin: 0 0 0 16px;
+    overflow-y: auto;
+    list-style: disc;
+    font-size: 12px;
+}
+
 @media (max-width: 960px) {
     .mmi-fc-columns {
         grid-template-columns: 1fr;

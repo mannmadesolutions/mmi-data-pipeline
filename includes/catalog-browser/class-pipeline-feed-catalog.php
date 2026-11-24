@@ -40,6 +40,8 @@ abstract class MMI_Pipeline_Feed_Catalog {
     const VIEWS    = [ 'catalog', 'promotions' ];
     /** Promotions view: our price against the promotion, worst first when sorted. */
     const CHECKS   = [ 'loss' => 0, 'above_map' => 1, 'ok' => 2, 'none' => 3 ];
+    /** Most products one side-by-side comparison takes. */
+    const COMPARE_MAX = 6;
 
     /** @var array<string,MMI_Pipeline_Feed_Catalog> */
     private static $registry = [];
@@ -202,7 +204,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
         static $hooked = false;
         if ( ! $hooked ) {
             $hooked = true;
-            foreach ( [ 'query', 'detail', 'status', 'fetch_now' ] as $action ) {
+            foreach ( [ 'query', 'detail', 'compare', 'status', 'fetch_now' ] as $action ) {
                 add_action( 'wp_ajax_mmi_feed_catalog_' . $action, [ __CLASS__, 'ajax_' . $action ] );
             }
             add_action( 'admin_enqueue_scripts', [ __CLASS__, 'register_assets' ], 5 );
@@ -273,6 +275,16 @@ abstract class MMI_Pipeline_Feed_Catalog {
             wp_send_json_error( [ 'message' => __( 'That SKU isn\'t in the current feed.', 'mmi-data-pipeline' ) ] );
         }
         wp_send_json_success( $detail );
+    }
+
+    public static function ajax_compare(): void {
+        $catalog = self::from_request();
+        $keys    = array_map( static fn( $k ) => sanitize_text_field( (string) $k ), array_filter( (array) wp_unslash( $_POST['keys'] ?? [] ), 'is_scalar' ) );
+        try {
+            wp_send_json_success( [ 'items' => $catalog->compare( $keys ) ] );
+        } catch ( Throwable $e ) {
+            wp_send_json_error( [ 'message' => $e->getMessage() ] );
+        }
     }
 
     public static function ajax_status(): void {
@@ -636,16 +648,7 @@ abstract class MMI_Pipeline_Feed_Catalog {
      * it runs misses the promotion.
      */
     private static function with_our_prices( array $rows ): array {
-        global $wpdb;
-        $ids  = array_values( array_unique( array_filter( array_map( 'intval', array_column( $rows, 'site_post' ) ) ) ) );
-        $meta = [];
-        foreach ( array_chunk( $ids, 500 ) as $chunk ) {
-            $in = implode( ',', $chunk );
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- integers only. audit-ok: $in is implode of array_map('intval') ids, 500-id chunks
-            foreach ( $wpdb->get_results( "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ({$in}) AND meta_key IN ('_price','_stock_status')", ARRAY_A ) as $m ) {
-                $meta[ (int) $m['post_id'] ][ $m['meta_key'] ] ??= (string) $m['meta_value'];
-            }
-        }
+        $meta = self::site_meta( array_column( $rows, 'site_post' ), [ '_price', '_stock_status' ] );
         foreach ( $rows as &$row ) {
             $own   = $meta[ (int) $row['site_post'] ] ?? [];
             $price = isset( $own['_price'] ) && $own['_price'] !== '' && (float) $own['_price'] > 0 ? round( (float) $own['_price'], 2 ) : null;
@@ -670,6 +673,27 @@ abstract class MMI_Pipeline_Feed_Catalog {
         }
         unset( $row );
         return $rows;
+    }
+
+    /**
+     * Our listings' meta, one query per 500 posts: [post id => [key => value]].
+     *
+     * @param int[]    $post_ids
+     * @param string[] $keys     Meta keys, from code only.
+     */
+    private static function site_meta( array $post_ids, array $keys ): array {
+        global $wpdb;
+        $ids  = array_values( array_unique( array_filter( array_map( 'intval', $post_ids ) ) ) );
+        $list = implode( ',', array_map( static fn( $k ) => "'" . esc_sql( $k ) . "'", $keys ) );
+        $meta = [];
+        foreach ( array_chunk( $ids, 500 ) as $chunk ) {
+            $in = implode( ',', $chunk );
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- integers and code-defined keys only. audit-ok: $in is implode of array_map('intval') ids, 500-id chunks; $list is esc_sql'd constant keys
+            foreach ( $wpdb->get_results( "SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ({$in}) AND meta_key IN ({$list})", ARRAY_A ) as $m ) {
+                $meta[ (int) $m['post_id'] ][ $m['meta_key'] ] ??= (string) $m['meta_value'];
+            }
+        }
+        return $meta;
     }
 
     /** Row keys the search box reads. */
@@ -777,6 +801,58 @@ abstract class MMI_Pipeline_Feed_Catalog {
             'facets'   => $this->facet_values(),
             'status'   => $this->status(),
         ];
+    }
+
+    /* ── Compare ─────────────────────────────────────────────────────────── */
+
+    /**
+     * Products side by side, picked from anywhere in the catalog (not just
+     * the filtered page): each key's table row, our listing's price and
+     * stock, and its detail. Keys are what the rows carry (`key` in a
+     * group, else the SKU). A key no longer in the feed comes back as
+     * `missing`, so a remembered pick that dropped out says so.
+     *
+     * @param string[] $keys
+     */
+    public function compare( array $keys ): array {
+        $keys = array_slice( array_values( array_unique( array_filter( array_map( 'strval', $keys ), 'strlen' ) ) ), 0, self::COMPARE_MAX );
+        if ( ! $keys ) {
+            return [];
+        }
+        $wanted = array_fill_keys( $keys, true );
+        $picked = [];
+        foreach ( $this->rows( 'catalog' ) as $row ) {
+            $key = (string) ( $row['key'] ?? $row['sku'] );
+            if ( isset( $wanted[ $key ] ) ) {
+                $picked[ $key ] = $row;
+            }
+        }
+        $meta  = self::site_meta( array_column( $picked, 'site_post' ), [ '_price', '_regular_price', '_sale_price', '_stock_status' ] );
+        $money = static fn( $v ) => isset( $v ) && $v !== '' && is_numeric( $v ) ? round( (float) $v, 2 ) : null;
+        $items = [];
+        foreach ( $keys as $key ) {
+            $row = $picked[ $key ] ?? null;
+            if ( ! $row ) {
+                $items[] = [ 'key' => $key, 'missing' => true ];
+                continue;
+            }
+            $own = $meta[ (int) $row['site_post'] ] ?? [];
+            if ( empty( $row['image'] ) && $row['site_thumb'] ) {
+                $row['image'] = (string) wp_get_attachment_image_url( $row['site_thumb'], 'medium' );
+            }
+            if ( $row['site_id'] ) {
+                $row['edit_url'] = (string) get_edit_post_link( $row['site_id'], 'raw' );
+                $row['view_url'] = (string) get_permalink( $row['site_post'] );
+            }
+            $row['key']         = $key;
+            $row['our_price']   = $row['site_id'] ? $money( $own['_price'] ?? null ) : null;
+            $row['our_regular'] = $row['site_id'] ? $money( $own['_regular_price'] ?? null ) : null;
+            $row['our_sale']    = $row['site_id'] ? $money( $own['_sale_price'] ?? null ) : null;
+            $row['our_stock']   = $row['site_id'] ? (string) ( $own['_stock_status'] ?? '' ) : '';
+            unset( $row['site_thumb'], $row['site_post'] );
+            $items[] = [ 'key' => $key, 'row' => $row, 'detail' => $this->detail( $key ) ];
+        }
+        return $items;
     }
 
     /* ── Detail ──────────────────────────────────────────────────────────── */
