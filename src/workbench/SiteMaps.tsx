@@ -67,6 +67,11 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
   const [addLine, setAddLine] = useState("");
   const [undoAsk, setUndoAsk] = useState<string | null>(null); // the Fill whose Undo waits for a yes, asked in place
   const ref = useRef<HTMLDivElement>(null);
+  // While a decision saves, the proposals stay as they were: the proposals come back before the rest reloads, and a
+  // decided row that left then showed the next one with its buttons still off. It leaves in the render that turns them on.
+  const held = useRef(proposals);
+  if (busy === null) held.current = proposals;
+  const listed = held.current;
   const host = site.host;
   // The site opens beside the list; when the page was scrolled past its top, bring its top into view.
   useEffect(() => { if (ref.current && ref.current.getBoundingClientRect().top < 0) ref.current.scrollIntoView({ block: "start" }); }, []);
@@ -101,7 +106,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
     try {
       const d = await rest<Record<string, unknown>>(cfg, "POST", path, body);
       setNotice({ text: done(d), kind: "ok" });
-      // The buttons stay off until the site list and the proposals are back too: a decided row leaves in the same render they return.
+      // The buttons stay off until the site list and the proposals are back too; the decided row leaves when they come back on.
       await Promise.all([onChanged(), load()]);
       return d;
     } catch (e) { setNotice({ text: msg(e), kind: "error" }); return null; } finally { setBusy(null); }
@@ -149,7 +154,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
   const [label, badge] = siteState(site);
   const plan = gaps?.fill;
   const toFill = gaps ? fillRows(gaps) : [];
-  const waiting = proposals.filter((p) => p.status === "proposed");
+  const waiting = listed.filter((p) => p.status === "proposed");
   const pagesAttention = gaps ? gaps.ready.unread + gaps.ready.blocked + gaps.ready.broken : 0;
   const tabCount: Record<SiteTab, string> = {
     parts: waiting.length ? `${waiting.length} to approve` : gaps ? plural(plan?.fields ?? 0, "gap") : "",
@@ -243,7 +248,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
 
       <div className="mmi-wb-split-panel" id="mmi-wb-sm-tabpanel" role={focus === "fill" ? undefined : "tabpanel"} aria-labelledby={focus === "fill" ? undefined : `mmi-wb-sm-tab-${shown}`}>
         {shown === "parts" && gaps && (
-          <PartsTab gaps={gaps} proposals={proposals} busy={busy}
+          <PartsTab gaps={gaps} proposals={listed} busy={busy}
             onApproveMany={(ids) => void post("approve-many", "map-proposals/site", { host, ids }, (d) => `${plural(Number(d.approved ?? 0), "part")} approved.${(d.failed as string[] | undefined)?.length ? ` Not approved: ${(d.failed as string[]).join("; ")}` : ""}`)}
             onProposal={decideProposal} onCell={decideCell} />
         )}
