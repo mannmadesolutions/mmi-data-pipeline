@@ -283,7 +283,11 @@ abstract class MMI_Pipeline_Feed_Catalog {
         try {
             wp_send_json_success( [ 'items' => $catalog->compare( $keys ) ] );
         } catch ( Throwable $e ) {
-            wp_send_json_error( [ 'message' => $e->getMessage() ] );
+            // The detail goes to the log, not the browser.
+            if ( class_exists( 'MMI_Logger' ) ) {
+                MMI_Logger::error( 'Feed catalog compare failed [' . $catalog->id() . ']: ' . $e->getMessage(), [], 'sync', __CLASS__ );
+            }
+            wp_send_json_error( [ 'message' => __( 'Could not load the comparison. The error is in the Data Pipeline log.', 'mmi-data-pipeline' ) ] );
         }
     }
 
