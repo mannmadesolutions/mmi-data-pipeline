@@ -898,7 +898,7 @@ class MMI_Pipeline_Admin {
             </p>
         <?php endif; ?>
         <?php // Standing rules load only while the plugin is licensed; the box itself always shows.
-        $rule_owner = class_exists( '\\MannMade\\DataPipeline\\Workbench\\Standing_Rules' ) ? \MannMade\DataPipeline\Workbench\Standing_Rules::owner_name( $post->ID ) : ''; ?>
+        $rule_owner = self::standing_rules_available() ? \MannMade\DataPipeline\Workbench\Standing_Rules::owner_name( $post->ID ) : ''; ?>
         <?php if ( $rule_owner !== '' && $embargo === '' ) : ?>
             <p class="mmi-metabox-override-active">
                 Set by the standing rule "<?php echo esc_html( $rule_owner ); ?>" (Product Workbench). Changing this setting takes it over from the rule; choosing Follow import data keeps that rule off this product.
@@ -936,9 +936,13 @@ class MMI_Pipeline_Admin {
         $raw      = sanitize_text_field( wp_unslash( $_POST['mmi_stock_override'] ?? '' ) );
         $override = in_array( $raw, $allowed, true ) ? $raw : '';
 
-        if ( $override !== (string) get_post_meta( $post_id, '_mmi_stock_override', true )
-            && class_exists( '\\MannMade\\DataPipeline\\Workbench\\Standing_Rules' ) ) {
-            \MannMade\DataPipeline\Workbench\Standing_Rules::person_changed_override( $post_id, $override );
+        if ( $override !== (string) get_post_meta( $post_id, '_mmi_stock_override', true ) ) {
+            if ( self::standing_rules_available() ) {
+                \MannMade\DataPipeline\Workbench\Standing_Rules::person_changed_override( $post_id, $override );
+            } else {
+                // Unlicensed: the override still saves, but a standing rule that owned it isn't told to let go.
+                MMI_Logger::debug( 'Standing rules not loaded; override change not passed to them', [ 'post_id' => $post_id, 'override' => $override ], 'general', 'MMI_Pipeline_Admin' );
+            }
         }
         if ( $override === '' ) {
             delete_post_meta( $post_id, '_mmi_stock_override' );
@@ -948,6 +952,14 @@ class MMI_Pipeline_Admin {
     }
 
     /* ── Helpers ──────────────────────────────────────────────────────────── */
+
+    /**
+     * Standing rules load only while the plugin is licensed, so this check
+     * lives here: a helper on Standing_Rules couldn't be called without it.
+     */
+    private static function standing_rules_available(): bool {
+        return class_exists( '\\MannMade\\DataPipeline\\Workbench\\Standing_Rules' );
+    }
 
     /**
      * The suite-wide condition builder (shared library's
