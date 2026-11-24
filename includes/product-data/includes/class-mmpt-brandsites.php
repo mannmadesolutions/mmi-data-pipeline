@@ -335,8 +335,14 @@ class BrandSites {
 			return [ 'status' => 'ok', 'html' => $html ];
 		}
 		// Refused (most often a firewall's 403): a good copy of the home page already in the page store, read by
-		// the server or sent from the owner's browser with the extension, is read instead. Looked up only.
-		foreach ( array_unique( [ $url, trailingslashit( $url ), untrailingslashit( $url ) ] ) as $u ) {
+		// the server or sent from the owner's browser with the extension, is read instead. Looked up only. With and
+		// without www: the browser lands where the site sends it (a www. website is stored without it).
+		$other = preg_match( '#^(https?://)www\.#i', $url ) ? preg_replace( '#^(https?://)www\.#i', '$1', $url ) : preg_replace( '#^(https?://)#i', '$1www.', $url );
+		$tries = [];
+		foreach ( [ $url, (string) $other ] as $base ) {
+			array_push( $tries, $base, trailingslashit( $base ), untrailingslashit( $base ) );
+		}
+		foreach ( array_unique( $tries ) as $u ) {
 			$row = PageStore::row( $u );
 			if ( $row && ( $row['status'] ?? '' ) === 'ok' && (string) ( $row['html_file'] ?? '' ) !== '' ) {
 				$stored = PageStore::read( (string) $row['html_file'] );
