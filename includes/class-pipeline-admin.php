@@ -897,7 +897,8 @@ class MMI_Pipeline_Admin {
                 The supplier's words: "<?php echo esc_html( (string) get_post_meta( $post->ID, '_mmi_embargo_note', true ) ); ?>". Released automatically at that time; changing this setting ends the hold now.
             </p>
         <?php endif; ?>
-        <?php $rule_owner = \MannMade\DataPipeline\Workbench\Standing_Rules::owner_name( $post->ID ); ?>
+        <?php // Standing rules load only while the plugin is licensed; the box itself always shows.
+        $rule_owner = class_exists( '\\MannMade\\DataPipeline\\Workbench\\Standing_Rules' ) ? \MannMade\DataPipeline\Workbench\Standing_Rules::owner_name( $post->ID ) : ''; ?>
         <?php if ( $rule_owner !== '' && $embargo === '' ) : ?>
             <p class="mmi-metabox-override-active">
                 Set by the standing rule "<?php echo esc_html( $rule_owner ); ?>" (Product Workbench). Changing this setting takes it over from the rule; choosing Follow import data keeps that rule off this product.
@@ -935,7 +936,8 @@ class MMI_Pipeline_Admin {
         $raw      = sanitize_text_field( wp_unslash( $_POST['mmi_stock_override'] ?? '' ) );
         $override = in_array( $raw, $allowed, true ) ? $raw : '';
 
-        if ( $override !== (string) get_post_meta( $post_id, '_mmi_stock_override', true ) ) {
+        if ( $override !== (string) get_post_meta( $post_id, '_mmi_stock_override', true )
+            && class_exists( '\\MannMade\\DataPipeline\\Workbench\\Standing_Rules' ) ) {
             \MannMade\DataPipeline\Workbench\Standing_Rules::person_changed_override( $post_id, $override );
         }
         if ( $override === '' ) {
