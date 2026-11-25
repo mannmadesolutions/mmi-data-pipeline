@@ -94,7 +94,7 @@ class MMI_Pipeline_Admin {
             if ( isset( $_GET['profile'] ) ) {
                 $args['profile'] = sanitize_text_field( wp_unslash( $_GET['profile'] ) );
             }
-            $to = admin_url( 'admin.php?' . http_build_query( $args ) );
+            $to = add_query_arg( array_map( 'rawurlencode', $args ), admin_url( 'admin.php' ) );
         } elseif ( ( isset( $_GET['open_duplicates'] ) || 'duplicates' === $tab ) && function_exists( 'mmi_canonical_candidates_queue_url' ) ) {
             // Duplicates: its own tab until 2026-09-02, an Import tab section (open_duplicates=1, dupes_status,
             // dupes_brand, detection=collisions) until 2026-11-25, now a pill of the Workbench's Needs a decision.

@@ -215,6 +215,8 @@ const idsOf = (g: Group): number[] => g.members.map((m) => m.wc_product_id).filt
  * holder is the row with the most listings, the stronger source on a tie; a linked group holds only rows already
  * linked (a row still to decide stays its own). Older-listing rows never fold: their bulk Link works on them as they
  * are. The holder keeps what it replaced: covers (review hint), alsoSources (Source badges), coveredKeys (Dismiss).
+ * The pill's count folds the review index by the same rule server side: mmi_canonical_candidates_waiting()
+ * (CanonicalCandidatesController.php). Change one, change the other.
  */
 export function fold(groups: Group[]): Row[] {
   const rows: Row[] = groups.map((g) => ({

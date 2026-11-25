@@ -27,6 +27,12 @@ const Diff = ({ parts }: { parts: DiffPart[] }) => (
   <>{parts.map((p, i) => (p.kind === "same" ? <span key={i}>{p.text}</span> : <span key={i} className={p.kind === "del" ? "mmi-wb-before" : "mmi-wb-after"}>{p.text}</span>))}</>
 );
 
+/** One group per set of other listings (two sources grouping the same listings read as one line). */
+function byListings<G extends { others: number[] }>(groups: G[]): G[] {
+  const seen = new Set<string>();
+  return groups.filter((g) => { const k = g.others.join(); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
 function Part({ name, title, tone, aside, children }: { name: string; title: string; tone?: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section className={`mmi-wb-dr-part${tone ? ` is-${tone}` : ""}`} data-part={name} aria-label={title}>
@@ -220,8 +226,7 @@ export function ProductDrawer({ cfg, id, prev, next, onStep, onClose, onChanged 
 
           {p.duplicates && (p.duplicates.groups.length > 0 || p.duplicates.linked.length > 0) && (
             <Part name="duplicates" title="Duplicates" tone={p.duplicates.groups.length ? "warning" : undefined}>
-              {/* Two sources grouping the same listings read as one line (the pill folds them into one row too). */}
-              {p.duplicates.groups.filter((g, i, all) => all.findIndex((x) => x.others.join() === g.others.join()) === i).map((g) => (
+              {byListings(p.duplicates.groups).map((g) => (
                 <div key={g.key} className="mmi-wb-dr-term">
                   <span>Listed with {g.others.map((o) => `#${o}`).join(", ")}, waiting for a decision</span>
                   <button type="button" className="button-link" data-dupes-group={g.key} onClick={() => openDupesGroup(g.key)}>Open group</button>
