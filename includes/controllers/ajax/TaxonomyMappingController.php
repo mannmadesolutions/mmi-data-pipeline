@@ -1208,6 +1208,7 @@ add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
     $queued = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::schedule_heal( [ 'mode' => 'all' ] );
     if ( ! $queued ) {
         wp_send_json_error( [ 'message' => 'Could not queue the background run: Action Scheduler is not available.' ] );
+        return;
     }
     mmi_data_pipeline_audit( 'taxonomy_mapping.apply_all', [ 'object_type' => 'taxonomy_mapping', 'object_id' => '', 'outcome' => 'success', 'details' => [ 'queued' => true ] ] );
     wp_send_json_success( [

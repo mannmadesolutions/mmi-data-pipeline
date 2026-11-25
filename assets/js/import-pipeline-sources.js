@@ -13,10 +13,12 @@
 
     function escAttr(val) { return $('<div>').text(val || '').html().replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
-    /** Category & brand mapping in the Product Workbench, open on this source (the row's link opens it in a new tab). */
+    /** Category & brand mapping in the Product Workbench (mmi_taxmap_url(), printed by the page), open on this source. */
     function taxmapUrl(supplierId) {
-        const url = new URL(window.location.pathname, window.location.origin);
-        url.search = new URLSearchParams({ page: 'mmi-data-pipeline', pipeline_tab: 'workbench', wb_sec: 'mapping', wb_source: supplierId }).toString();
+        const base = (window.mmiImportSettings && window.mmiImportSettings.taxmapUrl) || '';
+        if (!base) { return '#'; }
+        const url = new URL(base, window.location.origin);
+        url.searchParams.set('wb_source', supplierId);
         return url.toString();
     }
     const preconfiguredNames = (window.MMIDataPipeline && window.MMIDataPipeline._preconfiguredNames) || {};
