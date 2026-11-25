@@ -3,7 +3,7 @@
  * 
  * Shared styles for all MMI admin pages
  * 
- * @package MMI_Hub
+ * @package MannMade
  * @since 1.0.7
  */
 
@@ -159,14 +159,6 @@
     .mmi-grid-4 {
         grid-template-columns: 1fr;
     }
-}
-
-/* Hide WordPress footer on MMI pages */
-body.toplevel_page_mmi-hub #wpfooter,
-body.mmi-hub_page_mmi-vip #wpfooter,
-body.mmi-hub_page_mmi-licenses #wpfooter,
-body.mmi-hub_page_mmi-financial #wpfooter {
-    display: none;
 }
 
 /* Loading spinner */

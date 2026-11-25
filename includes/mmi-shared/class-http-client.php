@@ -2,8 +2,7 @@
 /**
  * HTTPClient (bundled/vendored copy) — ADR-0007, mmi-admin/docs/decisions/.
  *
- * Identical to the original mmi-hub/includes/HTTP/HTTPClient.php. Only ever
- * loaded once per request, by whichever plugin's bundled copy wins version
+ * Only ever loaded once per request, by whichever plugin's bundled copy wins version
  * negotiation in bootstrap.php — see ADR-0006. Do not hand-edit this file in
  * a single plugin; edit the canonical source (mmi-admin/lib/mmi-shared/) and
  * re-sync (sync-to-plugins.sh) to every plugin that bundles it.

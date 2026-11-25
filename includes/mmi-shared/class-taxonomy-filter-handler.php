@@ -1,21 +1,15 @@
 <?php
 /**
  * Taxonomy Filter — server-side term lookup for the shared taxonomy filter
- * widget (js/shared/taxonomy-filter.js, window.mmiTaxonomyFilters). That JS
- * module has been bundled suite-wide since the mmi-hub-elimination
- * migration, but its PHP counterpart never was — the generic
- * `mmi_get_taxonomy_terms` AJAX action it posts to used to be
- * MMI_Taxonomy_Filter_Handler, registered inside mmi-hub (see
- * mmi-data-pipeline's `ImportSettingsController::get_taxonomy_terms()` own
- * docblock, which explicitly named its own endpoint differently to avoid
- * colliding with this one). Deleting mmi-hub without migrating it left the
- * action with zero listeners — confirmed live (`$wp_filter['wp_ajax_mmi_get
- * _taxonomy_terms']` empty) — silently breaking every taxonomy filter
- * dropdown built on this widget. Its only current real consumer is
+ * widget (js/shared/taxonomy-filter.js, window.mmiTaxonomyFilters). Registers
+ * the generic `mmi_get_taxonomy_terms` AJAX action the widget posts to;
+ * without it every taxonomy filter dropdown built on the widget silently
+ * returns nothing. (mmi-data-pipeline's
+ * `ImportSettingsController::get_taxonomy_terms()` uses a differently named
+ * endpoint so the two never collide.) Its only current consumer is
  * mmi-reverb-integration's Products tab (Brand/Category/Distribution
- * filters); rebuilt here in the shared library, same shape as the sibling
- * gap already found and fixed for MMI_WC_Product_Filter_Handler, so a
- * second consumer can pick it up later without another migration.
+ * filters); it sits in the shared library, like
+ * MMI_WC_Product_Filter_Handler, so a second consumer can use it directly.
  *
  * @package MannMade\SharedLib
  */

@@ -2,9 +2,8 @@
 /**
  * MMI Settings — Custom Table Options Store (bundled/vendored copy).
  *
- * Identical behavior to the original mmi-hub/includes/class-settings.php this
- * was vendored from — same wp_mmi table, same tab-derivation rules, same
- * transparent wp_options migration. Only ever loaded once per request, by
+ * Owns the wp_mmi table, its tab-derivation rules and the transparent
+ * wp_options migration. Only ever loaded once per request, by
  * whichever plugin's bundled copy wins version negotiation in bootstrap.php —
  * see ADR-0006. Do not hand-edit this file in a single plugin; edit the
  * canonical source and re-sync to every plugin that bundles it.
@@ -54,17 +53,12 @@ class MMI_Settings {
 
 	/**
 	 * Create wp_mmi if it doesn't exist yet — idempotent, cheap after the
-	 * first call (short-circuits on the static flag). mmi-hub's own
-	 * installer never creates this table either; historically it only ever
-	 * existed because a one-time migration script
-	 * (mmi-hub/includes/migration/migrate-credentials-to-mmi-table.php)
-	 * happened to run once and create it. That script itself requires
-	 * mmi-hub, so a genuinely standalone site (mmi-hub never installed)
-	 * would otherwise never get this table at all — every get()/set() would
-	 * silently no-op against a table that doesn't exist (WPDB degrades
-	 * quietly, it doesn't fatal) rather than actually persisting anything.
-	 * Schema matches that migration script's CREATE TABLE exactly, so a
-	 * table created here is indistinguishable from one mmi-hub created.
+	 * first call (short-circuits on the static flag). No installer or
+	 * activation hook creates this table, so without this a fresh site
+	 * would never get it — every get()/set() would silently no-op against a
+	 * missing table (WPDB degrades quietly, it doesn't fatal) rather than
+	 * persisting anything. The schema matches the existing production
+	 * table exactly.
 	 */
 	private static function maybe_create_table(): void {
 		if ( self::$table_ensured ) {
@@ -96,7 +90,7 @@ class MMI_Settings {
 		dbDelta( $sql );
 
 		if ( class_exists( 'MMI_Logger' ) ) {
-			MMI_Logger::info( 'wp_mmi created (self-healing, no mmi-hub required)', array(), 'database', 'MMI_Settings' );
+			MMI_Logger::info( 'wp_mmi created (self-healing)', array(), 'database', 'MMI_Settings' );
 		}
 	}
 
@@ -119,7 +113,6 @@ class MMI_Settings {
 			'wp_throttle_'    => 'Throttler',
 			'mmi_vip_'        => 'VIP',
 			'mmi_stripe_'     => 'Stripe',
-			'mmi_hub_'        => 'MMI Hub',
 			'mmi_ai_'         => 'AI',
 		);
 		foreach ( $prefixes as $prefix => $tab ) {

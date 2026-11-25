@@ -3,7 +3,7 @@
  * 
  * Shared AJAX utilities for all MMI plugins
  * 
- * @package MMI_Hub
+ * @package MannMade
  * @since 1.0.7
  */
 

@@ -2,20 +2,18 @@
 /**
  * MMI_DB — Custom database abstraction (bundled/vendored copy).
  *
- * Identical behavior to the original mmi-hub/includes/class-mmi-db.php this was
- * vendored from (ADR-0007, superseding ADR-0002's mmi-hub-only placement) — same
- * wp_mmi_vip_* tables, same schema/migration logic. Only ever loaded once per
+ * Owns the wp_mmi_vip_* tables and their schema/migration logic (ADR-0007).
+ * Only ever loaded once per
  * request, by whichever plugin's bundled copy wins version negotiation in
  * bootstrap.php — see ADR-0006. Do not hand-edit this file in a single plugin;
  * edit the canonical source (mmi-admin/lib/mmi-shared/) and re-sync
  * (sync-to-plugins.sh) to every plugin that bundles it.
  *
- * One behavioral addition over the mmi-hub original: lazy self-healing table
- * creation (see ensure_tables() below) — mmi-hub's own installer only ever
- * called maybe_create_tables() once, from its own activation hook, which a
- * genuinely standalone site (mmi-hub never installed) would never run.
+ * Tables are created lazily (see ensure_tables() below) rather than only from
+ * an activation hook, so a site where no activation hook has run still gets
+ * them.
  *
- * Replaces wp_options and WP transients for all mmi-vip data.
+ * Replaces wp_options and WP transients for mmi-admin's data.
  * All storage is in dedicated custom tables prefixed with {wpdb->prefix}mmi_vip_*.
  *
  * Active tables (Step-D consolidation — 5 tables):
@@ -56,8 +54,7 @@ class MMI_DB {
 	 * first guarantees that table (and every other active table) exists.
 	 * Idempotent: maybe_create_tables() itself uses CREATE TABLE IF NOT
 	 * EXISTS / INFORMATION_SCHEMA-guarded ALTERs, so calling it on a site
-	 * that already has every table (i.e. mmi-hub is present and already
-	 * ran its own activation hook) is cheap after the very first call this
+	 * that already has every table is cheap after the very first call this
 	 * request, and correct either way.
 	 */
 	private static function ensure_tables(): void {
@@ -1028,7 +1025,7 @@ class MMI_DB {
 		// MMI_Xchange_API_Client::self_heal_assets_url()'s shape: derive the
 		// known value and persist it via set_primary_key() so it becomes real
 		// saved state every later reader sees directly, not a per-request
-		// fallback recomputed on each call. mmi-hub stays supplier-agnostic —
+		// fallback recomputed on each call. This class stays supplier-agnostic —
 		// the actual per-supplier defaults are supplied by whichever plugin
 		// integrates that supplier, via this filter.
 		if ( $key_type === 'source' ) {

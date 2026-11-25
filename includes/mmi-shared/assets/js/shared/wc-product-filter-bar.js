@@ -2,7 +2,7 @@
  * MMI WC Product Filter Bar
  *
  * Shared behaviour module for the standard WooCommerce product filter bar rendered
- * by mmi-hub/includes/admin/views/partials/wc-product-filter-bar.php.
+ * by MMI_WC_Product_Filter_Handler::render() (shared library).
  *
  * Usage (in the plugin's own admin JS):
  *
@@ -23,7 +23,7 @@
  * The module attaches to elements rendered by the PHP partial (IDs prefixed with 'wc-').
  * It does NOT inject HTML — all UI is server-rendered.
  *
- * @package MMI_Hub
+ * @package MannMade
  */
 
 /* global jQuery, mmiGlobal */

@@ -1,14 +1,11 @@
 <?php
 /**
- * MMI Subscription Conflict Notice (bundled/vendored copy) — mmi-hub-elimination
- * Phase 7, mmi-admin/docs/decisions/.
+ * MMI Subscription Conflict Notice (bundled/vendored copy) — ADR-0006,
+ * mmi-admin/docs/decisions/.
  *
- * Identical to the original mmi-hub/includes/subscriptions/class-subscription-
- * conflict-notice.php. Found unguarded in mmi-admin's
- * MMI_Subscription_License_Adapter::__construct() (instantiated unconditionally
- * from mmi-admin.php) during Phase 7's standalone-activation test — a real,
- * previously-undiscovered fatal the moment mmi-hub was absent. Only ever
- * loaded once per request, by whichever plugin's bundled copy wins version
+ * mmi-admin's MMI_Subscription_License_Adapter::__construct() uses this class
+ * unconditionally, so it must always be available. Only ever loaded once per
+ * request, by whichever plugin's bundled copy wins version
  * negotiation in bootstrap.php — see ADR-0006. Do not hand-edit this file in
  * a single plugin; edit the canonical source (mmi-admin/lib/mmi-shared/) and
  * re-sync (sync-to-plugins.sh) to every plugin that bundles it.
@@ -82,16 +79,16 @@ class MMI_Subscription_Conflict_Notice {
 		?>
 		<div class="notice notice-error">
 			<p>
-				<strong><?php esc_html_e( 'MMI Hub — Subscription plugin conflict', 'mmi-hub' ); ?>:</strong>
-				<?php esc_html_e( 'WooCommerce Subscriptions and MMI Subscriptions are both active. Only one subscription plugin may run at a time. License renewals and subscription switching are suspended until you deactivate one.', 'mmi-hub' ); ?>
+				<strong><?php esc_html_e( 'MannMade — Subscription plugin conflict', 'mmi-shared' ); ?>:</strong>
+				<?php esc_html_e( 'WooCommerce Subscriptions and MMI Subscriptions are both active. Only one subscription plugin may run at a time. License renewals and subscription switching are suspended until you deactivate one.', 'mmi-shared' ); ?>
 			</p>
 			<p>
 				<a href="<?php echo esc_url( $wcs_url ); ?>" class="button button-secondary">
-					<?php esc_html_e( 'Deactivate WooCommerce Subscriptions', 'mmi-hub' ); ?>
+					<?php esc_html_e( 'Deactivate WooCommerce Subscriptions', 'mmi-shared' ); ?>
 				</a>
 				&nbsp;
 				<a href="<?php echo esc_url( $mmi_url ); ?>" class="button button-secondary">
-					<?php esc_html_e( 'Deactivate MMI Subscriptions', 'mmi-hub' ); ?>
+					<?php esc_html_e( 'Deactivate MMI Subscriptions', 'mmi-shared' ); ?>
 				</a>
 			</p>
 		</div>

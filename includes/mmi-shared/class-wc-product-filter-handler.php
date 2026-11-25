@@ -1,15 +1,9 @@
 <?php
 /**
  * WC Product Filter Bar — sanitize + SQL support for the shared search/stock/image/price
- * filter bar (js/shared/wc-product-filter-bar.js, MMI_WcFilterBar). That JS module has
- * been bundled suite-wide since the mmi-hub-elimination migration, but its PHP
- * counterpart (this class, plus the rendering partial and the pill-count AJAX handler)
- * was never migrated out of mmi-hub — every call site across the suite degraded to
- * `class_exists('MMI_HUB')` (permanently false) or `class_exists('MMI_WC_Product_Filter_Handler')`
- * (previously undefined), so the filters silently never applied anywhere. Rebuilt here,
- * in the shared library, once a second real consumer (mmi-data-pipeline's Review &
- * Compare panel, alongside mmi-google-services' Schema Health tab) confirmed this is
- * genuinely cross-plugin rather than a single plugin's concern — see AGENTS.md's CSS
+ * filter bar (js/shared/wc-product-filter-bar.js, MMI_WcFilterBar). It lives in the
+ * shared library because it has more than one consumer (mmi-data-pipeline's Review &
+ * Compare panel and mmi-google-services' Schema Health tab) — see AGENTS.md's CSS
  * Ownership rule.
  *
  * @package MannMade\SharedLib

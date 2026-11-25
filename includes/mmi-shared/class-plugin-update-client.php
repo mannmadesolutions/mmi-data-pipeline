@@ -11,8 +11,8 @@
  * specifically to not collide with "Updater Trait" in the same folder.
  *
  * Client-side half of the self-hosted plugin updater. The server half —
- * MMI_Extensions_REST_Controller in mmi-admin, GET mmi-hub/v1/extensions
- * and mmi-hub/v1/extensions/{slug}/download — is internal-only, mannmade.us
+ * MMI_Extensions_REST_Controller in mmi-admin, GET mmi/extensions
+ * and mmi/extensions/{slug}/download — is internal-only, mannmade.us
  * tooling; this class is what customer sites actually run, bundled into
  * every mmi-* plugin the same way MMI_Settings/MMI_Logger are. It hooks
  * WordPress's native plugin-update machinery so an mmi-* plugin behaves
@@ -35,7 +35,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MMI_Plugin_Update_Client {
 
-    const CATALOG_URL           = 'https://mannmade.us/wp-json/mmi-hub/v1/extensions';
+    const CATALOG_URL           = 'https://mannmade.us/wp-json/mmi/extensions';
     const CATALOG_TRANSIENT     = 'mmi_update_client_catalog';
     const CATALOG_STALE_SETTING = 'mmi_update_client_catalog_stale';
     const CATALOG_TTL           = 6 * HOUR_IN_SECONDS;

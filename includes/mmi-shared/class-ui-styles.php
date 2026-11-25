@@ -4,11 +4,7 @@
  *
  * Schema/defaults/sanitize source for mmi-admin's Style Manager tab
  * (class-style-manager.php), the CSS-custom-property counterpart to
- * MMI_Email_Templates. Like that class, this one lived in mmi-hub only and
- * was deleted with it (1.173.0, 2026-09-17) without ever being rebuilt —
- * unlike MMI_Email_Templates (rebuilt changelog 1.187.0), Style Manager sat
- * with an honest "not currently functional" placeholder until this class was
- * written (2026-09-19).
+ * MMI_Email_Templates.
  *
  * Every field below is bound to a CSS custom property that mmi-suite-common.css
  * consumes with a `var(--mmi-x, <fallback>)` pattern. Each field's 'default'

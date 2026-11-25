@@ -2,17 +2,12 @@
 /**
  * MMI_Product — product ORM (bundled/vendored copy).
  *
- * Vendored from mmi-hub/includes/models/class-product-model.php, with one
- * addition: maybe_create_table(), called once per request the first time any
- * MMI_Product method touches the table. mmi-hub never actually creates
- * wp_mmi_products via its own installer's activation hook either — it only
- * ever existed on mannmade.us because a legacy migration script
- * (migrate-credentials-to-mmi-table.php) happened to run once, long ago, and
- * the table has persisted since. A genuinely standalone site (mmi-hub never
- * installed) gets no such migration, so without this the table simply never
- * exists — not a fatal (MMI_Model's queries degrade to null/empty/false
- * against a missing table, same as MMI_Settings), but a real silent
- * persistence gap: product sync state quietly never saves. See ADR-0006.
+ * maybe_create_table() runs once per request the first time any MMI_Product
+ * method touches the table. No activation hook creates wp_mmi_products, so
+ * without it a fresh site would never have the table — not a fatal
+ * (MMI_Model's queries degrade to null/empty/false against a missing table,
+ * same as MMI_Settings), but product sync state would silently never save.
+ * See ADR-0006.
  * Do not hand-edit this file in a single plugin; edit the canonical source
  * and re-sync to every plugin that bundles it.
  *
@@ -31,11 +26,9 @@ class MMI_Product extends MMI_Model {
 	private static $table_ensured = false;
 
 	/**
-	 * Create wp_mmi_products if it doesn't exist yet. Schema copied verbatim
-	 * from mmi-hub/includes/class-installer.php's create_tables() so a table
-	 * created this way is byte-for-byte identical to one mmi-hub would have
-	 * created — dbDelta() is idempotent, so this is safe to call even when
-	 * mmi-hub (or another plugin's bundled copy) already created the table.
+	 * Create wp_mmi_products if it doesn't exist yet. The schema matches the
+	 * existing production table exactly — dbDelta() is idempotent, so this is
+	 * safe to call even when the table already exists.
 	 */
 	public static function maybe_create_table(): void {
 		if ( self::$table_ensured ) {
@@ -96,7 +89,7 @@ class MMI_Product extends MMI_Model {
 		dbDelta( $sql );
 
 		if ( class_exists( 'MMI_Logger' ) ) {
-			MMI_Logger::info( 'wp_mmi_products created (self-healing, no mmi-hub required)', array(), 'database', 'MMI_Product' );
+			MMI_Logger::info( 'wp_mmi_products created (self-healing)', array(), 'database', 'MMI_Product' );
 		}
 	}
 

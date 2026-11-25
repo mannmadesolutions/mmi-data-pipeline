@@ -2,10 +2,9 @@
 /**
  * MMI_API_Throttler — centralized, per-API-host rate limiter (bundled/vendored copy).
  *
- * Identical to the original mmi-hub/includes/class-api-throttler.php this was
- * vendored from. All state lives in WP transients (not a per-plugin table),
- * so this class is inherently shareable as-is once only one copy is ever
- * loaded per request — see ADR-0006. Do not hand-edit this file in a single
+ * All state lives in WP transients (not a per-plugin table), so this class
+ * is shareable as-is because only one copy is ever loaded per request — see
+ * ADR-0006. Do not hand-edit this file in a single
  * plugin; edit the canonical source and re-sync to every plugin that bundles
  * it.
  *

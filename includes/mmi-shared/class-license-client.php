@@ -2,7 +2,6 @@
 /**
  * MMI License Client (bundled/vendored copy) — ADR-0008, mmi-admin/docs/decisions/.
  *
- * Identical to the original mmi-hub/includes/licensing/class-license-client.php.
  * Only ever loaded once per request, by whichever plugin's bundled copy wins
  * version negotiation in bootstrap.php — see ADR-0006. Do not hand-edit this
  * file in a single plugin; edit the canonical source (mmi-admin/lib/mmi-shared/)
@@ -19,7 +18,7 @@
  * remain available during temporary server unavailability (up to 7-day
  * grace period).
  *
- * @package MannMade\Hub\Licensing
+ * @package MannMade\Licensing
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -37,7 +36,7 @@ class MMI_License_Client {
     const SERVER_URL = 'https://mannmade.us';
 
     /** REST namespace on the license server. */
-    const REST_BASE = '/wp-json/mmi/v1';
+    const REST_BASE = '/wp-json/mmi';
 
     /** HTTP timeout for license requests (seconds). */
     const TIMEOUT = 15;
@@ -66,7 +65,7 @@ class MMI_License_Client {
     /**
      * Activate a license key on this site.
      *
-     * POSTs to /wp-json/mmi/v1/license/activate.
+     * POSTs to /wp-json/mmi/license/activate.
      * On success, persists the result to MMI_Settings and resets the
      * failure counter.
      *
@@ -84,7 +83,6 @@ class MMI_License_Client {
             'domain'         => $domain,
             'php_version'    => PHP_VERSION,
             'wp_version'     => get_bloginfo( 'version' ),
-            'plugin_version' => defined( 'MMI_HUB_VERSION' ) ? MMI_HUB_VERSION : '',
         ] );
 
         if ( $response['network_error'] ?? false ) {
@@ -104,7 +102,7 @@ class MMI_License_Client {
     /**
      * Validate (check-in) a previously activated license.
      *
-     * POSTs to /wp-json/mmi/v1/license/validate.
+     * POSTs to /wp-json/mmi/license/validate.
      * On network failure increments the failure counter and returns
      * the locally-cached response if still within the grace window.
      * If the server explicitly invalidates the license, clears the cache.
@@ -121,7 +119,6 @@ class MMI_License_Client {
             'license_key'    => $license_key,
             'plugin_slug'    => $plugin_slug,
             'domain'         => $domain,
-            'plugin_version' => defined( 'MMI_HUB_VERSION' ) ? MMI_HUB_VERSION : '',
         ] );
 
         if ( $response['network_error'] ?? false ) {
@@ -171,7 +168,7 @@ class MMI_License_Client {
     /**
      * Start a free trial for a plugin or bundle scope.
      *
-     * POSTs to /wp-json/mmi/v1/license/trial to create the trial key on
+     * POSTs to /wp-json/mmi/license/trial to create the trial key on
      * the server, then immediately activates it on this site.
      *
      * @param  string      $email
@@ -195,7 +192,7 @@ class MMI_License_Client {
         if ( empty( $response['success'] ) ) {
             return [
                 'success' => false,
-                'error'   => $response['error'] ?? __( 'Trial could not be started. Please try again.', 'mmi-hub' ),
+                'error'   => $response['error'] ?? __( 'Trial could not be started. Please try again.', 'mmi-shared' ),
             ];
         }
 
@@ -211,7 +208,7 @@ class MMI_License_Client {
                 'manual'      => true,
                 'message'     => sprintf(
                     /* translators: %s: license key */
-                    __( 'Trial started! Your key is %s. Enter it in the activation form above.', 'mmi-hub' ),
+                    __( 'Trial started! Your key is %s. Enter it in the activation form above.', 'mmi-shared' ),
                     $key
                 ),
             ];
@@ -222,7 +219,7 @@ class MMI_License_Client {
             'license_key'=> $key,
             'is_trial'   => true,
             'trial_days' => 14,
-            'message'    => __( 'Your 14-day free trial is now active!', 'mmi-hub' ),
+            'message'    => __( 'Your 14-day free trial is now active!', 'mmi-shared' ),
         ] );
     }
 
@@ -293,7 +290,7 @@ class MMI_License_Client {
         if ( empty( $response['success'] ) ) {
             // Rate-limited or rejected — same backoff as a network failure.
             set_transient( $backoff_key, 1, 15 * MINUTE_IN_SECONDS );
-            return [ 'success' => false, 'error' => $response['error'] ?? __( 'Could not verify trial status.', 'mmi-hub' ) ];
+            return [ 'success' => false, 'error' => $response['error'] ?? __( 'Could not verify trial status.', 'mmi-shared' ) ];
         }
 
         if ( ! empty( $response['license_key'] ) ) {

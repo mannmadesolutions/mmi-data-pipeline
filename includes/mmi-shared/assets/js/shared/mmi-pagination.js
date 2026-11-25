@@ -60,7 +60,7 @@
  * page-state to own client-side, the next real page load re-renders fresh
  * from the server's own $current_page/$total_pages, same as today.
  *
- * @package MannMade\Hub
+ * @package MannMade
  */
 
 window.MMIPagination = (function ($) {

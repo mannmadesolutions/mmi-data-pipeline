@@ -2,12 +2,9 @@
 /**
  * Centralized Logger utility for all MMI plugins (bundled/vendored copy).
  *
- * Same behavior as the original mmi-hub/includes/class-logger.php this was
- * vendored from, with one change: log directory resolution no longer depends
- * on the mmi-hub-specific MMI_HUB_LOG_DIR constant — it uses
- * mmi_shared_lib_log_dir() (bootstrap.php), which defaults to a suite-wide
- * wp-content/mmi-logs directory independent of any single plugin's own
- * folder. See ADR-0006. Do not hand-edit this file in a single plugin; edit
+ * The log directory comes from mmi_shared_lib_log_dir() (bootstrap.php),
+ * which defaults to a suite-wide wp-content/mmi-logs directory independent
+ * of any single plugin's own folder. See ADR-0006. Do not hand-edit this file in a single plugin; edit
  * the canonical source and re-sync to every plugin that bundles it.
  *
  * @package MannMade\SharedLib

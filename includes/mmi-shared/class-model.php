@@ -2,9 +2,7 @@
 /**
  * MMI_Model — base ORM for custom tables (bundled/vendored copy).
  *
- * Identical to the original mmi-hub/includes/models/class-model.php this was
- * vendored from. Already fully self-contained ($wpdb-only, no mmi-hub-specific
- * constant) — degrades gracefully (returns null/empty/false, never fatals) if
+ * Self-contained ($wpdb only) — degrades gracefully (returns null/empty/false, never fatals) if
  * a subclass's table doesn't exist, same as MMI_Settings. See ADR-0006. Do not
  * hand-edit this file in a single plugin; edit the canonical source and
  * re-sync to every plugin that bundles it.

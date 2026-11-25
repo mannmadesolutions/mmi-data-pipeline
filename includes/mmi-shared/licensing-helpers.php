@@ -3,7 +3,6 @@
  * MMI License Helpers — Global Functions (bundled/vendored copy) — ADR-0008,
  * mmi-admin/docs/decisions/.
  *
- * Identical logic to the original mmi-hub/includes/licensing/class-license-helpers.php.
  * Unlike the classes in this directory, these are plain global functions —
  * PHP has no autoloading mechanism for functions, so this file is `require_once`'d
  * EAGERLY from bootstrap.php (every function wrapped in `function_exists()`, the

@@ -14,7 +14,7 @@
  * Sort indicator classes (.sorted-asc / .sorted-desc) and the ⇅ / ▲ / ▼
  * pseudo-element arrows are defined in mmi-suite-common.css.
  *
- * @package MMI_Hub
+ * @package MannMade
  * @version 1.0.0
  */
 

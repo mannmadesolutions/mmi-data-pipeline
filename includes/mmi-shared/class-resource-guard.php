@@ -2,11 +2,8 @@
 /**
  * MMI_Resource_Guard — centralized server-load/memory gate (bundled/vendored copy).
  *
- * Identical to the original mmi-hub/includes/class-resource-guard.php this was
- * vendored from. Already fully self-contained (reads /proc directly, only
- * optionally touches MMI_Logger behind its own class_exists() guard) — no
- * behavioral change needed to vendor it, unlike MMI_Logger's log-dir
- * dependency. See ADR-0006. Do not hand-edit this file in a single plugin;
+ * Self-contained: reads /proc directly and only touches MMI_Logger behind
+ * its own class_exists() guard. See ADR-0006. Do not hand-edit this file in a single plugin;
  * edit the canonical source and re-sync to every plugin that bundles it.
  *
  * @package MannMade\SharedLib

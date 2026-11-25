@@ -89,8 +89,8 @@
 
   /* Component Tokens — editable via mmi-admin's Style Manager tab
      (MMI_UI_Styles). Values here are the built-in fallback if that tab's
-     shipped overrides are ever absent; keep in sync with
-     mmi-hub/includes/css/ui-style-tokens-default.php's own defaults. */
+     shipped overrides are ever absent; keep in sync with the field
+     defaults in class-ui-styles.php. */
   --mmi-header-bg-start: #ffffff;
   --mmi-header-bg-end: #f8f9fa;
   --mmi-header-border-color: var(--mmi-primary);
@@ -1148,7 +1148,7 @@ div.wrap div.mmi-header p,
 /* ── Release-status badges ──────────────────────────────────────────────
  * Base rule carries no vertical margin — it's used standalone now (mmi-admin's
  * Extension Manager legend + table cell, AGENTS.md changelog 1.117.0) as well
- * as stacked under an ACTIVE/INACTIVE badge (mmi-hub's centralized menu,
+ * as stacked under an ACTIVE/INACTIVE badge (.mmi-extension-status-badge,
  * below). The 6px gap for that stacked case is scoped to its own container
  * instead of baked into this class — it was, until 1.118.0's fix, and made
  * the Extension Manager's table rows visibly uneven (this badge sat 6px
@@ -1162,7 +1162,7 @@ div.wrap div.mmi-header p,
   text-transform: uppercase;
   letter-spacing: 0.7px;
 }
-/* Stacked-under-a-badge case only — mmi-hub's centralized menu. */
+/* Stacked-under-a-badge case only. */
 .mmi-extension-status-badge .mmi-release-status-badge {
   margin-top: 6px;
 }
@@ -3278,8 +3278,8 @@ div.wrap div.mmi-header p,
  * reference: already spans 2 plugins, already gets the [hidden] cascade
  * rule right, already stacks above WP admin's chrome) but kept as its own
  * generically-named class rather than renaming .mmi-fcp-* in place, so nothing
- * already built on that panel had to change. mmi-hub/assets/js/shared/
- * mmi-modal.js is the JS half — backdrop click, Esc, and a focus trap, none
+ * already built on that panel had to change. js/shared/mmi-modal.js is the
+ * JS half — backdrop click, Esc, and a focus trap, none
  * of which any prior implementation had.
  *
  * Usage: a caller renders the markup below (see mmi-modal.js's JSDoc for the
@@ -3394,7 +3394,7 @@ div.wrap div.mmi-header p,
  * suite, zero shared — mmi-import-pipeline alone ran three incompatible ones
  * at once. This is the "Compact" variant (prev/next + a page label):
  * smallest footprint, and the right fit for AJAX-repaginated data (a server
- * fetch per page) — see mmi-hub/assets/js/shared/mmi-pagination.js for the
+ * fetch per page) — see js/shared/mmi-pagination.js for the
  * in-memory-slice variant used with already-loaded data, per this suite's
  * Data Tables convention of never re-fetching to page data already in hand. */
 /* --mmi-pagination-padding/-gap/-label-color/-btn-bg/-btn-border-color/
@@ -3472,17 +3472,10 @@ div.wrap div.mmi-header p,
 }
 
 /* ── Toggle switch ─────────────────────────────────────────────────────
- * Moved here from mmi-import-pipeline/assets/css/import-settings.css and
- * mmi-vip/assets/css/admin.css, which each defined their own near-duplicate
- * copy (a CSS Ownership violation — a class used by more than one plugin
- * belongs here, not in either plugin's own stylesheet) at 44×24px with a
- * slightly different checked color (green vs. WP admin blue) and no shared
- * indeterminate-state rule. Slimmed down at the same time per request: was
- * 44×24 with an 18px knob, now 34×18 with a 14px knob — still comfortably
- * clickable, reads less bulky next to normal-sized text and buttons.
- * Standardized on --mmi-primary for the checked state everywhere (mmi-vip's
- * toggles were the only ones using WP's blue instead of the suite's brand
- * color). Indeterminate state (half-filled slider) is for master "toggle
+ * The one shared toggle (CSS Ownership — a class used by more than one
+ * plugin belongs here, not in a plugin's own stylesheet). 34×18 with a 14px
+ * knob — comfortably clickable, not bulky next to normal-sized text and
+ * buttons. --mmi-primary is the checked state everywhere. Indeterminate state (half-filled slider) is for master "toggle
  * all" switches — see mmi-import-pipeline/assets/js/export-settings.js and
  * import-settings.js for the checked > 0 && checked < total JS pattern that
  * sets it via .prop('indeterminate', ...) (no HTML attribute equivalent).

@@ -48,8 +48,7 @@
  *
  * ADR-0007 (2026-09-17) added MMI_DB, MannMade\Integrations\HTTP\HTTPClient,
  * and MannMade\Integrations\Helpers\MMI_Updater_Trait as an 8th/9th/10th
- * bundled class — superseding ADR-0002's decision to keep MMI_DB mmi-hub-only,
- * which stopped making sense once mmi-hub itself started being eliminated.
+ * bundled class, superseding ADR-0002.
  *
  * ADR-0008 (2026-09-17) added MMI_License_API and MMI_License_Client as an
  * 11th/12th bundled class, plus a NEW mechanism shape: licensing-helpers.php
@@ -60,9 +59,8 @@
  * limitation this introduces (lower risk than it sounds — these are thin,
  * stable wrappers around the already-version-negotiated MMI_Settings::get()).
  *
- * mmi-hub-elimination Phase 7 (2026-09-17) added MMI_Subscription_Conflict_Notice
- * as a 13th bundled class — found genuinely unguarded (a real fatal, caught
- * live on studiomann.com) in mmi-admin's subscription-license adapter.
+ * MMI_Subscription_Conflict_Notice (2026-09-17) is the 13th bundled class:
+ * mmi-admin's subscription-license adapter uses it unguarded.
  *
  * Added MMI_Software_Fulfillment (2026-09-23): vendor-neutral software
  * license delivery core — provider registry, per-line-item placed/fulfilled
@@ -74,89 +72,66 @@
  * 1.46.27: MMI_Order_Conversation_Gmail (reply by email), delivery channels,
  * My Account Messages tab. 1.46.28: drafted answers (provider via filter); 1.46.29: background drafts (pending + poll); 1.46.30: one look for staff and customer, email samples; 1.46.31: attachments (products, coupons), shared staff panel + script; 1.46.32: tools pane state fix; 1.46.33: per-order on/off (Reverb orders stay in Reverb); 1.46.34: Reverb's conversation look (avatars, meta under the text, composer box with attach bar, pill buttons); 1.46.35: AI button improves staff text (mmi_order_conversation_ai_improve_label), with Undo; 1.46.36: My Account Orders "Message us" + Messages "New message" order picker; 1.46.37: both sides emailed ~1 minute after a message; 1.46.38: read receipts (seen_at, DB 4).
  *
- * Added MMI_Marketplace_Order_Sources as a 14th bundled class (2026-09-17,
- * same day): it also lived in mmi-hub and was missed during the elimination
- * migration, silently disabling mmi-xchange-integration's duplicate-order
- * protection for Reverb-imported orders (found via Intelephense's undefined-
- * type flags on the dangling class references, then confirmed as a live gap
- * against mmi-reverb-integration.php's registration call and
- * mmi-xchange-integration's two consumers). See class-marketplace-order-
- * sources.php's own docblock for the rebuild rationale.
+ * Added MMI_Marketplace_Order_Sources as a 14th bundled class (2026-09-17):
+ * mmi-xchange-integration's duplicate-order protection for Reverb-imported
+ * orders depends on it. See class-marketplace-order-sources.php's own
+ * docblock.
  *
  * Added the shared suite parent menu (2026-09-18, see the section below) —
- * restores the single "MannMade" top-level admin menu every mmi-* plugin
- * used to attach under via mmi-hub's own MMI_Centralized_Menu, lost when
- * mmi-hub was deleted in Phase 8 and every migrated plugin's dormant
- * class_exists('MMI_Centralized_Menu') fallback started unconditionally
- * registering its own top-level menu instead.
+ * the single "MannMade" top-level admin menu every mmi-* plugin attaches
+ * under.
  *
- * Added MMI_Email_Templates as a 15th bundled class (2026-09-18): it also
- * lived in mmi-hub only and was missed by the elimination migration — every
- * call site was already class_exists()-guarded so nothing fataled, but every
- * branded MMI email (the daily data-pipeline digest, Reverb/XChange/license
- * alerts, the mmi-email-customizer "MMI Emails" tab) silently degraded to
- * plain text or stopped rendering once mmi-hub was deleted. Reconstructed
- * from call-site evidence across 6 plugins; its shipped-default token file
- * (email-tokens-default.php, a sibling in this same directory) replaces
- * mmi-hub's deleted includes/email/email-tokens-default.php. See
- * class-email-templates.php's own docblock for the full design and a still-
- * broken "Ship to mmi-hub" packaging pipeline this does not fix.
+ * Added MMI_Email_Templates as a 15th bundled class (2026-09-18): renders
+ * every branded MMI email (the daily data-pipeline digest, Reverb/XChange/
+ * license alerts, the mmi-email-customizer "MMI Emails" tab). Its call sites
+ * are class_exists()-guarded, so without it those emails silently degrade to
+ * plain text. Its shipped-default token file is email-tokens-default.php (a
+ * sibling in this same directory). See class-email-templates.php's own
+ * docblock for the full design.
  *
  * Added MMI_Environment as an 18th bundled class (2026-09-19): its one real
  * call site, MMI_Xchange_API_Client::guard_production_only(), fails CLOSED
  * when the class can't be found (refuses the call rather than assuming it's
- * safe) — so unlike every class_exists()-guarded gap found so far, this one
- * caused no fatal, just a silent, total block on every real XChange order
- * placement (reserve/finalize/void/place_order) since mmi-hub's deletion
- * (1.173.0, 2026-09-17), misreported as an XChange account restriction
- * because the resulting local guard message contains the word "disabled".
- * Confirmed via the order data itself: the last auto-generated PO number
- * belongs to an order placed 2026-09-16 23:35, nothing since. Rebuilt on
- * WordPress core's own wp_get_environment_type() — see
- * class-environment.php's own docblock.
+ * safe) — so without it every real XChange order placement
+ * (reserve/finalize/void/place_order) is silently blocked, and the local
+ * guard message (which contains the word "disabled") reads like an XChange
+ * account restriction. Built on WordPress core's own
+ * wp_get_environment_type() — see class-environment.php's own docblock.
  *
  * Added MMI_UI_Styles as a 19th bundled class (2026-09-19): the Style Manager
  * tab's schema/sanitize/published-tokens source, same shape as
  * MMI_Email_Templates (class-email-templates.php) but for the suite-wide
  * admin UI's CSS custom properties (header/card/table/button/log/stat-tile)
- * instead of email colors. Also lived in mmi-hub only and was never rebuilt —
- * every call site already class_exists()-guarded, so Style Manager degraded
- * to an honest "no schema" placeholder rather than a fatal (see
- * class-ui-styles.php's own docblock for the full rationale and why this one
- * needed a genuine design pass rather than a mechanical restoration). Ship
- * writes ui-style-tokens-default.php (a sibling in this directory, generated
+ * instead of email colors. Every call site is class_exists()-guarded, so
+ * without it Style Manager shows a "no schema" placeholder rather than
+ * fataling (see class-ui-styles.php's own docblock). Ship writes ui-style-tokens-default.php (a sibling in this directory, generated
  * the same way email-tokens-default.php is) and this bootstrap's own asset
  * registration below applies it suite-wide via wp_add_inline_style() against
  * the mmi-suite-common handle, only once that file actually exists.
  *
  * Added MMI_Taxonomy_Filter_Handler as a 17th bundled class (2026-09-19):
- * the generic mmi_get_taxonomy_terms AJAX action js/shared/taxonomy-filter.js
- * fires (Reverb's Products tab Brand/Category/Distribution filters) had zero
- * registered listeners — confirmed live via $wp_filter — exactly the same
- * migration gap as MMI_WC_Product_Filter_Handler below, just for its sibling
- * shared JS module. See class-taxonomy-filter-handler.php's own docblock.
+ * registers the generic mmi_get_taxonomy_terms AJAX action
+ * js/shared/taxonomy-filter.js fires (Reverb's Products tab
+ * Brand/Category/Distribution filters) — the PHP half of that shared JS
+ * module, like MMI_WC_Product_Filter_Handler below. See
+ * class-taxonomy-filter-handler.php's own docblock.
  *
  * Added MMI_Guest_Customer_Converter as a 20th bundled class (2026-09-19):
- * also lived in mmi-hub only and was never rebuilt — every call site in both
- * consuming plugins (mmi-reverb-integration, mmi-xchange-integration) was
- * already class_exists()-guarded, so nothing fataled, but the feature went
- * completely dark: Reverb's automatic buyer-email-reply conversion silently
- * no-ops, XChange's manual-fulfillment "verified after external import"
- * check fails permanently closed, and the Orders tab's "Link to Customer"
- * button posts to an AJAX action (mmi_guest_customer_convert) nothing had
- * registered a handler for. Reconstructed from calling-convention evidence
- * across both plugins — see class-guest-customer-converter.php's own
- * docblock. Also registers the mmi_guest_customer_convert AJAX action
+ * used by mmi-reverb-integration and mmi-xchange-integration behind
+ * class_exists() guards. Without it Reverb's automatic buyer-email-reply
+ * conversion silently no-ops, XChange's manual-fulfillment "verified after
+ * external import" check fails closed, and the Orders tab's "Link to
+ * Customer" button (AJAX action mmi_guest_customer_convert) has no handler —
+ * see class-guest-customer-converter.php's own docblock. Also registers the mmi_guest_customer_convert AJAX action
  * eagerly below, same shape as the WC filter-bar/taxonomy-filter handlers.
  *
- * Added MMI_Plugin_Update_Client as a 21st bundled class (2026-09-19): a
- * genuinely new feature, not a mmi-hub-elimination casualty — no customer
- * site has ever had a WordPress-native plugin updater. Named "Plugin
+ * Added MMI_Plugin_Update_Client as a 21st bundled class (2026-09-19): the
+ * WordPress-native plugin updater for customer sites. Named "Plugin
  * Update Client" rather than "Update Client" specifically to not collide
  * with MMI_Updater_Trait (trait-updater.php, same directory, an unrelated
  * data-feed helper — see that class's own docblock note). Hooks
  * pre_set_site_transient_update_plugins/plugins_api against mmi-admin's new
- * MMI_Extensions_REST_Controller (GET mmi-hub/v1/extensions[/{slug}/
+ * MMI_Extensions_REST_Controller (GET mmi/extensions[/{slug}/
  * download], itself rebuilding a dead route both MMI_Extensions_Manager and
  * MMI_Package_Publisher's Verify Package check had been silently failing
  * against) so every mmi-* plugin gets a real "Update available" row,
@@ -167,13 +142,10 @@
  * See class-plugin-update-client.php's own docblock for the full design.
  *
  * Added MMI_WC_Product_Filter_Handler as a 16th bundled class (2026-09-18):
- * the search/stock/image/price product filter bar (js/shared/wc-product-
- * filter-bar.js, MMI_WcFilterBar — already bundled suite-wide) had no
- * surviving PHP counterpart after mmi-hub's deletion. Every call site
- * degraded gracefully (class_exists() guarded) but the filters silently
- * never applied anywhere. Rebuilt once a second real consumer confirmed
- * this is genuinely cross-plugin — see class-wc-product-filter-handler.php's
- * own docblock. Also registers the mmi_get_wc_product_filter_counts AJAX
+ * the PHP half of the search/stock/image/price product filter bar
+ * (js/shared/wc-product-filter-bar.js, MMI_WcFilterBar). Every call site is
+ * class_exists()-guarded, so without it the filters silently never apply —
+ * see class-wc-product-filter-handler.php's own docblock. Also registers the mmi_get_wc_product_filter_counts AJAX
  * action (the pill-badge counts endpoint) eagerly below, same shape as
  * licensing-helpers.php, since it needs a hook registered once per request
  * rather than a lazily-autoloaded class.
@@ -217,7 +189,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.51.6';
+$mmi_shared_lib_this_copy_version = '1.52.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -398,24 +370,10 @@ if ( ! function_exists( 'mmi_shared_lib_log_dir' ) ) {
 	 * copy of the library actually wins the version negotiation, and
 	 * survives that plugin later being deactivated as long as at least one
 	 * other MMI plugin remains active.
-	 *
-	 * While mmi-hub is still installed (transition period — see ADR-0006),
-	 * it defines MMI_HUB_LOG_DIR very early (mmi-hub.php, before any class
-	 * loads) and its own bundled MMI_Logger copy still writes there whenever
-	 * mmi-hub's own eager require wins the class_exists() race. Preferring
-	 * that same constant here — when it's defined — keeps every log in one
-	 * place regardless of which copy of MMI_Logger actually wins a given
-	 * request, instead of silently splitting entries between mmi-hub/logs/
-	 * and a brand-new wp-content/mmi-logs/ depending on load-order luck.
-	 * Once mmi-hub is actually deleted (Phase 8), MMI_HUB_LOG_DIR stops
-	 * being defined and this falls through to the real standalone default.
 	 */
 	function mmi_shared_lib_log_dir(): string {
 		if ( defined( 'MMI_SHARED_LOG_DIR' ) ) {
 			return untrailingslashit( MMI_SHARED_LOG_DIR );
-		}
-		if ( defined( 'MMI_HUB_LOG_DIR' ) ) {
-			return untrailingslashit( MMI_HUB_LOG_DIR );
 		}
 		// A site that already logs to wp-content/mmi-logs keeps it (its own
 		// server config and scripts point there). Every new install logs into
@@ -599,12 +557,7 @@ if ( ! function_exists( 'mmi_shared_lib_json_dir' ) ) {
 	 * and mmi-xchange-integration must resolve to the identical directory or
 	 * a writer and a reader silently talk past each other.
 	 *
-	 * `MMI_JSON_PATH` was an mmi-hub-era constant this suite no longer
-	 * defines anywhere (confirmed live: defined('MMI_JSON_PATH') === false
-	 * on every site) — checking for it here is a no-op today, kept only so
-	 * a future reintroduction would still be picked up, same rationale as
-	 * MMI_HUB_LOG_DIR above. The real, always-taken path is the standalone
-	 * default — WP_CONTENT_DIR rather than wp_upload_dir() so this matches
+	 * Resolved from WP_CONTENT_DIR rather than wp_upload_dir() so it matches
 	 * mmi_shared_lib_log_dir()'s pattern and needs no WP bootstrap to have
 	 * finished loading.
 	 *
@@ -618,6 +571,8 @@ if ( ! function_exists( 'mmi_shared_lib_json_dir' ) ) {
 	 * empty feed rather than an error. See changelog for the incident.
 	 */
 	function mmi_shared_lib_json_dir(): string {
+		// Override for fixture tests (scripts/skuport-plugivery/), which
+		// point every feed write at a scratch directory.
 		if ( defined( 'MMI_JSON_PATH' ) ) {
 			return trailingslashit( MMI_JSON_PATH );
 		}
@@ -862,36 +817,26 @@ if ( ! function_exists( 'mmi_shared_ajax_guest_customer_convert' ) ) {
 }
 
 /**
- * ── Shared design-system assets (Phase 3, MMI_HUB_ELIMINATION_HANDOFF.md) ──
+ * ── Shared design-system assets ──────────────────────────────────────────
  *
- * mmi-hub's Asset_Manager registers mmi-suite-common.css and 8 shared JS
- * handles (ajax-handler, escape-html, table-manager, taxonomy-filter,
- * wc-filter-bar, column-customizer, modal, pagination) that every plugin's
- * own enqueue calls declare as a dependency BY NAME, not by direct file
- * reference — those already degrade gracefully (WordPress silently drops a
- * missing dependency handle) whether or not mmi-hub is present, so they
- * don't strictly need this section to avoid breaking.
+ * Registers mmi-suite-common.css and the shared JS handles (ajax-handler,
+ * escape-html, table-manager, taxonomy-filter, wc-filter-bar,
+ * column-customizer, modal, pagination) that every plugin's own enqueue
+ * calls declare as a dependency BY NAME (WordPress silently drops a missing
+ * dependency handle, so a gap here doesn't fatal — it just unstyles pages).
  *
- * What DOES need this section: mmi-hub.php's enqueue_global_admin_assets()
- * and Asset_Manager::add_mmi_body_class() apply to EVERY admin page
- * ambiently — no plugin "depends on" them by name, mmi-hub just always
- * provided them. That's the universal column-resizer (CSS+JS), the notice
- * anchor script (required by the Admin Page Shell rule for `.mmi-header` +
- * `.wp-header-end` to actually keep WP core from relocating notices), the
+ * Also applies, ambiently on every admin page, what no plugin asks for by
+ * name: the universal column-resizer (CSS+JS), the notice anchor script
+ * (required by the Admin Page Shell rule for `.mmi-header` +
+ * `.wp-header-end` to keep WP core from relocating notices), the
  * product-category AJAX guard, and the `body.mmi-page` class the Admin Page
- * Shell rule's width-capping CSS relies on. Without mmi-hub, NONE of this
- * fires for any migrated plugin's admin pages — not a fatal, but a real,
- * previously-undocumented visual/behavioral gap this section closes.
+ * Shell rule's width-capping CSS relies on.
  *
- * Design: reuses the same version-negotiated candidate-registry pattern as
- * the class loader above, but as a fully separate registry — isolated from
- * the already-proven class-loading mechanism so a bug here can't affect it.
- * Deliberately simpler on one axis: while mmi-hub IS present, this entire
- * section is a hard no-op (guarded by class_exists('MMI_Hub')) — it never
- * competes with or overrides mmi-hub's own Asset_Manager registrations, so
- * there is zero behavior change on any site where mmi-hub is installed.
- * Only once mmi-hub is genuinely absent does the highest-version registered
- * candidate take over providing these same assets from its own bundled copy.
+ * Design: the same version-negotiated candidate-registry pattern as the
+ * class loader above, but a fully separate registry — isolated from the
+ * class-loading mechanism so a bug here can't affect it. The
+ * highest-version registered candidate serves these assets from its own
+ * bundled copy.
  */
 
 if ( ! function_exists( 'mmi_shared_assets_candidates' ) ) {
@@ -913,8 +858,7 @@ if ( ! function_exists( 'mmi_shared_assets_register' ) ) {
 }
 
 // This copy's assets live in a sibling 'assets/' directory of this same
-// bootstrap.php, mirroring mmi-hub's own assets/css/shared + assets/js/shared
-// layout so file names below need no translation. Uses this copy's OWN
+// bootstrap.php (assets/css/shared + assets/js/shared). Uses this copy's OWN
 // version, not a separately-tracked one — the assets and the PHP classes in
 // this directory are synced together by the same sync-to-plugins.sh run.
 if ( defined( 'ABSPATH' ) ) {
@@ -951,11 +895,7 @@ if ( ! function_exists( 'mmi_shared_assets_should_enqueue_category_guard' ) ) {
 
 if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 	function mmi_shared_assets_enqueue( $hook ): void {
-		// Zero-op whenever mmi-hub is present — its own Asset_Manager /
-		// mmi-hub.php already register every one of these, and must remain
-		// the sole source of truth to avoid any behavior change on a
-		// hub-present site (see class doc comment above).
-		if ( class_exists( 'MMI_Hub' ) || ! is_admin() ) {
+		if ( ! is_admin() ) {
 			return;
 		}
 
@@ -1043,8 +983,8 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 			) );
 		}
 
-		// Ambient, non-dependency-declared assets mmi-hub normally injects on
-		// every admin page regardless of which plugin's page is open.
+		// Ambient, non-dependency-declared assets injected on every admin
+		// page regardless of which plugin's page is open.
 		if ( is_file( $dir . '/css/shared/column-resizer.css' ) ) {
 			wp_enqueue_style( 'mmi-column-resizer', $url . 'css/shared/column-resizer.css', array(), $ver );
 		}
@@ -1073,9 +1013,6 @@ if ( ! function_exists( 'mmi_shared_assets_enqueue' ) ) {
 
 if ( ! function_exists( 'mmi_shared_assets_body_class' ) ) {
 	function mmi_shared_assets_body_class( string $classes ): string {
-		if ( class_exists( 'MMI_Hub' ) ) {
-			return $classes;
-		}
 		$page = isset( $_GET['page'] ) ? sanitize_key( $_GET['page'] ) : '';
 		if ( strncmp( $page, 'mmi-', 4 ) === 0 ) {
 			$classes .= ' mmi-page';
@@ -1281,8 +1218,7 @@ if ( ! function_exists( 'mmi_shared_assets_drop_command_palette' ) ) {
  * ── Nonce refresh (lib 1.46.11, 2026-10-14) ──────────────────────────────
  *
  * A page left open longer than nonce_life (12-24 h) failed every AJAX call
- * with the nonce it printed at load. mmi-hub refreshed nonces through
- * Heartbeat until its deletion (2026-09-17); nothing replaced it.
+ * with the nonce it printed at load.
  *
  * js/shared/mmi-nonce-refresh.js (handle mmi-nonce-refresh, registered in
  * wp-admin and on the front end) fetches fresh values from the
@@ -1349,20 +1285,12 @@ if ( ! defined( 'MMI_SHARED_ASSETS_LOAD_HOOKS_REGISTERED' ) && defined( 'ABSPATH
 /**
  * ── Shared suite parent menu ("MannMade") ────────────────────────────────
  *
- * Before mmi-hub was deleted, every migrated plugin attached its admin page
- * as a single submenu item under mmi-hub's own MMI_Centralized_Menu top-level
- * 'mmi-dashboard' ("MannMade") menu. Each plugin's Phase 4 migration gave it
- * a `class_exists('MMI_Centralized_Menu') ? (attach under hub) : (own
- * add_menu_page())` fallback — correct while mmi-hub was still installed
- * everywhere, but mmi-hub no longer exists anywhere in this project as of
- * Phase 8 (1.173.0), so that class never exists and every migrated plugin
- * has been unconditionally taking the top-level-menu branch since — ~14
- * separate top-level sidebar entries instead of one "MannMade" parent.
+ * Registers the top-level 'mmi-dashboard' ("MannMade") menu, so the suite
+ * shows one sidebar parent instead of a top-level entry per plugin.
  *
- * This section only restores the PARENT. Each plugin's own admin_menu
- * callback still needs its `class_exists('MMI_Centralized_Menu')` branching
- * replaced with an unconditional `add_submenu_page('mmi-dashboard', ...)` —
- * that half of the fix lives in each plugin's own admin-menu class.
+ * This section only provides the PARENT. Each plugin attaches its own page
+ * with `add_submenu_page('mmi-dashboard', ...)` from its own admin-menu
+ * class.
  *
  * No version-negotiated candidate/winner dance is needed here, unlike the
  * class loader and shared-assets registries above: add_menu_page() just

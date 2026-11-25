@@ -35,7 +35,7 @@
  * close() manage the [hidden] attribute, the Esc listener, and the focus
  * trap for one modal at a time.
  *
- * @package MannMade\Hub
+ * @package MannMade
  */
 
 window.MMIModal = (function ($) {

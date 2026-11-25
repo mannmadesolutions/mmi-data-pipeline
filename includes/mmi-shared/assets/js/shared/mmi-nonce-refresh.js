@@ -16,8 +16,7 @@
  * nonce with 403 (check_ajax_referer() does) before doing anything else.
  *
  * Why: WordPress nonces last 12-24 h, so a tab left open longer failed every
- * request. mmi-hub refreshed them through Heartbeat until it was deleted
- * (2026-09-17). Heartbeat isn't used here: it doesn't run on the front end,
+ * request. Heartbeat isn't used here: it doesn't run on the front end,
  * where the admin bar polls too, and it suspends after 10 idle minutes.
  * A nonce is refreshed only when a request needs it and it is a quarter of
  * its life old, so this adds one request per open tab every ~6 hours.

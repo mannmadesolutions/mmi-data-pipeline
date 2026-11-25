@@ -7,28 +7,19 @@
  * sandbox/production API mode setting doesn't match the site's real
  * environment.
  *
- * This class originally lived in mmi-hub ("helps prevent accidental
- * production API calls on staging/dev sites" — see incident-history.md,
- * "XChange Cross-Channel Duplicate-Order Risk", 2026-08-24). It was already
- * correctly class_exists()-guarded at every call site during the
- * mmi-hub-elimination migration — so nothing fataled — but, unlike
- * MMI_Settings/MMI_Media_Helper/MMI_WC_Product_Filter_Handler/etc., it was
- * never actually rebuilt anywhere. Because its one real call site
+ * See incident-history.md, "XChange Cross-Channel Duplicate-Order Risk",
+ * 2026-08-24. Its one real call site
  * (MMI_Xchange_API_Client::guard_production_only()) fails CLOSED when the
  * class can't be found — refusing the call rather than assuming it's safe —
- * this silently blocked every real XChange order placement from the moment
- * mmi-hub was deleted (1.173.0, 2026-09-17) onward, misreported as an
- * XChange account restriction because the resulting local guard message
- * happens to contain the word "disabled" (see MMI_Xchange_API::place_order()'s
- * message-mapping). Confirmed via the order record itself: the last
- * auto-generated PO number (place_order()'s 'MMI-' . random-string format)
- * belongs to an order placed 2026-09-16 23:35 — the evening before the
- * migration, nothing since.
+ * so if this class is ever missing, every real XChange order placement is
+ * blocked, and the local guard message (which contains the word "disabled";
+ * see MMI_Xchange_API::place_order()'s message-mapping) reads like an
+ * XChange account restriction.
  *
- * Rebuilt here on WordPress core's own wp_get_environment_type() (5.5+,
- * reads the WP_ENVIRONMENT_TYPE constant / 'production' default) instead of
- * anything plugin-specific — no dependency to vendor, no version
- * negotiation needed for the underlying signal itself.
+ * Built on WordPress core's own wp_get_environment_type() (5.5+, reads the
+ * WP_ENVIRONMENT_TYPE constant / 'production' default) rather than anything
+ * plugin-specific — no dependency to vendor, no version negotiation needed
+ * for the underlying signal itself.
  *
  * @package MannMade\SharedLib
  */

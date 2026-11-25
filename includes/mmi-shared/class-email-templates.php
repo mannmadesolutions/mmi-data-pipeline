@@ -2,19 +2,11 @@
 /**
  * MMI_Email_Templates — shared HTML email design system (bundled/vendored copy).
  *
- * Rebuilt from scratch 2026-09-18. This class lived only in mmi-hub
- * (includes/email/class-mmi-email-templates.php) and was missed by the
- * mmi-hub-elimination migration (ADR-0006/0007/0008) — every one of its ~15
- * call sites across 6 plugins was already `class_exists('MMI_Email_Templates')`
- * guarded, so nothing fataled once mmi-hub was deleted (1.173.0); every branded
- * email just silently fell back to plain text (or, for customer-facing sends
- * with no fallback, stopped sending its styled body at all). Confirmed via
- * `class_exists()` and a full-tree grep that no copy of the original file
- * survived anywhere on disk — this is a genuine reconstruction from call-site
- * evidence (exact argument/return shapes read from every consumer) plus the
- * pre-existing design-intent doc comments those consumers still carried,
- * following the same reconstruction pattern used for
- * `\MannMade\Integrations\Acquisition\Data_Source_Manager` (changelog 1.182.0).
+ * Its ~15 call sites across 6 plugins are all
+ * `class_exists('MMI_Email_Templates')` guarded: without this class every
+ * branded email silently falls back to plain text (or, for customer-facing
+ * sends with no fallback, loses its styled body). The argument/return shapes
+ * here are the ones every consumer uses (changelog 1.187.0).
  *
  * ── Two visual identities, deliberately ──────────────────────────────────
  * Reading every call site turned up a real design split, not an accident:
@@ -37,8 +29,8 @@
  *     here rather than "simplified" onto one shared palette.
  *
  * ── Three-layer token system (site-editable colors/logo/footer) ─────────
- * Per the pre-existing design doc (`mmi-email-customization-layers` memory,
- * predates this rebuild), tokens resolve highest-priority first:
+ * Per the design doc (`mmi-email-customization-layers` memory), tokens
+ * resolve highest-priority first:
  *
  *   1. preview — request-scoped only, staged by either customizer's AJAX
  *      preview/test-send via set_preview_tokens(); never persisted.
@@ -47,11 +39,8 @@
  *      the published layer is stored, so it survives this file's own
  *      updates untouched.
  *   3. published — email-tokens-default.php (sibling file in this same
- *      directory), MMI's shipped defaults. Was mmi-hub's
- *      includes/email/email-tokens-default.php; relocated here since
- *      mmi-hub no longer exists. See that file's own docblock for the
- *      still-broken staff "Ship" pipeline this doesn't fix (found, not
- *      fixed — changelog 1.187.0).
+ *      directory), MMI's shipped defaults, written by the Email
+ *      Customization tab's Ship action. See that file's own docblock.
  *
  * ── Sample registry ───────────────────────────────────────────────────────
  * get_samples() is a thin wrapper over the pre-existing

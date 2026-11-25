@@ -11,13 +11,10 @@
  * looks it up here instead of re-deriving marketplace-specific detection
  * logic itself.
  *
- * Originally lived in mmi-hub; deleted with it 2026-09-17
- * (mmi-hub-elimination migration) without being migrated, which silently
- * disabled every consumer's duplicate-order protection until rebuilt here
- * as the 14th class in the shared library (see bootstrap.php). Behavior is
- * unchanged from the original: register(key, config) + get_source_for_order()
- * against a WC_Order — reconstructed from the calling convention already
- * used consistently by every registration/consumption site in the suite
+ * Every consumer's duplicate-order protection depends on this class, so it
+ * ships in the shared library (see bootstrap.php). API: register(key,
+ * config) + get_source_for_order() against a WC_Order — the calling
+ * convention used by every registration/consumption site in the suite
  * (mmi-reverb-integration.php's register() call; MMI_Xchange_Checkout and
  * MMI_Xchange_Fulfillment_Queue's get_source_for_order() calls).
  *

@@ -88,9 +88,9 @@ final class MMI_License_Gate {
 				<h1><?php echo esc_html( $plugin_label ); ?></h1>
 				<p class="mmi-header-description">
 					<?php if ( $trial_expired ) : ?>
-						<?php esc_html_e( 'Your free trial has ended. Enter a license key below to keep using this plugin.', 'mmi-hub' ); ?>
+						<?php esc_html_e( 'Your free trial has ended. Enter a license key below to keep using this plugin.', 'mmi-shared' ); ?>
 					<?php else : ?>
-						<?php esc_html_e( 'This plugin requires an active license or trial. Enter a license key below, or reload this page to start a free trial automatically.', 'mmi-hub' ); ?>
+						<?php esc_html_e( 'This plugin requires an active license or trial. Enter a license key below, or reload this page to start a free trial automatically.', 'mmi-shared' ); ?>
 					<?php endif; ?>
 				</p>
 			</div>

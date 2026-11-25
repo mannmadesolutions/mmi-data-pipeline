@@ -4,7 +4,7 @@
  * than the periodic pull (mmi_license_revalidate_all() on a weekly cron):
  *
  *  1. Push: the license server POSTs a signed ping to
- *     /?rest_route=/mmi/v1/license/recheck when staff change a license this
+ *     /?rest_route=/mmi/license/recheck when staff change a license this
  *     site holds (MMI_License_Push in mmi-admin). The ping carries no license
  *     state — this site just re-runs its normal validate() against the
  *     server, so a forged ping can at worst cause one extra check-in. The
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
 
 class MMI_License_Recheck {
 
-	const ROUTE_NAMESPACE = 'mmi/v1';
+	const ROUTE_NAMESPACE = 'mmi';
 	const ROUTE           = '/license/recheck';
 	const EXPIRY_HOOK     = 'mmi_shared_license_revalidate_expiry';
 

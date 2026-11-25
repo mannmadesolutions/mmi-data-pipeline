@@ -2,11 +2,10 @@
 /**
  * MMI_Updater_Trait (bundled/vendored copy) — ADR-0007, mmi-admin/docs/decisions/.
  *
- * Identical to the original mmi-hub/includes/helpers-legacy/MMI_Updater_Trait.php,
- * except load_credentials() below now resolves the wp_mmi table name via
- * MMI_Settings::ensure_table() instead of a raw `$wpdb->prefix . 'mmi'` —
- * guarantees the table exists (self-healing) and follows AGENTS.md's Settings
- * & Data Storage rule rather than bypassing it. Only ever loaded once per
+ * load_credentials() below resolves the wp_mmi table name via
+ * MMI_Settings::ensure_table() rather than a raw `$wpdb->prefix . 'mmi'`,
+ * which guarantees the table exists (self-healing) and follows AGENTS.md's
+ * Settings & Data Storage rule. Only ever loaded once per
  * request, by whichever plugin's bundled copy wins version negotiation in
  * bootstrap.php — see ADR-0006. Do not hand-edit this file in a single
  * plugin; edit the canonical source (mmi-admin/lib/mmi-shared/) and re-sync
@@ -214,9 +213,8 @@ trait MMI_Updater_Trait
     protected function init_json_dir(): string
     {
         // constant() rather than a bare MMI_JSON_PATH reference: no plugin in
-        // this suite actually defines this constant any more (it was an
-        // mmi-hub-era override, swept for dead references during the
-        // elimination migration), so a bare reference is unresolvable to
+        // this suite actually defines this constant any more (it is a
+        // legacy override), so a bare reference is unresolvable to
         // static analysis and flags as an undefined constant. defined()
         // still guards it correctly at runtime either way — if some plugin
         // ever defines it again, this picks it up exactly as before.

@@ -21,7 +21,7 @@
  * Depends on jquery-ui-sortable (bundled with WordPress core) for the
  * drag-and-drop reorder handle.
  *
- * @package MannMade\Hub
+ * @package MannMade
  */
 
 window.MMIColumnCustomizer = (function ($) {

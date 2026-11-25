@@ -2,7 +2,6 @@
 /**
  * MMI License API (bundled/vendored copy) — ADR-0008, mmi-admin/docs/decisions/.
  *
- * Identical to the original mmi-hub/includes/licensing/class-license-api.php.
  * Only ever loaded once per request, by whichever plugin's bundled copy wins
  * version negotiation in bootstrap.php — see ADR-0006. Do not hand-edit this
  * file in a single plugin; edit the canonical source (mmi-admin/lib/mmi-shared/)
@@ -29,7 +28,7 @@
  *   MMI_License_API::deactivate( $key, 'mmi-suite' );
  *   $result = MMI_License_API::start_trial( $email );
  *
- * @package MannMade\Hub\Licensing
+ * @package MannMade\Licensing
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -115,7 +114,7 @@ class MMI_License_API {
      *
      * On the license server: creates and activates the trial license directly
      * through MMI_License_Manager::create_trial_license().
-     * On a customer site: POSTs to mannmade.us/wp-json/mmi/v1/license/trial
+     * On a customer site: POSTs to mannmade.us/wp-json/mmi/license/trial
      * then activates the returned key.
      *
      * @param  string      $email

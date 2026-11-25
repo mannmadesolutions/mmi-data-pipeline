@@ -2,14 +2,9 @@
 /**
  * MMI_Media_Helper — shared source-URL dedup + sideload (bundled/vendored copy).
  *
- * Identical to the original mmi-hub/includes/helpers/class-media-helper.php
- * this was vendored from. Already fully self-contained ($wpdb + WP core media
- * functions only, no mmi-hub-specific dependency) — vendored unchanged. The
- * original docblock's rationale for living only in mmi-hub ("every MMI
- * plugin already hard-depends on mmi-hub") no longer holds once a plugin's
- * MMI_Hub gate is removed — see ADR-0006. Do not hand-edit this file in a
- * single plugin; edit the canonical source and re-sync to every plugin that
- * bundles it.
+ * Self-contained ($wpdb + WP core media functions only). See ADR-0006. Do
+ * not hand-edit this file in a single plugin; edit the canonical source and
+ * re-sync to every plugin that bundles it.
  *
  * @package MannMade\SharedLib
  */
