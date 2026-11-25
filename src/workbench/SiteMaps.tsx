@@ -67,11 +67,11 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
   const [addLine, setAddLine] = useState("");
   const [undoAsk, setUndoAsk] = useState<string | null>(null); // the Fill whose Undo waits for a yes, asked in place
   const ref = useRef<HTMLDivElement>(null);
-  // While a decision saves, the proposals stay as they were: the proposals come back before the rest reloads, and a
-  // decided row that left then showed the next one with its buttons still off. It leaves in the render that turns them on.
-  const held = useRef(proposals);
-  if (busy === null) held.current = proposals;
-  const listed = held.current;
+  // A proposal's decision turns off its own buttons only, and the decided row leaves as soon as it is saved: a quick
+  // Approve on the next row is never sent to buttons the reloads after the last decision still had off (WebKit, 2026-11-25).
+  const [deciding, setDeciding] = useState<number[]>([]);
+  const [decided, setDecided] = useState<number[]>([]);
+  const listed = proposals.filter((p) => !decided.includes(p.id));
   const host = site.host;
   // The site opens beside the list; when the page was scrolled past its top, bring its top into view.
   useEffect(() => { if (ref.current && ref.current.getBoundingClientRect().top < 0) ref.current.scrollIntoView({ block: "start" }); }, []);
@@ -106,7 +106,7 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
     try {
       const d = await rest<Record<string, unknown>>(cfg, "POST", path, body);
       setNotice({ text: done(d), kind: "ok" });
-      // The buttons stay off until the site list and the proposals are back too; the decided row leaves when they come back on.
+      // The buttons stay off until the site list and the proposals are back too.
       await Promise.all([onChanged(), load()]);
       return d;
     } catch (e) { setNotice({ text: msg(e), kind: "error" }); return null; } finally { setBusy(null); }
@@ -127,9 +127,16 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
     const body = a === "use" || a === "keep" ? { id, choice: a } : { id, field, undo: a === "unnone" };
     void post(`cell:${id}:${field}:${a}`, path, body, (x) => String(x.note || "Done."));
   };
-  const decideProposal = (pr: Proposal, approve: boolean) => {
+  const decideProposal = async (pr: Proposal, approve: boolean) => {
     const name = PART_LABEL[pr.field] ?? pr.field;
-    void post(`prop:${pr.id}`, `map-proposals/${pr.id}`, { decision: approve ? "approve" : "reject" }, () => (approve ? `${name}: approved as this site's part.` : `${name}: rejected.`));
+    setDeciding((ids) => [...ids, pr.id]);
+    setNotice(null);
+    try {
+      await rest(cfg, "POST", `map-proposals/${pr.id}`, { decision: approve ? "approve" : "reject" });
+      setDecided((ids) => [...ids, pr.id]);
+      setNotice({ text: approve ? `${name}: approved as this site's part.` : `${name}: rejected.`, kind: "ok" });
+    } catch (e) { setNotice({ text: msg(e), kind: "error" }); return; } finally { setDeciding((ids) => ids.filter((id) => id !== pr.id)); }
+    await Promise.all([onChanged(), load()]);
   };
   const loadText = useCallback(async () => { try { setText(await rest<TextSkips>(cfg, "GET", `maps/${enc(host)}/text`)); } catch (e) { setNotice({ text: msg(e), kind: "error" }); } }, [cfg, host]);
   useEffect(() => { if (shown === "text" && !text) void loadText(); }, [shown, text, loadText]);
@@ -248,9 +255,9 @@ export function SitePanel({ cfg, site, proposals, tab, onTab, onChanged, focus }
 
       <div className="mmi-wb-split-panel" id="mmi-wb-sm-tabpanel" role={focus === "fill" ? undefined : "tabpanel"} aria-labelledby={focus === "fill" ? undefined : `mmi-wb-sm-tab-${shown}`}>
         {shown === "parts" && gaps && (
-          <PartsTab gaps={gaps} proposals={listed} busy={busy}
+          <PartsTab gaps={gaps} proposals={listed} busy={busy} deciding={deciding}
             onApproveMany={(ids) => void post("approve-many", "map-proposals/site", { host, ids }, (d) => `${plural(Number(d.approved ?? 0), "part")} approved.${(d.failed as string[] | undefined)?.length ? ` Not approved: ${(d.failed as string[]).join("; ")}` : ""}`)}
-            onProposal={decideProposal} onCell={decideCell} />
+            onProposal={(pr, approve) => void decideProposal(pr, approve)} onCell={decideCell} />
         )}
 
         {shown === "pages" && gaps && (
@@ -341,8 +348,8 @@ function Bar({ t }: { t: Tally }) {
   );
 }
 
-function PartsTab({ gaps, proposals, busy, onApproveMany, onProposal, onCell }: {
-  gaps: Gaps; proposals: Proposal[]; busy: string | null;
+function PartsTab({ gaps, proposals, busy, deciding, onApproveMany, onProposal, onCell }: {
+  gaps: Gaps; proposals: Proposal[]; busy: string | null; deciding: number[];
   onApproveMany: (ids: number[]) => void; onProposal: (p: Proposal, approve: boolean) => void; onCell: (id: number, field: string, a: CellAction) => void;
 }) {
   const [pq, setPq] = useState("");
@@ -357,7 +364,7 @@ function PartsTab({ gaps, proposals, busy, onApproveMany, onProposal, onCell }: 
 
   return (
     <>
-      {waiting > 0 && <ProposedParts proposals={proposals} busy={busy} onApproveMany={onApproveMany} onProposal={onProposal} />}
+      {waiting > 0 && <ProposedParts proposals={proposals} busy={busy} deciding={deciding} onApproveMany={onApproveMany} onProposal={onProposal} />}
       <div className="mmi-wb-sm-parts-bar">
         <input type="search" id="mmi-wb-sm-pq" aria-label="Find a product" placeholder="Find a product" value={pq} onChange={(e) => setPq(e.target.value)} />
         {pq && <span className="mmi-wb-count">{plural(products.length, "product")}</span>}
@@ -420,9 +427,10 @@ function PartRows({ p, rows, open, busy, onToggle, onCell }: {
  * The proposed parts, by the reviewer's verdict: a batch per verdict (Careful first, never approved in bulk), a line per
  * proposal. With several page layouts, Grid shows a part per row and a layout per column; a cell opens its proposal.
  */
-function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
-  proposals: Proposal[]; busy: string | null; onApproveMany: (ids: number[]) => void; onProposal: (p: Proposal, approve: boolean) => void;
+function ProposedParts({ proposals, busy, deciding, onApproveMany, onProposal }: {
+  proposals: Proposal[]; busy: string | null; deciding: number[]; onApproveMany: (ids: number[]) => void; onProposal: (p: Proposal, approve: boolean) => void;
 }) {
+  const off = (pr: Proposal) => busy !== null || deciding.includes(pr.id); // a decision being saved turns off its own row only
   const batches = verdictBatches(proposals);
   const grid = proposalGrid(proposals);
   const [view, setView] = useState<"batches" | "grid">("batches");
@@ -448,7 +456,7 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
         )}
       </div>
 
-      {deck !== null && <ProposalDeck order={batches.flatMap((b) => b.rows)} at={deck} onAt={setDeck} onClose={() => setDeck(null)} busy={busy} onProposal={onProposal} />}
+      {deck !== null && <ProposalDeck order={batches.flatMap((b) => b.rows)} at={deck} onAt={setDeck} onClose={() => setDeck(null)} off={off} onProposal={onProposal} />}
 
       {view === "batches" && (
         <div className="mmi-wb-bt-list">
@@ -463,7 +471,7 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
                   <div className="mmi-wb-bt-why"><strong>{v.label}</strong><span className="description">{v.hint}</span></div>
                   <span className="mmi-wb-bt-acts">
                     {v.bulk && rows.length > 1 && (
-                      <button type="button" className="button button-small button-primary" data-vbatch-action="approve" disabled={busy !== null}
+                      <button type="button" className="button button-small button-primary" data-vbatch-action="approve" disabled={rows.some(off)}
                         title="Save these as the site's map; products are written from it only by a Fill or a commit from the Chrome extension" onClick={() => onApproveMany(rows.map((p) => p.id))}>
                         Approve the {rows.length}
                       </button>
@@ -482,12 +490,12 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
                           <span className="mmi-wb-vp-found" title={`Found on ${pr.found} of ${pr.of} pages`}>{pr.found} / {pr.of}</span>
                           <span className="mmi-wb-vp-note" title={noteBody(pr.note)}>{noteBody(pr.note) || <span className="description">No note</span>}</span>
                           <span className="mmi-wb-bt-acts">
-                            <button type="button" className="button button-small button-primary" data-action="approve" disabled={busy !== null} onClick={() => onProposal(pr, true)}>Approve</button>
-                            <button type="button" className="button button-small" data-action="reject" disabled={busy !== null} onClick={() => onProposal(pr, false)}>Reject</button>
+                            <button type="button" className="button button-small button-primary" data-action="approve" disabled={off(pr)} onClick={() => onProposal(pr, true)}>Approve</button>
+                            <button type="button" className="button button-small" data-action="reject" disabled={off(pr)} onClick={() => onProposal(pr, false)}>Reject</button>
                             <button type="button" className="button button-small mmi-wb-bt-more" aria-expanded={opened === pr.id} onClick={() => setOpened(opened === pr.id ? null : pr.id)}>{opened === pr.id ? "Less" : "More"}</button>
                           </span>
                         </div>
-                        {opened === pr.id && <div className="mmi-wb-bt-detail"><ProposalView pr={pr} busy={busy} onDecide={(a) => onProposal(pr, a)} /></div>}
+                        {opened === pr.id && <div className="mmi-wb-bt-detail"><ProposalView pr={pr} off={off(pr)} onDecide={(a) => onProposal(pr, a)} /></div>}
                       </li>
                     ))}
                   </ul>
@@ -528,7 +536,7 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
           {picked && (
             <div className="mmi-wb-vgrid-open" data-open={picked.id}>
               <p className="mmi-wb-vgrid-open-title"><strong>{layoutName(picked)} · {PART_LABEL[picked.field] ?? picked.field}</strong></p>
-              <ProposalView pr={picked} busy={busy} onDecide={(a) => onProposal(picked, a)} />
+              <ProposalView pr={picked} off={off(picked)} onDecide={(a) => onProposal(picked, a)} />
             </div>
           )}
         </>
@@ -541,8 +549,8 @@ function ProposedParts({ proposals, busy, onApproveMany, onProposal }: {
  * One proposed part at a time, Careful first (Makers step 5): the proposal in full, A / R to decide, J / K to move. A
  * decided one leaves the list, so the same place shows the next.
  */
-function ProposalDeck({ order, at, onAt, onClose, busy, onProposal }: {
-  order: Proposal[]; at: number; onAt: (i: number) => void; onClose: () => void; busy: string | null; onProposal: (p: Proposal, approve: boolean) => void;
+function ProposalDeck({ order, at, onAt, onClose, off, onProposal }: {
+  order: Proposal[]; at: number; onAt: (i: number) => void; onClose: () => void; off: (p: Proposal) => boolean; onProposal: (p: Proposal, approve: boolean) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const i = Math.min(at, order.length - 1);
@@ -566,13 +574,13 @@ function ProposalDeck({ order, at, onAt, onClose, busy, onProposal }: {
           <button type="button" className="button button-small" data-deck="close" onClick={onClose}>Close</button>
         </span>
       </div>
-      <ProposalView pr={pr} busy={busy} onDecide={(a) => onProposal(pr, a)} />
+      <ProposalView pr={pr} off={off(pr)} onDecide={(a) => onProposal(pr, a)} />
       <KeyHints keys={[["J", "next"], ["K", "previous"], ["A", "approve"], ["R", "reject"], ["Esc", "close"]]} />
     </div>
   );
 }
 
-function ProposalView({ pr, busy, onDecide }: { pr: Proposal; busy: string | null; onDecide: (approve: boolean) => void }) {
+function ProposalView({ pr, off, onDecide }: { pr: Proposal; off: boolean; onDecide: (approve: boolean) => void }) {
   const [first, rest] = noteParts(pr.note);
   const lead = pr.checked === "claude" ? "Reviewed: " : "";
   return (
@@ -582,8 +590,8 @@ function ProposalView({ pr, busy, onDecide }: { pr: Proposal; busy: string | nul
         <span>{layoutName(pr)} · found on {pr.found} of {pr.of} pages</span>
         <code className="mmi-wb-sm-sel" title={pr.sel}>{pr.sel}</code>
         <span className="mmi-wb-sm-prop-acts">
-          <button type="button" className="button button-small button-primary" data-action="approve" disabled={busy !== null} onClick={() => onDecide(true)}>Approve</button>
-          <button type="button" className="button button-small" data-action="reject" disabled={busy !== null} onClick={() => onDecide(false)}>Reject</button>
+          <button type="button" className="button button-small button-primary" data-action="approve" disabled={off} onClick={() => onDecide(true)}>Approve</button>
+          <button type="button" className="button button-small" data-action="reject" disabled={off} onClick={() => onDecide(false)}>Reject</button>
         </span>
       </div>
       {pr.samples.length > 0 && (
