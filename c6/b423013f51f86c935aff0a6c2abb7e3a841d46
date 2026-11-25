@@ -1,3 +1,10 @@
 lint pass ship 4 files
 audit pass ship 4 files; warned long-function×1
 site-rules pass ship 4 files
+shared-lib pass 8 scenarios
+ui-check pass 177
+ui-e2e pass 314
+customer-site pass 27 ok on c6b4230 as installed
+page pass 11 features, 15 screenshots; 14 warnings
+release-audit pass 0 dead, 0 high, 0 new
+review fail 3 open, 6 fixed, 7 not real
