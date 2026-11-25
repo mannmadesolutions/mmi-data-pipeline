@@ -146,6 +146,10 @@ export class TitleRulesMock {
     return out;
   }
 
+  /** A product's groups in Duplicates, for its drawer (Waiting::product() `duplicates`). */
+  duplicatesOf: Record<number, { groups: { key: string; source: string; others: number[] }[]; linked: number[] }> = {};
+  /** Duplicate groups waiting at the last scan (the Duplicates pill's count). */
+  duplicatesWaiting = 3;
   /** GET waiting: the proposals something waits on, errors (no brand) first, then by ID; chips, search and the ID heading. */
   waiting(u: URL) {
     const all = this.waitingOn ? this.proposals.map((r) => ({ r, w: this.waitingOf(r) })).filter((x) => x.w.length) : [];
@@ -153,7 +157,8 @@ export class TitleRulesMock {
     const found = all.filter((x) => !q || String(x.r.id) === q || x.r.current.toLowerCase().includes(q));
     const has = (x: { w: { key: string }[] }, keys: string[]) => x.w.some((b) => keys.includes(b.key));
     const counts = { all: found.length, titles: found.filter((x) => has(x, ["title"])).length, descriptions: 0, pictures: 0, pages: 0, data: found.filter((x) => has(x, ["no_brand", "no_sku", "no_picture"])).length, picture_errors: 0,
-      maps: this.makerPages.proposals.filter((p) => p.status === "proposed").length }; // map parts are a site's, counted apart (Waiting::list())
+      maps: this.makerPages.proposals.filter((p) => p.status === "proposed").length, // map parts are a site's, counted apart (Waiting::list())
+      duplicates: this.duplicatesWaiting }; // duplicate groups too: the last scan's (mmi_canonical_candidates_waiting())
     const kind = u.searchParams.get("kind") ?? "";
     let rows = kind === "titles" ? found.filter((x) => has(x, ["title"])) : kind.startsWith("key:") ? found.filter((x) => has(x, [kind.slice(4)])) : kind ? [] : found;
     // Every key on the listed products: one pill each (Waiting::list() `keys`).
@@ -302,6 +307,7 @@ export class TitleRulesMock {
         thumb: this.thumbOf(row.id),
         locks: { cats: row.cat_locked, brands: row.brand_locked },
         feed: { brands: row.brands.length ? [] : [{ supplier: "xchange", label: "Xchange", field: "brand", value: "Freqport", mapped: null, others: 2 }], cats: [] },
+        duplicates: this.duplicatesOf[row.id] ?? { groups: [], linked: [] },
       });
     }
     const fx = path.match(/^products\/(\d+)\/(fix-context|fix)$/);

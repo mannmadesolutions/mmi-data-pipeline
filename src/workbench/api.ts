@@ -68,17 +68,20 @@ function messageFrom(text: string): string | null {
   }
 }
 
+/** A nonce other than the Workbench's own, for another controller's endpoints (Duplicates'), and its printed value. */
+export interface OtherNonce { action: string; value: string }
+
 /** POSTs one admin-ajax action. Rejects with ApiError; an aborted request rejects with kind "abort". */
-export async function post<T>(action: string, data: Record<string, FormValue> = {}, signal?: AbortSignal): Promise<T> {
+export async function post<T>(action: string, data: Record<string, FormValue> = {}, signal?: AbortSignal, nonce?: OtherNonce): Promise<T> {
   const w = page();
   const url = w.mmiRuleBuilder?.ajaxUrl ?? "/wp-admin/admin-ajax.php";
   const body = toFormBody({ action, ...data });
   let r: Response;
   try {
     if (w.MMINonces) {
-      r = await w.MMINonces.fetch(NONCE_ACTION, url, body, { signal, credentials: "same-origin" });
+      r = await w.MMINonces.fetch(nonce?.action ?? NONCE_ACTION, url, body, { signal, credentials: "same-origin" });
     } else {
-      body.set("nonce", w.mmiRuleBuilder?.nonce ?? "");
+      body.set("nonce", nonce ? nonce.value : w.mmiRuleBuilder?.nonce ?? "");
       r = await fetch(url, { method: "POST", body, signal, credentials: "same-origin" });
     }
   } catch (e) {

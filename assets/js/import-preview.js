@@ -178,24 +178,6 @@
                 MMIImportPreview.spotCheckImportItem($(this));
             });
 
-            // "⚠ N products share this key" badge — deep-links into the
-            // Duplicates section's Confirmed Collisions mode (duplicate-products.js)
-            // instead of resolving the ambiguity here; a merge/survivor decision
-            // belongs in that dedicated review UI, not a click on this table.
-            $(document).on('click keydown', '.mmi-pk-collision-trigger', function(e) {
-                if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
-                e.preventDefault();
-                e.stopPropagation();
-                const $badge = $(this);
-                // duplicate-products.js loads on first use (shared mmiLazyScripts).
-                const loaded = window.mmiLazyScripts ? window.mmiLazyScripts.load('mmi-pipeline-dupes-js') : Promise.resolve();
-                loaded.then(function () {
-                    if (window.MMIDupes && typeof window.MMIDupes.openForCollision === 'function') {
-                        window.MMIDupes.openForCollision($badge.data('supplier'), String($badge.data('pk-value')));
-                    }
-                });
-            });
-
             // "🔍" next to a row's Primary Key — inspect the raw source data
             // behind this one record (complete raw item, taxonomy-field
             // resolution status, and the original CSV row for a CSV-backed
@@ -2364,9 +2346,15 @@
                     const otherIds = item.pk_collision.products
                         .map(p => `#${p.product_id}${p.product_name ? ' (' + p.product_name + ')' : ''}`)
                         .join(', ');
-                    const title = `This value matches ${item.pk_collision.products.length} WooCommerce products: ${otherIds} — only one is ever reachable by an import run. Click to review in Duplicates.`
+                    const title = `This value matches ${item.pk_collision.products.length} WooCommerce products: ${otherIds} — only one is ever reachable by an import run. Opens it in Duplicates (Product Workbench) in a new tab.`
                         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                    pkCollisionBadge = `<span class="mmi-badge mmi-badge-truncate mmi-badge-pk-collision mmi-pk-collision-trigger" data-supplier="${this.escapeHtml(item.supplier)}" data-pk-value="${this.escapeHtml(item.pk_collision.value)}" role="button" tabindex="0" title="${title}">⚠ ${item.pk_collision.products.length} products share this key</span>`;
+                    // Duplicates' Collisions chip in the Product Workbench, open on this key (a new tab keeps this review in place).
+                    const dupesUrl = new URL(window.location.pathname, window.location.origin);
+                    dupesUrl.search = new URLSearchParams({
+                        page: 'mmi-data-pipeline', pipeline_tab: 'workbench', wb_sec: 'duplicates', wb_dupes: 'collisions',
+                        wb_dupes_group: `${item.supplier}:${item.pk_collision.value}`,
+                    }).toString();
+                    pkCollisionBadge = `<a class="mmi-badge mmi-badge-truncate mmi-badge-pk-collision" href="${this.escapeHtml(dupesUrl.toString())}" target="_blank" rel="noopener" title="${title}">⚠ ${item.pk_collision.products.length} products share this key</a>`;
                 }
 
                 html += `

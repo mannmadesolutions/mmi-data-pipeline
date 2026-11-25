@@ -2,7 +2,7 @@
 import { expect, type Page } from "@playwright/test";
 
 /** The review queues are Needs a decision's pills (2026-11-13): their old menu keys → the pill. */
-const QUEUE_PILLS: Record<string, string> = { titles: "titles", descriptions: "descriptions", picks: "pictures", pages: "pages" };
+const QUEUE_PILLS: Record<string, string> = { titles: "titles", descriptions: "descriptions", picks: "pictures", pages: "pages", duplicates: "duplicates" };
 
 /**
  * Open a section from the side menu by its key (landing.ts SECTION_IDS) and wait until it is the one shown. A review

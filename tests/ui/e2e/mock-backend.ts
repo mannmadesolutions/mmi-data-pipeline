@@ -40,6 +40,16 @@ export interface MockOptions {
   searchDelayMs?: number;
 }
 
+/** A Duplicates group as the scans return it (CanonicalCandidatesController.php), its listings in stock at $499 MAP. */
+function dupeGroup(key: string, source: string, ids: number[], brand = "Moog", o: Record<string, unknown> = {}) {
+  return {
+    group_key: key, source, brand, name: `${brand} ${key}`, price_min: 499, price_max: 499, price_spread: 0, price_count: ids.length, price_stale: 0, price_match: true, already_linked: false,
+    members: ids.map((id, i) => ({ supplier: "xchange", sku: `S-${id}`, dealer_price: 300 + i, wc_product_id: id, is_canonical: i === 0 && source === "legacy", is_recommended: i === 0,
+      product_name: `Listing ${id}`, stock_status: "instock", in_feed: true, list_price: 499, list_price_source: "map", store_price: 499, price_stale: false, assets: { title: `Listing ${id}` } })),
+    ...o,
+  };
+}
+
 export class MockBackend {
   products = catalog();
   calls: { action: string; body: URLSearchParams }[] = [];
@@ -254,6 +264,13 @@ export class MockBackend {
         return this.reply(route, { items_processed: 12, duration_ms: 1500 });
       case "mmi_catalog_finish_run":
         return this.reply(route, body.get("aborted") ? { aborted: true } : { total_processed: 6553 });
+      // Duplicates (a pill of Needs a decision): two groups to decide and one linked. duplicates.spec answers its own.
+      case "mmi_scan_duplicate_candidates":
+        return this.reply(route, { groups: [dupeGroup("moog-mother-32", "candidate", [601, 602])] });
+      case "mmi_scan_existing_canonical_groups":
+        return this.reply(route, { groups: [dupeGroup("title-acme-1", "title", [611, 612], "Acme"), dupeGroup("legacy-621", "legacy", [621, 622], "Arturia", { already_linked: true, canonical_product_id: 621 })] });
+      case "mmi_scan_pk_collisions":
+        return this.reply(route, { groups: [] });
       default:
         return route.fulfill({ status: 400, body: "0" });
     }

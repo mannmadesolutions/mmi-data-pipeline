@@ -919,8 +919,7 @@
             });
 
             // Clicking a "will create" tile: jump to this profile in Review &
-            // Compare (same-page, no reload — mirrors MMIDupes.openForCollision()'s
-            // established expand+scroll pattern for a different section).
+            // Compare (same-page, no reload: expand the section and scroll to it).
             $(document).on('click', '.mmi-pgc-pending-stat.mmi-stat-create.mmi-stat-clickable', function(e) {
                 e.preventDefault();
                 e.stopPropagation();

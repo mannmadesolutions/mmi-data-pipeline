@@ -26,7 +26,7 @@ export interface WaitingRow {
 }
 
 /** A pill: every product (""), a review queue, or key:{one waiting key}. */
-export type QueueKind = "titles" | "descriptions" | "pictures" | "pages" | "maps";
+export type QueueKind = "titles" | "descriptions" | "pictures" | "pages" | "maps" | "duplicates";
 export type WaitKind = "" | QueueKind | `key:${string}`;
 export type WaitSort = "" | "id" | "title" | "brand" | "waiting";
 
@@ -54,13 +54,14 @@ export const WAIT_KINDS: { value: "" | QueueKind; label: string; count: "all" | 
   { value: "pictures", label: "Pictures to pick", count: "pictures", hint: "Picture proposals: pick and order a product's pictures" },
   { value: "pages", label: "Maker pages", count: "pages", hint: "Products whose maker page waits on a decision" },
   { value: "maps", label: "Map parts", count: "maps", hint: "Parts found on maker sites' pages (where each keeps pictures, manuals, requirements…), waiting for your approval" },
+  { value: "duplicates", label: "Duplicates", count: "duplicates", hint: "The same product listed more than once: link the listings as one product, or mark them not a duplicate. Counted at the last scan" },
 ];
 
 /** The waiting keys the queue pills stand for (they get no alert pill of their own). */
 export const QUEUE_KEYS: Record<string, QueueKind> = { title: "titles", description: "descriptions", pictures: "pictures", page: "pages" };
 
 /** The pills that show a review queue's own tools instead of the product table. */
-export const QUEUE_KINDS: QueueKind[] = ["titles", "descriptions", "pictures", "pages", "maps"];
+export const QUEUE_KINDS: QueueKind[] = ["titles", "descriptions", "pictures", "pages", "maps", "duplicates"];
 export const isQueue = (k: WaitKind): k is QueueKind => (QUEUE_KINDS as string[]).includes(k);
 
 /**
@@ -110,6 +111,8 @@ export interface DrawerProduct {
   brands: TermRef[];
   locks: { cats: boolean; brands: boolean };
   feed: { brands: FeedValue[]; cats: FeedValue[] };
+  /** Groups in Duplicates that list it (last scan), and the listings its own link names; null where Duplicates isn't loaded. */
+  duplicates?: { groups: { key: string; source: string; others: number[] }[]; linked: number[] } | null;
 }
 
 export const OPEN_TITLE = ["proposed", "stale", "error"];

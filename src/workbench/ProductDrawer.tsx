@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ApiError } from "./api";
 import { BrandFix, CategoryFix, IssueChips, IssuePanel } from "./IssueFixes";
 import type { FixResult } from "./issuesApi";
-import { refreshCounts } from "./nav";
+import { openDupesGroup, refreshCounts } from "./nav";
 import { STATUS_LABEL, confKind, target, wordDiff, type DiffPart } from "./proposalsApi";
 import { rest, type TitleRulesConfig } from "./titleRulesApi";
 import { BusyButton, Dashicon, ProductThumb } from "./ui";
@@ -217,6 +217,19 @@ export function ProductDrawer({ cfg, id, prev, next, onStep, onClose, onChanged 
             {p.feed.brands.map((f) => <div key={`${f.supplier}|${f.field}`} className="description mmi-wb-dr-feed">{f.label} sends “{f.value}”{f.mapped ? <>, mapped to {f.mapped.name}</> : ", not mapped"}</div>)}
             {terms === "brands" && <BrandFix cfg={cfg} productId={id} onDone={fixed} />}
           </Part>
+
+          {p.duplicates && (p.duplicates.groups.length > 0 || p.duplicates.linked.length > 0) && (
+            <Part name="duplicates" title="Duplicates" tone={p.duplicates.groups.length ? "warning" : undefined}>
+              {/* Two sources grouping the same listings read as one line (the pill folds them into one row too). */}
+              {p.duplicates.groups.filter((g, i, all) => all.findIndex((x) => x.others.join() === g.others.join()) === i).map((g) => (
+                <div key={g.key} className="mmi-wb-dr-term">
+                  <span>Listed with {g.others.map((o) => `#${o}`).join(", ")}, waiting for a decision</span>
+                  <button type="button" className="button-link" data-dupes-group={g.key} onClick={() => openDupesGroup(g.key)}>Open group</button>
+                </div>
+              ))}
+              {p.duplicates.linked.length > 0 && <div className="description">Linked as one product with {p.duplicates.linked.map((o) => `#${o}`).join(", ")}</div>}
+            </Part>
+          )}
         </>
       )}
     </aside>

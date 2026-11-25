@@ -8,6 +8,8 @@
  *   table, writer and bulk buttons), mounted on first open and kept, so its filters and page stay put.
  * - Map parts (owner 2026-11-14): every maker site's proposed map parts, one decision a row. A site's decision, not
  *   a product's, so it counts parts, and its count comes from the server beside the products' (Waiting::list()).
+ * - Duplicates (moved from the Import tab 2026-11-25): listings that look like one product, one group a row. Counted
+ *   from the last scan's review index, like Map parts beside the products' counts.
  * - One pill per alert the listed products carry (No category, No picture, Not in Software Bundles…), from the
  *   server's `keys`. Choosing one lists the products with it and opens its fixes for all of them on the page.
  *
@@ -24,6 +26,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ApiError } from "./api";
+import { Duplicates } from "./Duplicates";
 import { EnrichProposals } from "./EnrichProposals";
 import { IssueGroups } from "./IssueGroups";
 import { groupIssues, groupMode, runFix, type Fix, type IssueGroup } from "./issuesApi";
@@ -281,6 +284,7 @@ export function Decide({ cfg }: { cfg: TitleRulesConfig }) {
           <EnrichProposals cfg={cfg} kind={enrichKind} onKind={(k) => choose(k === "image" ? "pictures" : "descriptions")} />)}
         {mounted.has("pages") && queuePane("pages", queue === "pages", <MakerPages cfg={cfg} />)}
         {mounted.has("maps") && queuePane("maps", queue === "maps", <MapParts cfg={cfg} />)}
+        {mounted.has("duplicates") && queuePane("duplicates", queue === "duplicates", <Duplicates />)}
       </SectionEmbedContext.Provider>
 
       <div className="mmi-wb-dc-all" hidden={queue !== null}>

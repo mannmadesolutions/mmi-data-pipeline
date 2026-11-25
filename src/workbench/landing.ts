@@ -9,10 +9,16 @@
  *   wb_site    Makers opens this maker site (host): listed by site, or under wb_brand
  *   wb_bundle  the Bundles panel shows this bundle (a store's own panel reads it)
  *   wb_product Needs a decision opens the product drawer on this product (product ID)
- *   wb_kind    Needs a decision opens on this pill: a queue (titles, descriptions, pictures, pages, maps) or key:{waiting key}
+ *   wb_kind    Needs a decision opens on this pill: a queue (titles, descriptions, pictures, pages, maps, duplicates) or key:{waiting key}
+ *   wb_dupes   Duplicates opens on this chip (new, linked, no_sale, not_sold, older, all, collisions)
+ *   wb_dupes_brand   Duplicates lists this brand's groups (a name, any case)
+ *   wb_dupes_group   Duplicates opens this group (its key; a collision's is supplier:value)
  *
  * The review queues are pills of Needs a decision (owner 2026-11-13: "subsets of Needs a decision"), so a link to
  * one (wb_sec=titles, descriptions, picks, pages) opens Needs a decision on its pill.
+ *
+ * Duplicates moved from the Import tab into a pill (2026-11-25): wb_sec=duplicates opens Needs a decision on it, and
+ * the Import tab's old addresses (open_duplicates=1, dupes_status, dupes_brand) are redirected here by main.php.
  *
  * Brands & sites and Site maps are one entry, Makers (owner 2026-11-14): wb_sec=sites opens it listed by brand,
  * wb_sec=maps listed by site, so the Chrome extension's and mmi-admin's links still land.
@@ -23,6 +29,8 @@
  */
 export interface Landing {
   sec: string; q: string; brand: number; site: string; bundle: number; product: number; kind: string;
+  /** Duplicates: the chip, the brand, the open group (wb_dupes, wb_dupes_brand, wb_dupes_group). */
+  dupes: string; dupesBrand: string; dupesGroup: string;
   /** Makers: the open brand's tab (wb_tab: products, map, fill or sites), or "" for its default. */
   tab: string;
   /** Makers opens listed by site (wb_sec=maps, or wb_site without wb_brand). */
@@ -30,7 +38,7 @@ export interface Landing {
 }
 
 /** The review queues' old menu keys → Needs a decision's pill. */
-export const QUEUE_PILLS: Record<string, string> = { titles: "titles", descriptions: "descriptions", picks: "pictures", pages: "pages" };
+export const QUEUE_PILLS: Record<string, string> = { titles: "titles", descriptions: "descriptions", picks: "pictures", pages: "pages", duplicates: "duplicates" };
 
 /** Menu key → the section's element id (its Section id, unchanged from the stacked page). */
 export const SECTION_IDS: Record<string, string> = {
@@ -101,8 +109,12 @@ export function readLanding(search: string, hash = ""): Landing {
     product: int("wb_product"),
     kind: pillKind((p.get("wb_kind") ?? "").trim()) || queueOf(p.get("wb_sec") ?? "", hash),
     tab: ["products", "map", "fill", "sites"].includes(p.get("wb_tab") ?? "") ? String(p.get("wb_tab")) : "",
+    dupes: (p.get("wb_dupes") ?? "").trim().slice(0, 20),
+    dupesBrand: (p.get("wb_dupes_brand") ?? "").trim().slice(0, 120),
+    dupesGroup: (p.get("wb_dupes_group") ?? "").trim().slice(0, 200),
     bySite: false,
   };
+  if (!l.sec && !l.kind && (l.dupes || l.dupesBrand || l.dupesGroup)) { l.sec = "decide"; l.kind = "duplicates"; }
   if (!l.sec) l.sec = sectionKey(keyForHash(hash)) || (l.product ? "decide" : l.brand || l.site ? "makers" : l.bundle ? "bundles" : l.q ? "data" : "");
   l.bySite = l.sec === "makers" && !l.brand && (p.get("wb_sec") === "maps" || hash.replace(/^#/, "") === "mmi-wb-site-maps" || !!l.site);
   return l;

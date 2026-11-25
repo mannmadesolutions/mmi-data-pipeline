@@ -140,6 +140,17 @@ export interface WorkbenchConfig {
   titleRules?: TitleRulesConfig;
   /** A store's own panels (mmi_pipeline_product_data_panels), drawn by the store's script. */
   panels?: PanelConfig[];
+  /** Duplicates (a pill of Needs a decision): its endpoints' nonce, the scan switch and the Distributors catalog. */
+  duplicates?: DuplicatesConfig;
+}
+
+export interface DuplicatesConfig {
+  /** For mmi_pipeline_canonical_candidates (CanonicalCandidatesController.php); kept fresh by MMINonces. */
+  nonce: string;
+  /** The scan switch (mmi_duplicate_products_enabled). */
+  enabled: boolean;
+  /** The Distributors catalog (mmi-distributors) when it's active: its address and source names. */
+  catalog: { url: string; sources: Record<string, string> } | null;
 }
 
 export interface PanelConfig { id: string; title: string; desc: string; icon: string }

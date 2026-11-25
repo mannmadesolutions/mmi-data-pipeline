@@ -596,13 +596,14 @@
     font-size: 11px;
 }
 
-.mmi-pk-collision-trigger {
-    cursor: pointer;
+/* "N products share this key": a new-tab link to Duplicates' Collisions in the Product Workbench. */
+a.mmi-badge-pk-collision {
+    text-decoration: none;
     transition: box-shadow 0.15s;
 }
 
-.mmi-pk-collision-trigger:hover,
-.mmi-pk-collision-trigger:focus-visible {
+a.mmi-badge-pk-collision:hover,
+a.mmi-badge-pk-collision:focus-visible {
     box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.35);
     outline: none;
 }

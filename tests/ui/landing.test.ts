@@ -4,14 +4,14 @@ import { readLanding, sectionKey } from "../../src/workbench/landing";
 describe("landing", () => {
   it("reads the wb_ parameters a link sets", () => {
     expect(readLanding("?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=maps&wb_site=https%3A%2F%2FWWW.Example.com%2Fx&wb_q=%20175635%20&wb_brand=12&wb_bundle=99"))
-      .toEqual({ sec: "makers", q: "175635", brand: 12, site: "www.example.com", bundle: 99, product: 0, kind: "", tab: "", bySite: false });
+      .toEqual({ sec: "makers", q: "175635", brand: 12, site: "www.example.com", bundle: 99, product: 0, kind: "", tab: "", bySite: false, dupes: "", dupesBrand: "", dupesGroup: "" });
   });
   it("opens Makers on the brand's tab a link names (the extension's map steps)", () => {
     expect(readLanding("?wb_sec=makers&wb_brand=12&wb_site=acme.example&wb_tab=fill")).toMatchObject({ sec: "makers", brand: 12, tab: "fill", bySite: false });
     expect(readLanding("?wb_brand=12&wb_tab=nope").tab).toBe("");
   });
   it("ignores unknown sections and bad numbers", () => {
-    expect(readLanding("?wb_sec=nope&wb_brand=-3&wb_bundle=x")).toEqual({ sec: "", q: "", brand: 0, site: "", bundle: 0, product: 0, kind: "", tab: "", bySite: false });
+    expect(readLanding("?wb_sec=nope&wb_brand=-3&wb_bundle=x")).toEqual({ sec: "", q: "", brand: 0, site: "", bundle: 0, product: 0, kind: "", tab: "", bySite: false, dupes: "", dupesBrand: "", dupesGroup: "" });
   });
   it("opens the section a link's other parameter belongs to when it names none", () => {
     expect(readLanding("?wb_brand=12")).toMatchObject({ sec: "makers", bySite: false });
@@ -35,6 +35,12 @@ describe("landing", () => {
     expect(readLanding("?wb_sec=sites&wb_brand=5612&wb_site=ilio.com")).toMatchObject({ sec: "makers", brand: 5612, site: "ilio.com", bySite: false });
     expect(readLanding("?page=x", "#mmi-wb-brand-sites")).toMatchObject({ sec: "makers", bySite: false });
     expect(readLanding("?page=x", "#mmi-wb-site-maps")).toMatchObject({ sec: "makers", bySite: true });
+  });
+  it("opens Duplicates (a pill since 2026-11-25) with its chip, brand and group", () => {
+    expect(readLanding("?wb_sec=duplicates&wb_dupes=no_sale")).toMatchObject({ sec: "decide", kind: "duplicates", dupes: "no_sale" });
+    expect(readLanding("?wb_kind=duplicates&wb_dupes_brand=Moog")).toMatchObject({ kind: "duplicates", dupesBrand: "Moog" });
+    expect(readLanding("?wb_dupes=collisions&wb_dupes_group=xchange%3A123-45")).toMatchObject({ sec: "decide", kind: "duplicates", dupes: "collisions", dupesGroup: "xchange:123-45" });
+    expect(sectionKey("duplicates")).toBe("decide");
   });
   it("opens Needs a decision on a review queue's pill (the queues were the Review menu)", () => {
     expect(readLanding("?wb_sec=picks")).toMatchObject({ sec: "decide", kind: "pictures" });

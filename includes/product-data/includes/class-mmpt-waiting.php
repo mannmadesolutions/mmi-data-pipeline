@@ -49,6 +49,8 @@ final class Waiting {
 		'picture_errors' => [ 'picture_error' ],
 		// Map parts waiting for approval are a site's, not a product's: no product carries this key, the count is MapProposals'.
 		'maps'           => [ 'map_part' ],
+		// Duplicate groups the same: the count is the last scan's (mmi_canonical_candidates_waiting()).
+		'duplicates'     => [ 'duplicate_group' ],
 	];
 	/** Keys that put a product at the top. */
 	const ERRORS = [ 'picture_error', 'no_brand' ];
@@ -234,6 +236,7 @@ final class Waiting {
 		$counts['all'] = $counts[''];
 		unset( $counts[''] );
 		$counts['maps'] = MapProposals::waiting();
+		$counts['duplicates'] = function_exists( 'mmi_canonical_candidates_waiting' ) ? mmi_canonical_candidates_waiting()['count'] : 0;
 		// Every key on the listed products, with how many carry it: one filter pill each.
 		$seen = [];
 		foreach ( $map as $id => $keys ) {
@@ -425,6 +428,8 @@ final class Waiting {
 				'brands'   => $terms['brands'][ $id ] ?? [],
 				'locks'    => [ 'cats' => $locked( 'product_cat' ), 'brands' => $locked( 'product_brand' ) ],
 				'feed'     => [ 'brands' => Issues::feed_values( $id, 'product_brand' ), 'cats' => Issues::feed_values( $id, 'product_cat' ) ],
+				// Groups in Duplicates that list it, and the listings its link names (CanonicalCandidatesController.php).
+				'duplicates' => function_exists( 'mmi_canonical_candidates_for_product' ) ? mmi_canonical_candidates_for_product( $id ) : null,
 			]
 		);
 	}

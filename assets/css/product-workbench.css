@@ -3237,3 +3237,554 @@ tr.mmi-wb-mp-gone .notice {
     margin: 0 4px 0 0;
     vertical-align: middle;
 }
+
+/* ── Duplicates (Duplicates.tsx, a pill of Needs a decision; moved from the Import tab 2026-11-25) ──
+   The split view's list is wider here (product names are long). The open group is modeled on the Marketplace
+   Earnings element: a dark price-check card, a legend, one rounded row per listing with a price bar. The listing
+   rows' layout follows the open panel's own width (container query). */
+.mmi-wb-split.mmi-wb-du-split {
+    grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+}
+.mmi-wb-du-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+.mmi-wb-du-col-price {
+    width: 30%;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.mmi-wb-du-same {
+    font-size: 11px;
+    color: var(--mmi-wb-accent);
+}
+.mmi-wb-split-list tbody tr.is-not-sold > td {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-du-review {
+    --mmi-wb-du-surface: #ffffff;
+    --mmi-wb-du-subtle: #f1f3ee;
+    --mmi-wb-du-border: #dfe3da;
+    --mmi-wb-du-off: #c26a12;
+    --mmi-wb-du-none: #c3c4c7;
+    --mmi-wb-du-dark: #0f172a;
+    --mmi-wb-du-dark-muted: #cbd5e1;
+    --mmi-wb-du-radius: 12px;
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.mmi-wb-du-review *,
+.mmi-wb-du-review *::before,
+.mmi-wb-du-review *::after {
+    box-sizing: border-box;
+}
+/* Price check card. */
+.mmi-wb-du-verdict {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 24px;
+    padding: 14px 18px;
+    background: var(--mmi-wb-du-dark);
+    color: #ffffff;
+    border-radius: var(--mmi-wb-du-radius);
+}
+.mmi-wb-du-verdict-text,
+.mmi-wb-du-verdict-figure {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.mmi-wb-du-verdict-figure {
+    align-items: flex-end;
+    text-align: right;
+}
+.mmi-wb-du-verdict-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--mmi-wb-du-dark-muted);
+}
+.mmi-wb-du-verdict-headline {
+    font-size: 17px;
+    font-weight: 600;
+}
+.mmi-wb-du-verdict-headline::before {
+    content: "";
+    display: inline-block;
+    width: 0.6em;
+    height: 0.6em;
+    margin-right: 0.5em;
+    border-radius: 50%;
+    background: var(--mmi-wb-du-none);
+    vertical-align: 0.1em;
+}
+.mmi-wb-du-verdict.is-match .mmi-wb-du-verdict-headline::before { background: #7bc05c; }
+.mmi-wb-du-verdict.is-off .mmi-wb-du-verdict-headline::before { background: #f0a24a; }
+.mmi-wb-du-verdict-amount {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+.mmi-wb-du-verdict-note {
+    font-size: 12px;
+    color: var(--mmi-wb-du-dark-muted);
+}
+/* Nothing on sale (a warning) / Not sold (information). */
+.mmi-wb-du-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid #f0c48a;
+    border-left: 4px solid var(--mmi-wb-du-off);
+    border-radius: 6px;
+    background: #fcf3e6;
+    color: #5c3305;
+    line-height: 1.45;
+}
+.mmi-wb-du-alert .dashicons {
+    flex: none;
+    color: var(--mmi-wb-du-off);
+}
+.mmi-wb-du-alert.is-not-sold {
+    border-color: var(--mmi-wb-du-border);
+    border-left-color: var(--mmi-wb-du-none);
+    background: var(--mmi-wb-du-subtle);
+    color: #3c434a;
+}
+.mmi-wb-du-alert.is-not-sold .dashicons {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-du-hint,
+.mmi-wb-du-said {
+    margin: 0;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-du-said {
+    color: var(--mmi-wb-danger);
+    font-weight: 600;
+}
+/* Legend. */
+.mmi-wb-du-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 16px;
+    font-size: 12px;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-du-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-wb-du-key::before {
+    content: "";
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--mmi-wb-accent);
+}
+.mmi-wb-du-key.is-off::before { background: var(--mmi-wb-du-off); }
+.mmi-wb-du-key.is-none::before { background: var(--mmi-wb-du-subtle); box-shadow: inset 0 0 0 1px var(--mmi-wb-du-border); }
+.mmi-wb-du-key.is-stale::before { background: transparent; box-shadow: inset 0 0 0 1px var(--mmi-wb-du-none); }
+.mmi-wb-du-legend-note {
+    margin-left: auto;
+    font-style: italic;
+}
+.mmi-wb-du-compare {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin: 0;
+}
+.mmi-wb-du-compare .button .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    vertical-align: -3px;
+}
+/* Listing rows: one grid shared by every row (subgrid), so bars, prices and controls line up. Edge tracks are auto:
+   a row's padding is added to them. */
+.mmi-wb-du-listings,
+.mmi-wb-du-collision-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.mmi-wb-du-listings {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px 14px;
+}
+.mmi-wb-du-listing {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-template-areas:
+        "thumb name figure"
+        "thumb bar  bar"
+        "ctrl  ctrl ctrl";
+    row-gap: 8px;
+    align-items: center;
+    margin: 0;
+    padding: 12px 14px;
+    background: var(--mmi-wb-du-surface);
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: var(--mmi-wb-du-radius);
+}
+@container (min-width: 58rem) {
+    .mmi-wb-du-listings {
+        grid-template-columns: auto minmax(0, 2.4fr) minmax(90px, 1fr) auto auto;
+    }
+    .mmi-wb-du-listing {
+        grid-template-areas: "thumb name bar figure ctrl";
+    }
+}
+.mmi-wb-du-listing.is-canonical,
+.mmi-wb-du-collision.is-canonical {
+    border-color: var(--mmi-wb-accent);
+    box-shadow: inset 0 0 0 1px var(--mmi-wb-accent);
+}
+.mmi-wb-du-listing.is-unresolved {
+    background: var(--mmi-wb-du-subtle);
+    border-style: dashed;
+}
+.mmi-wb-du-thumb {
+    grid-area: thumb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    overflow: hidden;
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--mmi-wb-du-none);
+}
+.mmi-wb-du-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.mmi-wb-du-name {
+    grid-area: name;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.mmi-wb-du-name-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+}
+.mmi-wb-du-name-head .mmi-badge {
+    flex: none;
+    align-self: center;
+}
+.mmi-wb-du-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: #1d2327;
+    text-decoration: none;
+}
+a.mmi-wb-du-title:hover,
+a.mmi-wb-du-title:focus-visible {
+    color: var(--mmi-wb-accent);
+    text-decoration: underline;
+}
+.mmi-wb-du-listing.is-unresolved .mmi-wb-du-title {
+    color: var(--mmi-wb-muted);
+    font-style: italic;
+}
+.mmi-wb-du-id {
+    flex: none;
+    font-size: 12px;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-du-meta {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--mmi-wb-muted);
+}
+/* Supplier, maker and visibility shorten; the SKU and its catalog icon stay whole. */
+.mmi-wb-du-meta-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mmi-wb-du-sku {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.mmi-wb-du-catalog {
+    display: inline-flex;
+    color: var(--mmi-wb-muted);
+    text-decoration: none;
+}
+.mmi-wb-du-catalog:hover,
+.mmi-wb-du-catalog:focus {
+    color: var(--mmi-wb-accent);
+}
+.mmi-wb-du-catalog .dashicons {
+    width: 15px;
+    height: 15px;
+    font-size: 15px;
+}
+/* A listing no supplier sells any more: faded, so the live ones stand out. */
+.mmi-wb-du-listing.is-avail-gone .mmi-wb-du-thumb,
+.mmi-wb-du-listing.is-avail-gone .mmi-wb-du-title,
+.mmi-wb-du-listing.is-avail-gone .mmi-wb-du-bar,
+.mmi-wb-du-listing.is-avail-gone .mmi-wb-du-figure {
+    opacity: 0.55;
+}
+/* Price bar, sized against the group's highest price (--mmi-wb-du-bar-w). */
+.mmi-wb-du-bar {
+    grid-area: bar;
+    display: flex;
+    height: 11px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--mmi-wb-du-subtle);
+}
+.mmi-wb-du-bar-fill {
+    width: var(--mmi-wb-du-bar-w, 0%);
+    border-radius: 999px;
+    background: var(--mmi-wb-accent);
+}
+.mmi-wb-du-listing.is-price-off .mmi-wb-du-bar-fill {
+    background: var(--mmi-wb-du-off);
+}
+.mmi-wb-du-figure {
+    grid-area: figure;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+}
+.mmi-wb-du-amount {
+    font-size: 15px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.mmi-wb-du-listing.is-price-off .mmi-wb-du-amount { color: var(--mmi-wb-du-off); }
+.mmi-wb-du-listing.is-price-none .mmi-wb-du-amount { color: var(--mmi-wb-du-none); }
+/* A leftover price: shown, struck through, never compared. */
+.mmi-wb-du-listing.is-price-stale .mmi-wb-du-amount { color: var(--mmi-wb-du-none); text-decoration: line-through; }
+.mmi-wb-du-sub {
+    font-size: 11px;
+    color: var(--mmi-wb-muted);
+    white-space: nowrap;
+}
+.mmi-wb-du-cost.is-lowest {
+    color: var(--mmi-wb-accent);
+    font-weight: 600;
+}
+.mmi-wb-du-controls {
+    grid-area: ctrl;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+}
+/* Canonical / Include: chips, each wrapping its real input. .is-on is set by the component (WebKit doesn't restyle
+   :has(:checked) when a radio changes). */
+.mmi-wb-du-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: 999px;
+    background: var(--mmi-wb-du-surface);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+}
+.mmi-wb-du-choice input {
+    margin: 0;
+    accent-color: var(--mmi-wb-accent);
+}
+.mmi-wb-du-choice.is-on {
+    border-color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+    color: #2b5c1d;
+}
+.mmi-wb-du-choice:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+/* Product data: per field, a card per listing's value, side by side. */
+.mmi-wb-du-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background: var(--mmi-wb-du-surface);
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: var(--mmi-wb-du-radius);
+}
+.mmi-wb-du-fields-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.mmi-wb-du-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    align-items: start;
+}
+@container (min-width: 40rem) {
+    .mmi-wb-du-field {
+        grid-template-columns: 8rem minmax(0, 1fr);
+        gap: 12px;
+    }
+}
+.mmi-wb-du-field + .mmi-wb-du-field {
+    padding-top: 10px;
+    border-top: 1px solid var(--mmi-wb-du-border);
+}
+.mmi-wb-du-field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 5px;
+    font-weight: 500;
+}
+.mmi-wb-du-picks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 8px;
+}
+.mmi-wb-du-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+    padding: 9px 12px 11px;
+    background: var(--mmi-wb-du-subtle);
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: 10px;
+    cursor: pointer;
+}
+.mmi-wb-du-pick:hover {
+    border-color: #c4cabd;
+}
+.mmi-wb-du-pick.is-picked {
+    background: var(--mmi-wb-du-surface);
+    border-color: var(--mmi-wb-accent);
+    box-shadow: inset 0 0 0 1px var(--mmi-wb-accent);
+}
+.mmi-wb-du-pick-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font-size: 12px;
+}
+.mmi-wb-du-pick-head input {
+    margin: 0;
+    accent-color: var(--mmi-wb-accent);
+}
+.mmi-wb-du-pick-same {
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #e8eef7;
+    color: #1f4e8c;
+    font-size: 11px;
+    font-weight: 600;
+}
+.mmi-wb-du-pick-text {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #3c434a;
+    overflow-wrap: anywhere;
+}
+.mmi-wb-du-pick-text.is-title {
+    font-weight: 500;
+    color: #1d2327;
+}
+.mmi-wb-du-pick-image {
+    display: block;
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: 8px;
+    background: #ffffff;
+}
+.mmi-wb-du-pick-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+.mmi-wb-du-pick-gallery img {
+    display: block;
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: 6px;
+    background: #ffffff;
+}
+.mmi-wb-du-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.mmi-wb-du-actions .dashicons,
+.mmi-wb-du-controls .dashicons {
+    vertical-align: middle;
+}
+/* A decision that changes stock or unlinks waits for a second click on the same button. */
+.mmi-wb-du-review .button.is-armed {
+    background: var(--mmi-wb-danger);
+    border-color: var(--mmi-wb-danger);
+    color: #fff;
+}
+/* Collisions: one card per product sharing the key. */
+.mmi-wb-du-collision-list {
+    display: grid;
+    gap: 8px;
+}
+.mmi-wb-du-collision {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--mmi-wb-du-border);
+    border-radius: var(--mmi-wb-du-radius);
+    background: var(--mmi-wb-du-surface);
+}

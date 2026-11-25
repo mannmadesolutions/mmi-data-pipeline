@@ -9,52 +9,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Backward compat: old vip_tab URLs
-if ( isset( $_GET['vip_tab'] ) ) {
-    wp_redirect( admin_url( 'admin.php?page=mmi-data-pipeline' ) );
-    exit;
-}
-
-// Backward compat: Taxonomy Mapping was its own top-level tab
-// (?pipeline_tab=taxonomy) until 2026-08-30, when it was folded back into
-// the Import tab as a collapsible section. Any bookmarked/deep-linked URL
-// still naming that tab is redirected to the Import tab with the section
-// expanded and scrolled into view (see taxonomy-mapping.js's
-// maybeOpenFromUrl(), which mirrors product-import.js's existing
-// ?open_schedule=1 pattern) — ?profile= is carried over unchanged, since
-// that param still means the same thing (pre-select this profile in the
-// section's own variation-adding pickers).
-if ( isset( $_GET['pipeline_tab'] ) && 'taxonomy' === $_GET['pipeline_tab'] ) {
-    $_mmi_taxonomy_redirect_args = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'open_taxonomy' => 1 ];
-    if ( isset( $_GET['profile'] ) ) {
-        $_mmi_taxonomy_redirect_args['profile'] = sanitize_text_field( wp_unslash( $_GET['profile'] ) );
-    }
-    wp_redirect( admin_url( 'admin.php?' . http_build_query( $_mmi_taxonomy_redirect_args ) ) );
-    exit;
-}
-
-// Backward compat: Duplicate Products was its own top-level tab
-// (?pipeline_tab=duplicates) until 2026-09-02, when it was folded into the
-// Import tab as a collapsible section (section-duplicate-products.php) — the
-// same move Taxonomy Mapping made above. ?open_duplicates=1 expands and
-// scrolls to #mmi-duplicate-products-section (see duplicate-products.js's
-// maybeOpenFromUrl()).
-if ( isset( $_GET['pipeline_tab'] ) && 'duplicates' === $_GET['pipeline_tab'] ) {
-    $_mmi_dupes_redirect_args = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'open_duplicates' => 1 ];
-    if ( isset( $_GET['profile'] ) ) {
-        $_mmi_dupes_redirect_args['profile'] = sanitize_text_field( wp_unslash( $_GET['profile'] ) );
-    }
-    wp_redirect( admin_url( 'admin.php?' . http_build_query( $_mmi_dupes_redirect_args ) ) );
-    exit;
-}
-
-// Catalog Maintenance (an Import tab section until 2026-10-30) moved into the
-// Product Workbench as Standing rules + Catalog upkeep. Links made for it
-// (?open_catalog=1, e.g. the rule alert's) land on Standing rules.
-if ( isset( $_GET['open_catalog'] ) ) {
-    wp_redirect( admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=standing' ) );
-    exit;
-}
+// Old addresses (vip_tab, the Taxonomy and Duplicates tabs, open_duplicates,
+// open_catalog) are redirected before the page prints anything:
+// MMI_Pipeline_Admin::redirect_old_addresses().
 
 // Collect pipeline process errors to surface as admin notices.
 // Every profile is checked (not just whichever one ?profile= happens to name) —
@@ -65,19 +22,10 @@ if ( isset( $_GET['open_catalog'] ) ) {
 // never shown). See MMI_Pipeline_Run_Insights::get_page_notices().
 $_mmi_pipeline_errors = class_exists( 'MMI_Pipeline_Run_Insights' ) ? MMI_Pipeline_Run_Insights::get_page_notices() : [];
 
-// Real top-level tab bar: Import / Export. Duplicate Products was a
-// first-class tab of its own (tab-duplicate-products.php) until 2026-09-02,
-// when it was folded into the Import tab as a collapsible section
-// (section-duplicate-products.php) — the same path Taxonomy Mapping already
-// took on 2026-08-30: it was promoted out of the Import tab to a
-// first-class tab of its own at some point before that, then folded back in
-// as a collapsible section (section-taxonomy-mapping.php, included from
-// tab-pipeline.php) — then merged into Review & Compare later the same day/
-// into 2026-08-31, then relocated again into the Supplier Data Sources
-// section's own toolbar (pipeline-step-1-acquisition.php) once its data's
-// real ownership (per data source, not per import profile) was pinned down
-// — see the backward-compat redirects above and AGENTS.md's Incident
-// History for each date's reasoning.
+// Real top-level tab bar: Import / Export / Product Workbench. Duplicates
+// (a pill of the Workbench since 2026-11-25) and Taxonomy Mapping (in the
+// Supplier Data Sources toolbar) were tabs once; their old addresses are
+// redirected by MMI_Pipeline_Admin::redirect_old_addresses().
 $_mmi_valid_tabs  = [ 'import', 'export', 'workbench' ];
 $_mmi_current_tab = isset( $_GET['pipeline_tab'] ) ? sanitize_text_field( wp_unslash( $_GET['pipeline_tab'] ) ) : 'import';
 if ( ! in_array( $_mmi_current_tab, $_mmi_valid_tabs, true ) ) {

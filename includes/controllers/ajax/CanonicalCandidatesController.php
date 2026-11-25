@@ -22,6 +22,11 @@ use MannMade\DataPipeline\Stock_Override_Resolver;
 /* ── Nonce used by all duplicate-products AJAX calls ──────────────────────── */
 const CANONICAL_CANDIDATES_NONCE = 'mmi_pipeline_canonical_candidates';
 
+// The Workbench's Duplicates pill stays open for hours: MMINonces refreshes this nonce for users the plugin allows.
+add_filter( 'mmi_refreshable_nonces', static function ( $nonces ) {
+    return (array) $nonces + [ CANONICAL_CANDIDATES_NONCE => 'mmi_data_pipeline_user_can' ];
+} );
+
 /**
  * Per-supplier feed field map. Skuport has no distinct "vendor" signal (its
  * source data only has a developer/brand-like field), so vendor stays null
@@ -122,7 +127,7 @@ function mmi_canonical_candidates_group_key( string $brand, string $name ): stri
  * Product_CRUD_Manager::apply_field_winners()). Deliberately a short,
  * explicit list rather than every postmeta key a product carries — more
  * fields can be added here later with no other code needing to change,
- * since both the review UI (duplicate-products.js) and the apply step key
+ * since both the review UI (src/workbench/dupesLogic.ts) and the apply step key
  * off this same list.
  */
 function mmi_canonical_candidates_asset_field_defs(): array {
@@ -667,9 +672,86 @@ function mmi_canonical_candidates_save_review_index( array $groups, string $sour
             'product_ids' => array_values( array_unique( array_filter( array_map( 'intval', array_column( $g['members'], 'wc_product_id' ) ) ) ) ),
             'skus'        => array_values( array_unique( array_filter( array_map( 'strval', array_column( $g['members'], 'sku' ) ) ) ) ),
             'recommended_id' => (int) ( $g['recommended_product_id'] ?? 0 ),
+            // Every listing imported: only then can the group be judged as held by another (mmi_canonical_candidates_waiting()).
+            'complete'    => ! in_array( 0, array_map( 'intval', array_column( $g['members'], 'wc_product_id' ) ), true ),
         ];
     }
     MMI_DB::set_setting( 'mmi_canonical_candidates_review_index', [ 'scanned_at' => time(), 'groups' => $kept ] );
+}
+
+/**
+ * How many groups wait for a decision, as the Duplicates pill lists them: the review index's groups, less each one
+ * whose listings all sit in a bigger group (Duplicates folds those into one row; dupesLogic.ts fold()). Older-listing
+ * groups never fold. Read from the durable index the scans write, never from the feeds, so the Workbench's counts can
+ * ask for it; 0 while scanning is switched off.
+ *
+ * @return array{count:int, scanned_at:int|null}
+ */
+function mmi_canonical_candidates_waiting(): array {
+    $index = mmi_canonical_candidates_review_index();
+    if ( ! (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true ) ) {
+        return [ 'count' => 0, 'scanned_at' => $index['scanned_at'] ];
+    }
+    $rank = [ 'mpn' => 0, 'candidate' => 1, 'title' => 2 ];
+    // Groups that can hold or be held, and for each listing the groups holding it.
+    $sets = [];
+    $by_id = [];
+    foreach ( $index['groups'] as $key => $g ) {
+        $ids = array_values( array_unique( array_map( 'intval', (array) ( $g['product_ids'] ?? [] ) ) ) );
+        if ( ! $ids || ! isset( $rank[ $g['source'] ?? '' ] ) || false === ( $g['complete'] ?? true ) ) {
+            continue;
+        }
+        $sets[ $key ] = [ 'ids' => $ids, 'set' => array_flip( $ids ), 'rank' => $rank[ $g['source'] ] ];
+        foreach ( $ids as $id ) {
+            $by_id[ $id ][] = (string) $key;
+        }
+    }
+    $outranks = static fn( array $a, string $ak, array $b, string $bk ): bool => count( $a['ids'] ) !== count( $b['ids'] )
+        ? count( $a['ids'] ) > count( $b['ids'] )
+        : ( $a['rank'] !== $b['rank'] ? $a['rank'] < $b['rank'] : strcmp( $ak, $bk ) < 0 );
+    $held = 0;
+    foreach ( $sets as $key => $e ) {
+        foreach ( $by_id[ $e['ids'][0] ] ?? [] as $other ) {
+            $o = $sets[ $other ];
+            if ( $other !== (string) $key && $outranks( $o, $other, $e, (string) $key ) && ! array_diff_key( $e['set'], $o['set'] ) ) {
+                $held++;
+                break;
+            }
+        }
+    }
+    return [ 'count' => count( $index['groups'] ) - $held, 'scanned_at' => $index['scanned_at'] ];
+}
+
+/**
+ * One product's duplicates, for the Workbench's product drawer: the groups waiting for a decision that list it (from
+ * the last scan's review index, no feed read) and the listings its own link names.
+ *
+ * @return array{groups: array<int,array{key:string,source:string,others:int[]}>, linked: int[]}
+ */
+function mmi_canonical_candidates_for_product( int $product_id ): array {
+    $groups = [];
+    foreach ( mmi_canonical_candidates_review_index()['groups'] as $key => $g ) {
+        $ids = array_map( 'intval', (array) ( $g['product_ids'] ?? [] ) );
+        if ( in_array( $product_id, $ids, true ) ) { // audit-ok: $ids is one group's listings (2-5), not a dataset
+            $groups[] = [ 'key' => (string) $key, 'source' => (string) ( $g['source'] ?? 'candidate' ), 'others' => array_values( array_diff( $ids, [ $product_id ] ) ) ];
+        }
+    }
+    $linked = array_values( array_diff( mmi_canonical_candidates_parse_associated_ids( get_post_meta( $product_id, 'associated_product_ids', true ) ), [ $product_id ] ) );
+    return [ 'groups' => $groups, 'linked' => $linked ];
+}
+
+/**
+ * The Duplicates pill's address (Product Workbench → Needs a decision → Duplicates), with its chip, brand or open
+ * group: [ 'chip' => 'no_sale', 'brand' => 'Moog', 'group' => 'legacy-123' ].
+ */
+function mmi_canonical_candidates_queue_url( array $args = [] ): string {
+    $query = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'workbench', 'wb_sec' => 'duplicates' ];
+    foreach ( [ 'chip' => 'wb_dupes', 'brand' => 'wb_dupes_brand', 'group' => 'wb_dupes_group' ] as $arg => $param ) {
+        if ( isset( $args[ $arg ] ) && '' !== (string) $args[ $arg ] ) {
+            $query[ $param ] = (string) $args[ $arg ];
+        }
+    }
+    return add_query_arg( array_map( 'rawurlencode', $query ), admin_url( 'admin.php' ) );
 }
 
 /**
@@ -869,7 +951,7 @@ function mmi_canonical_candidates_nothing_on_sale_label( int $count ): string {
 }
 
 function mmi_canonical_candidates_nothing_on_sale_url(): string {
-    return admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_duplicates=1&dupes_status=no_sale' );
+    return mmi_canonical_candidates_queue_url( [ 'chip' => 'no_sale' ] );
 }
 
 /** Drops worked groups from the snapshot until the next run re-checks them. */
@@ -1647,7 +1729,7 @@ function mmi_canonical_candidates_refresh_legacy_group( int $canonical_id ): ?ar
  * never a feed scan: it finds every canonical=TRUE product whose
  * associated_product_ids actually names at least one other real product,
  * completely independent of whether either side is still in any live feed.
- * Merged into the same "Duplicates" table client-side (duplicate-products.js)
+ * Merged into the same Duplicates queue client-side (src/workbench/dupesLogic.ts fold())
  * alongside mmi_scan_duplicate_candidates()'s fresh feed-match groups, each
  * tagged by 'source' so the two origins stay visually distinguishable in one
  * unified queue.

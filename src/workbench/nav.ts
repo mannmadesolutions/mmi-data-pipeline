@@ -31,6 +31,24 @@ export function openPill(kind: string, replace = false): void {
   window.dispatchEvent(new CustomEvent<OpenRequest>(OPEN_EVENT, { detail: { key: "decide", replace } }));
 }
 
+/** Duplicates' pill opened on one group (detail: its key), from the product drawer. */
+export const DUPES_GROUP_EVENT = "mmi-wb:open-dupes-group";
+let pendingDupesGroup = "";
+
+/** Open Duplicates on a group: the pill's first drawing reads it (takeDupesGroup), a drawn one hears the event. */
+export function openDupesGroup(key: string): void {
+  pendingDupesGroup = key;
+  window.dispatchEvent(new CustomEvent<string>(DUPES_GROUP_EVENT, { detail: key }));
+  openPill("duplicates");
+}
+
+/** The group a drawer asked Duplicates to open before the pill was drawn ("" for none), once. */
+export function takeDupesGroup(): string {
+  const k = pendingDupesGroup;
+  pendingDupesGroup = "";
+  return k;
+}
+
 /** A section shown inside another (the review queues inside Needs a decision): its Section draws no card or title. */
 export const SectionEmbedContext = createContext(false);
 

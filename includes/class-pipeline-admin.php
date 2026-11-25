@@ -16,6 +16,7 @@ class MMI_Pipeline_Admin {
 
     public static function init(): void {
         add_action( 'admin_menu', [ __CLASS__, 'register_menu' ], 20 );
+        add_action( 'admin_init', [ __CLASS__, 'redirect_old_addresses' ] );
         add_action( 'add_meta_boxes',    [ __CLASS__, 'register_stock_override_metabox' ] );
         add_action( 'save_post_product', [ __CLASS__, 'save_stock_override_metabox' ], 10, 1 );
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_stock_override_metabox_style' ] );
@@ -72,6 +73,45 @@ class MMI_Pipeline_Admin {
             'mmi-data-pipeline',
             [ __CLASS__, 'render_page' ]
         );
+    }
+
+    /**
+     * Addresses of screens that moved, sent on to where they are now. Runs on admin_init: by the time the page
+     * callback runs, the admin header has been sent and a redirect can't go out (they used to sit in main.php).
+     */
+    public static function redirect_old_addresses(): void {
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only navigation, no state changes
+        if ( 'mmi-data-pipeline' !== ( $_GET['page'] ?? '' ) || ! mmi_data_pipeline_user_can() ) {
+            return;
+        }
+        $tab = sanitize_key( wp_unslash( $_GET['pipeline_tab'] ?? '' ) );
+        $to  = '';
+        if ( isset( $_GET['vip_tab'] ) ) {
+            $to = admin_url( 'admin.php?page=mmi-data-pipeline' );
+        } elseif ( 'taxonomy' === $tab ) {
+            // Taxonomy Mapping was its own tab until 2026-08-30; ?profile= still pre-selects the variation pickers' profile.
+            $args = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'open_taxonomy' => 1 ];
+            if ( isset( $_GET['profile'] ) ) {
+                $args['profile'] = sanitize_text_field( wp_unslash( $_GET['profile'] ) );
+            }
+            $to = admin_url( 'admin.php?' . http_build_query( $args ) );
+        } elseif ( ( isset( $_GET['open_duplicates'] ) || 'duplicates' === $tab ) && function_exists( 'mmi_canonical_candidates_queue_url' ) ) {
+            // Duplicates: its own tab until 2026-09-02, an Import tab section (open_duplicates=1, dupes_status,
+            // dupes_brand, detection=collisions) until 2026-11-25, now a pill of the Workbench's Needs a decision.
+            // mmi-admin's Product Paths links leave pipeline_tab out.
+            $to = mmi_canonical_candidates_queue_url( [
+                'chip'  => 'collisions' === ( $_GET['detection'] ?? '' ) ? 'collisions' : sanitize_key( wp_unslash( $_GET['dupes_status'] ?? '' ) ),
+                'brand' => sanitize_text_field( wp_unslash( $_GET['dupes_brand'] ?? '' ) ),
+            ] );
+        } elseif ( isset( $_GET['open_catalog'] ) ) {
+            // Catalog Maintenance moved into the Workbench as Standing rules + Catalog upkeep (2026-10-30).
+            $to = admin_url( 'admin.php?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=standing' );
+        }
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
+        if ( '' !== $to ) {
+            wp_safe_redirect( $to );
+            exit;
+        }
     }
 
     /* ── Page render ──────────────────────────────────────────────────────── */
@@ -269,12 +309,12 @@ class MMI_Pipeline_Admin {
                 self::build_preview_data()
             );
 
-            // Taxonomy Mapping (folded into the Import tab 2026-08-30) and
-            // Duplicate Products (2026-09-02) both start closed, so their
-            // scripts (~190 KB together) load the first time they're opened
-            // rather than with the page — see mmi_shared_lib_lazy_script().
-            // Their CSS stays eager (small, and needed the moment they open).
-            // A deep link that opens one straight away loads it eagerly.
+            // Taxonomy Mapping (folded into the Import tab 2026-08-30) starts
+            // closed, so its script loads the first time it's opened rather
+            // than with the page — see mmi_shared_lib_lazy_script(). Its CSS
+            // stays eager (small, and needed the moment it opens). A deep
+            // link that opens it straight away loads it eagerly. (Duplicates
+            // moved into the Product Workbench on 2026-11-25.)
             self::enqueue_style( 'mmi-pipeline-taxonomy',
                 'assets/css/taxonomy-mapping.css', [ 'mmi-pipeline-settings' ] );
 
@@ -293,22 +333,6 @@ class MMI_Pipeline_Admin {
                 'eager'    => isset( $_GET['open_taxonomy'] ),
             ] );
 
-            self::enqueue_style( 'mmi-pipeline-dupes',
-                'assets/css/duplicate-products.css', [ 'mmi-pipeline-settings' ] );
-
-            self::register_script( 'mmi-pipeline-dupes-js',
-                'assets/js/duplicate-products.js', [ 'jquery', 'mmi-escape-html' ] );
-
-            wp_localize_script( 'mmi-pipeline-dupes-js', 'mmiDupes', [
-                'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-                'nonce'   => wp_create_nonce( 'mmi_pipeline_canonical_candidates' ),
-                'catalog' => self::distributors_catalog_link(),
-            ] );
-
-            self::load_on_first_use( 'mmi-pipeline-dupes-js', [
-                'sections' => [ '#mmi-duplicate-products-section' ],
-                'eager'    => isset( $_GET['open_duplicates'] ),
-            ] );
         }
 
         /* ── Export tab ───────────────────────────────────────────────────── */
@@ -1083,6 +1107,12 @@ class MMI_Pipeline_Admin {
             'extraColumns'     => (object) array_map( 'strval', (array) apply_filters( 'mmi_pipeline_workbench_columns', [] ) ),
             // A store's own panels (mmi_pipeline_product_data_panels): a section each, drawn by the store's script.
             'panels'           => array_map( static fn( $p ) => array_intersect_key( $p, array_flip( [ 'id', 'title', 'desc', 'icon' ] ) ), self::workbench_panels() ),
+            // Duplicates, a pill of Needs a decision (CanonicalCandidatesController.php's endpoints and nonce).
+            'duplicates'       => [
+                'nonce'   => wp_create_nonce( 'mmi_pipeline_canonical_candidates' ),
+                'enabled' => (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true ),
+                'catalog' => self::distributors_catalog_link() ?: null,
+            ],
         ];
         // Title rules (Product Data): shown where the title rule routes (mmpt/v1) are registered; the plugin that
         // registers them answers the filter. Site-relative URLs; the REST nonce is fetched by the page when needed.

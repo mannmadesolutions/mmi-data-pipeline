@@ -231,12 +231,6 @@ $p_mode_labels = [
     'availability-sync' => 'Availability Sync',
 ];
 
-// Master enable/disable switch for the Duplicate Products section — a full
-// kill switch for its logic (not just a UI dim): see
-// mmi_scan_duplicate_candidates's own gate in CanonicalCandidatesController.php.
-// Catalog upkeep's own switch moved to the Product Workbench with it.
-$mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true );
-
 ?>
 
 <div class="mmi-data-pipeline-container">
@@ -815,10 +809,6 @@ $mmi_duplicate_products_enabled  = (bool) MMI_DB::get_setting( 'mmi_duplicate_pr
          section-profile-wizard.php) — that panel no longer has a standalone
          include of its own. */ ?>
     <?php include __DIR__ . '/partials/section-profile-wizard.php'; ?>
-
-    <!-- ── Duplicate Products — moved here from its own top-level tab
-         2026-09-02; see main.php's ?pipeline_tab=duplicates redirect. ── -->
-    <?php include __DIR__ . '/partials/section-duplicate-products.php'; ?>
 
     <!-- ── Review & Compare ──────────────────────────────────────────────── -->
     <div class="mmi-process-section mmi-collapsible-section" id="mmi-review-compare-section" data-section="review">

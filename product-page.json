@@ -42,7 +42,7 @@
         },
         {
             "id": "duplicates",
-            "text": "Duplicate finder: link the same product from different suppliers and choose the main listing",
+            "text": "Duplicate finder in the Product Workbench: link the same product from different suppliers and choose the main listing, beside the list",
             "anchor": "file:includes/controllers/ajax/CanonicalCandidatesController.php",
             "since": ""
         },
