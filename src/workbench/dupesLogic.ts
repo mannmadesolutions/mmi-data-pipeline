@@ -115,12 +115,12 @@ export interface Collision {
 export type Chip = "new" | "linked" | "no_sale" | "not_sold" | "older" | "all" | "collisions";
 
 export const CHIPS: { value: Chip; label: string; hint: string }[] = [
+  { value: "all", label: "All", hint: "Every group, new and linked" },
   { value: "new", label: "New", hint: "Groups to decide: link them as one product, or mark them not a duplicate" },
   { value: "linked", label: "Linked", hint: "Groups already linked: change which listing customers see, remove a listing or unlink" },
   { value: "no_sale", label: "Nothing on sale", hint: "Linked groups whose canonical listing is out of stock while its duplicates are held out of stock" },
   { value: "not_sold", label: "Not sold", hint: "No listing can be sold: each is out of stock and gone from its supplier's feed or held out by a stock rule. The canonical pick changes nothing customers can buy" },
   { value: "older", label: "Older listings", hint: "An old listing no supplier carries any more, beside a listing of the same product on sale" },
-  { value: "all", label: "All", hint: "Every group, new and linked" },
   { value: "collisions", label: "Collisions", hint: "Two products holding the same supplier tracking key: only one of them gets the feed's price and stock" },
 ];
 
