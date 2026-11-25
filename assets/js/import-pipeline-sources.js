@@ -15,9 +15,7 @@
 
     /** Category & brand mapping in the Product Workbench (mmi_taxmap_url(), printed by the page), open on this source. */
     function taxmapUrl(supplierId) {
-        const base = (window.mmiImportSettings && window.mmiImportSettings.taxmapUrl) || '';
-        if (!base) { return '#'; }
-        const url = new URL(base, window.location.origin);
+        const url = new URL(window.mmiImportSettings.taxmapUrl, window.location.origin);
         url.searchParams.set('wb_source', supplierId);
         return url.toString();
     }

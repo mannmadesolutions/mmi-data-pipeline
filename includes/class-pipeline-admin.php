@@ -711,7 +711,8 @@ class MMI_Pipeline_Admin {
             // Taxonomies tab calls it from import-pipeline-config.js.
             'taxmapNonce'         => wp_create_nonce( 'mmi_pipeline_taxonomy_mapping' ),
             // Category & brand mapping's address (the Workbench); the scripts add wb_source for one source.
-            'taxmapUrl'           => function_exists( 'mmi_taxmap_url' ) ? mmi_taxmap_url() : '',
+            // TaxonomyMappingController.php defines it: it loads with the other controllers, before any page renders.
+            'taxmapUrl'           => mmi_taxmap_url(),
             // The one integration list (DataSourceController.php) — the JS
             // used to keep its own copy, which never gained Plugivery.
             'preconfiguredTemplates' => function_exists( '\\MannMade\\DataPipeline\\Controllers\\AJAX\\mmi_ds_preconfigured_templates_for_js' ) ? \MannMade\DataPipeline\Controllers\AJAX\mmi_ds_preconfigured_templates_for_js() : [],
