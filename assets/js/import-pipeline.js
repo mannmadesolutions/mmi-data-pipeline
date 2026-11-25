@@ -605,26 +605,8 @@
                 self.activateSupplierRow(supplierId);
             });
 
-            // ── Per-Row "Taxonomy Mapping" Quick Link (2026-08-31) ───────
-            // Answers the user's own framing directly: a data source row
-            // should show whether it has a mapping in place, and clicking
-            // through should be the easy way to assign/view one — opens the
-            // Taxonomy Mapping panel (in the Supplier Data Sources toolbar,
-            // expanding it if collapsed) pre-filtered to just this source.
-            $(document).on('click', '.mmi-taxmap-quick-link', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const supplierId   = $(this).data('taxmap-open-supplier');
-                const supplierName = $(this).data('taxmap-supplier-name') || supplierId;
-                if (!supplierId) { return; }
-                // taxonomy-mapping.js loads on first use (shared mmiLazyScripts).
-                const loaded = window.mmiLazyScripts ? window.mmiLazyScripts.load('mmi-pipeline-taxonomy-js') : Promise.resolve();
-                loaded.then(function () {
-                    if (window.MMITaxMapping && typeof window.MMITaxMapping.openForSupplier === 'function') {
-                        window.MMITaxMapping.openForSupplier(supplierId, supplierName);
-                    }
-                });
-            });
+            // The per-row "N mapped" / "Set up" link is a plain link to Category & brand mapping in the
+            // Product Workbench (new tab, 2026-11-25); the row click above leaves it alone.
 
             // ── Per-Source Taxonomy Mapping Toggle (2026-08-31) ──────────
             // Narrower than the toggle removed above — this doesn't affect

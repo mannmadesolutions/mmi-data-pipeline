@@ -21,6 +21,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RecentChanges } from "./RecentChanges";
 import { RuleCheck } from "./RuleCheck";
 import { StandingRules, type RowNotice } from "./StandingRules";
+import { TaxonomyMapping } from "./TaxonomyMapping";
 import { Makers } from "./Makers";
 import { TitleRules } from "./TitleRules";
 import { ProductDataRuns } from "./WritingSettings";
@@ -523,6 +524,8 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
       { key: "left", label: "Left alone", group: "maker", render: () => <LeftAlone cfg={tr} /> },
     ] as MenuEntry[] : []),
     { key: "standing", label: "Standing rules", group: "automation", render: () => standing, badge: standingBadge },
+    // Taxonomy Mapping, moved from the Import tab (2026-11-25): a mapping keeps applying, like a standing rule.
+    ...(cfg.taxmap ? [{ key: "mapping", label: "Category & brand mapping", group: "automation", render: () => <TaxonomyMapping cfg={cfg.taxmap!} />, badge: mappingBadge }] as MenuEntry[] : []),
     { key: "upkeep", label: "Catalog upkeep", group: "automation", render: () => <CatalogUpkeep onRunFinished={() => { loadRules(); refreshCounts(); }} />, badge: upkeepBadge },
     ...(tr ? [
       { key: "pictures", label: "Product pictures", group: "automation", render: () => <ProductPictures cfg={tr} />, badge: picturesBadge },
@@ -553,6 +556,12 @@ export function App({ cfg }: { cfg: WorkbenchConfig }) {
 }
 
 /* ── Menu badges ──────────────────────────────────────────────────────────── */
+
+/** Supplier values with no term, as of the mapper's last scan (it reads the feeds, so the count isn't live). */
+function mappingBadge(c: WorkbenchCounts) {
+  if (!c.mapping?.unmapped) return null;
+  return { text: num(c.mapping.unmapped), kind: "info" as const, title: `Supplier values with no term, as of ${new Date(c.mapping.at * 1000).toLocaleString()}` };
+}
 
 function standingBadge(c: WorkbenchCounts) {
   if (c.standing.alerts) return { text: fill(MESSAGES.MENU_RULE_ALERTS, { count: num(c.standing.alerts) }), kind: "warning" as const };

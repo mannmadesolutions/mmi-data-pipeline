@@ -7,6 +7,7 @@ import { App } from "./App";
 import { bridgeReady } from "./bridge";
 import { DUPES_NONCE_ACTION } from "./dupesApi";
 import { NONCE_ACTION, page } from "./globals";
+import { TAXMAP_NONCE_ACTION } from "./taxmapApi";
 
 const ROOT_ID = "mmi-wb-app";
 
@@ -23,6 +24,7 @@ function mount(): void {
     if (w.mmiRuleBuilder) w.MMINonces.watch(NONCE_ACTION, w.mmiRuleBuilder);
     if (w.mmiConditionBuilder) w.MMINonces.watch(NONCE_ACTION, w.mmiConditionBuilder);
     if (w.mmiWorkbench.duplicates) w.MMINonces.watch(DUPES_NONCE_ACTION, w.mmiWorkbench.duplicates);
+    if (w.mmiWorkbench.taxmap) w.MMINonces.watch(TAXMAP_NONCE_ACTION, w.mmiWorkbench.taxmap);
   }
   createRoot(el).render(<App cfg={w.mmiWorkbench} />);
 }

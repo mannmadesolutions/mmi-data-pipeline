@@ -279,25 +279,13 @@ $status_badge_map = [
                     <button type="button" class="mmi-btn-profile" id="view-logs-all">
                         <span class="dashicons dashicons-media-text"></span> View Logs
                     </button>
-                    <?php /* Taxonomy Mapping lives here, not in Review & Compare
-                         (moved 2026-08-31) — its mapping table is keyed by
-                         data source (supplier/source_field/wc_taxonomy, see
-                         MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields()),
-                         the exact same ownership this whole table already
-                         represents, not by import profile the way Review &
-                         Compare's own content is. Same button+panel mechanic as
-                         before (taxonomy-mapping.js's bindPanelToggle(),
-                         slideToggle() + 'is-active'), just relocated.
-                         Deliberately NOT gated by which supplier row is
-                         selected — unlike Configure/Preview Data/Delete, this
-                         opens a global, all-sources panel (see
-                         section-taxonomy-mapping.php), not an action on one
-                         record, so tying it to row selection would be
-                         incorrect, not just inconsistent. */ ?>
-                    <button type="button" class="mmi-btn-profile mmi-taxonomy-toggle-btn" id="mmi-taxonomy-mapping-toggle"
-                            title="Map supplier brand/category values to WooCommerce terms — applied automatically during every import">
-                        <span class="dashicons dashicons-networking"></span> Taxonomy Mapping
-                    </button>
+                    <?php /* Taxonomy Mapping moved into the Product Workbench as
+                         Category & brand mapping (2026-11-25); this opens it in a new
+                         tab, so the source table keeps its place. */ ?>
+                    <a class="mmi-btn-profile" id="mmi-taxonomy-mapping-link" href="<?php echo esc_url( mmi_taxmap_url() ); ?>" target="_blank" rel="noopener"
+                       title="Map supplier brand and category values to your terms, in the Product Workbench (new tab)">
+                        <span class="dashicons dashicons-networking"></span> Category &amp; brand mapping
+                    </a>
                 </div>
 
                 <?php /* Fetch Data picker panel — collapsed by default, toggled
@@ -539,13 +527,13 @@ $status_badge_map = [
                             <?php
                             // No field declared and nothing mapped: there are no
                             // values to map yet, so the link sets the source up
-                            // (taxonomy-mapping.js showSourceSetup()) rather than
+                            // (Category & brand mapping's Set up) rather than
                             // claiming values are waiting (2026-11-12).
                             $mmi_src_undeclared = $mmi_src_mapped_count === 0 && ! $mmi_src_tax_fields;
                             ?>
-                            <button type="button" class="mmi-taxmap-quick-link<?php echo $mmi_src_mapped_count === 0 ? ' is-unmapped' : ''; ?><?php echo $mmi_src_undeclared ? ' is-undeclared' : ''; ?>"
+                            <a class="mmi-taxmap-quick-link<?php echo $mmi_src_mapped_count === 0 ? ' is-unmapped' : ''; ?><?php echo $mmi_src_undeclared ? ' is-undeclared' : ''; ?>"
+                                    href="<?php echo esc_url( mmi_taxmap_url( (string) $sid ) ); ?>" target="_blank" rel="noopener"
                                     data-taxmap-open-supplier="<?php echo esc_attr($sid); ?>"
-                                    data-taxmap-supplier-name="<?php echo esc_attr($name); ?>"
                                     title="<?php echo esc_attr( $mmi_src_undeclared
                                         ? 'No field of this source is set as its brand or category yet — click to pick one from its file.'
                                         : ( ( $mmi_src_mapped_count > 0 ? $mmi_src_mapped_count . ' value(s) mapped for this source — view or add more.' : 'No taxonomy mapping set up for this source yet — click to assign one.' ) . $mmi_src_tax_title ) ); ?>">
@@ -556,7 +544,7 @@ $status_badge_map = [
                                 <?php else : ?>
                                     <span class="dashicons dashicons-warning"></span> Not mapped
                                 <?php endif; ?>
-                            </button>
+                            </a>
                         </td>
                         <td class="mmi-last-fetch-cell<?php echo $is_stale_source ? ' mmi-fetch-stale' : ''; ?>">
                             <?php echo esc_html($last_fetch_display); ?>
@@ -588,10 +576,6 @@ $status_badge_map = [
             </table>
             </div><!-- /.mmi-table-wrapper -->
         </div><!-- /.mmi-flat-card -->
-
-        <div class="mmi-taxonomy-mapping-panel" id="mmi-taxonomy-mapping-section" data-section="taxonomy">
-            <?php include __DIR__ . '/section-taxonomy-mapping.php'; ?>
-        </div>
 
     </div><!-- /.mmi-supplier-section -->
 

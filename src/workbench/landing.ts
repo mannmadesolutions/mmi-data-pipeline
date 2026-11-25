@@ -13,6 +13,9 @@
  *   wb_dupes   Duplicates opens on this chip (new, linked, no_sale, not_sold, older, all, collisions)
  *   wb_dupes_brand   Duplicates lists this brand's groups (a name, any case)
  *   wb_dupes_group   Duplicates opens this group (its key; a collision's is supplier:value)
+ *   wb_source  Category & brand mapping opens this: a data source (its id), one of its fields (supplier|field),
+ *              setup:{supplier}, rules or variations
+ *   wb_profile Category & brand mapping's profile variations start on this import profile
  *
  * The review queues are pills of Needs a decision (owner 2026-11-13: "subsets of Needs a decision"), so a link to
  * one (wb_sec=titles, descriptions, picks, pages) opens Needs a decision on its pill.
@@ -31,6 +34,8 @@ export interface Landing {
   sec: string; q: string; brand: number; site: string; bundle: number; product: number; kind: string;
   /** Duplicates: the chip, the brand, the open group (wb_dupes, wb_dupes_brand, wb_dupes_group). */
   dupes: string; dupesBrand: string; dupesGroup: string;
+  /** Category & brand mapping: what opens (wb_source) and the profile a new variation starts on (wb_profile). */
+  source: string; profile: string;
   /** Makers: the open brand's tab (wb_tab: products, map, fill or sites), or "" for its default. */
   tab: string;
   /** Makers opens listed by site (wb_sec=maps, or wb_site without wb_brand). */
@@ -59,6 +64,7 @@ export const SECTION_IDS: Record<string, string> = {
   bundles: "mmi-wb-panel-bundles",
   advisories: "mmi-wb-panel-advisories",
   "part-numbers": "mmi-wb-panel-part-numbers",
+  mapping: "mmi-wb-mapping",
 };
 
 /** Keys links already use that now name another entry. */
@@ -68,6 +74,7 @@ export const ALIASES: Record<string, string> = {
   history: "changes",
   sites: "makers", // Brands & sites and Site maps became Makers (2026-11-14)
   maps: "makers",
+  taxonomy: "mapping", // Taxonomy Mapping was an Import tab panel until 2026-11-25
 };
 
 /** A wb_sec value (or alias) → its menu key, or "" (a review queue's key is Needs a decision's). */
@@ -112,9 +119,12 @@ export function readLanding(search: string, hash = ""): Landing {
     dupes: (p.get("wb_dupes") ?? "").trim().slice(0, 20),
     dupesBrand: (p.get("wb_dupes_brand") ?? "").trim().slice(0, 120),
     dupesGroup: (p.get("wb_dupes_group") ?? "").trim().slice(0, 200),
+    source: (p.get("wb_source") ?? "").trim().slice(0, 200),
+    profile: (p.get("wb_profile") ?? "").trim().slice(0, 80),
     bySite: false,
   };
   if (!l.sec && !l.kind && (l.dupes || l.dupesBrand || l.dupesGroup)) { l.sec = "decide"; l.kind = "duplicates"; }
+  if (!l.sec && l.source) l.sec = "mapping";
   if (!l.sec) l.sec = sectionKey(keyForHash(hash)) || (l.product ? "decide" : l.brand || l.site ? "makers" : l.bundle ? "bundles" : l.q ? "data" : "");
   l.bySite = l.sec === "makers" && !l.brand && (p.get("wb_sec") === "maps" || hash.replace(/^#/, "") === "mmi-wb-site-maps" || !!l.site);
   return l;

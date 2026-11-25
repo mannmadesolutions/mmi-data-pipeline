@@ -476,16 +476,15 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                      with no warning). target="_blank" (2026-08-31) keeps this a
                                      genuinely useful reference/edit link without that risk — see the
                                      matching fix on the product_brand-specific link below and
-                                     AGENTS.md's changelog for the same date. ?open_taxonomy=1 expands
-                                     and scrolls to that section (see taxonomy-mapping.js's
-                                     maybeOpenFromUrl()); ?profile= pre-selects this profile in
-                                     the section's own "+ Add variation" pickers, not a page-wide
+                                     AGENTS.md's changelog for the same date. It opens the Product
+                                     Workbench's Category & brand mapping (2026-11-25); ?profile= pre-selects this profile in
+                                     its "+ Add profile variation" pickers, not a page-wide
                                      scope — Taxonomy Mapping has no such thing (see AGENTS.md's
                                      2026-08-30 Incident History for why). */ ?>
-                                <a href="<?php echo esc_url(admin_url('admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_taxonomy=1' . (isset($current_profile) ? '&profile=' . urlencode($current_profile) : ''))); ?>"
+                                <a href="<?php echo esc_url( mmi_taxmap_url( '', isset( $current_profile ) ? (string) $current_profile : '' ) ); ?>"
                                    class="mmi-source-help-link mmi-taxonomy-mapping-link"
                                    target="_blank" rel="noopener noreferrer"
-                                   title="Map this taxonomy's raw supplier values to specific WooCommerce terms — including alias rules for spelling variants — in Taxonomy Mapping. Opens in a new tab.">
+                                   title="Map this taxonomy's raw supplier values to specific WooCommerce terms — including alias rules for spelling variants — in the Product Workbench's Category &amp; brand mapping. Opens in a new tab.">
                                     <span class="dashicons dashicons-admin-links"></span> Alias mapping
                                 </a>
                             <?php endif; ?>
@@ -642,7 +641,7 @@ $mmi_taxonomy_mapping_only_fields = ['product_brand', 'product_cat'];
                                      was a plain reload with no real destination change, and inside
                                      this panel's own wizard modal, one that silently discarded
                                      whatever wizard progress hadn't been saved yet. */ ?>
-                                <a href="<?php echo esc_url(admin_url('admin.php?page=mmi-data-pipeline&pipeline_tab=import&open_taxonomy=1' . (isset($current_profile) ? '&profile=' . urlencode($current_profile) : ''))); ?>" class="mmi-brand-taxonomy-link" target="_blank" rel="noopener noreferrer">Taxonomy Mapping</a>
+                                <a href="<?php echo esc_url( mmi_taxmap_url( '', isset( $current_profile ) ? (string) $current_profile : '' ) ); ?>" class="mmi-brand-taxonomy-link" target="_blank" rel="noopener noreferrer">Category &amp; brand mapping</a>
                                 (opens in a new tab), not a source field here.
                                 <?php $mmi_render_taxonomy_alias_status($field_name, isset($current_profile) ? (string) $current_profile : '', true, $mmi_fixed_sources); ?>
                             </p>

@@ -50,6 +50,15 @@ function dupeGroup(key: string, source: string, ids: number[], brand = "Moog", o
   };
 }
 
+/** A Category & brand mapping value as mmi_scan_all_sources returns it. */
+export function taxValue(value: string, count: number, o: Record<string, unknown> = {}) {
+  return {
+    source_value: value, source_field: "brand", wc_taxonomy: "product_brand", redirected_from: "", supplier: "xchange", count, mapping_id: 0, wc_term_id: 0, wc_term_name: "",
+    missing_term_id: 0, auto_create: false, via_rule: false, source_file: "xchange-products.json", sample_products: [`${value} sample product`], variants: [],
+    excluded: false, excluded_at: "", excluded_by: "", ...o,
+  };
+}
+
 export class MockBackend {
   products = catalog();
   calls: { action: string; body: URLSearchParams }[] = [];
@@ -271,6 +280,9 @@ export class MockBackend {
         return this.reply(route, { groups: [dupeGroup("title-acme-1", "title", [611, 612], "Acme"), dupeGroup("legacy-621", "legacy", [621, 622], "Arturia", { already_linked: true, canonical_product_id: 621 })] });
       case "mmi_scan_pk_collisions":
         return this.reply(route, { groups: [] });
+      // Category & brand mapping: three XChange brand values. taxmap.spec answers its own.
+      case "mmi_scan_all_sources":
+        return this.reply(route, { values: [taxValue("ACME AUDIO", 12), taxValue("Example Synths", 7, { wc_term_id: 401, wc_term_name: "Example Synths", mapping_id: 9 }), taxValue("TESTVENDOR", 2, { excluded: true })], total: 2, mapped: 1, excluded: 1 });
       default:
         return route.fulfill({ status: 400, body: "0" });
     }

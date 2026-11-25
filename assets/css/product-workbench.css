@@ -3788,3 +3788,315 @@ a.mmi-wb-du-title:focus-visible {
     border-radius: var(--mmi-wb-du-radius);
     background: var(--mmi-wb-du-surface);
 }
+
+/* ── Category & brand mapping (TaxonomyMapping.tsx, TermField.tsx; moved from the Import tab 2026-11-25) ── */
+.mmi-wb-split.mmi-wb-tm-split {
+    grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+}
+.mmi-wb-tm-tools {
+    display: grid;
+    gap: 6px;
+}
+.mmi-wb-tm-tools .button {
+    margin: 0;
+    text-align: left;
+}
+.mmi-wb-tm-tools .button.is-active {
+    border-color: var(--mmi-wb-accent);
+    background: var(--mmi-wb-accent-bg);
+}
+.mmi-wb-tm-tools .button .dashicons,
+.mmi-wb-tm-create-actions .dashicons,
+.mmi-wb-tm-rule .dashicons {
+    vertical-align: middle;
+}
+.mmi-wb-tm-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 12px 0 8px;
+}
+.mmi-wb-tm-filters .mmi-filter-pills {
+    margin: 0;
+}
+.mmi-wb-tm-filters input[type="search"] {
+    min-width: 220px;
+}
+/* Starting shares (the shared resizer reads them from the first layout). The panel beside the source list is narrow
+   (about 560 px in a 1440 px window), so the status rides under the value and the row buttons wrap. */
+.mmi-wb-tm-table th:nth-child(1) {
+    width: 34%;
+}
+.mmi-wb-tm-table th:nth-child(2) {
+    width: 92px;
+}
+.mmi-wb-tm-table th.mmi-wb-job-actions {
+    width: 84px;
+}
+.mmi-wb-tm-table td.mmi-wb-job-actions {
+    white-space: normal;
+}
+.mmi-wb-tm-table td.mmi-wb-job-actions .button {
+    margin: 0 2px 4px 0;
+}
+.mmi-wb-tm-col-term select,
+.mmi-wb-tm-col-term input {
+    max-width: 100%;
+}
+/* Whole words: a value broken letter by letter let the table starve its column. */
+.mmi-wb-tm-table tbody td:first-child {
+    min-width: 150px;
+    word-break: normal;
+    overflow-wrap: normal;
+}
+.mmi-wb-tm-samples {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+.mmi-wb-tm-row.is-excluded > td {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-tm-col-term .mmi-wb-tm-term {
+    width: 100%;
+}
+.mmi-wb-tm-term {
+    min-width: 0;
+}
+/* Under the term field: the taxonomy it maps into (a redirect when changed) and the profile variations. */
+.mmi-wb-tm-term-under {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 12px;
+    margin-top: 4px;
+    font-size: 12px;
+}
+.mmi-wb-tm-tax {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-tm-table .mmi-wb-tm-tax select {
+    width: auto;
+    max-width: 170px;
+    min-height: 26px;
+    padding: 0 22px 0 6px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.mmi-wb-tm-term.is-missing,
+.mmi-wb-tm-rule-term .mmi-wb-tm-term.is-missing {
+    border-color: var(--mmi-wb-danger);
+}
+.mmi-wb-tm-notes {
+    display: grid;
+    gap: 4px;
+    margin-top: 4px;
+    font-size: 12px;
+}
+.mmi-wb-tm-note {
+    color: var(--mmi-wb-muted);
+}
+.mmi-wb-tm-note.is-missing {
+    color: var(--mmi-wb-danger);
+}
+.mmi-wb-tm-note .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    vertical-align: -3px;
+}
+.mmi-wb-tm-variants {
+    font-size: 12px;
+}
+.mmi-wb-tm-variants.has-variants {
+    font-weight: 600;
+}
+.mmi-wb-tm-variants .dashicons {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+    vertical-align: -2px;
+}
+/* Under a value's row: its create-term editor or its profile variations. */
+.mmi-wb-tm-sub > td {
+    background: var(--mmi-wb-accent-bg);
+}
+.mmi-wb-tm-create,
+.mmi-wb-tm-variants-panel {
+    display: grid;
+    gap: 8px;
+    max-width: 720px;
+}
+.mmi-wb-tm-create-name {
+    display: grid;
+    gap: 2px;
+}
+.mmi-wb-tm-create .mmi-filter-pills {
+    margin: 0;
+}
+.mmi-wb-tm-create-actions,
+.mmi-wb-tm-variant-add,
+.mmi-wb-tm-setup-use {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.mmi-wb-tm-variant-add .mmi-wb-tm-term {
+    flex: 1 1 220px;
+}
+.mmi-wb-tm-variant-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.mmi-wb-tm-variant-list li {
+    margin: 0 0 4px;
+}
+.mmi-wb-tm-variant-list li.is-missing {
+    color: var(--mmi-wb-danger);
+}
+/* Alias rules: one card per rule, its fields wrapping to the panel's width. */
+.mmi-wb-tm-rule-list {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+.mmi-wb-tm-rule {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 4px;
+}
+.mmi-wb-tm-rule-order {
+    display: flex;
+    flex-direction: column;
+}
+.mmi-wb-tm-rule-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+}
+.mmi-wb-tm-rule-fields label {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+.mmi-wb-tm-rule-fields input,
+.mmi-wb-tm-rule-fields select {
+    width: 100%;
+    min-width: 0;
+}
+.mmi-wb-tm-rule-term {
+    grid-column: span 2;
+}
+.mmi-wb-tm-rule-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    white-space: nowrap;
+}
+/* Set up: what a source's file offers. */
+.mmi-wb-tm-setup-options {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+.mmi-wb-tm-setup-options > li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 16px;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--mmi-wb-border);
+    border-radius: 4px;
+}
+/* The term picker: drawn on <body> at its field's place (TermField.tsx), so the tokens carry their own fallbacks. */
+.mmi-wb-tm-picker {
+    position: fixed;
+    top: var(--mmi-wb-tm-top, 0);
+    left: var(--mmi-wb-tm-left, 0);
+    width: var(--mmi-wb-tm-width, 260px);
+    z-index: 100050;
+    max-height: 320px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    background: #ffffff;
+    border: 1px solid var(--mmi-gray-300, #dcdcde);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+    font-size: 13px;
+}
+.mmi-wb-tm-picker-head {
+    position: sticky;
+    top: -4px;
+    margin: -4px 0 4px;
+    padding: 6px 10px;
+    background: #f6f7f7;
+    border-bottom: 1px solid var(--mmi-gray-300, #dcdcde);
+    color: var(--mmi-gray-600, #646970);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.mmi-wb-tm-option {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+.mmi-wb-tm-picker.is-tree .mmi-wb-tm-option {
+    padding-left: calc(10px + var(--mmi-wb-tm-depth, 0) * 16px);
+}
+.mmi-wb-tm-option.is-active,
+.mmi-wb-tm-option:hover {
+    background: #f0f6ed;
+}
+.mmi-wb-tm-option.is-current .mmi-wb-tm-option-name {
+    font-weight: 600;
+}
+.mmi-wb-tm-option.is-context {
+    color: var(--mmi-gray-600, #646970);
+}
+.mmi-wb-tm-option.is-create {
+    justify-content: flex-start;
+    border-top: 1px solid var(--mmi-gray-300, #dcdcde);
+    color: #45852c;
+    font-weight: 600;
+}
+.mmi-wb-tm-option-count {
+    color: var(--mmi-gray-600, #646970);
+    font-variant-numeric: tabular-nums;
+}
+.mmi-wb-tm-option-empty {
+    padding: 6px 10px;
+    color: var(--mmi-gray-600, #646970);
+}
+.mmi-wb-tm-picker mark {
+    padding: 0;
+    background: #fcf3e6;
+}

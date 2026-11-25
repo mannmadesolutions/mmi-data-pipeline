@@ -88,13 +88,10 @@ class MMI_Pipeline_Admin {
         $to  = '';
         if ( isset( $_GET['vip_tab'] ) ) {
             $to = admin_url( 'admin.php?page=mmi-data-pipeline' );
-        } elseif ( 'taxonomy' === $tab ) {
-            // Taxonomy Mapping was its own tab until 2026-08-30; ?profile= still pre-selects the variation pickers' profile.
-            $args = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'import', 'open_taxonomy' => 1 ];
-            if ( isset( $_GET['profile'] ) ) {
-                $args['profile'] = sanitize_text_field( wp_unslash( $_GET['profile'] ) );
-            }
-            $to = add_query_arg( array_map( 'rawurlencode', $args ), admin_url( 'admin.php' ) );
+        } elseif ( ( 'taxonomy' === $tab || isset( $_GET['open_taxonomy'] ) ) && function_exists( 'mmi_taxmap_url' ) ) {
+            // Taxonomy Mapping: its own tab until 2026-08-30, an Import tab panel (open_taxonomy=1) until 2026-11-25,
+            // now the Workbench's Category & brand mapping. ?profile= still preselects new variations' profile.
+            $to = mmi_taxmap_url( '', sanitize_text_field( wp_unslash( $_GET['profile'] ?? '' ) ) );
         } elseif ( ( isset( $_GET['open_duplicates'] ) || 'duplicates' === $tab ) && function_exists( 'mmi_canonical_candidates_queue_url' ) ) {
             // Duplicates: its own tab until 2026-09-02, an Import tab section (open_duplicates=1, dupes_status,
             // dupes_brand, detection=collisions) until 2026-11-25, now a pill of the Workbench's Needs a decision.
@@ -309,29 +306,6 @@ class MMI_Pipeline_Admin {
                 self::build_preview_data()
             );
 
-            // Taxonomy Mapping (folded into the Import tab 2026-08-30) starts
-            // closed, so its script loads the first time it's opened rather
-            // than with the page — see mmi_shared_lib_lazy_script(). Its CSS
-            // stays eager (small, and needed the moment it opens). A deep
-            // link that opens it straight away loads it eagerly. (Duplicates
-            // moved into the Product Workbench on 2026-11-25.)
-            self::enqueue_style( 'mmi-pipeline-taxonomy',
-                'assets/css/taxonomy-mapping.css', [ 'mmi-pipeline-settings' ] );
-
-            self::register_script( 'mmi-pipeline-taxonomy-js',
-                'assets/js/taxonomy-mapping.js', [ 'jquery', 'mmi-escape-html' ] );
-
-            wp_localize_script( 'mmi-pipeline-taxonomy-js', 'mmiTaxMapping', [
-                'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
-                'nonce'      => wp_create_nonce( 'mmi_pipeline_taxonomy_mapping' ),
-                'aliasRules' => self::build_taxmap_alias_rules_data(),
-            ] );
-
-            self::load_on_first_use( 'mmi-pipeline-taxonomy-js', [
-                'sections' => [ '#mmi-taxonomy-mapping-section' ],
-                'clicks'   => [ '#mmi-taxonomy-mapping-toggle' ],
-                'eager'    => isset( $_GET['open_taxonomy'] ),
-            ] );
 
         }
 
@@ -1107,6 +1081,28 @@ class MMI_Pipeline_Admin {
             'extraColumns'     => (object) array_map( 'strval', (array) apply_filters( 'mmi_pipeline_workbench_columns', [] ) ),
             // A store's own panels (mmi_pipeline_product_data_panels): a section each, drawn by the store's script.
             'panels'           => array_map( static fn( $p ) => array_intersect_key( $p, array_flip( [ 'id', 'title', 'desc', 'icon' ] ) ), self::workbench_panels() ),
+            // Category & brand mapping (TaxonomyMappingController.php's endpoints and nonce): the sources it lists,
+            // the taxonomies a value can map into, import profiles for variations, and the alias rules.
+            'taxmap'           => [
+                'nonce'      => wp_create_nonce( 'mmi_pipeline_taxonomy_mapping' ),
+                'sources'    => array_map(
+                    static fn( $r ) => [
+                        'supplier'     => (string) $r['supplier'],
+                        'source_field' => (string) $r['source_field'],
+                        'wc_taxonomy'  => (string) $r['wc_taxonomy'],
+                        'label'        => (string) $r['label'],
+                        'suggested'    => ! empty( $r['suggested'] ),
+                    ],
+                    MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_mapping_sources()
+                ),
+                'taxonomies' => function_exists( 'mmi_taxmap_assignable_taxonomies' ) ? mmi_taxmap_assignable_taxonomies() : [],
+                'profiles'   => array_values( array_map(
+                    static fn( $id, $p ) => [ 'id' => (string) $id, 'name' => (string) ( $p['name'] ?? $id ) ],
+                    array_keys( MMI_DB::get_profiles_by_direction( 'import' ) ),
+                    MMI_DB::get_profiles_by_direction( 'import' )
+                ) ),
+                'aliasRules' => self::build_taxmap_alias_rules_data(),
+            ],
             // Duplicates, a pill of Needs a decision (CanonicalCandidatesController.php's endpoints and nonce).
             'duplicates'       => [
                 'nonce'   => wp_create_nonce( 'mmi_pipeline_canonical_candidates' ),
@@ -1176,26 +1172,5 @@ class MMI_Pipeline_Admin {
             return;
         }
         wp_enqueue_script( $handle, MMI_PIPELINE_URL . $relative_path, $deps, filemtime( $abs ), true );
-    }
-
-    private static function register_script( string $handle, string $relative_path, array $deps ): void {
-        $abs = MMI_PIPELINE_PATH . $relative_path;
-        if ( ! file_exists( $abs ) ) {
-            return;
-        }
-        wp_register_script( $handle, MMI_PIPELINE_URL . $relative_path, $deps, filemtime( $abs ), true );
-    }
-
-    /**
-     * Load a registered script when its section is first opened, through the
-     * shared library's loader; a plain enqueue where an older bundled copy
-     * without it wins the version negotiation.
-     */
-    private static function load_on_first_use( string $handle, array $trigger ): void {
-        if ( function_exists( 'mmi_shared_lib_lazy_script' ) ) {
-            mmi_shared_lib_lazy_script( $handle, $trigger );
-            return;
-        }
-        wp_enqueue_script( $handle );
     }
 }

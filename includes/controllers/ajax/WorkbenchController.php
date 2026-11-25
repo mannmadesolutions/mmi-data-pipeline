@@ -241,6 +241,9 @@ add_action( 'wp_ajax_mmi_workbench_counts', function () {
             'running'   => Catalog_Run_State::is_locked(),
         ],
     ];
+    // Category & brand mapping: unmapped values as of its last scan (the scan reads the feeds; this reads its record).
+    $snap = MMI_DB::get_setting( MMI_TAXMAP_UNMAPPED_SNAPSHOT, null );
+    $out['mapping'] = is_array( $snap ) ? [ 'unmapped' => (int) ( $snap['unmapped'] ?? 0 ), 'at' => (int) ( $snap['at'] ?? 0 ) ] : null;
     /**
      * Badges a module adds to the Workbench's side menu (keys the app knows: titles, descriptions, picks,
      * pictures, pages). Each must be a stored count or one aggregate query: the menu waits for this reply.

@@ -12,6 +12,13 @@
     const nonce = (window.mmiImportSettings && window.mmiImportSettings.nonce) || '';
 
     function escAttr(val) { return $('<div>').text(val || '').html().replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+    /** Category & brand mapping in the Product Workbench, open on this source (the row's link opens it in a new tab). */
+    function taxmapUrl(supplierId) {
+        const url = new URL(window.location.pathname, window.location.origin);
+        url.search = new URLSearchParams({ page: 'mmi-data-pipeline', pipeline_tab: 'workbench', wb_sec: 'mapping', wb_source: supplierId }).toString();
+        return url.toString();
+    }
     const preconfiguredNames = (window.MMIDataPipeline && window.MMIDataPipeline._preconfiguredNames) || {};
 
     /* ── DOM Selectors ──────────────────────────────────────────────── */
@@ -397,12 +404,12 @@
                                     <span class="mmi-toggle-slider"></span>
                                 </label>
                                 ${((src.configuration && Array.isArray(src.configuration.taxonomy_fields)) ? src.configuration.taxonomy_fields : []).length
-                                    ? `<button type="button" class="mmi-taxmap-quick-link is-unmapped" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" data-taxmap-supplier-name="${escAttr(src.supplier_name)}" title="No taxonomy mapping set up for this source yet — click to assign one">
+                                    ? `<a class="mmi-taxmap-quick-link is-unmapped" href="${escAttr(taxmapUrl(src.supplier_id))}" target="_blank" rel="noopener" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" title="No taxonomy mapping set up for this source yet — click to assign one">
                                     <span class="dashicons dashicons-warning"></span> Not mapped
-                                </button>`
-                                    : `<button type="button" class="mmi-taxmap-quick-link is-unmapped is-undeclared" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" data-taxmap-supplier-name="${escAttr(src.supplier_name)}" title="No field of this source is set as its brand or category yet — click to pick one from its file.">
+                                </a>`
+                                    : `<a class="mmi-taxmap-quick-link is-unmapped is-undeclared" href="${escAttr(taxmapUrl(src.supplier_id))}" target="_blank" rel="noopener" data-taxmap-open-supplier="${escAttr(src.supplier_id)}" title="No field of this source is set as its brand or category yet — click to pick one from its file.">
                                     <span class="dashicons dashicons-admin-generic"></span> Set up
-                                </button>`}
+                                </a>`}
                             </td>
                             <td class="mmi-last-fetch-cell">—</td>
                             <td class="mmi-record-count-cell"><span class="status-unavailable">—</span></td>

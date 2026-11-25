@@ -432,11 +432,13 @@ class Taxonomy_Mapping_Handler {
      *    row was already applied when it was saved.
      *  - mode 'value': one saved row matched more products than
      *    apply_saved_mapping()'s on-save limit.
+     *  - mode 'all': Apply all to existing products (saved_values(), then
+     *    the rule-resolved values).
      * An import leaves an unmapped category unassigned (see
      * MMI_Pipeline_Field_Resolver::resolve_unmapped_term_ids()), so this and
      * the on-save apply are what file those products once the value is mapped.
      *
-     * @param array $args ['mode' => 'rules'] or ['mode' => 'value',
+     * @param array $args ['mode' => 'rules'|'all'] or ['mode' => 'value',
      *                    'supplier_id', 'source_field', 'source_value',
      *                    'wc_taxonomy', 'term_id'].
      * @return bool Whether an action is queued (already-queued counts).
@@ -477,19 +479,21 @@ class Taxonomy_Mapping_Handler {
             return;
         }
 
-        if ( ( $args['mode'] ?? '' ) !== 'rules' ) {
+        $mode = (string) ( $args['mode'] ?? '' );
+        if ( $mode !== 'rules' && $mode !== 'all' ) {
             return;
         }
 
-        $work   = self::rule_resolved_values();
+        // 'all' (Apply all to existing products): every saved mapping, then every rule-resolved value.
+        $work   = $mode === 'all' ? array_merge( self::saved_values(), self::rule_resolved_values() ) : self::rule_resolved_values();
         $cursor = max( 0, (int) ( $args['cursor'] ?? 0 ) );
         $start  = microtime( true );
         $total  = [ 'updated' => 0, 'already' => 0, 'locked' => 0, 'too_many' => 0 ];
 
         for ( $i = $cursor, $n = count( $work ); $i < $n; $i++ ) {
             if ( microtime( true ) - $start > self::HEAL_BUDGET_SECONDS ) {
-                self::log_heal( 'rules', $total, [ 'cursor' => $cursor, 'stopped_at' => $i, 'of' => $n ] );
-                self::schedule_heal( [ 'mode' => 'rules', 'cursor' => $i ] );
+                self::log_heal( $mode, $total, [ 'cursor' => $cursor, 'stopped_at' => $i, 'of' => $n ] );
+                self::schedule_heal( [ 'mode' => $mode, 'cursor' => $i ] );
                 return;
             }
             $w   = $work[ $i ];
@@ -499,7 +503,73 @@ class Taxonomy_Mapping_Handler {
             }
         }
 
-        self::log_heal( 'rules', $total, [ 'cursor' => $cursor, 'of' => count( $work ) ] );
+        self::log_heal( $mode, $total, [ 'cursor' => $cursor, 'of' => count( $work ) ] );
+    }
+
+    /**
+     * Every saved mapping that applies to every profile, as work for an 'all' pass, in a stable order (a pass resumes
+     * from a cursor). Precedence follows an import's: a supplier's own row beats an all-suppliers row for that
+     * supplier's products, so an all-suppliers row is expanded per supplier feeding its field that has no row of its
+     * own; a row in a taxonomy the field feeds beats a redirect of the same value (find_redirect()). Skipped and
+     * excluded values, and rows whose term is gone, are left out.
+     *
+     * @return array<int, array{supplier_id:string, source_field:string, source_value:string, wc_taxonomy:string, term_id:int, own:string[]}>
+     */
+    private static function saved_values(): array {
+        if ( ! class_exists( '\\MMI_Pipeline_Field_Mapping_Defaults' ) ) {
+            return [];
+        }
+        $rows = array_values( array_filter( \MMI_DB::get_tax_mappings(), static fn( $r ) => ( $r['profile_id'] ?? '' ) === '' && (int) $r['wc_term_id'] > 0 ) );
+        usort( $rows, static fn( $a, $b ) => (int) $a['id'] <=> (int) $b['id'] );
+
+        $feeds = []; // field => suppliers feeding it
+        foreach ( \MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields() as $src ) {
+            $feeds[ (string) $src['source_field'] ][ (string) $src['supplier'] ] = true;
+        }
+        $own_of = [];
+        $own    = static function ( string $supplier, string $field ) use ( &$own_of ): array {
+            return $own_of[ $supplier . '|' . $field ] ??= self::own_taxonomies_for( $supplier, $field );
+        };
+        // Which (supplier, field, value) have a row in a taxonomy the field feeds, and which suppliers have a row of their own.
+        $has_own_row = [];
+        $has_row     = [];
+        foreach ( $rows as $r ) {
+            $k = $r['supplier_id'] . '|' . $r['source_field'] . '|' . $r['source_value'];
+            $has_row[ $k ] = true;
+            if ( in_array( $r['wc_taxonomy'], $own( (string) $r['supplier_id'], (string) $r['source_field'] ), true ) ) { // audit-ok: one field's taxonomies, a handful
+                $has_own_row[ $k ] = true;
+            }
+        }
+
+        $work = [];
+        foreach ( $rows as $r ) {
+            $field = (string) $r['source_field'];
+            $value = (string) $r['source_value'];
+            $tax   = (string) $r['wc_taxonomy'];
+            $for   = $r['supplier_id'] !== '' ? [ (string) $r['supplier_id'] ] : array_keys( $feeds[ $field ] ?? [] );
+            foreach ( $for as $supplier ) {
+                if ( $r['supplier_id'] === '' && isset( $has_row[ $supplier . '|' . $field . '|' . $value ] ) ) {
+                    continue; // the supplier's own row decides its products
+                }
+                $own_tax = $own( $supplier, $field );
+                $own_key = ( $r['supplier_id'] === '' ? '' : $supplier ) . '|' . $field . '|' . $value;
+                if ( ! in_array( $tax, $own_tax, true ) && isset( $has_own_row[ $own_key ] ) ) { // audit-ok: one field's taxonomies, a handful
+                    continue; // a mapping in the field's own taxonomy wins over a redirect
+                }
+                if ( \MMI_Pipeline_Taxmap_Exclusions::is_excluded_any_taxonomy( $supplier, $field, $value ) ) {
+                    continue;
+                }
+                $work[] = [
+                    'supplier_id'  => $supplier,
+                    'source_field' => $field,
+                    'source_value' => $value,
+                    'wc_taxonomy'  => $tax,
+                    'term_id'      => (int) $r['wc_term_id'],
+                    'own'          => $own_tax ?: [ $tax ],
+                ];
+            }
+        }
+        return $work;
     }
 
     /**

@@ -2088,7 +2088,7 @@ jQuery(document).ready(function($) {
                     <strong>${escHtml(fieldLabel)}</strong>
                     <span class="mmi-badge">${escHtml(fieldType)}</span>
                     <span class="mmi-field-not-mapped-pill mmi-badge" title="No source or constant value is configured for any supplier yet — this field is skipped on import.">Not mapped</span>
-                    ${fieldType === 'taxonomy' ? '<a href="' + location.pathname + '?page=mmi-data-pipeline&pipeline_tab=taxonomy" class="mmi-source-help-link mmi-taxonomy-mapping-link" title="Map this taxonomy\'s raw supplier values to specific WooCommerce terms — including alias rules for spelling variants — in Taxonomy Mapping."><span class="dashicons dashicons-admin-links"></span> Alias mapping</a>' : ''}
+                    ${fieldType === 'taxonomy' ? '<a href="' + location.pathname + '?page=mmi-data-pipeline&pipeline_tab=workbench&wb_sec=mapping" target="_blank" rel="noopener" class="mmi-source-help-link mmi-taxonomy-mapping-link" title="Map this taxonomy\'s raw supplier values to specific WooCommerce terms — including alias rules for spelling variants — in the Product Workbench\'s Category &amp; brand mapping (new tab)."><span class="dashicons dashicons-admin-links"></span> Alias mapping</a>' : ''}
                     <br>
                     <code class="mmi-pipeline-field-code">${escHtml(fieldName)}</code>
                 </td>

@@ -14,6 +14,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 /* ── Nonce used by all taxonomy mapping AJAX calls ────────────────────────── */
 const TAXMAP_NONCE = 'mmi_pipeline_taxonomy_mapping';
 
+// The Workbench's Category & brand mapping stays open for hours: MMINonces refreshes this nonce for users the plugin allows.
+add_filter( 'mmi_refreshable_nonces', static function ( $nonces ) {
+    return (array) $nonces + [ TAXMAP_NONCE => 'mmi_data_pipeline_user_can' ];
+} );
+
+/**
+ * Category & brand mapping's address in the Product Workbench, opened on a data source (its id), one of its fields
+ * ("supplier|field"), or with a profile preselected for new variations.
+ */
+function mmi_taxmap_url( string $source = '', string $profile = '' ): string {
+    $query = [ 'page' => 'mmi-data-pipeline', 'pipeline_tab' => 'workbench', 'wb_sec' => 'mapping' ];
+    if ( $source !== '' ) {
+        $query['wb_source'] = $source;
+    }
+    if ( $profile !== '' ) {
+        $query['wb_profile'] = $profile;
+    }
+    return add_query_arg( array_map( 'rawurlencode', $query ), admin_url( 'admin.php' ) );
+}
+
+/** The mapper's last scan: values with no term and when (the Workbench menu's badge reads it, never the feeds). */
+const MMI_TAXMAP_UNMAPPED_SNAPSHOT = 'mmi_taxmap_unmapped_snapshot';
+
 /**
  * Every configured supplier's own "Products" JSON filename, keyed by
  * supplier_id — derived from MMI_Pipeline_Admin::get_configured_suppliers()'s
@@ -70,17 +93,6 @@ function mmi_taxmap_record_label( array $item ): string {
     return '';
 }
 
-/**
- * The postmeta key holding a product's own SKU from a given supplier — the
- * primary-key convention every configured source's matched products carry
- * regardless of supplier (see class-stock-override-resolver.php's identical
- * derivation, `'_mmi_supplier_sku_' . $source`, and
- * Product_Import_Worker::update_product()'s "Keep the configured primary-key
- * meta ... in sync" comment for where it's written).
- */
-function mmi_taxmap_supplier_sku_meta_key( string $supplier_id ): string {
-    return '_mmi_supplier_sku_' . $supplier_id;
-}
 
 /* ── Save (upsert) a single mapping ──────────────────────────────────────── */
 add_action( 'wp_ajax_mmi_save_taxonomy_mapping', function () {
@@ -279,9 +291,8 @@ add_action( 'wp_ajax_mmi_set_taxonomy_value_excluded', function () {
 } );
 
 /* ── List every saved profile-specific variation, flat ─────────────────────
- * Powers the "Manage Variations" panel — reviewing/bulk-deleting overrides
- * doesn't need the per-value feed-scanning mmi_get_taxonomy_source_values()/
- * mmi_scan_all_sources() do (this is pure DB data, cheap: one query, no file
+ * Powers Category & brand mapping's Profile variations — reviewing/bulk-deleting
+ * overrides doesn't need the feed scan mmi_scan_all_sources() does (this is pure DB data, cheap: one query, no file
  * reads), and a flat list is what bulk selection actually needs, not the
  * per-value nesting the main table uses for adding one variation at a time. */
 add_action( 'wp_ajax_mmi_get_taxonomy_variations', function () {
@@ -498,28 +509,6 @@ function mmi_taxmap_profile_label_map(): array {
 }
 
 /**
- * Builds the mapping index for one (supplier, wc_taxonomy) pair: a Global
- * resolution per source_value (the ONE mapping every profile sees unless it
- * has its own explicit override) plus every profile-specific override,
- * grouped by source_value, as a separate "variants" list.
- *
- * There is deliberately no "current profile" concept here — see the
- * 2026-08-30 Incident History entry ("Taxonomy Mapping Table Hardcoded
- * profile_id === ''...") for why an ambient page-wide editing scope caused a
- * real, hard-to-diagnose "my mappings disappeared" report: a value saved
- * under a non-Global profile_id was permanently invisible in this table no
- * matter which profile happened to be selected. The fix wasn't to make the
- * table profile-aware in the same ambient way — it's to stop pretending a
- * single "current" profile exists at all. Global is always shown; a
- * profile-specific override is always additional, explicit, per-value
- * information (see this row's "+ Add variation" affordance in
- * mmi_get_taxonomy_source_values' JSON output), never a substitute for it.
- *
- * @param string $supplier    '' matches only supplier-agnostic rows.
- * @param string $wc_taxonomy
- * @return array{global: array<string, array>, variants: array<string, array<int, array>>}
- */
-/**
  * Display fields for a saved term reference. A term deleted in WooCommerce
  * after it was mapped comes back as wc_term_id 0 with its old id in
  * missing_term_id: the mapping no longer does anything at import
@@ -542,217 +531,6 @@ function mmi_taxmap_term_display( int $term_id, string $taxonomy ): array {
     }
     return [ 'wc_term_id' => 0, 'wc_term_name' => '', 'missing_term_id' => 0 ];
 }
-
-function mmi_taxmap_build_mapping_index( string $supplier, string $wc_taxonomy ): array {
-    // MMI_DB::get_tax_mappings( '', $wc_taxonomy ) applies NO supplier_id
-    // filter at all when the arg is '' (see that method's own
-    // `if ( $supplier_id !== '' )` guard) — it returns every row for this
-    // taxonomy across every supplier, not "supplier-agnostic rows only".
-    // One fetch, partitioned below by an EXACT supplier_id match, is both
-    // correct and cheaper than the two-query version this replaced — that
-    // version's second "any-supplier" query was actually re-fetching the
-    // same rows the first one already had, which silently duplicated every
-    // variant in the list this function returns (caught live: ATLASSOUNDS'
-    // one real Mogami Pricing override showed up twice).
-    $all_rows = MMI_DB::get_tax_mappings( '', $wc_taxonomy );
-
-    $global_any      = [];
-    $global_supplier = [];
-    $variants        = [];
-
-    foreach ( $all_rows as $row ) {
-        $rs = $row['supplier_id'] ?? '';
-        if ( $rs !== '' && $rs !== $supplier ) {
-            continue; // A different supplier's row — not relevant to this call.
-        }
-        if ( ( $row['profile_id'] ?? '' ) === '' ) {
-            if ( $rs === '' ) {
-                $global_any[ $row['source_value'] ] = $row;
-            } else {
-                $global_supplier[ $row['source_value'] ] = $row;
-            }
-        } else {
-            $variants[ $row['source_value'] ][] = $row;
-        }
-    }
-
-    return [
-        // [supplier,''] beats ['',''] for the same source_value — merging
-        // $global_supplier second lets it overwrite $global_any.
-        'global'   => array_merge( $global_any, $global_supplier ),
-        'variants' => $variants,
-    ];
-}
-
-/* ── Scan source JSON for unique field values ────────────────────────────── */
-add_action( 'wp_ajax_mmi_get_taxonomy_source_values', function () {
-    check_ajax_referer( TAXMAP_NONCE, 'nonce' );
-    if ( ! mmi_data_pipeline_user_can() ) {
-        wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
-    }
-
-    $supplier     = sanitize_text_field( $_POST['supplier'] ?? 'xchange' );
-    $source_field = sanitize_text_field( $_POST['source_field'] ?? 'brand' );
-    $wc_taxonomy  = sanitize_text_field( $_POST['wc_taxonomy'] ?? 'product_brand' );
-
-    // Determine JSON file
-    $json_dir     = mmi_shared_lib_json_dir();
-    $file_map     = mmi_taxmap_build_supplier_file_map();
-    $json_file    = $json_dir . ( $file_map[ $supplier ] ?? $supplier . '-products.json' );
-
-    if ( ! file_exists( $json_file ) ) {
-        wp_send_json_error( [ 'message' => "JSON file not found: {$json_file}" ] );
-    }
-
-    $data  = json_decode( file_get_contents( $json_file ), true );
-    if ( json_last_error() !== JSON_ERROR_NONE ) {
-        wp_send_json_error( [ 'message' => 'Invalid JSON: ' . json_last_error_msg() ] );
-    }
-
-    // Extract items list
-    if ( isset( $data['products'] ) )    $items = $data['products'];
-    elseif ( isset( $data['items'] ) )   $items = $data['items'];
-    elseif ( is_array( $data ) )         $items = $data;
-    else                                 $items = [];
-
-    // Support compound source fields like "master_category+sub_category"
-    $parts      = array_map( 'trim', explode( '+', $source_field ) );
-    $name_field = 'name'; // default product-name key
-
-    $counts          = [];
-    $sample_products = []; // key => [ up to 3 product names ]
-
-    foreach ( $items as $item ) {
-        $values = [];
-        foreach ( $parts as $part ) {
-            $v = (string) ( $item[ $part ] ?? '' );
-            if ( $v !== '' ) {
-                $values[] = $v;
-            }
-        }
-        if ( empty( $values ) ) {
-            continue;
-        }
-        $key = implode( ' / ', $values );
-        $counts[ $key ] = ( $counts[ $key ] ?? 0 ) + 1;
-
-        // Collect up to 3 sample product names per source value
-        if ( ! isset( $sample_products[ $key ] ) ) {
-            $sample_products[ $key ] = [];
-        }
-        if ( count( $sample_products[ $key ] ) < 3 ) {
-            // 'product' is Xchange's own product-name field (confirmed live:
-            // Xchange records have no 'name'/'title'/'product_name' key at
-            // all) — every Xchange-sourced row's Sample Products column was
-            // silently blank until this was added, since none of the other
-            // three checks could ever match. SkuPort records use 'name' and
-            // have no 'product' key, so the two suppliers never collide.
-            $product_name = mmi_taxmap_record_label( (array) $item );
-            // audit-ok: haystack is capped at 3 sample names by the count() < 3 guard above
-            if ( $product_name !== '' && ! in_array( $product_name, $sample_products[ $key ], true ) ) {
-                $sample_products[ $key ][] = $product_name;
-            }
-        }
-    }
-
-    arsort( $counts ); // Most frequent first
-
-    // Global mapping per value, plus every profile-specific override —
-    // there is no "current profile" here; see mmi_taxmap_build_mapping_index()'s
-    // docblock.
-    $index          = mmi_taxmap_build_mapping_index( $supplier, $wc_taxonomy );
-    $profile_labels = mmi_taxmap_profile_label_map();
-
-    $source_file = basename( $json_file );
-
-    $result = [];
-    foreach ( $counts as $value => $count ) {
-        $mapping = $index['global'][ $value ] ?? null;
-
-        // A row redirected to another taxonomy (see
-        // Taxonomy_Mapping_Handler::find_redirect()) is shown under that
-        // taxonomy; the index above only holds this taxonomy's rows.
-        $row_taxonomy    = $wc_taxonomy;
-        $redirected_from = '';
-        if ( ! $mapping ) {
-            $redirect = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::find_redirect(
-                $supplier, $source_field, (string) $value, [ $wc_taxonomy ], '', false
-            );
-            if ( $redirect !== null ) {
-                $mapping         = $redirect;
-                $row_taxonomy    = $redirect['wc_taxonomy'];
-                $redirected_from = $wc_taxonomy;
-            }
-        }
-
-        $wc_term_id   = $mapping ? (int) $mapping['wc_term_id'] : 0;
-        $auto_create  = $mapping ? (bool) $mapping['auto_create'] : false;
-        $mapping_id   = $mapping ? (int) $mapping['id'] : 0;
-        $via_rule     = false;
-
-        if ( $wc_term_id === 0 ) {
-            $rule_tid = MMI_DB::match_taxmap_alias_rule( $supplier, $source_field, $value, $wc_taxonomy );
-            if ( $rule_tid !== null ) {
-                $wc_term_id = $rule_tid;
-                $via_rule   = true;
-            }
-        }
-
-        $term       = mmi_taxmap_term_display( $wc_term_id, $row_taxonomy );
-        $wc_term_id = $term['wc_term_id'];
-        $term_name  = $term['wc_term_name'];
-
-        // Every profile-specific override for this value, annotated with a
-        // readable profile name — the "+ N variations" badge and expandable
-        // panel on this row are built from this list client-side.
-        $variants = [];
-        foreach ( $index['variants'][ $value ] ?? [] as $v_row ) {
-            $v_term     = mmi_taxmap_term_display( (int) $v_row['wc_term_id'], $wc_taxonomy );
-            $variants[] = [
-                'mapping_id'      => (int) $v_row['id'],
-                'profile_id'      => $v_row['profile_id'],
-                'profile_label'   => $profile_labels[ $v_row['profile_id'] ] ?? $v_row['profile_id'],
-                'wc_term_id'      => $v_term['wc_term_id'],
-                'wc_term_name'    => $v_term['wc_term_name'],
-                'missing_term_id' => $v_term['missing_term_id'],
-            ];
-        }
-
-        $result[] = [
-            // (string) cast is load-bearing, not decorative: $value came from a
-            // foreach over $counts, an array keyed by source value. PHP silently
-            // casts any array key that looks like a decimal integer (e.g. a raw
-            // numeric category ID like "1517") to a real int key — so without this
-            // cast, json_encode emits a JSON *number* for that row, and the JS
-            // sort comparator's .toLowerCase() throws on it, aborting the sort
-            // for the whole table (this is why "Source Value" sort looked broken
-            // while other columns didn't).
-            'source_value'    => (string) $value,
-            'count'           => $count,
-            'mapping_id'      => $mapping_id,
-            'wc_term_id'      => $wc_term_id,
-            'wc_term_name'    => $term_name,
-            'missing_term_id' => $term['missing_term_id'],
-            'redirected_from' => $redirected_from,
-            'row_taxonomy'    => $row_taxonomy,
-            'auto_create'     => $auto_create,
-            'via_rule'        => $via_rule,
-            'source_file'     => $source_file,
-            'sample_products' => $sample_products[ $value ] ?? [],
-            'variants'        => $variants,
-        ] + MMI_Pipeline_Taxmap_Exclusions::row_fields( $supplier, $source_field, $wc_taxonomy, (string) $value );
-    }
-
-    // Excluded values are left out of the counts, as the table leaves them out.
-    $in_mapper = array_filter( $result, fn( $r ) => ! $r['excluded'] );
-    wp_send_json_success( [
-        'values'      => $result,
-        'total'       => count( $in_mapper ),
-        'mapped'      => count( array_filter( $in_mapper, fn( $r ) => $r['wc_term_id'] !== 0 ) ),
-        'excluded'    => count( $result ) - count( $in_mapper ),
-        'source_file' => $source_file,
-    ] );
-} );
 
 /* ── Search WC terms for autocomplete ────────────────────────────────────── */
 add_action( 'wp_ajax_mmi_search_wc_terms', function () {
@@ -888,8 +666,7 @@ function mmi_taxmap_get_raw_source_scan( bool $force_refresh ): array {
 
             if ( ! isset( $samples[ $key ] ) ) { $samples[ $key ] = []; }
             if ( count( $samples[ $key ] ) < 3 ) {
-                // 'product' is Xchange's own product-name field — see the
-                // matching comment in mmi_get_taxonomy_source_values above.
+                // A record's name: 'product' is XChange's own product-name field (mmi_taxmap_record_label()).
                 $pname = mmi_taxmap_record_label( (array) $item );
                 // audit-ok: haystack is capped at 3 sample names by the count() < 3 guard above
                 if ( $pname !== '' && ! in_array( $pname, $samples[ $key ], true ) ) {
@@ -1281,7 +1058,7 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
     // resolve a Global mapping per (supplier, field, value, taxonomy) key
     // plus every profile-specific override as a separate "variants" group —
     // no ambient "current profile" tier here, matching
-    // mmi_taxmap_build_mapping_index()'s docblock (this handler pre-dates
+    // the 2026-08-30 redesign (this handler pre-dates
     // that per-(supplier,taxonomy) helper and indexes across all three scan
     // profiles from one combined query instead, so it keeps its own
     // composite-key version of the same idea rather than calling it 3x).
@@ -1379,8 +1156,8 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
             }
 
             $result[] = [
-                // (string) cast load-bearing — see the matching comment in
-                // mmi_get_taxonomy_source_values above for why.
+                // (string) cast load-bearing: PHP turns a numeric array key ("1176") into an int, and the
+                // browser compares values as strings.
                 'source_value'    => (string) $value,
                 'source_field'    => $source_field,
                 'wc_taxonomy'     => $row_taxonomy,
@@ -1406,6 +1183,10 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
 
     // Excluded values are left out of the counts, as the table leaves them out.
     $in_mapper = array_filter( $result, fn( $r ) => ! $r['excluded'] );
+    MMI_DB::set_setting( MMI_TAXMAP_UNMAPPED_SNAPSHOT, [
+        'unmapped' => count( array_filter( $in_mapper, fn( $r ) => $r['wc_term_id'] === 0 ) ),
+        'at'       => time(),
+    ] );
 
     wp_send_json_success( [
         'values'   => $result,
@@ -1415,169 +1196,22 @@ add_action( 'wp_ajax_mmi_scan_all_sources', function () {
     ] );
 } );
 
-/* ── Apply ALL saved mappings to existing products (global batch) ────────── */
+/* ── Apply ALL saved mappings to existing products, in the background ────── */
+// Every saved mapping (and every alias rule) onto the products that carry its value, by the source value each product
+// keeps (_mmi_src_*), in timed Action Scheduler slices: Taxonomy_Mapping_Handler::run_heal(), mode 'all'. It used to
+// run here inline, reading every supplier feed for up to 180 s (2026-11-25).
 add_action( 'wp_ajax_mmi_apply_all_taxonomy_mappings', function () {
     check_ajax_referer( TAXMAP_NONCE, 'nonce' );
     if ( ! mmi_data_pipeline_user_can() ) {
         wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
     }
-
-    @set_time_limit( 180 );
-
-    // See get_taxonomy_source_fields()'s own docblock — this covers any
-    // configured source (uploaded/custom included), not a hardcoded
-    // xchange/skuport-only array.
-    $all_profiles = array_map(
-        static function ( array $row ): array {
-            $row['meta_key'] = mmi_taxmap_supplier_sku_meta_key( $row['supplier'] );
-            return $row;
-        },
-        MMI_Pipeline_Field_Mapping_Defaults::get_taxonomy_source_fields()
-    );
-
-    global $wpdb;
-    $total_updated = 0;
-    $total_skipped = 0;
-
-    // Pre-load all saved mappings once. Global-only — see the matching comment
-    // on the scan handler above.
-    $all_saved = array_filter( MMI_DB::get_tax_mappings(), static fn( $row ) => ( $row['profile_id'] ?? '' ) === '' );
-    $mapping_index = [];
-    foreach ( $all_saved as $row ) {
-        $tid = (int) $row['wc_term_id'];
-        if ( $tid !== 0 ) {
-            $k = $row['supplier_id'] . '|' . $row['source_field'] . '|' . $row['wc_taxonomy'];
-            $mapping_index[ $k ][ $row['source_value'] ] = $tid;
-        }
+    $queued = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::schedule_heal( [ 'mode' => 'all' ] );
+    if ( ! $queued ) {
+        wp_send_json_error( [ 'message' => 'Could not queue the background run: Action Scheduler is not available.' ] );
     }
-
-    $json_dir = mmi_shared_lib_json_dir();
-
-    $file_map = mmi_taxmap_build_supplier_file_map();
-
-    // Taxonomies each supplier field feeds directly, and whether any saved
-    // row for that field points somewhere else (a redirect, see
-    // Taxonomy_Mapping_Handler::find_redirect()).
-    $own_taxonomies = [];
-    foreach ( $all_profiles as $profile ) {
-        $own_taxonomies[ $profile['supplier'] . '|' . $profile['source_field'] ][] = $profile['wc_taxonomy'];
-    }
-    $has_redirects = [];
-    foreach ( $all_saved as $row ) {
-        foreach ( $own_taxonomies as $sf_key => $taxes ) {
-            [ $sup, $field ] = explode( '|', $sf_key, 2 );
-            if ( $row['source_field'] === $field
-                && in_array( $row['supplier_id'], [ $sup, '' ], true )
-                // audit-ok: haystack is the 1-2 taxonomies one supplier field feeds
-                && ! in_array( $row['wc_taxonomy'], $taxes, true )
-                && (int) $row['wc_term_id'] > 0 ) {
-                $has_redirects[ $sf_key ] = true;
-            }
-        }
-    }
-    $redirected = 0;
-
-    foreach ( $all_profiles as $profile ) {
-        $index_key = $profile['supplier'] . '|' . $profile['source_field'] . '|' . $profile['wc_taxonomy'];
-        $mappings  = $mapping_index[ $index_key ] ?? [];
-        $sf_key    = $profile['supplier'] . '|' . $profile['source_field'];
-
-        if ( empty( $mappings ) && empty( $has_redirects[ $sf_key ] ) ) { continue; }
-
-        // Also overlay global ('') mappings
-        $gk      = '|' . $profile['source_field'] . '|' . $profile['wc_taxonomy'];
-        $globals  = $mapping_index[ $gk ] ?? [];
-        foreach ( $globals as $sv => $tid ) {
-            if ( ! isset( $mappings[ $sv ] ) ) { $mappings[ $sv ] = $tid; }
-        }
-
-        // Build SKU → source_value map from JSON
-        $json_filename = $file_map[ $profile['supplier'] ] ?? ( $profile['supplier'] . '-products.json' );
-        $json_file = $json_dir . $json_filename;
-        if ( ! file_exists( $json_file ) ) { continue; }
-
-        $data = json_decode( file_get_contents( $json_file ), true );
-        if ( json_last_error() !== JSON_ERROR_NONE ) { continue; }
-
-        if ( isset( $data['products'] ) )  { $items = $data['products']; }
-        elseif ( isset( $data['items'] ) ) { $items = $data['items']; }
-        elseif ( is_array( $data ) )       { $items = $data; }
-        else                               { continue; }
-
-        $parts   = array_map( 'trim', explode( '+', $profile['source_field'] ) );
-        $sku_to_value = [];
-        foreach ( $items as $item ) {
-            $sku    = (string) ( $item['sku'] ?? '' );
-            $values = [];
-            foreach ( $parts as $part ) {
-                $v = (string) ( $item[ $part ] ?? '' );
-                if ( $v !== '' ) { $values[] = $v; }
-            }
-            if ( $sku !== '' && ! empty( $values ) ) {
-                $sku_to_value[ $sku ] = implode( ' / ', $values );
-            }
-        }
-
-        // Apply to products
-        // audit-ok: one prepared query per taxonomy source field (supplier x field, a handful)
-        $product_rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s",
-                $profile['meta_key']
-            ),
-            ARRAY_A
-        );
-
-        foreach ( $product_rows as $prow ) {
-            $product_id   = (int) $prow['post_id'];
-            $supplier_sku = (string) $prow['meta_value'];
-
-            $source_value = $sku_to_value[ $supplier_sku ] ?? null;
-            if ( $source_value === null ) { $total_skipped++; continue; }
-            if ( MMI_Pipeline_Taxmap_Exclusions::is_excluded( $profile['supplier'], $profile['source_field'], $profile['wc_taxonomy'], $source_value ) ) { $total_skipped++; continue; }
-
-            // Added to the other taxonomy, never replacing what is there,
-            // and only if that taxonomy is not locked on this product.
-            if ( ! empty( $has_redirects[ $sf_key ] ) ) {
-                $redirect = \MannMade\DataPipeline\Importers\Taxonomy_Mapping_Handler::find_redirect(
-                    $profile['supplier'], $profile['source_field'], $source_value, $own_taxonomies[ $sf_key ], ''
-                );
-                if ( $redirect !== null ) {
-                    $locks = MMI_Pipeline_Field_Locks::get( $product_id );
-                    if ( MMI_Pipeline_Field_Locks::in_list( $redirect['wc_taxonomy'], $locks ) ) { $total_skipped++; continue; }
-                    wp_set_object_terms( $product_id, [ (int) $redirect['wc_term_id'] ], $redirect['wc_taxonomy'], true );
-                    $total_updated++;
-                    $redirected++;
-                    continue;
-                }
-            }
-
-            $mapped_tid = $mappings[ $source_value ]
-                ?? MMI_DB::match_taxmap_alias_rule( $profile['supplier'], $profile['source_field'], $source_value, $profile['wc_taxonomy'] );
-            if ( $mapped_tid === null || $mapped_tid === -1 ) { $total_skipped++; continue; }
-
-            $term = get_term( $mapped_tid, $profile['wc_taxonomy'] );
-            if ( ! $term || is_wp_error( $term ) ) { $total_skipped++; continue; }
-
-            // A term set by hand (Product Workbench, Product Titles) locks the
-            // field; imports respect that and so must this.
-            if ( MMI_Pipeline_Field_Locks::in_list( $profile['wc_taxonomy'], MMI_Pipeline_Field_Locks::get( $product_id ) ) ) { $total_skipped++; continue; }
-
-            wp_set_object_terms( $product_id, [ $mapped_tid ], $profile['wc_taxonomy'] );
-            $total_updated++;
-        }
-    }
-
-    mmi_data_pipeline_audit( 'taxonomy.apply', [
-        'object_type' => 'taxonomy_mapping',
-        'object_id'   => 'all',
-        'outcome'     => 'success',
-        'details'     => [ 'scope' => 'all' ],
-    ] );
+    mmi_data_pipeline_audit( 'taxonomy_mapping.apply_all', [ 'object_type' => 'taxonomy_mapping', 'object_id' => '', 'outcome' => 'success', 'details' => [ 'queued' => true ] ] );
     wp_send_json_success( [
-        'message' => "Applied all taxonomy mappings: {$total_updated} updated ({$redirected} via redirect), {$total_skipped} skipped",
-        'updated' => $total_updated,
-        'skipped' => $total_skipped,
-        'redirected' => $redirected,
+        'message' => 'Applying every mapping to existing products in the background. Products with a locked field are left as they are; the pipeline log records what changed.',
+        'queued'  => true,
     ] );
 } );

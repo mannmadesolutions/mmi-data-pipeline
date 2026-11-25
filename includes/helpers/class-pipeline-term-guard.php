@@ -77,7 +77,7 @@ final class MMI_Pipeline_Term_Guard {
 			'mmi_taxmap_supplier_value',
 			sprintf(
 				/* translators: %s: the refused term name */
-				__( '"%s" is a value a supplier sends. Map it to a term in Data Pipeline → Taxonomy Mapping instead of creating a term named after it.', 'mmi-data-pipeline' ),
+				__( '"%s" is a value a supplier sends. Map it to a term in the Product Workbench → Category & brand mapping instead of creating a term named after it.', 'mmi-data-pipeline' ),
 				$name
 			)
 		);

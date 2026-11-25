@@ -142,6 +142,20 @@ export interface WorkbenchConfig {
   panels?: PanelConfig[];
   /** Duplicates (a pill of Needs a decision): its endpoints' nonce, the scan switch and the Distributors catalog. */
   duplicates?: DuplicatesConfig;
+  /** Category & brand mapping (TaxonomyMapping.tsx). */
+  taxmap?: TaxmapConfig;
+}
+
+export interface TaxmapConfig {
+  /** For mmi_pipeline_taxonomy_mapping (TaxonomyMappingController.php); kept fresh by MMINonces. */
+  nonce: string;
+  /** Every source the mapper lists (get_taxonomy_mapping_sources()). */
+  sources: import("./taxmapLogic").SourceDef[];
+  /** Product taxonomies a value can map into. */
+  taxonomies: { slug: string; label: string }[];
+  /** Import profiles, for a value's profile-only variation. */
+  profiles: { id: string; name: string }[];
+  aliasRules: import("./taxmapLogic").AliasRule[];
 }
 
 export interface DuplicatesConfig {
@@ -175,6 +189,8 @@ export interface WorkbenchCounts {
   pictures?: { waiting: number; errors: number; running: boolean };
   /** Products whose maker page waits; n is null until first worked out, then the last count while a new one is. */
   pages?: { n: number | null; at: number; rebuilding: boolean };
+  /** Category & brand mapping: supplier values with no term, as of its last scan (null before the first). */
+  mapping?: { unmapped: number; at: number } | null;
 }
 
 /** The shared action picker's current choice, read from its markup. */
