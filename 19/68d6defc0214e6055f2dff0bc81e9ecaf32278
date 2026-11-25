@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit skip autopilot undo of 059e90b8: ui-e2e failed after it
 site-rules pass ship 1 files
+shared-lib pass 8 scenarios
+ui-check pass 170
+ui-e2e pass 302
+customer-site pass 27 ok on 1968d6d as installed
+page pass 11 features, 15 screenshots; 8 warnings
+release-audit pass 0 dead, 0 high, 0 new
+review pass 0 open, 5 fixed, 5 not real
