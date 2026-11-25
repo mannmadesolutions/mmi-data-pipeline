@@ -683,8 +683,7 @@ function mmi_canonical_candidates_save_review_index( array $groups, string $sour
  * How many groups wait for a decision, as the Duplicates pill lists them: the review index's groups, less each one
  * whose listings all sit in a bigger group (Duplicates folds those into one row; dupesLogic.ts fold()). Older-listing
  * groups never fold. Read from the durable index the scans write, never from the feeds, so the Workbench's counts can
- * ask for it; 0 while scanning is switched off. The rank table, outranks() and the containment test copy fold()'s
- * (SOURCE_RANK, outranks) in src/workbench/dupesLogic.ts: change one, change the other.
+ * ask for it; 0 while scanning is switched off.
  *
  * @return array{count:int, scanned_at:int|null}
  */
@@ -693,7 +692,7 @@ function mmi_canonical_candidates_waiting(): array {
     if ( ! (bool) MMI_DB::get_setting( 'mmi_duplicate_products_enabled', true ) ) {
         return [ 'count' => 0, 'scanned_at' => $index['scanned_at'] ];
     }
-    $rank = [ 'mpn' => 0, 'candidate' => 1, 'title' => 2 ]; // dupesLogic.ts SOURCE_RANK's order; the index holds no legacy groups
+    $rank = [ 'mpn' => 0, 'candidate' => 1, 'title' => 2 ];
     // Groups that can hold or be held, and for each listing the groups holding it.
     $sets = [];
     $by_id = [];
