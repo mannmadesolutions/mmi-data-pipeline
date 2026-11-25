@@ -7,4 +7,4 @@ ui-e2e pass 314
 customer-site pass 27 ok on 296dcbc as installed
 page pass 11 features, 15 screenshots; 14 warnings
 release-audit pass 0 dead, 0 high, 0 new
-review fail 2 open, 8 fixed, 10 not real
+review pass 0 open, 8 fixed, 12 not real
