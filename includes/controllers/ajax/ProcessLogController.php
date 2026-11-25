@@ -178,9 +178,7 @@ class MMI_Process_Log_Controller {
         // fallback. A mismatched literal here previously caused a real
         // cross-plugin bug (mmi-cloudflare-integration/mmi-realtime-server-
         // monitor's incident-flag path, see incident-history.md).
-        $log_dir = function_exists( 'mmi_shared_lib_log_dir' )
-            ? mmi_shared_lib_log_dir()
-            : ( defined( 'MMI_HUB_LOG_DIR' ) ? MMI_HUB_LOG_DIR : ( WP_CONTENT_DIR . '/mmi-logs' ) );
+        $log_dir = mmi_shared_lib_log_dir();
 
         // Map of log label → filename
         $log_map = [
