@@ -3,8 +3,8 @@ audit pass ship 3 files; warned long-function×1
 site-rules pass ship 3 files
 shared-lib pass 8 scenarios
 ui-check pass 177
-ui-e2e fail exit 1
+ui-e2e pass 314
 customer-site pass 27 ok on 451ca02 as installed
 page pass 11 features, 15 screenshots; 14 warnings
 release-audit pass 0 dead, 0 high, 0 new
-review fail 2 open, 8 fixed, 8 not real
+review pass 0 open, 8 fixed, 10 not real
