@@ -765,7 +765,7 @@ $p_mode_labels = [
                                class="mmi-autosave-field"
                                data-setting="email_notifications"
                                <?php checked( $email_notifications ); ?>>
-                        Email notifications on import completion / errors
+                        Add a daily import report to the Dashboard and its daily summary email
                     </label>
                 </div>
             </div><!-- /.mmi-topbar-schedule-panel -->

@@ -125,7 +125,7 @@ class MMI_Pipeline_Cron {
         wp_clear_scheduled_hook( 'mmi_scheduled_product_import' );
         wp_clear_scheduled_hook( 'mmi_pipeline_import_cron' );
 
-        // Daily digest email (fires once per day at ~7am site time)
+        // Daily checks and import report (once per day at ~7am site time)
         add_action( 'mmi_daily_email_digest', [ __CLASS__, 'run_daily_digest' ] );
         self::maybe_schedule_daily_digest();
 
@@ -152,10 +152,6 @@ class MMI_Pipeline_Cron {
 
         // Custom schedule intervals
         add_filter( 'cron_schedules', [ __CLASS__, 'add_cron_schedules' ] );
-
-        // Register this plugin's email samples with MMI VIP's Email Customization
-        // tab preview picker — see register_email_samples()'s docblock.
-        add_filter( 'mmi_email_customizer_samples', [ __CLASS__, 'register_email_samples' ] );
 
         // Clear the orphaned mmi_pipeline_update_catalog event that was independently scheduled
         // by the old UI but had no registered handler — silently no-oped every hour.
@@ -1402,6 +1398,7 @@ class MMI_Pipeline_Cron {
         // Clear any previously stored fetch-error state — this run succeeded.
         MMI_DB::delete_setting( $error_key );
         self::resolve_upstream_outage( $supplier_id );
+        MMI_Notifications::resolve( 'mmi-data-pipeline', 'fetch-' . $supplier_id );
 
         // Schedule Catalog Update to run 5 minutes after ANY source's
         // fetch completes. Avoids scheduling a duplicate if another
@@ -1446,13 +1443,12 @@ class MMI_Pipeline_Cron {
             // The supplier's own API is down (HALT mode, connection reset,
             // 5xx). Nothing on this site can fix that, and the previous feed
             // file stays in use, so this goes through the grace window
-            // rather than an immediate "action required" email.
+            // rather than an immediate problem notice.
             self::record_upstream_outage( $supplier_id, $e->getMessage() );
         } else {
             MMI_DB::delete_setting( self::upstream_outage_key( $supplier_id ) );
-            self::send_failure_alert( 'Data Fetch: ' . $supplier_id, $e->getMessage(), [
-                [ 'label' => 'Source',    'value' => $supplier_id ],
-                [ 'label' => 'Last Feed', 'value' => self::describe_source_feed_age( $supplier_id ) ],
+            self::record_problem( 'fetch-' . $supplier_id, sprintf( 'Data fetch failed: %s', $supplier_id ), $e->getMessage(), [
+                [ 'label' => 'Feed in use', 'value' => self::describe_source_feed_age( $supplier_id ) ],
             ] );
         }
     }
@@ -1721,7 +1717,7 @@ class MMI_Pipeline_Cron {
      * never updated when a profile is renamed — see ImportSettingsController's
      * mmi_save_import_profile/_update_import_profile) to its CURRENT saved
      * display name, for anything shown to a human (activity log headlines,
-     * failure alerts, the daily digest email). Falls back to ucfirst($profile_id)
+     * problem notices, the daily import report). Falls back to ucfirst($profile_id)
      * only when the profile no longer exists (e.g. deleted mid-run), so a label
      * is still produced rather than emitting an empty string.
      *
@@ -1889,10 +1885,9 @@ class MMI_Pipeline_Cron {
                     $abandoned_context[] = [ 'label' => 'AS Backlog (site-wide)', 'value' => number_format( $as_backlog['total'] ) . ' overdue' ];
                     $abandoned_context[] = [ 'label' => 'Likely Cause',           'value' => $as_backlog['top_hook'] ];
                 }
-                self::send_failure_alert( sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ), $abandoned_message, $abandoned_context );
-                // Also surface this as a persistent on-page notice — send_failure_alert()
-                // only emails; without this, main.php's notice banner (which reads this
-                // exact key) never shows anything for an abandoned run.
+                self::record_problem( 'import-' . $profile_id, sprintf( 'Import failed: %s', self::get_profile_label( $profile_id ) ), $abandoned_message, $abandoned_context );
+                // Also surface this on the Data Pipeline page — main.php's notice
+                // banner reads this exact key.
                 MMI_DB::set_setting( 'mmi_pipeline_process_error_profile_' . $profile_id, [
                     'message'    => $abandoned_message,
                     'time'       => current_time( 'mysql' ),
@@ -1940,9 +1935,8 @@ class MMI_Pipeline_Cron {
             MMI_Logger::error( "Scheduled profile import dispatch failed [{$profile_id}]: " . $e->getMessage(), [], 'sync', 'MMI_Pipeline_Cron' );
             MMI_DB::delete_setting( $state_key );
             MMI_DB::delete_job_state( $lock_key );
-            self::send_failure_alert( sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ), $e->getMessage(), [
-                [ 'label' => 'Profile', 'value' => $profile_id ],
-                [ 'label' => 'Stage',   'value' => 'Dispatch' ],
+            self::record_problem( 'import-' . $profile_id, sprintf( 'Import failed: %s', self::get_profile_label( $profile_id ) ), $e->getMessage(), [
+                [ 'label' => 'Stage', 'value' => 'Starting the run' ],
             ] );
         }
     }
@@ -2136,9 +2130,8 @@ class MMI_Pipeline_Cron {
             MMI_Logger::error( "Profile import finalize error [{$profile_id}]: " . $e->getMessage(), [], 'sync', 'MMI_Pipeline_Cron' );
             MMI_DB::delete_setting( $state_key );
             MMI_DB::delete_job_state( $lock_key );
-            self::send_failure_alert( sprintf( 'Import Profile: %s', self::get_profile_label( $profile_id ) ), $e->getMessage(), [
-                [ 'label' => 'Profile', 'value' => $profile_id ],
-                [ 'label' => 'Stage',   'value' => 'Finalize' ],
+            self::record_problem( 'import-' . $profile_id, sprintf( 'Import failed: %s', self::get_profile_label( $profile_id ) ), $e->getMessage(), [
+                [ 'label' => 'Stage', 'value' => 'Finishing the run' ],
             ] );
         }
     }
@@ -2149,7 +2142,7 @@ class MMI_Pipeline_Cron {
      * notification, and release the lock/state record. Mirrors exactly what the
      * old synchronous run_scheduled_profile_import() used to do inline at the end
      * of its single call — same fields/shape — so check_stale_profile_imports()
-     * and the daily digest email keep working unchanged.
+     * and the daily import report keep working unchanged.
      *
      * @param string $profile_id
      * @param array  $state      The per-profile batch state record.
@@ -2242,7 +2235,7 @@ class MMI_Pipeline_Cron {
             'MMI_Pipeline_Cron'
         );
 
-        // Queue this profile import for the daily digest email.
+        // Queue this profile import for the daily import report.
         // Count total products available in source feeds to include as a fetch stat.
         $feed_total = 0;
         foreach ( array_keys( $per_supplier ) as $sid ) {
@@ -2285,12 +2278,15 @@ class MMI_Pipeline_Cron {
         } else {
             MMI_DB::delete_setting( 'mmi_pipeline_process_error_profile_' . $profile_id );
         }
+        // The run finished, so a failed or stalled earlier run is over.
+        MMI_Notifications::resolve( 'mmi-data-pipeline', 'import-' . $profile_id );
+        MMI_Notifications::resolve( 'mmi-data-pipeline', 'stale-' . $profile_id );
         MMI_DB::delete_setting( $state_key );
         MMI_DB::delete_job_state( $lock_key );
     }
 
 
-    /* ── Email Notifications ──────────────────────────────────────────────── */
+    /* ── Import report helpers ─────────────────────────────────────────────── */
 
     /**
      * Format a duration in seconds as a human-readable string.
@@ -2318,7 +2314,7 @@ class MMI_Pipeline_Cron {
     }
 
     /**
-     * Send an import-complete notification for the daily digest.
+     * Queue a manual import's result for the daily import report.
      * Called from AJAX import controllers after a full run finishes.
      *
      * @param array  $context  Reserved for future context rows (currently unused).
@@ -2349,14 +2345,13 @@ class MMI_Pipeline_Cron {
     }
 
     /**
-     * Queue a successful process record for the morning daily digest.
+     * Queue a successful process record for the daily import report.
      *
      * @param array $entry {
      *   label:    string   — human-readable process name
      *   status:   string   — 'success' | 'partial'
      *   warning:  string   — (optional) why a 'partial' run was partial; the
-     *                        digest lists it so "Completed with Warnings"
-     *                        always says what the warnings were
+     *                        report names it next to the run
      *   queued_at: string  — MySQL datetime
      *   duration: string   — formatted duration
      *   summary:  array    — [{label, value, highlight?}]
@@ -2375,159 +2370,35 @@ class MMI_Pipeline_Cron {
     }
 
     /**
-     * Register this plugin's two email types with MMI VIP's Email Customization
-     * tab so staff can preview/test them with in-progress branding edits — see
-     * MMI_Email_Customizer::get_registered_samples() in mmi-vip. Sample data is
-     * illustrative (not a live import's real numbers), same as it ever was when
-     * this lived hardcoded inside mmi-vip itself.
-     */
-    public static function register_email_samples( array $samples ): array {
-        // MMI_Email_Templates now ships bundled in the shared library (ADR-0006,
-        // added as its 15th class 2026-09-18 after being found missing post
-        // mmi-hub-elimination) — this guard is kept as defensive dead code,
-        // matching how other shared-library classes (e.g. MMI_Settings) are
-        // still guarded suite-wide even though they're always present too.
-        if ( ! class_exists( 'MMI_Email_Templates' ) ) {
-            return $samples;
-        }
-
-        $samples[] = [
-            'id'     => 'pipeline_failure_alert',
-            'group'  => 'Data Pipeline',
-            'label'  => 'Failure Alert',
-            'render' => function () {
-                $site_name = get_bloginfo( 'name' );
-                return MMI_Email_Templates::render_alert( [
-                    'site_name'     => $site_name,
-                    'headline'      => 'Import Profile: Pricing (Stale) Failed',
-                    'status_color'  => MMI_Email_Templates::token( 'danger' ),
-                    'status_label'  => 'Failed — Immediate Action Required',
-                    'completed_at'  => date_i18n( 'F j, Y \a\t g:i a' ),
-                    'duration'      => '—',
-                    'summary_stats' => [
-                        [ 'label' => 'Process',  'value' => 'Import Profile: Pricing (Stale)' ],
-                        [ 'label' => 'Profile',  'value' => 'pricing' ],
-                        [ 'label' => 'Failed',   'value' => '1', 'highlight' => true ],
-                    ],
-                    'dashboard_url' => admin_url(),
-                    'cta_label'     => 'View Data Pipeline Dashboard &rarr;',
-                    'footer_text'   => "This notification was sent by the MMI Data Pipeline plugin on {$site_name}. Manage notification settings from the Data Pipeline dashboard.",
-                ] );
-            },
-        ];
-
-        $samples[] = [
-            'id'     => 'pipeline_daily_digest',
-            'group'  => 'Data Pipeline',
-            'label'  => 'Daily Digest',
-            'render' => function () {
-                $hero = MMI_Email_Templates::render_hero_cell( '7,645', 'Products Monitored' )
-                    . MMI_Email_Templates::render_hero_cell( '3', 'Processes Run' )
-                    . MMI_Email_Templates::render_hero_cell( '12', 'Product Changes', MMI_Email_Templates::token( 'primary' ) )
-                    . MMI_Email_Templates::render_hero_cell( '0', 'Failures', MMI_Email_Templates::token( 'neutral' ), false );
-                $cells = MMI_Email_Templates::render_card_stat_cell( '3', 'Updated', MMI_Email_Templates::token( 'text_dark' ) )
-                    . MMI_Email_Templates::render_card_stat_cell( '5,460', 'Skipped', MMI_Email_Templates::token( 'text_dark' ) )
-                    . MMI_Email_Templates::render_card_stat_cell( '0', 'Failed', MMI_Email_Templates::token( 'text_dark' ), false );
-                $card = MMI_Email_Templates::render_process_card(
-                    MMI_Email_Templates::token( 'primary' ), 'Import Profile: Pricing', 'Completed Successfully',
-                    'Completed at 7:00 am', '', $cells
-                );
-                $site_name = get_bloginfo( 'name' );
-                return MMI_Email_Templates::render_daily_digest( [
-                    'site_name'     => $site_name,
-                    'today'         => date_i18n( 'F j, Y' ),
-                    'hero_cells'    => $hero,
-                    'process_cards' => $card,
-                    'dashboard_url' => admin_url(),
-                    // Same cta_label/footer_text the real send passes, so the
-                    // preview shows the footer this email actually carries —
-                    // and correctly shows a site-level footer override winning
-                    // over it once one is set.
-                    'cta_label'     => 'View Data Pipeline Dashboard &rarr;',
-                    'footer_text'   => "This summary is sent once daily at 7 am by the MMI Data Pipeline on <strong>{$site_name}</strong>. Repeated runs of the same profile are grouped. Failures are reported immediately in separate alert emails. Manage settings from the Data Pipeline dashboard.",
-                ] );
-            },
-        ];
-
-        return $samples;
-    }
-
-    /**
-     * Send an immediate failure alert email.
-     * Called from the catch blocks of each scheduled process.
+     * Record a pipeline problem on the suite dashboard (and so in the daily
+     * summary email). One notice per key: a repeat updates it, and the next
+     * good fetch or finished run resolves it.
      *
-     * @param string $process_name  Human-readable name, e.g. "Supplier Fetch".
-     * @param string $error_message The caught exception message.
-     * @param array  $context       Extra [{label, value}] rows for the summary box.
-     * @param array  $options       Optional overrides: subject, headline,
-     *                              status_label, status_color (token name),
-     *                              detail_label. Defaults are the failure alert.
+     * @param string $key     'fetch-<source>', 'import-<profile>', 'stale-<profile>'.
+     * @param array  $context [{label, value}] facts shown under the detail.
      */
-    public static function send_failure_alert( string $process_name, string $error_message, array $context = [], array $options = [] ): void {
-        if ( ! MMI_DB::get_setting( 'mmi_pipeline_import_email_notifications', false ) ) {
-            return;
-        }
-
-        $admin_email   = get_option( 'admin_email' );
-        $site_name     = get_bloginfo( 'name' );
-        $dashboard_url = admin_url( 'admin.php?page=mmi-data-pipeline' );
-
-        // The process name is already the headline, and the time is already
-        // on the "Completed:" line — the stat cells are only for extra context.
-        $summary_stats = $context;
-
-        $subject = $options['subject'] ?? sprintf( '[%s] ALERT: %s failed — action required', $site_name, $process_name );
-
-        // MMI_Email_Templates ships bundled in the shared library (see bootstrap.php) —
-        // this guard is kept as defensive dead code (same precedent as MMI_Settings
-        // guards elsewhere), falling back to a plain-text alert in the
-        // unreachable-in-practice case it's somehow absent.
-        if ( ! class_exists( 'MMI_Email_Templates' ) ) {
-            $lines = array_map(
-                static function ( $row ) {
-                    return "{$row['label']}: {$row['value']}";
-                },
-                $summary_stats
-            );
-            $plain_body = sprintf(
-                "%s failed on %s.\n\nError: %s\n\n%s\n\nDashboard: %s",
-                $process_name,
-                $site_name,
-                $error_message,
-                implode( "\n", $lines ),
-                $dashboard_url
-            );
-            wp_mail( $admin_email, $subject, $plain_body );
-            return;
-        }
-
-        $status_color = MMI_Email_Templates::token( $options['status_color'] ?? 'danger' );
-        $detail_label = esc_html( $options['detail_label'] ?? 'Error Detail' );
-        $body = MMI_Email_Templates::render_alert( [
-            'site_name'     => $site_name,
-            'headline'      => $options['headline'] ?? $process_name . ' Failed',
-            'status_color'  => $status_color,
-            'status_label'  => $options['status_label'] ?? 'Failed — Immediate Action Required',
-            'completed_at'  => wp_date( 'F j, Y \a\t g:i a' ),
-            // No duration: a failure alert has no meaningful one, and an empty
-            // value makes render_alert() drop the field instead of printing "—".
-            'duration'      => '',
-            'summary_stats' => $summary_stats,
-            'detail_table_header' => "<tr><th style=\"padding:8px 12px;text-align:left;background:rgba(220,38,38,0.08);font-size:12px;text-transform:uppercase;color:{$status_color};\">{$detail_label}</th></tr>",
-            'detail_table_rows'   => '<tr><td class="mmi-t-detail-text" style="padding:12px;font-family:monospace;font-size:13px;color:#334155;word-break:break-word;">' . esc_html( $error_message ) . '</td></tr>',
-            'dashboard_url' => $dashboard_url,
-            'cta_label'     => 'View Data Pipeline Dashboard &rarr;',
-            'footer_text'   => "This notification was sent by the MMI Data Pipeline plugin on {$site_name}. Manage notification settings from the Data Pipeline dashboard.",
+    private static function record_problem( string $key, string $title, string $detail, array $context = [] ): void {
+        $facts = array_map(
+            static function ( $row ) {
+                return "{$row['label']}: {$row['value']}";
+            },
+            $context
+        );
+        MMI_Notifications::notify( [
+            'source'   => 'mmi-data-pipeline',
+            'key'      => $key,
+            'severity' => 'critical',
+            'title'    => $title,
+            'body'     => $detail . ( $facts ? "\n\n" . implode( "\n", $facts ) : '' ),
+            'url'      => admin_url( 'admin.php?page=mmi-data-pipeline' ),
         ] );
-
-        wp_mail( $admin_email, $subject, $body, [ 'Content-Type: text/html; charset=UTF-8' ] );
     }
 
     /* ── Upstream Outage Grace Window ─────────────────────────────────────── */
 
     /**
      * Hours a source's upstream API may be continuously unavailable before
-     * one "unavailable" email goes out. Filterable per source.
+     * it becomes a problem notice. Filterable per source.
      */
     const UPSTREAM_OUTAGE_GRACE_HOURS = 3;
 
@@ -2563,16 +2434,16 @@ class MMI_Pipeline_Cron {
     }
 
     /**
-     * Record one failed fetch against an ongoing upstream outage, and send the
-     * single "unavailable" alert once the outage outlasts the grace window.
-     * The per-run failures still land in the activity log and the dashboard
-     * error banner; only the email is held back.
+     * Record one failed fetch against an ongoing upstream outage; once the
+     * outage outlasts the grace window it is a problem notice (repeats update
+     * it). The per-run failures still land in the activity log and the
+     * dashboard error banner either way.
      */
     private static function record_upstream_outage( string $supplier_id, string $message ): void {
         $key    = self::upstream_outage_key( $supplier_id );
         $outage = MMI_DB::get_setting( $key, null );
         if ( ! is_array( $outage ) || empty( $outage['since'] ) ) {
-            $outage = [ 'since' => time(), 'failures' => 0, 'alerted' => false ];
+            $outage = [ 'since' => time(), 'failures' => 0 ];
         }
         $outage['failures']   = (int) $outage['failures'] + 1;
         $outage['last_error'] = $message;
@@ -2585,34 +2456,25 @@ class MMI_Pipeline_Cron {
             [ 'error' => $message ], 'sync', 'MMI_Pipeline_Cron'
         );
 
-        if ( empty( $outage['alerted'] ) && $elapsed >= $grace_hours * HOUR_IN_SECONDS ) {
-            $since = wp_date( 'F j, Y \a\t g:i a', (int) $outage['since'] );
-            self::send_failure_alert(
-                'Data Fetch: ' . $supplier_id,
-                $message,
+        if ( $elapsed >= $grace_hours * HOUR_IN_SECONDS ) {
+            self::record_problem(
+                'fetch-' . $supplier_id,
+                sprintf( '%s supplier API unavailable', $supplier_id ),
+                sprintf( 'The supplier\'s own server has not answered since %s. Imports keep using the last good feed until it does.', wp_date( 'F j, Y \a\t g:i a', (int) $outage['since'] ) ),
                 [
-                    [ 'label' => 'Unavailable Since', 'value' => $since ],
-                    [ 'label' => 'Failed Fetches',    'value' => number_format( $outage['failures'] ) ],
-                    [ 'label' => 'Feed In Use',       'value' => self::describe_source_feed_age( $supplier_id ) ],
-                ],
-                [
-                    'subject'      => sprintf( '[%s] %s API unavailable since %s', get_bloginfo( 'name' ), $supplier_id, $since ),
-                    'headline'     => sprintf( '%s API Unavailable', $supplier_id ),
-                    'status_label' => 'Supplier outage — imports are using the last good feed',
-                    'status_color' => 'warning',
-                    'detail_label' => 'Last Response From Supplier',
+                    [ 'label' => 'Failed fetches', 'value' => number_format( $outage['failures'] ) ],
+                    [ 'label' => 'Feed in use',    'value' => self::describe_source_feed_age( $supplier_id ) ],
+                    [ 'label' => 'Last response',  'value' => $message ],
                 ]
             );
-            $outage['alerted'] = true;
         }
 
         MMI_DB::set_setting( $key, $outage );
     }
 
     /**
-     * Close an upstream outage after a successful fetch. Sends a recovery
-     * email only if the "unavailable" alert actually went out — a blip that
-     * resolved inside the grace window stays silent end to end.
+     * Close an upstream outage after a successful fetch. The caller resolves
+     * the 'fetch-<source>' notice either way.
      */
     private static function resolve_upstream_outage( string $supplier_id ): void {
         $key    = self::upstream_outage_key( $supplier_id );
@@ -2624,25 +2486,6 @@ class MMI_Pipeline_Cron {
 
         $lasted = self::format_duration( (float) ( time() - (int) ( $outage['since'] ?? time() ) ) );
         MMI_Logger::info( "Upstream for \"{$supplier_id}\" recovered after {$lasted} ({$outage['failures']} failed fetches).", [], 'sync', 'MMI_Pipeline_Cron' );
-
-        if ( empty( $outage['alerted'] ) ) {
-            return;
-        }
-        self::send_failure_alert(
-            'Data Fetch: ' . $supplier_id,
-            sprintf( 'Fetching succeeded again after %s of upstream unavailability. No action needed.', $lasted ),
-            [
-                [ 'label' => 'Outage Lasted',  'value' => $lasted ],
-                [ 'label' => 'Failed Fetches', 'value' => number_format( (int) $outage['failures'] ) ],
-            ],
-            [
-                'subject'      => sprintf( '[%s] RESOLVED: %s API available again', get_bloginfo( 'name' ), $supplier_id ),
-                'headline'     => sprintf( '%s API Recovered', $supplier_id ),
-                'status_label' => 'Resolved',
-                'status_color' => 'primary',
-                'detail_label' => 'Detail',
-            ]
-        );
     }
 
     /**
@@ -2663,7 +2506,7 @@ class MMI_Pipeline_Cron {
      *
      * Some failure modes (e.g. a WP-Cron process killed by the system `timeout`
      * wrapper while blocked inside a throttle wait) never throw a catchable PHP
-     * exception, so they're invisible to send_failure_alert(). This is a backstop:
+     * exception, so they're invisible to record_problem(). This is a backstop:
      * compare each profile's actual cron recurrence against its last completed
      * history row, and alert when a run is overdue by more than 1.5x its interval.
      * Runs once daily alongside the digest — coarse, but enough to catch a process
@@ -2679,14 +2522,7 @@ class MMI_Pipeline_Cron {
         foreach ( array_keys( (array) $profiles ) as $profile_id ) {
             $staleness = self::get_profile_staleness( $profile_id );
             if ( $staleness === null || ! $staleness['is_stale'] ) {
-                continue;
-            }
-
-            // Avoid re-sending every day once flagged — only alert again if the
-            // staleness has grown by another full interval since the last alert.
-            $alert_key  = 'mmi_pipeline_stale_alert_' . $profile_id;
-            $last_alert = MMI_DB::get_setting( $alert_key, 0 );
-            if ( $last_alert && ( time() - (int) $last_alert ) < $staleness['interval'] ) {
+                MMI_Notifications::resolve( 'mmi-data-pipeline', 'stale-' . $profile_id );
                 continue;
             }
 
@@ -2707,7 +2543,6 @@ class MMI_Pipeline_Cron {
                 self::format_duration( (float) $staleness['interval'] )
             );
             $context = [
-                [ 'label' => 'Profile',        'value' => $profile_id ],
                 [ 'label' => 'Last Success',   'value' => $staleness['last_success'] ?: 'never' ],
                 [ 'label' => 'Expected Every',  'value' => self::format_duration( (float) $staleness['interval'] ) ],
             ];
@@ -2717,15 +2552,13 @@ class MMI_Pipeline_Cron {
                 $context[]  = [ 'label' => 'Likely Cause',           'value' => $as_backlog['top_hook'] ];
             }
 
-            self::send_failure_alert( sprintf( 'Import Profile: %s (Stale)', self::get_profile_label( $profile_id ) ), $message, $context );
-
-            MMI_DB::set_setting( $alert_key, time() );
+            self::record_problem( 'stale-' . $profile_id, sprintf( 'Import stopped running: %s', self::get_profile_label( $profile_id ) ), $message, $context );
         }
     }
 
     /**
      * Compute whether a profile's scheduled import is currently stale, for use by
-     * both check_stale_profile_imports() (email alert) and the dashboard's Import
+     * both check_stale_profile_imports() (problem notice) and the dashboard's Import
      * History panel (visible badge) — single source of truth so the two can't
      * silently disagree the way the email and an all-green history table did
      * before this existed.
@@ -2786,15 +2619,15 @@ class MMI_Pipeline_Cron {
      * total silence. A hook can carry more than one listener (e.g.
      * mmi_pipeline_source_fetch_xchange fires both this plugin's own
      * product-feed fetch AND MMI_Xchange_Vendors::cron_write_web_assets_json())
-     * and a sibling listener's clean log entry makes the digest report the
-     * whole hook as healthy while one specific listener on it is dead. This
+     * and a sibling listener's clean log entry makes the hook look
+     * healthy while one specific listener on it is dead. This
      * closes that gap without needing to know *why* a listener went quiet —
      * see DIGEST_SILENT_FAILURE_HANDOFF.md for the incident this follows up on.
      *
      * Registry, not a bespoke check per hook: any plugin adds itself via the
      * `mmi_pipeline_listener_heartbeats` filter, each entry shaped:
      *   key                        string   Suffix for the MMI_Settings heartbeat key.
-     *   label                      string   Display name for the digest card.
+     *   label                      string   Display name in the problem notice.
      *   hook                       string   (optional) The shared cron hook this listener
      *                                       rides on — its real configured WP-Cron interval
      *                                       is looked up dynamically, the same way
@@ -2810,16 +2643,16 @@ class MMI_Pipeline_Cron {
      * MMI_Settings::set( "mmi_listener_last_success_{key}", time() ) next to its
      * own existing success log line — see MMI_Xchange_Vendors::cron_write_web_assets_json().
      *
-     * @return array<int, array{label:string, last_success:int, age_seconds:int|null, interval:int}>
+     * A stale listener is a warning notice keyed 'listener-<key>'; it resolves
+     * once the heartbeat is fresh again or the feature is switched off.
      */
-    private static function get_stale_listeners(): array {
+    private static function check_stale_listeners(): void {
         $registry = apply_filters( 'mmi_pipeline_listener_heartbeats', [] );
         if ( ! is_array( $registry ) || empty( $registry ) ) {
-            return [];
+            return;
         }
 
         $wp_schedules = null;
-        $stale        = [];
 
         foreach ( $registry as $entry ) {
             $key = (string) ( $entry['key'] ?? '' );
@@ -2828,6 +2661,7 @@ class MMI_Pipeline_Cron {
             }
 
             if ( isset( $entry['is_enabled'] ) && is_callable( $entry['is_enabled'] ) && ! call_user_func( $entry['is_enabled'] ) ) {
+                MMI_Notifications::resolve( 'mmi-data-pipeline', 'listener-' . $key );
                 continue;
             }
 
@@ -2850,60 +2684,50 @@ class MMI_Pipeline_Cron {
             $age          = $last_success > 0 ? ( time() - $last_success ) : null;
             $threshold    = $interval * 1.5;
 
-            if ( $age === null || $age > $threshold ) {
-                $stale[] = [
-                    'label'        => (string) ( $entry['label'] ?? $key ),
-                    'last_success' => $last_success,
-                    'age_seconds'  => $age,
-                    'interval'     => $interval,
-                ];
+            if ( $age !== null && $age <= $threshold ) {
+                MMI_Notifications::resolve( 'mmi-data-pipeline', 'listener-' . $key );
+                continue;
             }
+            $label = (string) ( $entry['label'] ?? $key );
+            MMI_Notifications::notify( [
+                'source'   => 'mmi-data-pipeline',
+                'key'      => 'listener-' . $key,
+                'severity' => 'warning',
+                'title'    => sprintf( '%s has stopped reporting', $label ),
+                'body'     => sprintf(
+                    'No successful run logged in %s. It is expected every %s.',
+                    $age !== null ? self::format_duration( (float) $age ) : 'since tracking began',
+                    self::format_duration( (float) $interval )
+                ),
+                'url'      => admin_url( 'admin.php?page=mmi-data-pipeline' ),
+            ] );
         }
-
-        return $stale;
     }
 
     /**
-     * Send one combined summary email covering all processes that succeeded
-     * since the last digest. Fired by the mmi_daily_email_digest cron at 7 am.
+     * Daily checks plus the daily import report, fired by the
+     * mmi_daily_email_digest cron at 7 am (hook name kept from when this
+     * mailed its own digest). Stalled imports and silent listeners become
+     * problem notices whether or not the report is on. The report itself (one
+     * info notice a day on the suite dashboard and in its summary email)
+     * is recorded only with "Daily import report" ticked on the Pipeline tab.
      *
-     * Multiple runs of the same process (e.g. hourly Pricing imports) are collapsed
-     * into a single grouped card showing aggregated stats and a run-count + time range.
+     * Multiple runs of the same process (e.g. hourly Pricing imports) are
+     * collapsed into one line with aggregated stats and a run count.
      */
     public static function run_daily_digest(): void {
         self::check_stale_profile_imports();
-
-        if ( ! MMI_DB::get_setting( 'mmi_pipeline_import_email_notifications', false ) ) {
-            MMI_DB::delete_setting( 'mmi_email_digest_queue' );
-            return;
-        }
+        // A registered listener on a shared cron hook can go completely silent
+        // while a sibling listener on the same hook keeps logging cleanly, so it
+        // is checked on its own. See DIGEST_SILENT_FAILURE_HANDOFF.md.
+        self::check_stale_listeners();
 
         $queue = MMI_DB::get_setting( 'mmi_email_digest_queue', [] );
-        if ( ! is_array( $queue ) ) {
-            $queue = [];
-        }
-
-        // A registered listener on a shared cron hook (see get_stale_listeners())
-        // can go completely silent — no success line, no error line — while a
-        // sibling listener on the same hook keeps logging cleanly. That sibling's
-        // queue entries keep $queue non-empty and its group's status 'success',
-        // so this check must run independently of whether $queue has anything in
-        // it, or the silent listener never gets a line anywhere. See
-        // DIGEST_SILENT_FAILURE_HANDOFF.md.
-        $stale_listeners = self::get_stale_listeners();
-
-        if ( empty( $queue ) && empty( $stale_listeners ) ) {
-            MMI_DB::delete_setting( 'mmi_email_digest_queue' );
+        // Clear immediately so a concurrent run can't report the same runs twice.
+        MMI_DB::delete_setting( 'mmi_email_digest_queue' );
+        if ( ! is_array( $queue ) || empty( $queue ) || ! MMI_DB::get_setting( 'mmi_pipeline_import_email_notifications', false ) ) {
             return;
         }
-
-        // Clear immediately to prevent re-send on concurrent runs.
-        MMI_DB::delete_setting( 'mmi_email_digest_queue' );
-
-        $admin_email   = get_option( 'admin_email' );
-        $site_name     = get_bloginfo( 'name' );
-        $dashboard_url = admin_url( 'admin.php?page=mmi-data-pipeline' );
-        $today         = wp_date( 'F j, Y' );
 
         // ── Step 1: Group queue entries by label ────────────────────────────
         // Stats labelled "Imported", "Updated", "Failed" are additive across runs.
@@ -3019,282 +2843,47 @@ class MMI_Pipeline_Cron {
             }
         }
 
-        // MMI_Email_Templates ships bundled in the shared library (see bootstrap.php) —
-        // this guard is kept as defensive dead code (same precedent as MMI_Settings
-        // guards elsewhere), falling back to a plain-text digest built from the
-        // same $groups/$total_* data in the unreachable-in-practice case it's
-        // somehow absent.
-        if ( ! class_exists( 'MMI_Email_Templates' ) ) {
-            $lines = [ sprintf( 'Daily digest for %s — %s', $site_name, $today ) ];
-            $lines[] = sprintf(
-                'Products monitored: %s | Processes run: %d | Product changes: %d | Failures: %d',
-                $catalog_size > 0 ? number_format( $catalog_size ) : '—',
+        $lines = [];
+        foreach ( $groups as $g ) {
+            $stat_bits = [];
+            foreach ( $g['stats'] as $sl => $st ) {
+                $stat_bits[] = $sl . ' ' . ( $st['summable'] ? number_format( (int) $st['sum'] ) : $st['last'] );
+            }
+            $line = sprintf(
+                '%s: %d run%s, %s%s',
+                $g['label'],
+                $g['runs'],
+                $g['runs'] === 1 ? '' : 's',
+                $g['status'] === 'partial' ? 'with warnings. ' : '',
+                implode( ' · ', $stat_bits )
+            );
+            if ( ! empty( $g['warnings'] ) ) {
+                $line .= "\nWarnings: " . self::describe_group_warnings( $g );
+            }
+            $lines[] = $line;
+        }
+
+        MMI_Notifications::notify( [
+            'source'   => 'mmi-data-pipeline',
+            'key'      => 'daily-report-' . wp_date( 'Y-m-d' ),
+            'severity' => 'info',
+            'title'    => sprintf(
+                'Import report: %d run%s, %s product change%s, %d failed item%s',
                 $total_runs,
-                $total_changes,
-                $total_failures
-            );
-            foreach ( $groups as $g ) {
-                $stat_bits = [];
-                foreach ( $g['stats'] as $sl => $st ) {
-                    $stat_bits[] = $sl . ': ' . ( $st['summable'] ? (string) (int) $st['sum'] : $st['last'] );
-                }
-                $lines[] = sprintf(
-                    '- %s (%s, %d run%s): %s',
-                    $g['label'],
-                    $g['status'] === 'partial' ? 'completed with warnings' : 'completed successfully',
-                    $g['runs'],
-                    $g['runs'] === 1 ? '' : 's',
-                    implode( ', ', $stat_bits )
-                );
-                if ( ! empty( $g['warnings'] ) ) {
-                    $lines[] = '    Warnings: ' . self::describe_group_warnings( $g );
-                }
-            }
-            foreach ( $stale_listeners as $sl ) {
-                $lines[] = sprintf(
-                    '- WARNING: %s has not logged a successful run in %s (expected every %s)',
-                    $sl['label'],
-                    $sl['age_seconds'] !== null ? self::format_duration( (float) $sl['age_seconds'] ) : 'since tracking began',
-                    self::format_duration( (float) $sl['interval'] )
-                );
-            }
-            $lines[] = 'Dashboard: ' . $dashboard_url;
-            wp_mail( $admin_email, sprintf( '[%s] Daily Data Pipeline Digest', $site_name ), implode( "\n", $lines ) );
-            return;
-        }
-
-        $changes_color  = $total_changes  > 0 ? MMI_Email_Templates::token('primary') : MMI_Email_Templates::token('neutral');
-        $failures_color = $total_failures > 0 ? MMI_Email_Templates::token('danger')  : MMI_Email_Templates::token('neutral');
-        $hero_cells     =
-            MMI_Email_Templates::render_hero_cell( $catalog_size > 0 ? number_format( $catalog_size ) : '—', 'Products Monitored' ) .
-            MMI_Email_Templates::render_hero_cell( (string) $total_runs, 'Processes Run' ) .
-            MMI_Email_Templates::render_hero_cell( number_format( $total_changes ), 'Product Changes', $changes_color ) .
-            MMI_Email_Templates::render_hero_cell( number_format( $total_failures ), 'Failures', $failures_color, false );
-
-        // ── Step 3: Build one card per group, or one table per family ───────
-        // A "family" is everything before the first ": " in a group's label
-        // (e.g. "Data Fetch: xchange" and "Data Fetch: skuport" share the
-        // family "Data Fetch"). A family with only one member renders exactly
-        // as before — a full card. A family with more than one member is
-        // collapsed into a single table card (render_process_table_card())
-        // instead of repeating the same card shell once per member.
-        $families = [];
-        foreach ( $groups as $label => $g ) {
-            if ( strpos( $label, ': ' ) !== false ) {
-                [ $family, $member ] = explode( ': ', $label, 2 );
-            } else {
-                $family = $label;
-                $member = '';
-            }
-            $families[ $family ][] = [ 'member' => $member, 'group' => $g ];
-        }
-
-        $process_cards = '';
-
-        // Stale-listener warnings render first, as their own cards — never
-        // folded into a sibling listener's group/family card above, per the
-        // whole point of this check (see get_stale_listeners()).
-        foreach ( $stale_listeners as $sl ) {
-            $time_range = $sl['age_seconds'] !== null
-                ? 'Silent for ' . self::format_duration( (float) $sl['age_seconds'] ) . ' (expected every ' . self::format_duration( (float) $sl['interval'] ) . ')'
-                : 'No successful run has ever been logged (expected every ' . self::format_duration( (float) $sl['interval'] ) . ')';
-
-            $cells = MMI_Email_Templates::render_card_stat_cell(
-                $sl['age_seconds'] !== null ? self::format_duration( (float) $sl['age_seconds'] ) : 'Never',
-                'Silent For',
-                MMI_Email_Templates::token( 'danger' ),
-                false
-            );
-
-            $process_cards .= MMI_Email_Templates::render_process_card(
-                MMI_Email_Templates::token( 'danger' ),
-                esc_html( $sl['label'] ),
-                'No Activity Logged',
-                $time_range,
-                '',
-                $cells
-            );
-        }
-
-        foreach ( $families as $family => $members ) {
-            if ( count( $members ) === 1 ) {
-                $g      = $members[0]['group'];
-                $label  = esc_html( $g['label'] );
-                $color  = $g['status'] === 'partial' ? MMI_Email_Templates::token('warning') : MMI_Email_Templates::token('primary');
-                $badge  = $g['status'] === 'partial' ? 'Completed with Warnings' : 'Completed Successfully';
-                $runs   = $g['runs'];
-
-                // Subtitle: single run shows "Completed at TIME", multi-run shows range
-                if ( $runs === 1 && $g['last_ts'] ) {
-                    $time_range = 'Completed at ' . wp_date( 'g:i a', $g['last_ts'] );
-                } elseif ( $runs > 1 && $g['first_ts'] && $g['last_ts'] ) {
-                    $time_range = "Ran {$runs} times &middot; "
-                        . wp_date( 'g:i a', $g['first_ts'] )
-                        . ' &ndash; '
-                        . wp_date( 'g:i a', $g['last_ts'] );
-                } else {
-                    $time_range = "Ran {$runs} time" . ( $runs === 1 ? '' : 's' );
-                }
-
-                // Check if this group had any actual product activity
-                $group_changes  = 0;
-                $group_failures = 0;
-                foreach ( $g['stats'] as $sl => $st ) {
-                    if ( $st['summable'] ) {
-                        if ( in_array( $sl, [ 'Imported', 'Updated' ], true ) ) {
-                            $group_changes += (int) $st['sum'];
-                        }
-                        if ( $sl === 'Failed' ) {
-                            $group_failures += (int) $st['sum'];
-                        }
-                    }
-                }
-                $is_stable = ( $group_changes === 0 && $group_failures === 0 );
-
-                // Stable banner (only shown when multiple runs produced zero activity)
-                $stable_row = ( $is_stable && $runs > 1 ) ? MMI_Email_Templates::render_stable_banner( 'Catalog Stable &mdash; No Changes Made Across All Runs' ) : '';
-                if ( ! empty( $g['warnings'] ) ) {
-                    $stable_row = self::render_digest_warning_row( self::describe_group_warnings( $g ) ) . $stable_row;
-                }
-
-                // Stat cells — summable stats show their total; snapshot stats show last value.
-                // Total cell count determines which one is last (no trailing border on it).
-                $stat_labels  = array_keys( $g['stats'] );
-                $total_cells  = count( $stat_labels ) + ( $runs > 1 ? 1 : 0 );
-                $cell_index   = 0;
-                $cells        = '';
-
-                foreach ( $g['stats'] as $sl => $st ) {
-                    $cell_index++;
-                    $display = $st['summable']
-                        ? number_format( (int) $st['sum'] )
-                        : esc_html( $st['last'] );
-                    // Always set an explicit color — render_card_stat_cell() requires one
-                    // even in the default case: with <meta name="color-scheme"> in <head>,
-                    // dark-mode email clients invert unstyled text to white, making it
-                    // invisible against this template's light backgrounds.
-                    $color_for_cell = ( $st['highlight'] && ( $st['summable'] ? $st['sum'] > 0 : true ) )
-                        ? MMI_Email_Templates::token('danger')
-                        : MMI_Email_Templates::token('text_dark');
-                    $cells .= MMI_Email_Templates::render_card_stat_cell(
-                        $display, $sl, $color_for_cell, $cell_index < $total_cells
-                    );
-                }
-
-                // Append a "Runs Today" cell for grouped processes — always the last cell when present.
-                if ( $runs > 1 ) {
-                    $cells .= MMI_Email_Templates::render_card_stat_cell(
-                        (string) $runs, 'Runs Today', MMI_Email_Templates::token('accent'), false
-                    );
-                }
-
-                $process_cards .= MMI_Email_Templates::render_process_card( $color, $label, $badge, $time_range, $stable_row, $cells );
-                continue;
-            }
-
-            // Multiple members sharing this family — one compact table instead
-            // of N repeated card shells.
-            $has_source_stat  = false;
-            $stat_label_order = [];
-            $any_multi_run    = false;
-            $any_warnings     = false;
-            $family_status    = 'success';
-            foreach ( $members as $m ) {
-                if ( $m['group']['status'] === 'partial' ) {
-                    $family_status = 'partial';
-                }
-                if ( ! empty( $m['group']['warnings'] ) ) {
-                    $any_warnings = true;
-                }
-                if ( $m['group']['runs'] > 1 ) {
-                    $any_multi_run = true;
-                }
-                foreach ( $m['group']['stats'] as $sl => $st ) {
-                    if ( strcasecmp( $sl, 'Source' ) === 0 ) {
-                        $has_source_stat = true;
-                    }
-                    // audit-ok: haystack is the few distinct stat labels of one run family (~5)
-                    if ( ! in_array( $sl, $stat_label_order, true ) ) {
-                        $stat_label_order[] = $sl;
-                    }
-                }
-            }
-
-            // A "Source" stat already identifies each row (its value is the
-            // member's own name), so a redundant leading identity column is
-            // only added when no such stat exists.
-            $columns = $has_source_stat ? [] : [ 'Process' ];
-            foreach ( $stat_label_order as $sl ) {
-                $columns[] = $sl;
-            }
-            if ( $any_multi_run ) {
-                $columns[] = 'Runs Today';
-            }
-            if ( $any_warnings ) {
-                $columns[] = 'Warnings';
-            }
-
-            $rows = [];
-            foreach ( $members as $m ) {
-                $g     = $m['group'];
-                $cells = [];
-
-                if ( ! $has_source_stat ) {
-                    $cells['Process'] = $m['member'] !== '' ? $m['member'] : $g['label'];
-                }
-
-                foreach ( $g['stats'] as $sl => $st ) {
-                    $display = $st['summable']
-                        ? number_format( (int) $st['sum'] )
-                        : $st['last'];
-                    $color = ( $st['highlight'] && ( $st['summable'] ? $st['sum'] > 0 : true ) )
-                        ? MMI_Email_Templates::token('danger')
-                        : MMI_Email_Templates::token('text_dark');
-                    $cells[ $sl ] = [ 'value' => $display, 'color' => $color ];
-                }
-
-                if ( $any_multi_run ) {
-                    $cells['Runs Today'] = (string) $g['runs'];
-                }
-                if ( $any_warnings ) {
-                    $cells['Warnings'] = ! empty( $g['warnings'] ) ? self::describe_group_warnings( $g ) : '—';
-                }
-
-                $rows[] = [ 'cells' => $cells ];
-            }
-
-            $family_color = $family_status === 'partial' ? MMI_Email_Templates::token('warning') : MMI_Email_Templates::token('primary');
-            $family_badge = $family_status === 'partial' ? 'Completed with Warnings' : 'Completed Successfully';
-
-            $process_cards .= MMI_Email_Templates::render_process_table_card( $family_color, $family, $family_badge, $columns, $rows );
-        }
-
-        $unique_types = count( $groups );
-        $subject      = sprintf( '[%s] Daily Process Summary — %d run%s (%d type%s) on %s',
-            $site_name,
-            $total_runs,
-            $total_runs === 1 ? '' : 's',
-            $unique_types,
-            $unique_types === 1 ? '' : 's',
-            $today
-        );
-
-        $body = MMI_Email_Templates::render_daily_digest( [
-            'site_name'     => $site_name,
-            'today'         => $today,
-            'hero_cells'    => $hero_cells,
-            'process_cards' => $process_cards,
-            'dashboard_url' => $dashboard_url,
-            'cta_label'     => 'View Data Pipeline Dashboard &rarr;',
-            'footer_text'   => "This summary is sent once daily at 7 am by the MMI Data Pipeline on <strong>{$site_name}</strong>. Repeated runs of the same profile are grouped. Failures are reported immediately in separate alert emails. Manage settings from the Data Pipeline dashboard.",
+                $total_runs === 1 ? '' : 's',
+                number_format( $total_changes ),
+                $total_changes === 1 ? '' : 's',
+                $total_failures,
+                $total_failures === 1 ? '' : 's'
+            ),
+            'body'     => ( $catalog_size > 0 ? sprintf( "Products monitored: %s\n\n", number_format( $catalog_size ) ) : '' ) . implode( "\n\n", $lines ),
+            'url'      => admin_url( 'admin.php?page=mmi-data-pipeline' ),
         ] );
-
-        wp_mail( $admin_email, $subject, $body, [ 'Content-Type: text/html; charset=UTF-8' ] );
-        MMI_Logger::info( "Daily digest sent: {$total_runs} run(s) across {$unique_types} process type(s)", [], 'sync', 'MMI_Pipeline_Cron' );
+        MMI_Logger::info( "Daily import report recorded: {$total_runs} run(s) across " . count( $groups ) . ' process type(s)', [], 'sync', 'MMI_Pipeline_Cron' );
     }
 
     /**
-     * One line naming what a digest group's warnings were, e.g.
+     * One line naming what a report group's warnings were, e.g.
      * "No new data: 8 of 29 runs (last 11:36 am)".
      */
     private static function describe_group_warnings( array $g ): string {
@@ -3308,12 +2897,6 @@ class MMI_Pipeline_Cron {
             $parts[] = $reason . ( $tail !== '' ? " ({$tail})" : '' );
         }
         return implode( '; ', $parts );
-    }
-
-    /** Warning line inside a single process card (same shape as the stable banner). */
-    private static function render_digest_warning_row( string $text ): string {
-        return '<tr><td colspan="12" style="padding:6px 12px;font-size:11px;color:' . esc_attr( MMI_Email_Templates::token( 'text_dark' ) ) . ';background:' . esc_attr( MMI_Email_Templates::token( 'bg_panel' ) ) . ';">'
-            . '&#9888; ' . esc_html( $text ) . '</td></tr>';
     }
 
     /* ── Fetch warnings (dashboard) ───────────────────────────────────────── */

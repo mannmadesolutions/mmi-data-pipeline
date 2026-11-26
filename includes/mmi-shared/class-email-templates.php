@@ -607,6 +607,125 @@ class MMI_Email_Templates {
 		return self::frame_html( $inner, self::token( 'primary' ), $footer_text );
 	}
 
+	/* ── render_summary() — the notifications dashboard as an email ─────── */
+
+	/**
+	 * MMI_Notifications' daily summary and urgent mail. Mirrors the dashboard:
+	 * count tiles, "Needs attention" cards, "Recent activity" rows, a button
+	 * to the dashboard. Every value arrives as plain text and is escaped here.
+	 *
+	 * @param array $args {
+	 *   headline, date, urgent (bool), dashboard_url,
+	 *   tiles:    [{value, label, tone: ''|'danger'|'warning'}],
+	 *   problems: [{severity, source, title, body, url, meta, is_new}],
+	 *   activity: [{when, source, title, body, url, solved}]
+	 * }
+	 */
+	public static function render_summary( array $args ): string {
+		$text_dark = self::token( 'text_dark' );
+		$border    = self::token( 'border' );
+		$danger    = self::token( 'danger' );
+		$warning   = '#b45309';
+		$muted     = '#767676';
+		$urgent    = ! empty( $args['urgent'] );
+		$tone      = array( 'danger' => $danger, 'warning' => $warning );
+
+		$tiles = (array) ( $args['tiles'] ?? array() );
+		$cells = '';
+		foreach ( array_values( $tiles ) as $i => $tile ) {
+			$cells .= self::render_hero_cell(
+				number_format_i18n( (int) ( $tile['value'] ?? 0 ) ),
+				(string) ( $tile['label'] ?? '' ),
+				$tone[ $tile['tone'] ?? '' ] ?? null,
+				$i < count( $tiles ) - 1
+			);
+		}
+
+		$para = static function ( string $body, string $color ): string {
+			if ( trim( $body ) === '' ) {
+				return '';
+			}
+			$out = '';
+			foreach ( preg_split( "/\n\s*\n/", trim( $body ) ) as $p ) {
+				$out .= '<p style="margin:4px 0 0;font-size:13px;line-height:1.5;color:' . esc_attr( $color ) . ';">' . nl2br( esc_html( $p ) ) . '</p>';
+			}
+			return $out;
+		};
+
+		$problems = (array) ( $args['problems'] ?? array() );
+		$attn     = '';
+		foreach ( $problems as $p ) {
+			$is_critical = ( $p['severity'] ?? '' ) === 'critical';
+			$color       = $is_critical ? $danger : $warning;
+			$label       = $is_critical ? __( 'Critical', 'mmi-shared' ) : __( 'Warning', 'mmi-shared' );
+			$chips       = '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:' . esc_attr( $color ) . ';">' . esc_html( $label ) . '</span>';
+			if ( ! empty( $p['source'] ) ) {
+				$chips .= '<span style="font-size:11px;color:' . esc_attr( $muted ) . ';">&nbsp;&middot;&nbsp;' . esc_html( $p['source'] ) . '</span>';
+			}
+			if ( ! empty( $p['is_new'] ) ) {
+				$chips .= '<span style="font-size:10px;font-weight:700;text-transform:uppercase;color:' . esc_attr( self::token( 'primary' ) ) . ';">&nbsp;&middot;&nbsp;' . esc_html__( 'New', 'mmi-shared' ) . '</span>';
+			}
+			$link = ! empty( $p['url'] )
+				? '<p style="margin:6px 0 0;font-size:13px;"><a href="' . esc_url( $p['url'] ) . '" style="color:' . esc_attr( self::token( 'primary' ) ) . ';">' . esc_html__( 'Open', 'mmi-shared' ) . ' &rarr;</a></p>'
+				: '';
+			$meta = ! empty( $p['meta'] ) ? '<p style="margin:4px 0 0;font-size:11px;color:' . esc_attr( $muted ) . ';">' . esc_html( $p['meta'] ) . '</p>' : '';
+			$attn .= '<tr><td style="padding:12px 14px;border-bottom:1px solid ' . esc_attr( $border ) . ';border-left:4px solid ' . esc_attr( $color ) . ';">'
+				. $chips
+				. '<p style="margin:4px 0 0;font-size:14px;font-weight:700;color:' . esc_attr( $text_dark ) . ';">' . esc_html( (string) ( $p['title'] ?? '' ) ) . '</p>'
+				. $para( (string) ( $p['body'] ?? '' ), '#50575e' )
+				. $meta . $link
+				. '</td></tr>';
+		}
+		if ( $attn === '' ) {
+			$attn = '<tr><td style="padding:12px 14px;font-size:13px;color:' . esc_attr( $muted ) . ';">&#10003; ' . esc_html__( 'Nothing needs attention right now.', 'mmi-shared' ) . '</td></tr>';
+		}
+
+		$activity = (array) ( $args['activity'] ?? array() );
+		$act      = '';
+		foreach ( $activity as $a ) {
+			$title = esc_html( (string) ( $a['title'] ?? '' ) );
+			if ( ! empty( $a['url'] ) ) {
+				$title = '<a href="' . esc_url( $a['url'] ) . '" style="color:' . esc_attr( $text_dark ) . ';">' . $title . '</a>';
+			}
+			if ( ! empty( $a['solved'] ) ) {
+				$title .= ' <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:' . esc_attr( self::token( 'success' ) ?: '#16a34a' ) . ';">' . esc_html__( 'Solved', 'mmi-shared' ) . '</span>';
+			}
+			$act .= '<tr>'
+				. '<td style="padding:8px 10px;font-size:11px;color:' . esc_attr( $muted ) . ';white-space:nowrap;vertical-align:top;border-bottom:1px solid ' . esc_attr( $border ) . ';">' . esc_html( (string) ( $a['when'] ?? '' ) ) . '<br>' . esc_html( (string) ( $a['source'] ?? '' ) ) . '</td>'
+				. '<td style="padding:8px 10px;vertical-align:top;border-bottom:1px solid ' . esc_attr( $border ) . ';"><span style="font-size:13px;font-weight:600;color:' . esc_attr( $text_dark ) . ';">' . $title . '</span>'
+				. $para( (string) ( $a['body'] ?? '' ), $muted )
+				. '</td></tr>';
+		}
+
+		$section = static function ( string $heading, string $rows ) use ( $border, $text_dark ): string {
+			return '<p style="margin:22px 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:' . esc_attr( $text_dark ) . ';">' . esc_html( $heading ) . '</p>'
+				. '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ' . esc_attr( $border ) . ';border-radius:6px;overflow:hidden;">' . $rows . '</table>';
+		};
+
+		$inner = '<h1 style="margin:0 0 2px;font-size:19px;color:' . esc_attr( $text_dark ) . ';">' . esc_html( (string) ( $args['headline'] ?? '' ) ) . '</h1>'
+			. '<p style="margin:0 0 16px;font-size:12px;color:' . esc_attr( $muted ) . ';">' . esc_html( (string) ( $args['date'] ?? '' ) ) . '</p>'
+			. ( $cells !== '' ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ' . esc_attr( $border ) . ';border-radius:6px;"><tr>' . $cells . '</tr></table>' : '' )
+			. $section( __( 'Needs attention', 'mmi-shared' ), $attn )
+			. ( $act !== '' ? $section( __( 'Recent activity', 'mmi-shared' ), $act ) : '' )
+			. self::cta_button_html( (string) ( $args['dashboard_url'] ?? admin_url() ), __( 'Open the dashboard', 'mmi-shared' ) . ' &rarr;', self::token( 'primary' ) );
+
+		$site_name = get_bloginfo( 'name' );
+		$footer    = $urgent
+			? sprintf(
+				/* translators: %s: site name */
+				__( 'Sent right away because this problem is urgent. Everything else waits for the daily summary from %s.', 'mmi-shared' ),
+				$site_name
+			)
+			: sprintf(
+				/* translators: %s: site name */
+				__( 'One summary a day from the MMI plugins on %s. Urgent problems are emailed when they happen.', 'mmi-shared' ),
+				$site_name
+			);
+		$accent = $urgent ? $danger : ( $problems ? ( ( $problems[0]['severity'] ?? '' ) === 'critical' ? $danger : $warning ) : self::token( 'primary' ) );
+
+		return self::frame_html( $inner, $accent, esc_html( $footer ) );
+	}
+
 	/* ── render_customer_notice() — customer-facing, WooCommerce-branded ──── */
 
 	/**

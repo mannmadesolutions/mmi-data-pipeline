@@ -5633,26 +5633,95 @@ button.mmi-cbd-chip.is-active {
    DASHBOARD LANDING PAGE (bare 'mmi-dashboard' parent slug)
    =================================== */
 
-.mmi-dashboard-layout {
+/* Notifications dashboard (MMI_Notifications::render_dashboard(), lib 1.53.0).
+   Same sections as the daily summary email: tiles, Needs attention, Recent
+   activity. Used on MannMade → Dashboard and MMI Admin → Dashboard. */
+.mmi-notify-tiles {
+    --mmi-stats-grid-min-col-width: 160px;
+    --mmi-stats-grid-margin: 0 0 16px;
+}
+
+.mmi-notify-email-line {
     display: flex;
-    align-items: flex-start;
-    gap: 24px;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    margin: 0 0 20px;
+    font-size: 13px;
+    color: var(--mmi-text-secondary);
 }
 
-.mmi-dashboard-attention {
-    flex: 1 1 340px;
-    max-width: 420px;
-    min-width: 300px;
+.mmi-notify-email-line > .dashicons {
+    color: var(--mmi-text-secondary);
 }
 
-.mmi-dashboard-plugins {
-    flex: 2 1 480px;
-    min-width: 320px;
+.mmi-notify-email-line > span:nth-child(2) {
+    flex: 1 1 360px;
 }
 
-.mmi-dashboard-panel.mmi-card {
+.mmi-notify-email-actions {
+    display: inline-flex;
+    gap: 6px;
+}
+
+.mmi-notify-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.mmi-notify-pills .mmi-dashboard-alert-pill {
     margin-bottom: 0;
+}
+
+.mmi-notify-source {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mmi-text-secondary);
+}
+
+.mmi-dashboard-alert-desc p,
+.mmi-notify-body p {
+    margin: 0 0 4px;
+}
+
+.mmi-notify-meta {
+    font-size: 11px;
+    color: var(--mmi-text-secondary);
+    margin-bottom: 6px;
+}
+
+.mmi-notify-actions {
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+}
+
+.mmi-notify-dismiss {
+    font-size: 12px;
+    color: var(--mmi-text-secondary);
+}
+
+.mmi-notify-activity td {
+    vertical-align: top;
+}
+
+.mmi-notify-activity td:first-child,
+.mmi-notify-activity td:nth-child(2) {
+    white-space: nowrap;
+    color: var(--mmi-text-secondary);
+}
+
+.mmi-notify-title {
+    font-weight: 600;
+}
+
+.mmi-notify-body {
+    font-size: 12px;
+    color: var(--mmi-text-secondary);
+    margin-top: 2px;
 }
 
 .mmi-dashboard-empty {
@@ -5722,8 +5791,9 @@ button.mmi-cbd-chip.is-active {
 }
 
 .mmi-dashboard-groups {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    align-items: start;
     gap: 18px;
 }
 
@@ -5892,13 +5962,6 @@ button.mmi-cbd-chip.is-active {
     color: var(--mmi-text-secondary);
 }
 
-@media (max-width: 900px) {
-    .mmi-dashboard-attention,
-    .mmi-dashboard-plugins {
-        flex-basis: 100%;
-        max-width: none;
-    }
-}
 
 /* ── Group box (.mmi-group; shared lib 1.46.42, 2026-10-27) ─────────────────
    A labelled box around controls that work together (owner 2026-10-27: "borders

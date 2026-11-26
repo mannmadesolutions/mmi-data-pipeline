@@ -189,7 +189,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.52.0';
+$mmi_shared_lib_this_copy_version = '1.53.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -239,6 +239,7 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_AI_Claude_Code' => 'class-ai-claude-code.php',
 	'MMI_Product_Identifiers' => 'class-product-identifiers.php',
 	'MMI_Access_Log'     => 'class-access-log.php',
+	'MMI_Notifications'  => 'class-notifications.php',
 );
 
 // ── Candidate registry ──────────────────────────────────────────────────
@@ -1361,15 +1362,17 @@ if ( ! function_exists( 'mmi_shared_menu_render_dashboard' ) ) {
 	 * small local file reads, not a DB query — so it's fine to call directly
 	 * on this render path.
 	 *
-	 * The "Needs attention" panel is fed entirely by the 'mmi_dashboard_alerts'
-	 * filter, so any plugin can surface its own already-known issue without
-	 * this file knowing anything about it. Per AGENTS.md's Server Load rule, a
-	 * filter callback must only report a durable, already-computed fact (a
-	 * stored settings value, a cached flag) — never run a fresh query, API
-	 * call, or other expensive check on this render path. Each entry:
+	 * Above the plugin list sits the notifications dashboard
+	 * (MMI_Notifications::render_dashboard( 'suite' )): count tiles, "Needs
+	 * attention" and "Recent activity", the same sections as the daily summary
+	 * email. Its problems come from MMI_Notifications::notify() rows plus the
+	 * 'mmi_dashboard_alerts' filter. Per AGENTS.md's Server Load rule, a filter
+	 * callback must only report a durable, already-computed fact (a stored
+	 * settings value, a cached flag), never run a fresh query, API call, or
+	 * other expensive check on this render path. Each entry:
 	 * array( 'severity' => 'critical'|'warning', 'title' => string,
 	 *        'description' => string, 'url' => string, 'page_slug' => string
-	 *        (optional — matches a submenu slug so its row gets a left-border
+	 *        (optional; matches a submenu slug so its row gets a left-border
 	 *        severity flag) ).
 	 */
 	function mmi_shared_menu_render_dashboard(): void {
@@ -1398,55 +1401,26 @@ if ( ! function_exists( 'mmi_shared_menu_render_dashboard' ) ) {
 			$grouped[ $info['group'] ][] = $item;
 		}
 
-		$alerts        = apply_filters( 'mmi_dashboard_alerts', array() );
+		// Rows of plugins that have a standing alert get its severity flag.
 		$alert_by_slug = array();
-		foreach ( $alerts as $alert ) {
+		foreach ( (array) apply_filters( 'mmi_dashboard_alerts', array() ) as $alert ) {
 			if ( ! empty( $alert['page_slug'] ) ) {
-				$alert_by_slug[ $alert['page_slug'] ] = in_array( $alert['severity'] ?? '', array( 'critical', 'warning' ), true )
-					? $alert['severity']
-					: 'warning';
+				$alert_by_slug[ $alert['page_slug'] ] = ( $alert['severity'] ?? '' ) === 'critical' ? 'critical' : 'warning';
 			}
 		}
 
-		echo '<div class="wrap mmi-page">';
+		echo '<div class="wrap mmi-page mmi-notify-page">';
 		echo '<div class="mmi-header"><h1><span class="dashicons mmi-brand-mark" aria-hidden="true"></span> ' . esc_html__( 'MannMade', 'mmi-shared' ) . '</h1>';
-		echo '<p class="mmi-header-description">' . esc_html__( 'Choose a plugin from the menu on the left.', 'mmi-shared' ) . '</p></div>';
+		echo '<p class="mmi-header-description">' . esc_html__( 'Everything your MannMade plugins need you to know, in one place. The daily summary email shows the same.', 'mmi-shared' ) . '</p></div>';
 		echo '<div class="wp-header-end"></div>';
 
-		echo '<div class="mmi-dashboard-layout">';
+		// Same sections, same order as the daily summary email.
+		MMI_Notifications::render_dashboard( 'suite' );
 
-		echo '<div class="mmi-dashboard-attention"><div class="mmi-card mmi-dashboard-panel">';
-		echo '<h2>' . esc_html__( 'Needs attention', 'mmi-shared' ) . '</h2>';
-		echo '<div class="mmi-card-body">';
-		if ( empty( $alerts ) ) {
-			echo '<p class="mmi-dashboard-empty">' . esc_html__( 'Nothing needs attention right now.', 'mmi-shared' ) . '</p>';
-		} else {
-			echo '<div class="mmi-dashboard-alerts">';
-			foreach ( $alerts as $alert ) {
-				if ( ! isset( $alert['title'], $alert['description'] ) ) {
-					continue;
-				}
-				$severity = in_array( $alert['severity'] ?? '', array( 'critical', 'warning' ), true ) ? $alert['severity'] : 'warning';
-				$pill     = 'critical' === $severity ? __( 'Critical', 'mmi-shared' ) : __( 'Warning', 'mmi-shared' );
-				$link     = ! empty( $alert['url'] )
-					? sprintf( '<a class="mmi-dashboard-alert-link" href="%s">%s &rarr;</a>', esc_url( $alert['url'] ), esc_html__( 'Open', 'mmi-shared' ) )
-					: '';
-				printf(
-					'<div class="mmi-dashboard-alert mmi-dashboard-alert--%1$s"><span class="mmi-dashboard-alert-pill mmi-dashboard-alert-pill--%1$s">%2$s</span><div class="mmi-dashboard-alert-title">%3$s</div><div class="mmi-dashboard-alert-desc">%4$s</div>%5$s</div>',
-					esc_attr( $severity ),
-					esc_html( $pill ),
-					esc_html( $alert['title'] ),
-					esc_html( $alert['description'] ),
-					$link
-				);
-			}
-			echo '</div>';
-		}
-		echo '</div></div></div>';
-
-		echo '<div class="mmi-dashboard-plugins"><div class="mmi-card mmi-dashboard-panel">';
-		echo '<h2>' . esc_html__( 'All plugins', 'mmi-shared' ) . '</h2>';
-		echo '<div class="mmi-card-body mmi-dashboard-groups">';
+		echo '<div class="mmi-process-section mmi-notify-section">';
+		echo '<div class="mmi-section-header"><h3 class="mmi-process-section-header"><span class="dashicons dashicons-admin-plugins" aria-hidden="true"></span> ' . esc_html__( 'Your plugins', 'mmi-shared' ) . '</h3>';
+		echo '<p class="mmi-process-section-description">' . esc_html__( 'A coloured edge marks a plugin with something open above.', 'mmi-shared' ) . '</p></div>';
+		echo '<div class="mmi-section-content mmi-dashboard-groups">';
 		foreach ( $grouped as $group_label => $group_items ) {
 			echo '<div class="mmi-dashboard-group">';
 			echo '<div class="mmi-dashboard-group-label">' . esc_html( $group_label ) . '</div>';
@@ -1475,11 +1449,31 @@ if ( ! function_exists( 'mmi_shared_menu_render_dashboard' ) ) {
 			}
 			echo '</ul></div>';
 		}
-		echo '</div></div></div>';
+		echo '</div></div>';
 
-		echo '</div>'; // .mmi-dashboard-layout
 		echo '</div>'; // .wrap
 	}
+}
+
+/*
+ * ── Notifications: daily summary + dashboard actions (lib 1.53.0) ─────────
+ * Callbacks resolve MMI_Notifications through the version-negotiated
+ * loader, so whichever bundled copy wins serves them.
+ */
+if ( ! defined( 'MMI_SHARED_NOTIFICATIONS_HOOKS_REGISTERED' ) && defined( 'ABSPATH' ) ) {
+	define( 'MMI_SHARED_NOTIFICATIONS_HOOKS_REGISTERED', true );
+	add_action( 'mmi_notifications_digest', array( 'MMI_Notifications', 'run_digest' ) );
+	add_action( 'admin_post_mmi_notification_dismiss', array( 'MMI_Notifications', 'handle_dismiss' ) );
+	add_action( 'admin_post_mmi_notifications_send_now', array( 'MMI_Notifications', 'handle_send_now' ) );
+	add_action( 'admin_post_mmi_notifications_preview', array( 'MMI_Notifications', 'handle_preview' ) );
+	add_action(
+		'init',
+		static function () {
+			if ( is_admin() || wp_doing_cron() ) {
+				MMI_Notifications::ensure_schedule();
+			}
+		}
+	);
 }
 
 if ( ! function_exists( 'mmi_shared_menu_icon' ) ) {
