@@ -5687,6 +5687,16 @@ button.mmi-cbd-chip.is-active {
     margin: 0 0 4px;
 }
 
+.mmi-notify-details summary {
+    cursor: pointer;
+    color: var(--mmi-secondary);
+    margin: 2px 0 4px;
+}
+
+.mmi-notify-details[open] summary {
+    margin-bottom: 6px;
+}
+
 .mmi-notify-meta {
     font-size: 11px;
     color: var(--mmi-text-secondary);

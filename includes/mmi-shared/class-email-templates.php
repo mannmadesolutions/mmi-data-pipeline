@@ -641,13 +641,21 @@ class MMI_Email_Templates {
 			);
 		}
 
+		// Long reports are cut at 10 lines; the dashboard shows the rest.
 		$para = static function ( string $body, string $color ): string {
 			if ( trim( $body ) === '' ) {
 				return '';
 			}
-			$out = '';
+			$max   = 10;
+			$lines = explode( "\n", trim( $body ) );
+			$more  = count( $lines ) > $max;
+			$body  = implode( "\n", array_slice( $lines, 0, $max ) );
+			$out   = '';
 			foreach ( preg_split( "/\n\s*\n/", trim( $body ) ) as $p ) {
 				$out .= '<p style="margin:4px 0 0;font-size:13px;line-height:1.5;color:' . esc_attr( $color ) . ';">' . nl2br( esc_html( $p ) ) . '</p>';
+			}
+			if ( $more ) {
+				$out .= '<p style="margin:4px 0 0;font-size:12px;font-style:italic;color:#767676;">' . esc_html__( 'More on the dashboard.', 'mmi-shared' ) . '</p>';
 			}
 			return $out;
 		};

@@ -189,7 +189,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.53.0';
+$mmi_shared_lib_this_copy_version = '1.53.1';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -1331,6 +1331,10 @@ if ( ! function_exists( 'mmi_shared_menu_dashboard_plugin_info_for_slug' ) ) {
 			'mmi-data-pipeline'    => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-data-pipeline/mmi-data-pipeline.php' ),
 			'mmi-contracts'        => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-contracts/mmi-contracts.php' ),
 			'mmi-accounting'       => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-accounting/mmi-accounting.php' ),
+			'mmi-po'               => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-po/mmi-po.php' ),
+			'mmi-sales-tax'        => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-sales-tax/mmi-sales-tax.php' ),
+			'mmi-subscriptions'    => array( 'group' => 'Commerce & Sync', 'file' => 'mmi-subscriptions/mmi-subscriptions.php' ),
+			'mmi-seo'              => array( 'group' => 'Integrations', 'file' => 'mmi-seo/mmi-seo.php' ),
 			'mmi-distributors'     => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),
 			'mmi-xchange'          => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),
 			'mmi-skuport'          => array( 'group' => 'Integrations', 'file' => 'mmi-distributors/mmi-distributors.php' ),

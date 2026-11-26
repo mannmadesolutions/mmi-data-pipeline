@@ -651,16 +651,23 @@ class MMI_Notifications {
 		return $meta;
 	}
 
-	/** Plain-text body → escaped paragraphs. */
+	/**
+	 * Plain-text body → escaped paragraphs. A long body keeps its first
+	 * paragraph in view and folds the rest into Details, so one verbose
+	 * report doesn't push every other problem off the screen.
+	 */
 	public static function body_html( string $body ): string {
 		if ( trim( $body ) === '' ) {
 			return '';
 		}
-		$out = '';
-		foreach ( preg_split( "/\n\s*\n/", trim( $body ) ) as $para ) {
-			$out .= '<p>' . nl2br( esc_html( $para ) ) . '</p>';
+		$paras = array_map(
+			static fn( $p ) => '<p>' . nl2br( esc_html( $p ) ) . '</p>',
+			preg_split( "/\n\s*\n/", trim( $body ) )
+		);
+		if ( strlen( $body ) < 600 ) {
+			return implode( '', $paras );
 		}
-		return $out;
+		return array_shift( $paras ) . '<details class="mmi-notify-details"><summary>' . esc_html__( 'Details', 'mmi-shared' ) . '</summary>' . implode( '', $paras ) . '</details>';
 	}
 
 	private static function local_time( ?string $utc, string $format ): string {
