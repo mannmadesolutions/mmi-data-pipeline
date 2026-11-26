@@ -1936,6 +1936,7 @@ class MMI_Pipeline_Cron {
             MMI_DB::delete_setting( $state_key );
             MMI_DB::delete_job_state( $lock_key );
             self::record_problem( 'import-' . $profile_id, sprintf( 'Import failed: %s', self::get_profile_label( $profile_id ) ), $e->getMessage(), [
+                [ 'label' => 'Profile', 'value' => $profile_id ],
                 [ 'label' => 'Stage', 'value' => 'Starting the run' ],
             ] );
         }
@@ -2375,9 +2376,10 @@ class MMI_Pipeline_Cron {
      * good fetch or finished run resolves it.
      *
      * @param string $key     'fetch-<source>', 'import-<profile>', 'stale-<profile>'.
-     * @param array  $context [{label, value}] facts shown under the detail.
+     * @param array  $context  [{label, value}] facts shown under the detail.
+     * @param string $severity 'critical', or 'warning' for a supplier-side outage.
      */
-    private static function record_problem( string $key, string $title, string $detail, array $context = [] ): void {
+    private static function record_problem( string $key, string $title, string $detail, array $context = [], string $severity = 'critical' ): void {
         $facts = array_map(
             static function ( $row ) {
                 return "{$row['label']}: {$row['value']}";
@@ -2387,7 +2389,7 @@ class MMI_Pipeline_Cron {
         MMI_Notifications::notify( [
             'source'   => 'mmi-data-pipeline',
             'key'      => $key,
-            'severity' => 'critical',
+            'severity' => $severity,
             'title'    => $title,
             'body'     => $detail . ( $facts ? "\n\n" . implode( "\n", $facts ) : '' ),
             'url'      => admin_url( 'admin.php?page=mmi-data-pipeline' ),
@@ -2465,7 +2467,8 @@ class MMI_Pipeline_Cron {
                     [ 'label' => 'Failed fetches', 'value' => number_format( $outage['failures'] ) ],
                     [ 'label' => 'Feed in use',    'value' => self::describe_source_feed_age( $supplier_id ) ],
                     [ 'label' => 'Last response',  'value' => $message ],
-                ]
+                ],
+                'warning'
             );
         }
 
@@ -2543,6 +2546,7 @@ class MMI_Pipeline_Cron {
                 self::format_duration( (float) $staleness['interval'] )
             );
             $context = [
+                [ 'label' => 'Profile',        'value' => $profile_id ],
                 [ 'label' => 'Last Success',   'value' => $staleness['last_success'] ?: 'never' ],
                 [ 'label' => 'Expected Every',  'value' => self::format_duration( (float) $staleness['interval'] ) ],
             ];
