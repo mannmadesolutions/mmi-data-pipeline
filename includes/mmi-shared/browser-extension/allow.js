@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: "Keep it open as you browse" (sw.js askAllow()). Chrome only asks for a site's permission
+ * The extension's shell: "Keep it open as you browse" (sw.js askAllow()). Chrome only asks for a site's permission
  * after a click in one of the extension's own pages, so this small window holds the click. Allowed, the panel comes
  * back on each page of the site while it is open; nothing runs there unless the panel is.
  */
@@ -13,7 +13,7 @@
 	const library = new URLSearchParams( location.search ).get( 'w' ) === 'library';
 	document.getElementById( 'what' ).textContent = library
 		? `Chrome asks next. Once allowed, pages you open on ${ host } are kept in your store’s reference library as you read them. Nothing is opened or read on the site by itself.`
-		: `Chrome asks next. Once allowed, the Product Data panel comes back on each page of ${ host } you open while it is open, until you close it. Nothing runs on the site unless the panel is open.`;
+		: `Chrome asks next. Once allowed, the panel comes back on each page of ${ host } you open while it is open, until you close it. Nothing runs on the site unless the panel is open.`;
 	document.getElementById( 'no' ).addEventListener( 'click', () => window.close() );
 	document.getElementById( 'yes' ).addEventListener( 'click', async () => {
 		if ( ! /^https?:\/\/[^/]+\/\*$/.test( o ) ) {

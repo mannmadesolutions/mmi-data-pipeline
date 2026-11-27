@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: where the extension's panels sit on a page. One setting for the panel (panel.js) and the live mapper
+ * Where the extension's panels sit on a page. One setting for the panel (panel.js) and the live mapper
  * (live-mapper.js, through mapper.js's bridge): docked right (the usual place), left, top or bottom, and how wide (left,
  * right) or tall (top, bottom) it is, dragged at the panel's inner edge. Kept in chrome.storage.local, so every open tab
  * follows a change at once (owner 2026-11-15: "allow the user to adjust the width and docking location").

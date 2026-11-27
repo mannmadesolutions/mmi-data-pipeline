@@ -104,7 +104,7 @@ class Library {
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'assets' ] );
 	}
 
-	/** The admin routes (cookie + nonce). The extension's own route is ext/library (ExtBridge::routes(), token). */
+	/** The admin routes (cookie + nonce). The extension's own route is ext/library (ExtBridge::routes(), token). The section is on the shell's Chrome extension page (mmi_browser_extension_sections). */
 	public static function routes(): void {
 		$admin = static fn() => current_user_can( Rest::CAP );
 		register_rest_route( Rest::NS, '/library', [ 'methods' => 'GET', 'permission_callback' => $admin, 'callback' => [ __CLASS__, 'rest_list' ] ] );
@@ -622,9 +622,11 @@ class Library {
 	/* ── The section on the Chrome extension page ───────────────────────── */
 
 	public static function assets( $hook ): void {
-		if ( ! is_string( $hook ) || strpos( $hook, ExtBridge::SLUG ) === false ) {
+		if ( ! is_string( $hook ) || strpos( $hook, \MMI_Browser_Extension::SLUG ) === false ) {
 			return;
 		}
+		$css = dirname( __DIR__ ) . '/assets/css/library.css';
+		wp_enqueue_style( 'mmpt-library', PageEvents::asset_url( 'css/library.css' ), wp_style_is( 'mmi-suite-common', 'registered' ) ? [ 'mmi-suite-common' ] : [], file_exists( $css ) ? (string) filemtime( $css ) : '1' );
 		$rel = 'js/library.js';
 		$f   = dirname( __DIR__ ) . '/assets/' . $rel;
 		wp_enqueue_script( 'mmpt-library', PageEvents::asset_url( $rel ), [], file_exists( $f ) ? (string) filemtime( $f ) : '1', true );

@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: which store the extension works with (connect.html; also its Options page). A copy downloaded
+ * The extension's shell: which store it works with (connect.html; also its Options page). A copy downloaded
  * from a store's Chrome extension page already knows its store; a copy from the Chrome Web Store asks here. Chrome is
  * asked for the site while the click still counts, then the service worker puts the bridge on the store's admin pages
  * (connectto) and the store's Chrome extension page opens, where the key is handed over.

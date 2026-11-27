@@ -1,6 +1,6 @@
 /**
- * The Chrome extension page (ExtBridge::render()): finds the MMI Product Data extension in this browser,
- * connects it (POST /ext/pair, then the token and this store's route address go to the extension through its
+ * The Chrome extension page (MMI_Browser_Extension::render(), the extension's shell): finds the extension in this
+ * browser, connects it (POST pair, then the key and this store's route addresses go to the extension through its
  * bridge.js on this page: the extension is then this store's) and lists
  * the connected browsers with Disconnect. A store's own parts of the page (an updater for unpacked copies) bring
  * their own script.
@@ -9,22 +9,24 @@
  * "Not yet" row is left behind. The extension's bridge comes back by itself after an install or update (its service
  * worker puts it into this page), and announces itself again.
  *
- *   window.mmptExtConnect = { rest, nonce, protocol, version }
+ *   window.mmiExtConnect = { rest, legacy, nonce, version, name }
+ * rest: the shell's routes. legacy: the routes copies of the extension from before the shell call (Product Data's), handed
+ * over as `rest` for them, with the shell's as `shell`.
  */
 ( function () {
 	'use strict';
 
-	const CFG = window.mmptExtConnect;
+	const CFG = window.mmiExtConnect;
 	if ( ! CFG ) {
 		return;
 	}
 	const TAG = 'mmiExt';
 	const LIMITS = { pingMs: 500, pings: 12, pairMs: 15000 };
 	const MESSAGES = {
-		missing: 'The extension isn’t in this browser yet. Install it (step 1), then reload this page. Already installed from the Chrome Web Store? Click MMI Product Data in Chrome’s toolbar on this page.',
-		found: 'Found MMI Product Data %v in this browser. Connect it to start.',
-		connected: 'Connected as %u. Open a maker’s product page and click MMI Product Data in Chrome’s toolbar.',
-		elsewhere: 'Found MMI Product Data %v, connected to %h. Connecting it here moves it to this store.',
+		missing: 'The extension isn’t in this browser yet. Install it (step 1), then reload this page. Already installed from the Chrome Web Store? Click %name in Chrome’s toolbar on this page.',
+		found: 'Found %name %v in this browser. Connect it to start.',
+		connected: 'Connected as %u. On a page you work on, click %name in Chrome’s toolbar.',
+		elsewhere: 'Found %name %v, connected to %h. Connecting it here moves it to this store.',
 		stale: 'This browser has version %v; %n is available. A copy from the Chrome Web Store updates by itself. A copy loaded by hand: download it and unzip it, remove the old card in chrome://extensions, Load unpacked the new folder (named with its version), then connect it here.',
 		twoCopies: 'Two copies of the extension are loaded in this browser (%v). Remove the older card in chrome://extensions: both put a panel on every page.',
 		connecting: 'Connecting…',
@@ -40,10 +42,10 @@
 	};
 
 	const $ = ( id ) => document.getElementById( id );
-	const btn = $( 'mmpt-ext-connect' );
-	const status = $( 'mmpt-ext-status' );
-	const list = $( 'mmpt-ext-tokens' );
-	let ext = null; // what the extension last said about itself: { version, protocol, paired, tokenId, user, store }
+	const btn = $( 'mmi-ext-connect' );
+	const status = $( 'mmi-ext-status' );
+	const list = $( 'mmi-ext-tokens' );
+	let ext = null; // what the extension last said about itself: { name, version, paired, tokenId, user, store }
 	const copies = new Set(); // versions whose bridge answered on this page (two loaded copies both answer)
 	let waiting = null; // a pairing waiting for the extension's answer
 
@@ -68,7 +70,7 @@
 	function say( kind, text ) {
 		status.className = 'notice inline notice-' + kind;
 		const p = document.createElement( 'p' );
-		p.textContent = text;
+		p.textContent = text.replace( /%name/g, ( ext && ext.name ) || CFG.name );
 		status.replaceChildren( p );
 	}
 
@@ -142,7 +144,7 @@
 			b.textContent = MESSAGES.disconnect;
 			b.addEventListener( 'click', () => {
 				b.disabled = true;
-				api( 'ext/revoke', 'POST', { id: t.id } )
+				api( 'revoke', 'POST', { id: t.id } )
 					.then( ( d ) => {
 						post( { op: 'forget', id: t.id } );
 						rows( d.tokens );
@@ -158,7 +160,7 @@
 		} );
 	}
 
-	const refresh = () => api( 'ext/tokens', 'GET' ).then( ( d ) => rows( d.tokens ) ).catch( ( e ) => say( 'error', e.message ) );
+	const refresh = () => api( 'tokens', 'GET' ).then( ( d ) => rows( d.tokens ) ).catch( ( e ) => say( 'error', e.message ) );
 
 	window.addEventListener( 'message', ( e ) => {
 		const d = e.data;
@@ -168,7 +170,7 @@
 		if ( d.op === 'here' ) {
 			copies.add( String( d.version ) );
 			const first = ! ext || ext.version !== d.version; // a reloaded or updated extension announces itself again
-			ext = { version: d.version, protocol: d.protocol, paired: !! d.paired, tokenId: d.tokenId || '', user: d.user || '', store: d.store || '' };
+			ext = { name: String( d.name || '' ), version: d.version, paired: !! d.paired, tokenId: d.tokenId || '', user: d.user || '', store: d.store || '' };
 			paint();
 			if ( first ) {
 				refresh();
@@ -191,7 +193,7 @@
 		btn.disabled = true;
 		say( 'info', MESSAGES.connecting );
 		const label = 'Chrome' + ( navigator.userAgentData && navigator.userAgentData.platform ? ' · ' + navigator.userAgentData.platform : '' );
-		api( 'ext/pair', 'POST', { label } )
+		api( 'pair', 'POST', { label } )
 			.then( ( d ) => {
 				waiting = {
 					id: d.id,
@@ -199,10 +201,10 @@
 						waiting = null;
 						btn.disabled = false;
 						say( 'error', MESSAGES.noAnswer );
-						api( 'ext/revoke', 'POST', { id: d.id } ).then( ( r ) => rows( r.tokens ) ).catch( () => {} );
+						api( 'revoke', 'POST', { id: d.id } ).then( ( r ) => rows( r.tokens ) ).catch( () => {} );
 					}, LIMITS.pairMs ),
 				};
-				post( { op: 'pair', token: d.token, id: d.id, rest: CFG.rest } );
+				post( { op: 'pair', token: d.token, id: d.id, rest: CFG.legacy || CFG.rest, shell: CFG.rest } );
 			} )
 			.catch( ( e ) => {
 				btn.disabled = false;
@@ -213,7 +215,7 @@
 	/** Leaving mid-connect: the key the extension hasn't taken is taken back. */
 	window.addEventListener( 'pagehide', () => {
 		if ( waiting ) {
-			api( 'ext/revoke', 'POST', { id: waiting.id }, true ).catch( () => {} );
+			api( 'revoke', 'POST', { id: waiting.id }, true ).catch( () => {} );
 		}
 	} );
 

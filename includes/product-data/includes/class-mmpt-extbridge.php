@@ -61,7 +61,9 @@
  * Headers: X-MMI-Ext-Protocol (PROTOCOL), X-MMI-Ext-Build (build(): the download it came from; an older one is told
  * to update), X-MMI-Ext-Version (the extension's version, kept with its key: a newer one disconnects this person's
  * browsers on older versions, retire_older()).
- * Download: admin-post.php?action=mmpt_ext_download (nonce): the extension folder as a zip.
+ * The extension's shell (MMI_Browser_Extension, shared library) owns the Chrome extension page, the download and the
+ * Web Store package; this module is its part `product-data` (extension_files(): browser-extension/ and the mapper's two
+ * scripts, carried under parts/product-data/), and adds the Reference library section to that page.
  *
  * @package MannMade\DataPipeline\ProductData
  */
@@ -74,7 +76,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ExtBridge {
 
-	const SLUG         = 'mmi-product-extension'; // mmi- prefix → the shared library adds body.mmi-page and the suite styling
 	const PROTOCOL     = 14;
 	/** Protocol 12 asking (LayoutMaps: a layout's map, committed as a whole). */
 	private static bool $v12 = false;                      // the panel description and routes the extension speaks (EXT_PROTOCOL in sw.js)
@@ -93,7 +94,7 @@ class ExtBridge {
 	const MAX_PRODUCTS = 20;                      // product rows in one panel
 	const HELD_WORDS   = 40;                      // words of the product's text on the Finding the page card
 	const SAME_TEXT    = 120;                     // opening characters of a description that must be on a page to count as its text
-	const BUNDLED      = [ 'map-select.js', 'live-mapper.js' ]; // assets/js files the download carries
+	const BUNDLED      = [ 'map-select.js', 'live-mapper.js' ]; // assets/js files this part of the extension carries
 	const JOB_SHOWN    = 900;                     // seconds after a write or a read of its page that our product page still opens on it, with its answer
 	const POLL_MS      = 4000;                    // the panel asks again this often while a write or picture run is under way
 	const MAX_VIDEOS   = 20;
@@ -196,14 +197,12 @@ class ExtBridge {
 				'cap'      => Rest::CAP,
 				'sites'    => [ '*' ], // a maker's site can't be known in advance: any page no other part claims
 				'protocol' => self::PROTOCOL,
+				'legacy'   => true, // copies from before the shell send every call to these routes
+				'files'    => [ __CLASS__, 'extension_files' ],
 			]
 		);
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
-		add_action( 'admin_post_mmpt_ext_download', [ __CLASS__, 'download' ] );
-		if ( is_admin() ) {
-			add_action( 'admin_menu', [ __CLASS__, 'menu' ], 32 );
-			add_action( 'admin_enqueue_scripts', [ __CLASS__, 'assets' ] );
-		}
+		add_action( 'mmi_browser_extension_sections', [ Library::class, 'render_section' ] ); // the shell's Chrome extension page
 	}
 
 	/* ── Routes ─────────────────────────────────────────────────────────── */
@@ -227,7 +226,7 @@ class ExtBridge {
 		}
 	}
 
-	/** POST /ext/pair {label}: the shell's pair under this module's old address (extension 1.1.x and the Chrome extension page), with its protocol. */
+	/** POST /ext/pair {label}: the shell's pair under this module's old address (extension 1.1.x), with its protocol. */
 	public static function pair( \WP_REST_Request $r ): \WP_REST_Response {
 		$res  = \MMI_Browser_Extension::pair( $r );
 		$data = (array) $res->get_data();
@@ -252,13 +251,13 @@ class ExtBridge {
 			return $old;
 		}
 		$u = wp_get_current_user();
-		return rest_ensure_response( [ 'user' => $u->display_name, 'site' => home_url(), 'protocol' => self::PROTOCOL, 'page' => admin_url( 'admin.php?page=' . self::SLUG ), 'parts' => \MMI_Browser_Extension::parts_for_user() ] );
+		return rest_ensure_response( [ 'user' => $u->display_name, 'site' => home_url(), 'protocol' => self::PROTOCOL, 'page' => \MMI_Browser_Extension::page_url(), 'parts' => \MMI_Browser_Extension::parts_for_user() ] );
 	}
 
 	/** An extension older than MIN_PROTOCOL is told to update instead of being half answered. */
 	private static function too_old( \WP_REST_Request $r ): ?\WP_REST_Response {
 		$p = (int) $r->get_header( 'x_mmi_ext_protocol' );
-		return $p >= self::MIN_PROTOCOL ? null : new \WP_REST_Response( [ 'message' => self::update_help( 'This copy of the extension is too old.' ), 'update' => true ], 426 );
+		return $p >= self::MIN_PROTOCOL ? null : new \WP_REST_Response( [ 'message' => \MMI_Browser_Extension::update_help( 'This copy of the extension is too old.' ), 'update' => true ], 426 );
 	}
 
 	/* ── The panel ──────────────────────────────────────────────────────── */
@@ -773,9 +772,9 @@ class ExtBridge {
 
 	/** The extension asking is older than the one on offer: the panel says so, with the way to the new one. */
 	private static function say_stale( array $client, array &$notices, array &$actions ): void {
-		if ( (int) $client['protocol'] < 2 || $client['build'] !== self::build() ) {
-			$notices[] = [ 'kind' => 'warn', 'text' => self::update_help( 'A newer version of the extension is out.' ) ];
-			$actions[] = [ 'id' => 'update', 'label' => 'Get the new version', 'kind' => 'open', 'primary' => true, 'href' => admin_url( 'admin.php?page=' . self::SLUG ) ];
+		if ( (int) $client['protocol'] < 2 || $client['build'] !== \MMI_Browser_Extension::build() ) {
+			$notices[] = [ 'kind' => 'warn', 'text' => \MMI_Browser_Extension::update_help( 'A newer version of the extension is out.' ) ];
+			$actions[] = [ 'id' => 'update', 'label' => 'Get the new version', 'kind' => 'open', 'primary' => true, 'href' => \MMI_Browser_Extension::page_url() ];
 		}
 	}
 
@@ -3899,304 +3898,20 @@ class ExtBridge {
 		return (string) wp_parse_url( home_url(), PHP_URL_HOST );
 	}
 
-	/**
-	 * What to do about an old extension. A store copy updates through the Chrome Web Store by itself; a copy loaded by
-	 * hand is updated from this site's Chrome extension page. A store's own plugin can add its way (filter
-	 * mmi_pipeline_extension_update_help, e.g. an updater that keeps unpacked copies current).
-	 */
-	private static function update_help( string $lead ): string {
-		$text = $lead . ' A copy from the Chrome Web Store updates by itself. A copy loaded by hand: on the Chrome extension page, download the new version, unzip it (its folder carries the version number), remove the old card in chrome://extensions, Load unpacked the new folder and connect it again.';
-		return (string) apply_filters( 'mmi_pipeline_extension_update_help', $text, $lead );
-	}
-
-	/* ── The Chrome extension page ──────────────────────────────────────── */
-
-	/** The page: no menu entry, linked from the Product Workbench. */
-	public static function menu(): void {
-		add_submenu_page( '', __( 'Chrome extension', 'mmi-data-pipeline' ), '', Rest::CAP, self::SLUG, [ __CLASS__, 'render' ] );
-	}
-
-	/** The module's own files (assets/). */
-	private static function asset_ver( string $rel ): string {
-		$f = dirname( __DIR__ ) . '/assets/' . $rel;
-		return file_exists( $f ) ? (string) filemtime( $f ) : ( defined( 'MMI_PIPELINE_VERSION' ) ? MMI_PIPELINE_VERSION : '1' );
-	}
-
-	public static function assets( $hook ): void {
-		if ( ! is_string( $hook ) || strpos( $hook, self::SLUG ) === false ) {
-			return;
-		}
-		wp_enqueue_style( 'mmpt-extension', PageEvents::asset_url( 'css/extension.css' ), wp_style_is( 'mmi-suite-common', 'registered' ) ? [ 'mmi-suite-common' ] : [], self::asset_ver( 'css/extension.css' ) );
-		wp_enqueue_script( 'mmpt-ext-connect', PageEvents::asset_url( 'js/ext-connect.js' ), [], self::asset_ver( 'js/ext-connect.js' ), true );
-		wp_localize_script(
-			'mmpt-ext-connect',
-			'mmptExtConnect',
-			[
-				'rest'     => esc_url_raw( rest_url( Rest::NS . '/' ) ),
-				'nonce'    => wp_create_nonce( 'wp_rest' ),
-				'protocol' => self::PROTOCOL,
-				'version'  => self::version(),
-			]
-		);
-		do_action( 'mmi_pipeline_extension_page_assets' ); // a store's own parts of this page (e.g. an updater for unpacked copies)
-	}
-
-	/** The extension's Chrome Web Store listing, once it has one (filter mmi_pipeline_extension_store_url). */
-	public static function store_url(): string {
-		return esc_url_raw( (string) apply_filters( 'mmi_pipeline_extension_store_url', '' ) );
-	}
-
-	public static function render(): void {
-		if ( ! current_user_can( Rest::CAP ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'mmi-data-pipeline' ) );
-		}
-		$zip   = wp_nonce_url( admin_url( 'admin-post.php?action=mmpt_ext_download' ), 'mmpt_ext_download' );
-		$store = self::store_url();
-		?>
-		<div class="wrap mmi-page mmpt-ext-page">
-			<div class="mmi-header">
-				<h1><span class="dashicons dashicons-admin-plugins"></span> <?php esc_html_e( 'Chrome extension', 'mmi-data-pipeline' ); ?></h1>
-				<p class="mmi-header-description"><?php esc_html_e( 'MMI Product Data works on a maker’s own page in Chrome: it shows what the page gives each product that uses it, writes that to the product (with Undo in the Product Workbench’s Recent changes), and lets you pick a part or the product’s pictures and videos right on the page. It also links a page to a product, moves to the site’s next product with work on its page, and sends a page that refuses the server from your tab. It talks only to this site.', 'mmi-data-pipeline' ); ?></p>
-			</div>
-			<div class="wp-header-end"></div>
-
-			<div class="mmi-process-section">
-				<div class="mmi-section-header">
-					<div>
-						<h3 class="mmi-process-section-header"><span class="dashicons dashicons-download"></span> <?php esc_html_e( '1 · Install it in Chrome', 'mmi-data-pipeline' ); ?></h3>
-						<p class="mmi-process-section-description"><?php echo esc_html( sprintf( /* translators: %s: version */ __( 'Version %s. It works in Chrome, Edge and Brave.', 'mmi-data-pipeline' ), self::version() ) ); ?></p>
-					</div>
-					<?php if ( $store !== '' ) : ?>
-						<a class="button button-primary" href="<?php echo esc_url( $store ); ?>" target="_blank" rel="noopener"><span class="dashicons dashicons-external"></span> <?php esc_html_e( 'Get it from the Chrome Web Store', 'mmi-data-pipeline' ); ?></a>
-					<?php endif; ?>
-					<?php do_action( 'mmi_pipeline_extension_install_buttons' ); ?>
-					<a class="button<?php echo $store === '' ? ' button-primary' : ''; ?>" href="<?php echo esc_url( $zip ); ?>"><span class="dashicons dashicons-download"></span> <?php esc_html_e( 'Download the extension', 'mmi-data-pipeline' ); ?></a>
-				</div>
-				<div class="mmi-section-content">
-					<?php do_action( 'mmi_pipeline_extension_install' ); ?>
-					<details class="mmpt-ext-manual"<?php echo $store === '' ? ' open' : ''; ?>>
-						<summary><?php esc_html_e( 'Loading the download by hand', 'mmi-data-pipeline' ); ?></summary>
-						<ol class="mmpt-ext-steps">
-							<li><?php esc_html_e( 'Unzip the download. Keep the folder somewhere it can stay (Documents, for example).', 'mmi-data-pipeline' ); ?></li>
-							<li><?php esc_html_e( 'In Chrome, open chrome://extensions and switch on Developer mode (top right).', 'mmi-data-pipeline' ); ?></li>
-							<li><?php esc_html_e( 'Press Load unpacked and choose the folder. Pin MMI Product Data to the toolbar (the puzzle-piece menu).', 'mmi-data-pipeline' ); ?></li>
-							<li><?php esc_html_e( 'Reload this page, then connect it below.', 'mmi-data-pipeline' ); ?></li>
-						</ol>
-						<p class="description"><?php echo esc_html( sprintf( /* translators: %s: the unzipped folder's name */ __( 'To update: download again and unzip it: the folder is named with its version (%s), so it never becomes “… 2”. In chrome://extensions remove the old MMI Product Data card, press Load unpacked and choose the new folder, then connect it again below (one click; the old version’s connection closes by itself). The old folder can then be deleted.', 'mmi-data-pipeline' ), 'mmi-product-data-extension-' . self::version() ) ); ?></p>
-					</details>
-				</div>
-			</div>
-
-			<?php do_action( 'mmi_pipeline_extension_sections' ); ?>
-
-			<div class="mmi-process-section">
-				<div class="mmi-section-header">
-					<div>
-						<h3 class="mmi-process-section-header"><span class="dashicons dashicons-admin-links"></span> <?php esc_html_e( '2 · Connect this browser', 'mmi-data-pipeline' ); ?></h3>
-						<p class="mmi-process-section-description"><?php esc_html_e( 'Connecting gives the extension a key that works only for the extension’s routes on this site, under your login. Nothing is copied by hand.', 'mmi-data-pipeline' ); ?></p>
-					</div>
-					<button type="button" class="button button-primary" id="mmpt-ext-connect" disabled><span class="dashicons dashicons-admin-links"></span> <?php esc_html_e( 'Connect this browser', 'mmi-data-pipeline' ); ?></button>
-				</div>
-				<div class="mmi-section-content">
-					<div id="mmpt-ext-status" class="notice notice-info inline" role="status"><p><?php esc_html_e( 'Looking for the extension in this browser…', 'mmi-data-pipeline' ); ?></p></div>
-				</div>
-			</div>
-
-			<div class="mmi-process-section">
-				<div class="mmi-section-header">
-					<div>
-						<h3 class="mmi-process-section-header"><span class="dashicons dashicons-laptop"></span> <?php esc_html_e( 'Connected browsers', 'mmi-data-pipeline' ); ?></h3>
-						<p class="mmi-process-section-description"><?php echo esc_html( sprintf( /* translators: %d: days */ __( 'A browser not used for %d days is disconnected on its own, and connecting or updating to a newer version of the extension disconnects the browsers on older versions.', 'mmi-data-pipeline' ), \MMI_Browser_Extension::IDLE_DAYS ) ); ?></p>
-					</div>
-				</div>
-				<div class="mmi-section-content">
-					<div class="mmi-table-scroll-wrapper">
-						<table class="widefat striped mmpt-ext-tokens">
-							<thead><tr><th><?php esc_html_e( 'Browser', 'mmi-data-pipeline' ); ?></th><th><?php esc_html_e( 'Connected', 'mmi-data-pipeline' ); ?></th><th><?php esc_html_e( 'Last used', 'mmi-data-pipeline' ); ?></th><th><?php esc_html_e( 'Version', 'mmi-data-pipeline' ); ?></th><th><span class="screen-reader-text"><?php esc_html_e( 'Actions', 'mmi-data-pipeline' ); ?></span></th></tr></thead>
-							<tbody id="mmpt-ext-tokens"><tr><td colspan="5"><span class="spinner is-active"></span> <?php esc_html_e( 'Loading…', 'mmi-data-pipeline' ); ?></td></tr></tbody>
-						</table>
-					</div>
-				</div>
-			</div>
-
-			<?php Library::render_section(); ?>
-		</div>
-		<?php
-	}
-
-	/* ── The download ───────────────────────────────────────────────────── */
+	/* ── This module's part of the extension ─────────────────────────── */
 
 	/**
-	 * Where the extension's files live: this plugin's browser-extension/ folder (filter
-	 * mmi_pipeline_extension_source_dir, for a store that builds its own copy).
+	 * Product Data's files in the extension (MMI_Browser_Extension carries them under parts/product-data/): this plugin's
+	 * browser-extension/ folder, and the live mapper's scripts from assets/js (BUNDLED, one source). From this plugin, or
+	 * from $root, another copy of it (a pushed commit exported from git, for the Chrome Web Store package).
+	 * @return array<string,string> path in the part => file
 	 */
-	private static function source_dir(): string {
-		return trailingslashit( (string) apply_filters( 'mmi_pipeline_extension_source_dir', dirname( __DIR__, 3 ) . '/browser-extension/' ) );
-	}
-
-	/**
-	 * The files a download carries: the extension folder, and the live mapper's scripts from assets/js (BUNDLED, one
-	 * source). @return array<string,string> path in the zip => file
-	 */
-	/**
-	 * The extension's files: relative path → file. From this plugin's folder, or from $root, another copy of the plugin (a
-	 * commit exported from git, for the Chrome Web Store package of a pushed commit).
-	 */
-	private static function files( string $root = '' ): array {
-		$dir = $root !== '' ? trailingslashit( $root ) . 'browser-extension/' : self::source_dir();
-		$out = [];
-		$it  = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $dir, \FilesystemIterator::SKIP_DOTS ) );
-		foreach ( $it as $file ) {
-			$rel = ltrim( substr( (string) $file->getPathname(), strlen( $dir ) ), '/' );
-			if ( $file->isFile() && ! preg_match( '#(^|/)(\.|README|tests?/)#', $rel ) ) {
-				$out[ $rel ] = (string) $file->getPathname();
-			}
-		}
+	public static function extension_files( string $root = '' ): array {
+		$base = $root !== '' ? trailingslashit( $root ) : dirname( __DIR__, 3 ) . '/';
+		$out  = \MMI_Browser_Extension::folder_files( $base . 'browser-extension/' );
 		foreach ( self::BUNDLED as $f ) {
-			$out[ $f ] = ( $root !== '' ? trailingslashit( $root ) . 'includes/product-data' : dirname( __DIR__ ) ) . '/assets/js/' . $f;
+			$out[ $f ] = $base . 'includes/product-data/assets/js/' . $f;
 		}
-		ksort( $out );
 		return $out;
-	}
-
-	/** This server's build of the extension: changes with any file a download carries (build.json in the zip). */
-	public static function build(): string {
-		static $build = null;
-		if ( $build === null ) {
-			$build = substr( md5( (string) wp_json_encode( array_map( 'md5_file', self::files() ) ) ), 0, 12 );
-		}
-		return $build;
-	}
-
-	/** The extension's version, from its manifest. */
-	public static function version(): string {
-		$m = json_decode( (string) @file_get_contents( self::source_dir() . 'manifest.json' ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions, WordPress.PHP.NoSilencedErrors -- a local file
-		return is_array( $m ) ? (string) ( $m['version'] ?? '?' ) : '?';
-	}
-
-	/**
-	 * The extension folder as a zip in a temporary file (the caller deletes it): the download, and the Mac updater's
-	 * package (a store's own updater, if it has one). Its files sit under one folder named with the version, so unzipping never makes "… 2"
-	 * (owner 2026-11-02); build.json says which build it is.
-	 *
-	 * The source names no store (migration phase 10b). A copy for this store ($this_store, the download and the Mac
-	 * updater's package) is made this store's here: its manifest gets this site's host permission and the bridge on its
-	 * admin pages, and build.json names the store (store_info()), so it connects here without asking for an address. Without
-	 * $this_store it is the copy for the Chrome Web Store (10e), which asks which store when it is connected.
-	 *
-	 * @return string|\WP_Error the file
-	 */
-	public static function zip_file( bool $this_store = true ) {
-		if ( ! class_exists( 'ZipArchive' ) ) {
-			return new \WP_Error( 'mmpt_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-data-pipeline' ) );
-		}
-		$tmp = wp_tempnam( 'mmi-product-data-extension' );
-		$zip = new \ZipArchive();
-		if ( $zip->open( $tmp, \ZipArchive::OVERWRITE ) !== true ) {
-			return new \WP_Error( 'mmpt_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-data-pipeline' ) );
-		}
-		$root = 'mmi-product-data-extension-' . sanitize_file_name( self::version() ) . '/';
-		$store = $this_store ? self::store_info() : null;
-		foreach ( self::files() as $rel => $path ) {
-			if ( $store && $rel === 'manifest.json' ) {
-				$zip->addFromString( $root . $rel, self::store_manifest( (string) file_get_contents( $path ), $store ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
-				continue;
-			}
-			$zip->addFile( $path, $root . $rel );
-		}
-		$zip->addFromString( $root . 'build.json', (string) wp_json_encode( array_filter( [ 'build' => self::build(), 'version' => self::version(), 'store' => $store ] ) ) );
-		$zip->close();
-		return $tmp;
-	}
-
-	/**
-	 * The Chrome Web Store's package (migration phase 10e, `wp mmpt extension package`): the copy that names no store,
-	 * its files at the zip's root (the store wants manifest.json there), without the alarms permission that only a
-	 * folder copy's self-update uses (the store updates its own copies). $root: build it from another copy of this plugin
-	 * (a pushed commit exported from git) instead of this folder.
-	 * @return string|\WP_Error the file
-	 */
-	public static function listing_zip( string $root = '' ) {
-		$files = self::files( $root );
-		if ( ! isset( $files['manifest.json'] ) || ! is_file( $files['manifest.json'] ) ) {
-			return new \WP_Error( 'mmpt_ext_zip', __( 'That copy has no browser-extension/manifest.json.', 'mmi-data-pipeline' ) );
-		}
-		if ( ! class_exists( 'ZipArchive' ) ) {
-			return new \WP_Error( 'mmpt_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-data-pipeline' ) );
-		}
-		$tmp = wp_tempnam( 'mmi-product-data-listing' );
-		$zip = new \ZipArchive();
-		if ( $zip->open( $tmp, \ZipArchive::OVERWRITE ) !== true ) {
-			return new \WP_Error( 'mmpt_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-data-pipeline' ) );
-		}
-		$version = '?';
-		foreach ( $files as $rel => $path ) {
-			if ( $rel === 'manifest.json' ) {
-				$m                = (array) json_decode( (string) file_get_contents( $path ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
-				$version          = (string) ( $m['version'] ?? '?' );
-				$m['permissions'] = array_values( array_diff( (array) ( $m['permissions'] ?? [] ), [ 'alarms' ] ) );
-				$zip->addFromString( $rel, (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
-				continue;
-			}
-			$zip->addFile( $path, $rel );
-		}
-		$build = $root === '' ? self::build() : substr( md5( (string) wp_json_encode( array_map( 'md5_file', $files ) ) ), 0, 12 );
-		$zip->addFromString( 'build.json', (string) wp_json_encode( [ 'build' => $build, 'version' => $version ] ) );
-		$zip->close();
-		return $tmp;
-	}
-
-	/**
-	 * This store as the extension keeps it (sw.js storeOf()): its origin, where WordPress is, its routes and its Chrome
-	 * extension page. @return array{origin:string,base:string,rest:string,connect:string}
-	 */
-	public static function store_info(): array {
-		$admin = untrailingslashit( admin_url() );
-		$p     = wp_parse_url( $admin );
-		$port  = isset( $p['port'] ) ? ':' . $p['port'] : '';
-		return [
-			'origin'  => ( $p['scheme'] ?? 'https' ) . '://' . ( $p['host'] ?? '' ) . $port,
-			'base'    => (string) preg_replace( '#/wp-admin$#', '', $admin ),
-			'rest'    => esc_url_raw( rest_url( Rest::NS . '/' ) ),
-			'connect' => admin_url( 'admin.php?page=' . self::SLUG ),
-		];
-	}
-
-	/** The source's manifest made this store's: host permission for its site, the bridge on its admin pages. */
-	private static function store_manifest( string $json, array $store ): string {
-		$m = json_decode( $json, true );
-		if ( ! is_array( $m ) ) {
-			return $json;
-		}
-		$m['host_permissions'] = [ $store['origin'] . '/*' ];
-		$m['content_scripts']  = [
-			[
-				'matches' => [ $store['origin'] . (string) wp_parse_url( admin_url(), PHP_URL_PATH ) . '*' ],
-				'js'      => [ 'bridge.js' ],
-				'run_at'  => 'document_idle',
-			],
-		];
-		return (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-	}
-
-	/** admin-post.php?action=mmpt_ext_download: the extension folder as a zip, built from the files on disk. */
-	public static function download(): void {
-		if ( ! current_user_can( Rest::CAP ) || ! check_admin_referer( 'mmpt_ext_download' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'mmi-data-pipeline' ) );
-		}
-		$tmp = self::zip_file();
-		if ( is_wp_error( $tmp ) ) {
-			wp_die( esc_html( $tmp->get_error_message() ) );
-		}
-		if ( class_exists( 'MMI_Audit_Log' ) ) {
-			\MMI_Audit_Log::record( 'mmi-admin', 'extension.download', [ 'object_type' => 'extension', 'object_id' => self::version(), 'details' => [ 'build' => self::build() ] ] );
-		}
-		nocache_headers();
-		header( 'Content-Type: application/zip' );
-		header( 'Content-Disposition: attachment; filename="mmi-product-data-extension-' . sanitize_file_name( self::version() ) . '.zip"' );
-		header( 'Content-Length: ' . (string) filesize( $tmp ) );
-		readfile( $tmp ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-		wp_delete_file( $tmp );
-		exit;
 	}
 }

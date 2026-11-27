@@ -1,0 +1,5 @@
+/* The Chrome extension page (MMI_Browser_Extension::render(), the extension's shell). */
+.mmi-ext-steps { margin-left: 18px; list-style: decimal; }
+.mmi-ext-manual { margin-top: 10px; }
+.mmi-ext-manual summary { cursor: pointer; font-weight: 600; }
+.mmi-ext-page .mmi-process-section-description code { word-break: break-all; }

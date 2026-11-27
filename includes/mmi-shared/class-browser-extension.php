@@ -24,6 +24,13 @@
  * Keys made before the shell (Product Data's `_mmpt_ext_tokens`, same `mmx1.` form) are moved here on first use, so
  * no browser connects again.
  *
+ * The extension itself (E1c): the shell's files are this library's browser-extension/ folder, and each part brings its
+ * own folder (register_part() 'files'), carried under parts/{id}/ in the download. A part's sw-part.js is loaded by the
+ * shell's service worker (parts.js, written here), and its bridge-part.js goes on the store's admin pages with the
+ * shell's bridge.js. A store's own download carries the parts registered on that store; the Chrome Web Store's package
+ * is built where every part is installed. The Chrome extension page (SLUG) is the shell's: install, connect, connected
+ * browsers, then each part's sections (action mmi_browser_extension_sections).
+ *
  * Every plugin that brings a part calls init() (idempotent). Never ask for the current user, or call anything that
  * does (MMI_Audit_Log among them), inside user_from_token(): the sign-in would start again (2026-11-02, out of memory).
  *
@@ -49,6 +56,10 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 		const MAX_TOKENS = 5;                       // per person; the oldest goes first
 		const IDLE_DAYS  = 90;                      // a key unused this long stops working
 		const TOKEN_RE   = '/^mmx1\.(\d+)\.([a-f0-9]{8})\.([a-f0-9]{64})$/';
+		const SLUG       = 'mmi-chrome-extension';  // the Chrome extension page
+		const OLD_SLUG   = 'mmi-product-extension'; // Product Data's page before the shell: redirects to SLUG
+		/** The download's folder name, before its version. Kept from Product Data's until the extension is renamed (scope §6), since the Mac updater and the checks unzip by it. */
+		const ZIP_PREFIX = 'mmi-product-data-extension-';
 
 		private static bool $initialized = false;
 
@@ -71,6 +82,11 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 			add_filter( 'determine_current_user', [ __CLASS__, 'user_from_token' ], 20 );
 			add_filter( 'rest_authentication_errors', [ __CLASS__, 'auth_errors' ], 90 );
 			add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
+			add_action( 'admin_post_mmi_ext_download', [ __CLASS__, 'download' ] );
+			if ( is_admin() ) {
+				add_action( 'admin_menu', [ __CLASS__, 'menu' ], 32 );
+				add_action( 'admin_enqueue_scripts', [ __CLASS__, 'assets' ] );
+			}
 		}
 
 		/**
@@ -86,6 +102,10 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 		 *   protocol: the part's own protocol, told to the extension
 		 *   api:      the shell API it needs (default 1)
 		 *   locked:   optional callable → '' when usable, else why not (shown to the person)
+		 *   files:    optional callable( string $root ) → [ path in the part => file ]: the part's browser files, from the
+		 *             live plugin, or from $root, another copy of the plugin (a pushed commit, for the Web Store package)
+		 *   legacy:   true for the one part whose routes copies of the extension from before the shell call at the store's
+		 *             address (Product Data): the connect page still hands that address over for them
 		 * }
 		 */
 		public static function register_part( array $part ): void {
@@ -104,6 +124,8 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 				'protocol' => (int) ( $part['protocol'] ?? 1 ),
 				'api'      => (int) ( $part['api'] ?? 1 ),
 				'locked'   => isset( $part['locked'] ) && is_callable( $part['locked'] ) ? $part['locked'] : null,
+				'files'    => isset( $part['files'] ) && is_callable( $part['files'] ) ? $part['files'] : null,
+				'legacy'   => ! empty( $part['legacy'] ),
 			];
 		}
 
@@ -339,7 +361,7 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 
 		/** POST hello: who this browser is connected as, and the parts this store has for them. */
 		public static function hello(): WP_REST_Response {
-			return rest_ensure_response( [ 'user' => wp_get_current_user()->display_name, 'site' => home_url(), 'api' => self::API, 'parts' => self::parts_for_user() ] );
+			return rest_ensure_response( [ 'user' => wp_get_current_user()->display_name, 'site' => home_url(), 'api' => self::API, 'page' => self::page_url(), 'parts' => self::parts_for_user() ] );
 		}
 
 		/** The parts the current person may use, each with its routes' base and whether it is locked. @return array<int,array> */
@@ -353,13 +375,402 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 				$out[] = [
 					'id'       => $p['id'],
 					'name'     => $p['name'],
-					'rest'     => esc_url_raw( rest_url( $p['ns'] . '/ext/' ) ),
+					'rest'     => esc_url_raw( rest_url( $p['ns'] . '/' ) ), // the part's routes are ext/{route} under it
 					'protocol' => $p['protocol'],
 					'sites'    => $p['sites'],
 					'locked'   => $why,
 				];
 			}
 			return $out;
+		}
+
+		/* ── The Chrome extension page ──────────────────────────────────── */
+
+		public static function page_url(): string {
+			return admin_url( 'admin.php?page=' . self::SLUG );
+		}
+
+		/** The capability the page asks for: the first part's this person has ('' when none). */
+		private static function page_cap(): string {
+			foreach ( self::parts() as $p ) {
+				if ( current_user_can( $p['cap'] ) ) {
+					return $p['cap'];
+				}
+			}
+			return '';
+		}
+
+		/** The page: no menu entry, linked from each part's own screens. Product Data's old address redirects here. */
+		public static function menu(): void {
+			$cap = self::page_cap();
+			if ( $cap === '' ) {
+				return;
+			}
+			add_submenu_page( '', __( 'Chrome extension', 'mmi-shared' ), '', $cap, self::SLUG, [ __CLASS__, 'render' ] );
+			if ( ! empty( $GLOBALS['_registered_pages'][ get_plugin_page_hookname( self::OLD_SLUG, '' ) ] ) ) {
+				return; // a plugin still draws its own page there (Product Data before the shell)
+			}
+			$old = add_submenu_page( '', __( 'Chrome extension', 'mmi-shared' ), '', $cap, self::OLD_SLUG, '__return_null' );
+			if ( $old ) {
+				add_action(
+					'load-' . $old,
+					static function () {
+						wp_safe_redirect( self::page_url() );
+						exit;
+					}
+				);
+			}
+		}
+
+		public static function assets( $hook ): void {
+			if ( ! is_string( $hook ) || strpos( $hook, self::SLUG ) === false || ! function_exists( 'mmi_shared_assets_winner' ) ) {
+				return;
+			}
+			$w = mmi_shared_assets_winner();
+			wp_enqueue_style( 'mmi-ext-page', $w['url'] . 'css/shared/browser-extension-page.css', wp_style_is( 'mmi-suite-common', 'registered' ) ? [ 'mmi-suite-common' ] : [], $w['version'] );
+			wp_enqueue_script( 'mmi-ext-page', $w['url'] . 'js/shared/browser-extension-page.js', [], $w['version'], true );
+			wp_localize_script(
+				'mmi-ext-page',
+				'mmiExtConnect',
+				[
+					'rest'    => esc_url_raw( rest_url( self::NS . '/' ) ),
+					'legacy'  => self::legacy_rest(),
+					'nonce'   => wp_create_nonce( 'wp_rest' ),
+					'version' => self::version(),
+					'name'    => self::name(),
+				]
+			);
+			do_action( 'mmi_browser_extension_page_assets' ); // a part's or a store's own parts of this page
+		}
+
+		/**
+		 * Where copies of the extension from before the shell send every call: the legacy part's routes (Product Data's
+		 * mmpt/v1/), '' when no part is one. The connect page hands it over as `rest`, the shell's own as `shell`.
+		 */
+		private static function legacy_rest(): string {
+			foreach ( self::parts() as $p ) {
+				if ( $p['legacy'] ) {
+					return esc_url_raw( rest_url( $p['ns'] . '/' ) );
+				}
+			}
+			return '';
+		}
+
+		/** The extension's Chrome Web Store listing, once it has one (filter mmi_browser_extension_store_url). */
+		public static function store_url(): string {
+			return esc_url_raw( (string) apply_filters( 'mmi_browser_extension_store_url', '' ) );
+		}
+
+		/**
+		 * What to do about an old extension. A store copy updates through the Chrome Web Store by itself; a copy loaded by
+		 * hand is updated from the Chrome extension page. A store's own plugin can add its way (filter
+		 * mmi_browser_extension_update_help, e.g. an updater that keeps unpacked copies current).
+		 */
+		public static function update_help( string $lead ): string {
+			$text = $lead . ' A copy from the Chrome Web Store updates by itself. A copy loaded by hand: on the Chrome extension page, download the new version, unzip it (its folder carries the version number), remove the old card in chrome://extensions, Load unpacked the new folder and connect it again.';
+			return (string) apply_filters( 'mmi_browser_extension_update_help', $text, $lead );
+		}
+
+		public static function render(): void {
+			if ( self::page_cap() === '' ) {
+				wp_die( esc_html__( 'Insufficient permissions.', 'mmi-shared' ) );
+			}
+			$zip   = wp_nonce_url( admin_url( 'admin-post.php?action=mmi_ext_download' ), 'mmi_ext_download' );
+			$store = self::store_url();
+			$name  = self::name();
+			$parts = array_map( static fn( $p ) => $p['name'], self::parts_for_user() );
+			?>
+			<div class="wrap mmi-page mmi-ext-page">
+				<div class="mmi-header">
+					<h1><span class="dashicons dashicons-admin-plugins"></span> <?php esc_html_e( 'Chrome extension', 'mmi-shared' ); ?></h1>
+					<p class="mmi-header-description"><?php echo esc_html( sprintf( /* translators: 1: the extension's name, 2: the parts this store has, comma-separated */ __( '%1$s brings this store’s tools to the web pages you work on in Chrome. On this store it works with: %2$s. It talks only to this site.', 'mmi-shared' ), $name, implode( ', ', $parts ) ) ); ?></p>
+				</div>
+				<div class="wp-header-end"></div>
+
+				<div class="mmi-process-section">
+					<div class="mmi-section-header">
+						<div>
+							<h3 class="mmi-process-section-header"><span class="dashicons dashicons-download"></span> <?php esc_html_e( '1 · Install it in Chrome', 'mmi-shared' ); ?></h3>
+							<p class="mmi-process-section-description"><?php echo esc_html( sprintf( /* translators: %s: version */ __( 'Version %s. It works in Chrome, Edge and Brave.', 'mmi-shared' ), self::version() ) ); ?></p>
+						</div>
+						<?php if ( $store !== '' ) : ?>
+							<a class="button button-primary" href="<?php echo esc_url( $store ); ?>" target="_blank" rel="noopener"><span class="dashicons dashicons-external"></span> <?php esc_html_e( 'Get it from the Chrome Web Store', 'mmi-shared' ); ?></a>
+						<?php endif; ?>
+						<?php do_action( 'mmi_browser_extension_install_buttons' ); ?>
+						<a class="button<?php echo $store === '' ? ' button-primary' : ''; ?>" href="<?php echo esc_url( $zip ); ?>"><span class="dashicons dashicons-download"></span> <?php esc_html_e( 'Download the extension', 'mmi-shared' ); ?></a>
+					</div>
+					<div class="mmi-section-content">
+						<?php do_action( 'mmi_browser_extension_install' ); ?>
+						<details class="mmi-ext-manual"<?php echo $store === '' ? ' open' : ''; ?>>
+							<summary><?php esc_html_e( 'Loading the download by hand', 'mmi-shared' ); ?></summary>
+							<ol class="mmi-ext-steps">
+								<li><?php esc_html_e( 'Unzip the download. Keep the folder somewhere it can stay (Documents, for example).', 'mmi-shared' ); ?></li>
+								<li><?php esc_html_e( 'In Chrome, open chrome://extensions and switch on Developer mode (top right).', 'mmi-shared' ); ?></li>
+								<li><?php echo esc_html( sprintf( /* translators: %s: the extension's name */ __( 'Press Load unpacked and choose the folder. Pin %s to the toolbar (the puzzle-piece menu).', 'mmi-shared' ), $name ) ); ?></li>
+								<li><?php esc_html_e( 'Reload this page, then connect it below.', 'mmi-shared' ); ?></li>
+							</ol>
+							<p class="description"><?php echo esc_html( sprintf( /* translators: 1: the unzipped folder's name, 2: the extension's name */ __( 'To update: download again and unzip it: the folder is named with its version (%1$s), so it never becomes “… 2”. In chrome://extensions remove the old %2$s card, press Load unpacked and choose the new folder, then connect it again below (one click; the old version’s connection closes by itself). The old folder can then be deleted.', 'mmi-shared' ), self::ZIP_PREFIX . self::version(), $name ) ); ?></p>
+						</details>
+					</div>
+				</div>
+
+				<?php do_action( 'mmi_browser_extension_after_install' ); ?>
+
+				<div class="mmi-process-section">
+					<div class="mmi-section-header">
+						<div>
+							<h3 class="mmi-process-section-header"><span class="dashicons dashicons-admin-links"></span> <?php esc_html_e( '2 · Connect this browser', 'mmi-shared' ); ?></h3>
+							<p class="mmi-process-section-description"><?php esc_html_e( 'Connecting gives the extension a key that works only for the extension’s routes on this site, under your login. Nothing is copied by hand.', 'mmi-shared' ); ?></p>
+						</div>
+						<button type="button" class="button button-primary" id="mmi-ext-connect" disabled><span class="dashicons dashicons-admin-links"></span> <?php esc_html_e( 'Connect this browser', 'mmi-shared' ); ?></button>
+					</div>
+					<div class="mmi-section-content">
+						<div id="mmi-ext-status" class="notice notice-info inline" role="status"><p><?php esc_html_e( 'Looking for the extension in this browser…', 'mmi-shared' ); ?></p></div>
+					</div>
+				</div>
+
+				<div class="mmi-process-section">
+					<div class="mmi-section-header">
+						<div>
+							<h3 class="mmi-process-section-header"><span class="dashicons dashicons-laptop"></span> <?php esc_html_e( 'Connected browsers', 'mmi-shared' ); ?></h3>
+							<p class="mmi-process-section-description"><?php echo esc_html( sprintf( /* translators: %d: days */ __( 'A browser not used for %d days is disconnected on its own, and connecting or updating to a newer version of the extension disconnects the browsers on older versions.', 'mmi-shared' ), self::IDLE_DAYS ) ); ?></p>
+						</div>
+					</div>
+					<div class="mmi-section-content">
+						<div class="mmi-table-scroll-wrapper">
+							<table class="widefat striped mmi-ext-tokens">
+								<thead><tr><th><?php esc_html_e( 'Browser', 'mmi-shared' ); ?></th><th><?php esc_html_e( 'Connected', 'mmi-shared' ); ?></th><th><?php esc_html_e( 'Last used', 'mmi-shared' ); ?></th><th><?php esc_html_e( 'Version', 'mmi-shared' ); ?></th><th><span class="screen-reader-text"><?php esc_html_e( 'Actions', 'mmi-shared' ); ?></span></th></tr></thead>
+								<tbody id="mmi-ext-tokens"><tr><td colspan="5"><span class="spinner is-active"></span> <?php esc_html_e( 'Loading…', 'mmi-shared' ); ?></td></tr></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<?php do_action( 'mmi_browser_extension_sections' ); ?>
+			</div>
+			<?php
+		}
+
+		/* ── The download ───────────────────────────────────────────────── */
+
+		/** The shell's own files: this library's browser-extension/ folder. */
+		private static function shell_dir(): string {
+			return __DIR__ . '/browser-extension/';
+		}
+
+		/** A folder's files: relative path → file, without dot files, READMEs and tests. @return array<string,string> */
+		public static function folder_files( string $dir ): array {
+			$dir = trailingslashit( $dir );
+			$out = [];
+			if ( ! is_dir( $dir ) ) {
+				return $out;
+			}
+			$it = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS ) );
+			foreach ( $it as $file ) {
+				$rel = ltrim( substr( (string) $file->getPathname(), strlen( $dir ) ), '/' );
+				if ( $file->isFile() && ! preg_match( '#(^|/)(\.|README|tests?/)#', $rel ) ) {
+					$out[ $rel ] = (string) $file->getPathname();
+				}
+			}
+			return $out;
+		}
+
+		/**
+		 * Every file the extension is made of: the shell's at the root, each registered part's under parts/{id}/.
+		 * $roots: [ 'shell' => folder, part id => plugin copy ] to build from other copies (a pushed commit).
+		 * @return array<string,string> path in the zip => file
+		 */
+		public static function files( array $roots = [] ): array {
+			$out = self::folder_files( (string) ( $roots['shell'] ?? self::shell_dir() ) );
+			foreach ( self::parts() as $id => $p ) {
+				if ( ! $p['files'] ) {
+					continue;
+				}
+				foreach ( (array) call_user_func( $p['files'], (string) ( $roots[ $id ] ?? '' ) ) as $rel => $file ) {
+					$out[ 'parts/' . $id . '/' . ltrim( (string) $rel, '/' ) ] = (string) $file;
+				}
+			}
+			ksort( $out );
+			return $out;
+		}
+
+		/** The scripts that go on the store's admin pages: the shell's bridge, then each part's. @return string[] */
+		private static function bridge_files( array $files ): array {
+			return array_merge( [ 'bridge.js' ], array_values( array_filter( array_keys( $files ), static fn( $f ) => (bool) preg_match( '#^parts/[a-z0-9-]+/bridge-part\.js$#', $f ) ) ) );
+		}
+
+		/** parts.js: the parts this copy carries, loaded by the shell's service worker. */
+		private static function parts_js( array $files ): string {
+			$parts = [];
+			$load  = [];
+			foreach ( array_keys( self::parts() ) as $id ) {
+				$dir = 'parts/' . $id . '/';
+				if ( ! isset( $files[ $dir . 'sw-part.js' ] ) ) {
+					continue;
+				}
+				$parts[] = [ 'id' => $id, 'dir' => $dir ];
+				$load[]  = $dir . 'sw-part.js';
+			}
+			return "/* Written by MMI_Browser_Extension::parts_js(): the parts this copy carries. */\n'use strict';\nself.MMI_EXT_PARTS = " . wp_json_encode( $parts, JSON_UNESCAPED_SLASHES ) . ";\nself.MMI_EXT_BRIDGE = " . wp_json_encode( self::bridge_files( $files ), JSON_UNESCAPED_SLASHES ) . ";\n" . ( $load ? 'importScripts( ' . implode( ', ', array_map( static fn( $f ) => wp_json_encode( $f, JSON_UNESCAPED_SLASHES ), $load ) ) . " );\n" : '' );
+		}
+
+		/** A build's id: changes with any file the extension carries (build.json in the zip). */
+		private static function build_of( array $files ): string {
+			return substr( md5( (string) wp_json_encode( array_map( 'md5_file', $files ) ) . self::parts_js( $files ) ), 0, 12 );
+		}
+
+		/** This server's build of the extension. */
+		public static function build(): string {
+			static $build = null;
+			if ( $build === null ) {
+				$build = self::build_of( self::files() );
+			}
+			return $build;
+		}
+
+		/** The shell's manifest. @return array */
+		private static function manifest( string $dir = '' ): array {
+			$m = json_decode( (string) @file_get_contents( ( $dir !== '' ? trailingslashit( $dir ) : self::shell_dir() ) . 'manifest.json' ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions, WordPress.PHP.NoSilencedErrors -- a local file
+			return is_array( $m ) ? $m : [];
+		}
+
+		/** The extension's version, from its manifest. */
+		public static function version(): string {
+			return (string) ( self::manifest()['version'] ?? '?' );
+		}
+
+		/** The extension's name, from its manifest. */
+		public static function name(): string {
+			return (string) ( self::manifest()['name'] ?? 'MannMade' );
+		}
+
+		/**
+		 * The extension as a zip in a temporary file (the caller deletes it): the download, and the Mac updater's package.
+		 * Its files sit under one folder named with the version, so unzipping never makes "… 2" (owner 2026-11-02).
+		 *
+		 * A copy for this store ($this_store) is made this store's here: its manifest gets this site's host permission and
+		 * the bridge on its admin pages, and build.json names the store (store_info()), so it connects here without asking.
+		 * Without $this_store it names no store, as the Chrome Web Store's copy, and asks which store when connected.
+		 *
+		 * @return string|WP_Error the file
+		 */
+		public static function zip_file( bool $this_store = true ) {
+			if ( ! class_exists( 'ZipArchive' ) ) {
+				return new WP_Error( 'mmi_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-shared' ) );
+			}
+			$tmp = wp_tempnam( 'mmi-extension' );
+			$zip = new ZipArchive();
+			if ( $zip->open( $tmp, ZipArchive::OVERWRITE ) !== true ) {
+				return new WP_Error( 'mmi_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-shared' ) );
+			}
+			$root  = self::ZIP_PREFIX . sanitize_file_name( self::version() ) . '/';
+			$store = $this_store ? self::store_info() : null;
+			$files = self::files();
+			foreach ( $files as $rel => $path ) {
+				if ( $store && $rel === 'manifest.json' ) {
+					$zip->addFromString( $root . $rel, self::store_manifest( (string) file_get_contents( $path ), $store, self::bridge_files( $files ) ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
+					continue;
+				}
+				$zip->addFile( $path, $root . $rel );
+			}
+			$zip->addFromString( $root . 'parts.js', self::parts_js( $files ) );
+			$zip->addFromString( $root . 'build.json', (string) wp_json_encode( array_filter( [ 'build' => self::build(), 'version' => self::version(), 'store' => $store ] ) ) );
+			$zip->close();
+			return $tmp;
+		}
+
+		/**
+		 * The Chrome Web Store's package: the copy that names no store, its files at the zip's root (the store wants
+		 * manifest.json there), without the alarms permission only a folder copy's self-update uses. $roots: build it from
+		 * other copies (files()).
+		 *
+		 * @return string|WP_Error the file
+		 */
+		public static function listing_zip( array $roots = [] ) {
+			$files = self::files( $roots );
+			if ( ! isset( $files['manifest.json'] ) || ! is_file( $files['manifest.json'] ) ) {
+				return new WP_Error( 'mmi_ext_zip', __( 'That copy has no browser-extension/manifest.json.', 'mmi-shared' ) );
+			}
+			if ( ! class_exists( 'ZipArchive' ) ) {
+				return new WP_Error( 'mmi_ext_zip', __( 'This server can’t make zip files (PHP zip extension missing).', 'mmi-shared' ) );
+			}
+			$tmp = wp_tempnam( 'mmi-extension-listing' );
+			$zip = new ZipArchive();
+			if ( $zip->open( $tmp, ZipArchive::OVERWRITE ) !== true ) {
+				return new WP_Error( 'mmi_ext_zip', __( 'The zip file couldn’t be made.', 'mmi-shared' ) );
+			}
+			$version = '?';
+			foreach ( $files as $rel => $path ) {
+				if ( $rel === 'manifest.json' ) {
+					$m                = (array) json_decode( (string) file_get_contents( $path ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions -- a local file
+					$version          = (string) ( $m['version'] ?? '?' );
+					$m['permissions'] = array_values( array_diff( (array) ( $m['permissions'] ?? [] ), [ 'alarms' ] ) );
+					$zip->addFromString( $rel, (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+					continue;
+				}
+				$zip->addFile( $path, $rel );
+			}
+			$zip->addFromString( 'parts.js', self::parts_js( $files ) );
+			$zip->addFromString( 'build.json', (string) wp_json_encode( [ 'build' => self::build_of( $files ), 'version' => $version ] ) );
+			$zip->close();
+			return $tmp;
+		}
+
+		/**
+		 * This store as the extension keeps it (sw.js storeOf()): its origin, where WordPress is, the routes copies from
+		 * before the shell call (rest), the shell's own (shell), and its Chrome extension page.
+		 * @return array{origin:string,base:string,rest:string,shell:string,connect:string}
+		 */
+		public static function store_info(): array {
+			$admin = untrailingslashit( admin_url() );
+			$p     = wp_parse_url( $admin );
+			$port  = isset( $p['port'] ) ? ':' . $p['port'] : '';
+			$shell = esc_url_raw( rest_url( self::NS . '/' ) );
+			return [
+				'origin'  => ( $p['scheme'] ?? 'https' ) . '://' . ( $p['host'] ?? '' ) . $port,
+				'base'    => (string) preg_replace( '#/wp-admin$#', '', $admin ),
+				'rest'    => self::legacy_rest() ?: $shell,
+				'shell'   => $shell,
+				'connect' => self::page_url(),
+			];
+		}
+
+		/** The shell's manifest made this store's: host permission for its site, the bridges on its admin pages. */
+		private static function store_manifest( string $json, array $store, array $bridge ): string {
+			$m = json_decode( $json, true );
+			if ( ! is_array( $m ) ) {
+				return $json;
+			}
+			$m['host_permissions'] = [ $store['origin'] . '/*' ];
+			$m['content_scripts']  = [
+				[
+					'matches' => [ $store['origin'] . (string) wp_parse_url( admin_url(), PHP_URL_PATH ) . '*' ],
+					'js'      => $bridge,
+					'run_at'  => 'document_idle',
+				],
+			];
+			return (string) wp_json_encode( $m, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		}
+
+		/** admin-post.php?action=mmi_ext_download: the extension as a zip, built from the files on disk. */
+		public static function download(): void {
+			if ( self::page_cap() === '' || ! check_admin_referer( 'mmi_ext_download' ) ) {
+				wp_die( esc_html__( 'Insufficient permissions.', 'mmi-shared' ) );
+			}
+			$tmp = self::zip_file();
+			if ( is_wp_error( $tmp ) ) {
+				wp_die( esc_html( $tmp->get_error_message() ) );
+			}
+			if ( class_exists( 'MMI_Audit_Log' ) ) {
+				MMI_Audit_Log::record( 'mmi-shared', 'extension.download', [ 'object_type' => 'extension', 'object_id' => self::version(), 'details' => [ 'build' => self::build() ] ] );
+			}
+			nocache_headers();
+			header( 'Content-Type: application/zip' );
+			header( 'Content-Disposition: attachment; filename="' . self::ZIP_PREFIX . sanitize_file_name( self::version() ) . '.zip"' );
+			header( 'Content-Length: ' . (string) filesize( $tmp ) );
+			readfile( $tmp ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			wp_delete_file( $tmp );
+			exit;
 		}
 	}
 

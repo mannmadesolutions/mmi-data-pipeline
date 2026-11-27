@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: the extension's colours, in one place (owner 2026-11-15: "Change all native WordPress CSS styling to
+ * The extension's colours, in one place (owner 2026-11-15: "Change all native WordPress CSS styling to
  * MMI styling '#00591a'"). WordPress's admin blue (#2271b1 and its shades) was the panel's, the mapper's and the
  * picker's accent; MMI green replaces it, kept dark enough for small text on white (#00591a: 8.9:1).
  *
