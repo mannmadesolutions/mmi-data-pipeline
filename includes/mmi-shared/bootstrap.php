@@ -166,6 +166,11 @@
  * lifted from mmi-seo, with settings under neutral mmi_ai_* keys; and one GTIN /
  * MPN reader, lifted from mmi-google-services. Product Data migration phase 1.
  *
+ * Added MMI_Browser_Extension (1.54.0, 2026-11-27): the MannMade Chrome
+ * extension's shell on the server (keys, the sign-in on parts' routes, hello),
+ * shared by every plugin that brings a part of the extension. See its docblock
+ * and mmi-admin/docs/BROWSER_EXTENSION_PLATFORM_SCOPE.md.
+ *
  * Added MMI_Brand_Website (1.47.0, 2026-11-08): one "Brand website" per brand
  * (product_brand term meta _mmi_brand_website) shared by mmi-seo,
  * mmi-data-pipeline and mmi-admin. Whichever plugin calls init() first puts the
@@ -189,7 +194,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.53.1';
+$mmi_shared_lib_this_copy_version = '1.54.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
@@ -240,6 +245,7 @@ $mmi_shared_lib_this_copy_class_map = array(
 	'MMI_Product_Identifiers' => 'class-product-identifiers.php',
 	'MMI_Access_Log'     => 'class-access-log.php',
 	'MMI_Notifications'  => 'class-notifications.php',
+	'MMI_Browser_Extension' => 'class-browser-extension.php',
 );
 
 // ── Candidate registry ──────────────────────────────────────────────────

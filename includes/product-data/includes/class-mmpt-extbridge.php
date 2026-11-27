@@ -19,9 +19,9 @@
  * in the same tab (SiteGaps::matrix()), and Send this site sends a site that refuses the server from this tab
  * (Capture's calls through /ext/send).
  *
- * Auth: a per-browser token from pairing (POST /ext/pair, cookie + nonce on the Extension page). Only a hash is kept
- * (user meta META). The extension sends it in the X-MMI-Ext-Token header, and it signs in only on the token routes
- * (TOKEN_ROUTES); everywhere else it is ignored. The extension sends no cookies (fetch credentials: 'omit'), so the
+ * Auth: the extension's shell (MMI_Browser_Extension, shared library) holds the per-browser keys and the sign-in; this
+ * module registers its part there with its routes (TOKEN_ROUTES), so a key signs in on them and nowhere else, and only
+ * while the person has Rest::CAP. pair, tokens and revoke here are the shell's, kept at this module's old address. The extension sends no cookies (fetch credentials: 'omit'), so the
  * login cookie and its nonce check never meet the token.
  *
  * REST (Rest::NS):
@@ -88,10 +88,7 @@ class ExtBridge {
 		'layout'  => [ [ 'fills', 'Fills products', false ], [ 'look', 'Needs a pick', false ], [ 'done', 'Nothing to fill', true ], [ 'only', 'This product only', true ] ],
 	];
 	const MIN_PROTOCOL = 1;                       // the oldest extension still answered
-	const META         = '_mmpt_ext_tokens';      // [ id => { hash, label, created, used } ]
-	const HEADER       = 'X-MMI-Ext-Token';
-	const MAX_TOKENS   = 5;                       // per person; the oldest goes first
-	const IDLE_DAYS    = 90;                      // a token unused this long stops working
+	/** The routes the extension's key signs in on (MMI_Browser_Extension, this module's part). */
 	const TOKEN_ROUTES = [ 'hello', 'page', 'snapshot', 'map', 'write', 'undo', 'pictures', 'veto', 'products', 'link', 'next', 'send', 'layout', 'site', 'example', 'disclaimer', 'mapping', 'sitepart', 'held', 'scrape', 'library', 'layoutmap' ];
 	const MAX_PRODUCTS = 20;                      // product rows in one panel
 	const HELD_WORDS   = 40;                      // words of the product's text on the Finding the page card
@@ -185,18 +182,22 @@ class ExtBridge {
 	/** Page-store statuses that mean the site refused or challenged the server (Capture::REFUSED's read side). */
 	const REFUSED      = [ 'http_401', 'http_403', 'http_405', 'http_429', 'http_202', 'http_503' ];
 
-	/** @var string|null 'ok' when this request signed in with a token, 'bad' when it sent one that failed */
-	private static $auth = null;
-	/** @var bool the token is being checked: WordPress asks who the user is again from inside (never re-entered) */
-	private static $checking = false;
 	/** @var array<string,string[]> a site's page list, for this request */
 	private static $pages = [];
-	/** @var array|null browsers retire_older() disconnected this request, written to the audit log once the user is known */
-	private static $retired = null;
 
 	public static function register_hooks(): void {
-		add_filter( 'determine_current_user', [ __CLASS__, 'user_from_token' ], 20 );
-		add_filter( 'rest_authentication_errors', [ __CLASS__, 'auth_errors' ], 90 );
+		\MMI_Browser_Extension::init(); // keys, the sign-in and hello: the extension's shell, shared by every plugin with a part
+		\MMI_Browser_Extension::register_part(
+			[
+				'id'       => 'product-data',
+				'name'     => __( 'Product Data', 'mmi-data-pipeline' ),
+				'ns'       => Rest::NS,
+				'routes'   => self::TOKEN_ROUTES,
+				'cap'      => Rest::CAP,
+				'sites'    => [ '*' ], // a maker's site can't be known in advance: any page no other part claims
+				'protocol' => self::PROTOCOL,
+			]
+		);
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
 		add_action( 'admin_post_mmpt_ext_download', [ __CLASS__, 'download' ] );
 		if ( is_admin() ) {
@@ -205,114 +206,11 @@ class ExtBridge {
 		}
 	}
 
-	/* ── Auth ───────────────────────────────────────────────────────────── */
-
-	/** The token's user, on the token routes only. Decided from the address, so it holds however early WordPress asks. */
-	public static function user_from_token( $user ) {
-		$token = isset( $_SERVER['HTTP_X_MMI_EXT_TOKEN'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_MMI_EXT_TOKEN'] ) ) : '';
-		if ( $token === '' || self::$checking || ! self::token_route() ) {
-			return $user;
-		}
-		self::$checking = true;
-		try {
-			$uid = self::check( $token );
-		} finally {
-			self::$checking = false;
-		}
-		self::$auth = $uid ? 'ok' : 'bad';
-		return $uid ?: $user;
-	}
-
-	/** A refused token is an error, not a quiet sign-out; a good one needs no cookie nonce. */
-	public static function auth_errors( $result ) {
-		if ( self::$retired && class_exists( 'MMI_Audit_Log' ) ) { // the user is known now: the audit log asks who it is
-			\MMI_Audit_Log::record( 'mmi-admin', 'extension.retire_older', [ 'object_type' => 'extension', 'object_id' => (string) self::$retired['keep'], 'details' => self::$retired ] );
-			self::$retired = null;
-		}
-		if ( ! empty( $result ) || self::$auth === null ) {
-			return $result;
-		}
-		if ( self::$auth === 'bad' ) {
-			if ( class_exists( 'MMI_Audit_Log' ) ) {
-				\MMI_Audit_Log::record( 'mmi-admin', 'extension.token_refused', [ 'object_type' => 'extension', 'object_id' => 'token' ] );
-			}
-			return new \WP_Error( 'mmpt_ext_token', 'This browser is no longer connected. Connect it again on the Chrome extension page.', [ 'status' => 401 ] );
-		}
-		return true;
-	}
-
-	/** This request is one of TOKEN_ROUTES (pretty or ?rest_route= form). */
-	private static function token_route(): bool {
-		$uri   = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- only matched against a pattern
-		$route = isset( $_GET['rest_route'] ) ? (string) wp_unslash( $_GET['rest_route'] ) : (string) wp_parse_url( $uri, PHP_URL_PATH ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- read-only routing
-		return (bool) preg_match( '#/' . preg_quote( Rest::NS, '#' ) . '/ext/(' . implode( '|', self::TOKEN_ROUTES ) . ')/?$#', $route );
-	}
-
-	/** The token's user id when it is current and the user may still use Product Data; 0 otherwise. Marks it used. */
-	private static function check( string $token ): int {
-		if ( ! preg_match( '/^mmx1\.(\d+)\.([a-f0-9]{8})\.([a-f0-9]{64})$/', $token, $m ) ) {
-			return 0;
-		}
-		$uid  = (int) $m[1];
-		$rows = self::tokens_of( $uid );
-		$row  = $rows[ $m[2] ] ?? null;
-		if ( ! $row || ! hash_equals( (string) $row['hash'], self::hash( $m[3] ) ) || ! user_can( $uid, Rest::CAP ) ) {
-			return 0;
-		}
-		if ( strtotime( (string) ( $row['used'] ?: $row['created'] ) . ' UTC' ) < time() - self::IDLE_DAYS * DAY_IN_SECONDS ) {
-			return 0;
-		}
-		$ver   = isset( $_SERVER['HTTP_X_MMI_EXT_VERSION'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_MMI_EXT_VERSION'] ) ) : '';
-		$ver   = preg_match( '/^\d{1,4}(\.\d{1,4}){1,3}$/', $ver ) ? $ver : '';
-		$was   = (string) ( $row['version'] ?? '' );
-		$newer = $ver !== '' && ( $was === '' || version_compare( $ver, $was, '>' ) );
-		$stamp = (string) $row['used'] === '' || strtotime( (string) $row['used'] . ' UTC' ) < time() - HOUR_IN_SECONDS; // last used, to the hour: one meta write an hour at most
-		if ( $stamp || $newer ) {
-			$rows[ $m[2] ]['used'] = $stamp ? gmdate( 'Y-m-d H:i:s' ) : (string) $row['used'];
-			if ( $newer ) {
-				$rows[ $m[2] ]['version'] = $ver;
-				$rows                     = self::retire_older( $uid, $rows, $m[2], $ver );
-			}
-			update_user_meta( $uid, self::META, $rows );
-		}
-		return $uid;
-	}
-
-	/**
-	 * A browser now runs extension $ver (connected, or updated in place): this person's other connections that run an
-	 * older version, or never said which (a key the extension never took), are disconnected (owner 2026-11-02: "When the
-	 * user installs a newer version of the extension, automatically disconnect all previously connected instances").
-	 */
-	private static function retire_older( int $uid, array $rows, string $keep, string $ver ): array {
-		$gone = [];
-		foreach ( $rows as $id => $t ) {
-			$v = (string) ( $t['version'] ?? '' );
-			if ( (string) $id !== $keep && ( $v === '' || version_compare( $v, $ver, '<' ) ) ) {
-				unset( $rows[ $id ] );
-				$gone[] = [ 'id' => (string) $id, 'version' => $v ];
-			}
-		}
-		if ( $gone ) {
-			self::$retired = [ 'keep' => $keep, 'user' => $uid, 'version' => $ver, 'disconnected' => $gone ]; // recorded by auth_errors(): here, inside the sign-in, asking who the user is would start the sign-in again
-		}
-		return $rows;
-	}
-
-	private static function hash( string $secret ): string {
-		return hash_hmac( 'sha256', $secret, wp_salt( 'auth' ) );
-	}
-
-	/** @return array<string,array{hash:string,label:string,created:string,used:string}> */
-	private static function tokens_of( int $uid ): array {
-		$rows = get_user_meta( $uid, self::META, true );
-		return is_array( $rows ) ? $rows : [];
-	}
-
 	/* ── Routes ─────────────────────────────────────────────────────────── */
 
 	public static function routes(): void {
 		$admin = static fn() => current_user_can( Rest::CAP );
-		$token = static fn() => self::$auth === 'ok' && current_user_can( Rest::CAP );
+		$token = static fn() => \MMI_Browser_Extension::signed_in( Rest::CAP );
 		register_rest_route( Rest::NS, '/ext/pair', [ 'methods' => 'POST', 'permission_callback' => $admin, 'callback' => [ __CLASS__, 'pair' ] ] );
 		register_rest_route( Rest::NS, '/ext/tokens', [ 'methods' => 'GET', 'permission_callback' => $admin, 'callback' => [ __CLASS__, 'tokens' ] ] );
 		register_rest_route( Rest::NS, '/ext/revoke', [ 'methods' => 'POST', 'permission_callback' => $admin, 'callback' => [ __CLASS__, 'revoke' ] ] );
@@ -329,55 +227,22 @@ class ExtBridge {
 		}
 	}
 
-	/** POST /ext/pair {label}: a new token for the browser asking. The plain token is in this answer only. */
+	/** POST /ext/pair {label}: the shell's pair under this module's old address (extension 1.1.x and the Chrome extension page), with its protocol. */
 	public static function pair( \WP_REST_Request $r ): \WP_REST_Response {
-		$uid    = get_current_user_id();
-		$rows   = self::tokens_of( $uid );
-		$id     = bin2hex( random_bytes( 4 ) );
-		$secret = bin2hex( random_bytes( 32 ) );
-		$label  = mb_substr( sanitize_text_field( (string) $r->get_param( 'label' ) ), 0, 80 ) ?: 'Chrome';
-		uasort( $rows, static fn( $a, $b ) => strcmp( (string) $a['created'], (string) $b['created'] ) );
-		while ( count( $rows ) >= self::MAX_TOKENS ) {
-			unset( $rows[ array_key_first( $rows ) ] ); // not array_shift(): it renumbers an all-digit id ("19347385" → 0), and that key stops working
-		}
-		$rows[ $id ] = [ 'hash' => self::hash( $secret ), 'label' => $label, 'created' => gmdate( 'Y-m-d H:i:s' ), 'used' => '' ];
-		update_user_meta( $uid, self::META, $rows );
-		if ( class_exists( 'MMI_Audit_Log' ) ) {
-			\MMI_Audit_Log::record( 'mmi-admin', 'extension.pair', [ 'object_type' => 'extension', 'object_id' => $id, 'details' => [ 'label' => $label ] ] );
-		}
-		Module::info( 'Chrome extension connected', [ 'id' => $id, 'label' => $label ] );
-		return rest_ensure_response( [ 'token' => "mmx1.{$uid}.{$id}.{$secret}", 'id' => $id, 'protocol' => self::PROTOCOL, 'tokens' => self::tokens_out( $rows ) ] );
+		$res  = \MMI_Browser_Extension::pair( $r );
+		$data = (array) $res->get_data();
+		$res->set_data( $data + [ 'protocol' => self::PROTOCOL ] );
+		return $res;
 	}
 
-	/** GET /ext/tokens: this person's connected browsers. */
+	/** GET /ext/tokens: the shell's list of this person's connected browsers. */
 	public static function tokens(): \WP_REST_Response {
-		return rest_ensure_response( [ 'tokens' => self::tokens_out( self::tokens_of( get_current_user_id() ) ) ] );
+		return \MMI_Browser_Extension::tokens();
 	}
 
-	/** POST /ext/revoke {id}: disconnect one browser. */
+	/** POST /ext/revoke {id}: the shell's disconnect. */
 	public static function revoke( \WP_REST_Request $r ): \WP_REST_Response {
-		$uid  = get_current_user_id();
-		$id   = sanitize_key( (string) $r->get_param( 'id' ) );
-		$rows = self::tokens_of( $uid );
-		if ( ! isset( $rows[ $id ] ) ) {
-			return new \WP_REST_Response( [ 'message' => 'That browser isn’t connected.', 'tokens' => self::tokens_out( $rows ) ], 404 );
-		}
-		unset( $rows[ $id ] );
-		update_user_meta( $uid, self::META, $rows );
-		if ( class_exists( 'MMI_Audit_Log' ) ) {
-			\MMI_Audit_Log::record( 'mmi-admin', 'extension.revoke', [ 'object_type' => 'extension', 'object_id' => $id ] );
-		}
-		return rest_ensure_response( [ 'tokens' => self::tokens_out( $rows ) ] );
-	}
-
-	/** Connected browsers as the Extension page lists them: no hashes. */
-	private static function tokens_out( array $rows ): array {
-		$out = [];
-		foreach ( $rows as $id => $t ) {
-			$out[] = [ 'id' => (string) $id, 'label' => (string) $t['label'], 'created' => (string) $t['created'], 'used' => (string) $t['used'], 'version' => (string) ( $t['version'] ?? '' ) ];
-		}
-		usort( $out, static fn( $a, $b ) => strcmp( $b['created'], $a['created'] ) );
-		return $out;
+		return \MMI_Browser_Extension::revoke( $r );
 	}
 
 	/** POST /ext/hello: who this browser is connected as. */
@@ -387,7 +252,7 @@ class ExtBridge {
 			return $old;
 		}
 		$u = wp_get_current_user();
-		return rest_ensure_response( [ 'user' => $u->display_name, 'site' => home_url(), 'protocol' => self::PROTOCOL, 'page' => admin_url( 'admin.php?page=' . self::SLUG ) ] );
+		return rest_ensure_response( [ 'user' => $u->display_name, 'site' => home_url(), 'protocol' => self::PROTOCOL, 'page' => admin_url( 'admin.php?page=' . self::SLUG ), 'parts' => \MMI_Browser_Extension::parts_for_user() ] );
 	}
 
 	/** An extension older than MIN_PROTOCOL is told to update instead of being half answered. */
@@ -4141,7 +4006,7 @@ class ExtBridge {
 				<div class="mmi-section-header">
 					<div>
 						<h3 class="mmi-process-section-header"><span class="dashicons dashicons-laptop"></span> <?php esc_html_e( 'Connected browsers', 'mmi-data-pipeline' ); ?></h3>
-						<p class="mmi-process-section-description"><?php echo esc_html( sprintf( /* translators: %d: days */ __( 'A browser not used for %d days is disconnected on its own, and connecting or updating to a newer version of the extension disconnects the browsers on older versions.', 'mmi-data-pipeline' ), self::IDLE_DAYS ) ); ?></p>
+						<p class="mmi-process-section-description"><?php echo esc_html( sprintf( /* translators: %d: days */ __( 'A browser not used for %d days is disconnected on its own, and connecting or updating to a newer version of the extension disconnects the browsers on older versions.', 'mmi-data-pipeline' ), \MMI_Browser_Extension::IDLE_DAYS ) ); ?></p>
 					</div>
 				</div>
 				<div class="mmi-section-content">
