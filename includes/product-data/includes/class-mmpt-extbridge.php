@@ -195,7 +195,7 @@ class ExtBridge {
 				'ns'       => Rest::NS,
 				'routes'   => self::TOKEN_ROUTES,
 				'cap'      => Rest::CAP,
-				'sites'    => [ '*' ], // a maker's site can't be known in advance: any page no other part claims
+				'sites'    => [ '*' ], // a maker's site can't be known in advance: any page no other part claims (mmi-shared/browser-extension/sw.js partFor: a named host wins over '*' in any registration order)
 				'protocol' => self::PROTOCOL,
 				'legacy'   => true, // copies from before the shell send every call to these routes
 				'files'    => [ __CLASS__, 'extension_files' ],
@@ -229,8 +229,9 @@ class ExtBridge {
 	/** POST /ext/pair {label}: the shell's pair under this module's old address (extension 1.1.x), with its protocol. */
 	public static function pair( \WP_REST_Request $r ): \WP_REST_Response {
 		$res  = \MMI_Browser_Extension::pair( $r );
-		$data = (array) $res->get_data();
-		$res->set_data( $data + [ 'protocol' => self::PROTOCOL ] );
+		$data             = (array) $res->get_data();
+		$data['protocol'] = self::PROTOCOL; // this module's, always: not the shell's if it ever sends one
+		$res->set_data( $data );
 		return $res;
 	}
 

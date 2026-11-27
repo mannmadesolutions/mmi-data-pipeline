@@ -61,7 +61,7 @@
         {
             "id": "chrome-extension",
             "text": "Chrome extension: on a maker's product page, see what it gives your product, pick its parts and pictures, and review every change before it's written",
-            "anchor": "file:browser-extension/manifest.json",
+            "anchor": "file:browser-extension/panel.js",
             "since": "3.4.11"
         },
         {
@@ -354,7 +354,7 @@
             ],
             "screen": [
                 "browser-extension/panel.js",
-                "browser-extension/theme.js"
+                "includes/mmi-shared/browser-extension/theme.js"
             ]
         },
         {
