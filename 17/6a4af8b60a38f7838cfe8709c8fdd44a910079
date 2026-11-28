@@ -1,3 +1,10 @@
 lint pass ship 1 files
 audit pass ship 1 files
 site-rules pass ship 1 files
+shared-lib pass 8 scenarios
+ui-check pass 177
+ui-e2e pass 314
+customer-site pass 27 ok on 176a4af as installed
+page pass 11 features, 15 screenshots; 3 warnings
+release-audit pass 0 dead, 0 high, 0 new
+review skip no shipped code changed since ae93a75a
