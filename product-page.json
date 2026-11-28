@@ -311,10 +311,11 @@
                 "New groups to review are counted apart from groups already linked"
             ],
             "screen": [
-                "admin/views/partials/section-duplicate-products.php",
+                "src/workbench/Duplicates.tsx",
+                "src/workbench/dupesApi.ts",
+                "src/workbench/dupesLogic.ts",
                 "includes/controllers/ajax/CanonicalCandidatesController.php",
-                "assets/js/duplicate-products.js",
-                "assets/css/duplicate-products.css"
+                "assets/css/product-workbench.css"
             ],
             "taken": {
                 "date": "2026-10-14",
@@ -332,10 +333,11 @@
                 "Sort by brand, product, members or cost spread"
             ],
             "screen": [
-                "admin/views/partials/section-duplicate-products.php",
+                "src/workbench/Duplicates.tsx",
+                "src/workbench/dupesApi.ts",
+                "src/workbench/dupesLogic.ts",
                 "includes/controllers/ajax/CanonicalCandidatesController.php",
-                "assets/js/duplicate-products.js",
-                "assets/css/duplicate-products.css"
+                "assets/css/product-workbench.css"
             ],
             "taken": {
                 "date": "2026-10-14",
