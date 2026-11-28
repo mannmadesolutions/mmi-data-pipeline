@@ -1,6 +1,6 @@
 /**
  * Live mapper panel (LiveMapper on the server; owner 2026-10-11: map a vendor page the way Web
- * Scraper does, on the live page). Loaded into the vendor's page by the MMI Product Data Chrome extension, after
+ * Scraper does, on the live page). Loaded into the vendor's page by the MannMade Chrome extension, after
  * map-select.js (the selector rules).
  *
  * The panel lives in a shadow root, so the vendor's styles can't reach it and its styles can't

@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: the page as Chrome shows it, for the page store (window.__mmiExtPageHtml). Shared by the
+ * MannMade extension, Product Data part: the page as Chrome shows it, for the page store (window.__mmiExtPageHtml). Shared by the
  * panel (Store this page, Write to this product), the picture picker and the live mapper's Test and Save, so every
  * copy sent leaves the same things out.
  *

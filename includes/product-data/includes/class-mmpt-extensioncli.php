@@ -20,7 +20,7 @@ final class ExtensionCli {
 	 *
 	 * ## OPTIONS
 	 * --out=<dir>
-	 * : Where to put it (the zip is named mmi-product-data-<version>.zip).
+	 * : Where to put it (the zip is named mannmade-extension-<version>.zip).
 	 */
 	public function package( $args, $assoc ): void {
 		$dir = rtrim( (string) ( $assoc['out'] ?? '' ), '/' );
@@ -31,7 +31,7 @@ final class ExtensionCli {
 		if ( is_wp_error( $tmp ) ) {
 			\WP_CLI::error( $tmp->get_error_message() );
 		}
-		$file = $dir . '/mmi-product-data-' . sanitize_file_name( \MMI_Browser_Extension::version() ) . '.zip';
+		$file = $dir . '/mannmade-extension-' . sanitize_file_name( \MMI_Browser_Extension::version() ) . '.zip';
 		if ( ! rename( $tmp, $file ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions
 			\WP_CLI::error( 'The package couldn’t be moved to ' . $file );
 		}

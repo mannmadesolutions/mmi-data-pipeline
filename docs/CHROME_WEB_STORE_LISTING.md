@@ -1,7 +1,7 @@
-# MMI Product Data: Chrome Web Store listing
+# The MannMade extension: Chrome Web Store listing
 
-What to paste into the Chrome Web Store developer dashboard for the MMI Product Data extension, and how to build the
-package. Prepared in Product Data migration phase 10e. The publisher submits it; nothing here is sent automatically.
+What to paste into the Chrome Web Store developer dashboard for the MannMade extension (named MMI Product Data
+until 1.3.0; the same Web Store item, `mmi-product-data`), and how to build the package. Prepared in Product Data migration phase 10e. The publisher submits it; nothing here is sent automatically.
 
 ## The package
 
@@ -9,7 +9,7 @@ package. Prepared in Product Data migration phase 10e. The publisher submits it;
 wp mmpt extension package --out=<folder>
 ```
 
-It writes `mmi-product-data-<version>.zip`: the copy that names no store (each person connects it to their own store),
+It writes `mannmade-extension-<version>.zip`: the copy that names no store (each person connects it to their own store),
 with its files at the zip's root and without the `alarms` permission (that only drives the self-update of an unpacked
 copy; the Web Store updates its own copies). Upload that zip as a new item, or as a new version of the item.
 
@@ -17,10 +17,10 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 
 ## Store listing tab
 
-**Name:** MMI Product Data
+**Name:** MannMade <!-- site-rules-ok: the extension's own name (manifest name) -->
 
 **Summary** (132 characters at most; the manifest's description):
-> Work on a maker's product page for your store: see what it gives each product, write it, pick parts and pictures on the page.
+> Connects Chrome to your own store's MMI tools, to work on supplier and maker web pages for that store.
 
 **Category:** Productivity › Workflow & Planning
 
@@ -28,8 +28,8 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 
 **Description:**
 
-> MMI Product Data is the browser half of MMI Data Pipeline's Product Data, for WooCommerce stores that sell other
-> makers' products. Open a maker's product page, click MMI Product Data in the toolbar, and a panel shows what that
+> MannMade is the browser half of MMI Data Pipeline's Product Data, for WooCommerce stores that sell other
+> makers' products. Open a maker's product page, click MannMade in the toolbar, and a panel shows what that
 > page gives the matching product in your store: description, pictures, videos, audio demos, system requirements,
 > manuals and more, each beside what the product has now.
 >
@@ -90,13 +90,14 @@ connected, and that store answers with data, not code.
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-**Privacy policy URL:** the publisher's privacy policy page, at its “MMI Product Data browser extension” section
-(`#mmi-product-data-extension`, published 2026-11-10 with the wording below).
+**Privacy policy URL:** the publisher's privacy policy page, at its “MannMade browser extension” section
+(`#mmi-product-data-extension`, published 2026-11-10; renamed 2026-11-28 with the wording below, the anchor kept so
+the listing's link still lands on it).
 
 ### The publisher's privacy policy section (as published)
 
-> **MMI Product Data browser extension.** MMI Product Data is our Chrome extension for stores that use our MMI Data
-> Pipeline plugin. It sends data only to the WooCommerce store its user connects it to, and never to us or anyone else.
+> **MannMade browser extension (formerly MMI Product Data).** MannMade is our Chrome extension for stores that use our
+> MMI Data Pipeline plugin. It sends data only to the WooCommerce store its user connects it to, and never to us or anyone else.
 >
 > - **What it sends to that store:** when you open its panel on a web page, the page’s address and content, so your
 >   store can show and save what the page holds for your products. Your store keeps what you commit or store.
@@ -117,4 +118,4 @@ Reviewers need a store to connect to: the publisher's test store, with a reviewe
 (its username and password go in Credentials, typed by the publisher; never in this document).
 
 **Additional instructions:**
-> It needs a store running MMI Data Pipeline: use our test store. 1. After installing, the page that opens asks for a store: enter {test store}, continue, sign in with the account above, then click Connect. 2. Open {maker page} and click the MMI Product Data toolbar button: the panel shows what that maker page gives the store's product. 3. Click a part to pick it on the page; tick parts, click This product to review. Nothing is written until Commit.
+> It needs a store running MMI Data Pipeline: use our test store. 1. After installing, the page that opens asks for a store: enter {test store}, continue, sign in with the account above, then click Connect. 2. Open {maker page} and click the MannMade toolbar button: the panel shows what that maker page gives the store's product. 3. Click a part to pick it on the page; tick parts, click This product to review. Nothing is written until Commit.

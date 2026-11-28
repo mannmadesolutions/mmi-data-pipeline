@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: the live mapper's bridge inside the extension. live-mapper.js (bundled from the Product Data
+ * MannMade extension, Product Data part: the live mapper's bridge inside the extension. live-mapper.js (bundled from the Product Data
  * module's assets/js with map-select.js) asks through
  * window.mmptLiveMapperBridge: here its requests go to the service worker, which signs in with this browser's key
  * and calls /ext/map. Hello, tests and saves send the page as the extension copies it (page-copy.js): hello so the

@@ -1,6 +1,6 @@
 <?php
 /**
- * The MMI Product Data Chrome extension's side on the server (docs/VENDOR_BROWSER_EXTENSION_PLAN.md; owner
+ * Product Data's part of the MannMade Chrome extension, on the server (docs/VENDOR_BROWSER_EXTENSION_PLAN.md; owner
  * 2026-11-01: "Use Chrome for everything", mapping starts with a product, the live browser plan shelved).
  *
  * The extension is a dumb agent in the owner's Chrome: on a maker's page it draws a panel this class describes

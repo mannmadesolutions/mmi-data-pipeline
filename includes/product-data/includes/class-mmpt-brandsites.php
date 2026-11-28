@@ -312,7 +312,7 @@ class BrandSites {
 	 * asks through `mmi_seo_fetch_page`; this answers with the reader the home page is already read with for its
 	 * links (read_links()): the same browser identity, per-site pacing and robots.txt answer. Nothing is stored here.
 	 *
-	 * A refused home page answers `store: true`: storing it from the browser with the MMI Product Data extension fixes
+	 * A refused home page answers `store: true`: storing it from the browser with the MannMade Chrome extension fixes
 	 * it (the copy is read instead), so MMI SEO can offer that page in the extension.
 	 *
 	 * @param array|null $page Another plugin's answer, kept if given.
@@ -351,7 +351,7 @@ class BrandSites {
 				}
 			}
 		}
-		return [ 'status' => 'error', 'html' => '', 'store' => true, 'note' => __( 'the site refused this server. Open its home page in your browser and use Store this page in the MMI Product Data extension; it is read from that copy.', 'mmi-data-pipeline' ) ];
+		return [ 'status' => 'error', 'html' => '', 'store' => true, 'note' => __( 'the site refused this server. Open its home page in your browser and use Store this page in the MannMade Chrome extension; it is read from that copy.', 'mmi-data-pipeline' ) ];
 	}
 
 	/** Does any of the product's brands say this site is not theirs? (Then it is never proposed for it.) */

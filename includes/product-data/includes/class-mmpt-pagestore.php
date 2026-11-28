@@ -61,7 +61,7 @@ class PageStore {
 	const WALL_MAX  = 20000; // bytes: a real product page is larger
 	const KEEP_ON   = [ 202, 401, 403, 405, 429 ]; // a refused re-read (and any 5xx) never replaces a good stored copy
 	const WALL_RE   = '/_Incapsula_Resource|Incapsula incident ID|incap_ses_|px-captcha|captcha-delivery\.com|DataDome/i';
-	const WALL_NOTE = 'Bot check from the site\'s firewall instead of the page: send it from your browser with the Product Data extension';
+	const WALL_NOTE = 'Bot check from the site\'s firewall instead of the page: send it from your browser with the MannMade Chrome extension';
 	const READS_SLACK    = 0.98; // a new copy "reads as much" with 98% of the old one's text: pages carry dates and counters
 	const RENDER_TIMEOUT = 100; // seconds; the script stops itself at 75
 	const MAX_LOAD       = 2.5;  // AGENTS.md bail-out thresholds

@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: the panel on a maker's page, put there by the toolbar button (a second click hides it).
+ * MannMade extension, Product Data part: the panel on a maker's page, put there by the toolbar button (a second click hides it).
  *
  * The server describes the panel (ExtBridge::panel(), protocol 2): notices, sections of rows and actions, and for a
  * product that uses this page, its before/after with what can be done here. This script only draws it, as text, in a
@@ -103,8 +103,8 @@
 		loadingSite: 'Reading the site…',
 		starting: 'Starting…',
 		keepOpen: 'Keep it open as you browse',
-		going: ' Opening its page: click MMI Product Data in the toolbar there to carry on.',
-		goingPick: 'Opening the page: the mapper opens there on this part. If it doesn’t, click MMI Product Data in the toolbar there.',
+		going: ' Opening its page: click MannMade in the toolbar there to carry on.',
+		goingPick: 'Opening the page: the mapper opens there on this part. If it doesn’t, click MannMade in the toolbar there.',
 		vetoing: 'Keeping it off…',
 		searching: 'Searching…',
 		noMatch: 'No product of this site’s brands matches.',
@@ -225,7 +225,7 @@
 		heldNoText: 'No description yet.',
 		heldFail: `${ STORE_HOST } didn’t answer. Hover again to retry.`,
 		handOff: 'Stop',
-		handOpened: 'Opened in a new tab. If the panel isn’t there, click MMI Product Data in the toolbar.',
+		handOpened: 'Opened in a new tab. If the panel isn’t there, click MannMade in the toolbar.',
 		openIt: 'Open ↗',
 		changeBrand: 'Change brand',
 		brandHead: 'Which brand is it?',
@@ -516,7 +516,7 @@
 	const style = el( 'style', '', THEME + CSS + ( DOCK ? DOCK.CSS : '' ) );
 	const box = el( 'div', 'p' );
 	box.setAttribute( 'role', 'complementary' );
-	box.setAttribute( 'aria-label', 'MMI Product Data' );
+	box.setAttribute( 'aria-label', 'MannMade: Product Data' );
 	const head = el( 'div', 'hd' );
 	const titles = el( 'div', 't' );
 	const h1 = el( 'h1', '', 'Product Data' );

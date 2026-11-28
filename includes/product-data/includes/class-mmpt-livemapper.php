@@ -5,7 +5,7 @@
  * page with scripts off, so a site that builds its pages with JavaScript (some makers) looks
  * different there from what the owner sees.
  *
- * The Product Data Chrome extension loads the mapper panel (assets/js/map-select.js, then
+ * The MannMade Chrome extension loads the mapper panel (assets/js/map-select.js, then
  * assets/js/live-mapper.js) into the page and sends its requests through ExtBridge (/ext/map), which calls hello() and
  * act() here. The old mapping bookmarklet, its mapper window on the store and the /maps/live routes it used
  * were retired 2026-11-03 (owner: the extension replaced them; remove competing features).

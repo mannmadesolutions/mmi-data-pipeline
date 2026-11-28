@@ -9,8 +9,9 @@
 #   scripts/check-no-site-rules.sh <path>...   check these files (what a commit adds)
 #   scripts/check-no-site-rules.sh --moved     check every file in the moved folders
 #
-# "MannMade" as the publisher (the MannMade\ namespace, "MannMade Industries") is allowed;
-# the store (mannmade.us, "MannMade's rules") is not.
+# "MannMade" as the publisher (the MannMade\ namespace, "MannMade Industries") and as the publisher's Chrome
+# extension ("the MannMade Chrome extension", "click MannMade in the toolbar", mannmade-extension-<version>) is
+# allowed; the store (mannmade.us, "MannMade's rules") is not.
 # Files in the moved folders (includes/product-data/, browser-extension/) are
 # checked whole: nothing in them may name a store. Elsewhere only the lines a
 # change adds are checked, so older notes don't block unrelated work.
@@ -30,10 +31,13 @@ MOVED = ('includes/product-data/', 'browser-extension/')
 SKIP = ('includes/mmi-shared/', 'node_modules/', 'vendor/', 'assets/build/', 'build/')
 TEXT = ('.php', '.js', '.mjs', '.ts', '.tsx', '.jsx', '.css', '.json', '.md', '.txt', '.html', '.sh', '.py')
 
+EXTENSION = r'(?:\s+(?:Chrome\s+|browser\s+)?extension|-extension|\s+toolbar|\s+in\s+the\s+toolbar|:\s+Product\s+Data|\s+is\s+(?:our|the\s+browser))'
+
 TERMS = [
     # The publisher's name is fine (namespace MannMade\DataPipeline, "MannMade Industries");
     # the store that runs on it is not.
-    (re.compile(r'mannmade(?![\\/]|\s+(?:Industries|Solutions)\b)', re.I), 'the store, not the publisher'),
+    # The extension is named MannMade too (scope doc §6, owner 2026-11-28), in these phrasings only.
+    (re.compile(r'mannmade(?![\\/]|\s+(?:Industries|Solutions)\b|' + EXTENSION + r'\b)', re.I), 'the store, not the publisher'),
     (re.compile(r'studiomann|musicmannstudios', re.I), 'a store hostname'),
     (re.compile(r'CatalogBot', re.I), "a store's fetcher name"),
     (re.compile(r'claude\s+-p\b'), 'the Claude subscription CLI (site-only runner)'),

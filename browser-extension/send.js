@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: Send this site, from the maker's own tab (owner 2026-10-19: one click per site; it replaced
+ * MannMade extension, Product Data part: Send this site, from the maker's own tab (owner 2026-10-19: one click per site; it replaced
  * the Send bookmark, retired 2026-11-03). The site's product pages from its sitemap (unless a list already came from a
  * browser), then every product page the server can't read,
  * each fetched here (same site, your browser's own session) and stored through /ext/send, a pause between them. The

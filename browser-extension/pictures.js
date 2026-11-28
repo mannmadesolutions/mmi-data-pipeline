@@ -1,5 +1,5 @@
 /**
- * MMI Product Data: pick pictures and videos on the maker's page for one product (owner 2026-11-01: pictures
+ * MannMade extension, Product Data part: pick pictures and videos on the maker's page for one product (owner 2026-11-01: pictures
  * picked on the page go straight to the product). Opened from the panel's "Pick pictures and videos".
  *
  * Hover a picture to outline it; click it to pick it, click again to drop it. Clicks on the page do nothing else
