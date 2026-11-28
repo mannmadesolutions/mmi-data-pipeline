@@ -58,8 +58,8 @@ if ( ! class_exists( 'MMI_Browser_Extension' ) ) :
 		const TOKEN_RE   = '/^mmx1\.(\d+)\.([a-f0-9]{8})\.([a-f0-9]{64})$/';
 		const SLUG       = 'mmi-chrome-extension';  // the Chrome extension page
 		const OLD_SLUG   = 'mmi-product-extension'; // Product Data's page before the shell: redirects to SLUG
-		/** The download's folder name, before its version. Kept from Product Data's until the extension is renamed (scope §6), since the Mac updater and the checks unzip by it. */
-		const ZIP_PREFIX = 'mmi-product-data-extension-';
+		/** The download's folder name, before its version (the Mac updater finds manifest.json wherever it lands; the checks unzip by this). */
+		const ZIP_PREFIX = 'mannmade-extension-';
 
 		private static bool $initialized = false;
 

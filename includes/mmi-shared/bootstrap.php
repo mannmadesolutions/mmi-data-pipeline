@@ -166,6 +166,9 @@
  * lifted from mmi-seo, with settings under neutral mmi_ai_* keys; and one GTIN /
  * MPN reader, lifted from mmi-google-services. Product Data migration phase 1.
  *
+ * MMI_Browser_Extension 1.56.0 (2026-11-28): the extension is named MannMade
+ * (was MMI Product Data) and its download unzips to mannmade-extension-<version>.
+ *
  * MMI_Browser_Extension 1.55.0 (2026-11-27): the Chrome extension page, the
  * download and the Web Store package move into the shell, with the shell's
  * browser-extension/ folder (each part brings its own files).
@@ -198,7 +201,7 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'MMI_SHARED_LIB_STANDALONE_TEST' ) ) {
  * plugin's registration would silently report the FIRST plugin's version
  * instead of its own, breaking negotiation entirely.
  */
-$mmi_shared_lib_this_copy_version = '1.55.0';
+$mmi_shared_lib_this_copy_version = '1.56.0';
 
 /**
  * This copy's own class-name-to-file map. Registered alongside version/dir
