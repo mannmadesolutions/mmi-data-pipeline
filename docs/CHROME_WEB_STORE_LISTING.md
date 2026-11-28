@@ -28,10 +28,13 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 
 **Description:**
 
-> MannMade is the browser half of MMI Data Pipeline's Product Data, for WooCommerce stores that sell other
-> makers' products. Open a maker's product page, click MannMade in the toolbar, and a panel shows what that
-> page gives the matching product in your store: description, pictures, videos, audio demos, system requirements,
-> manuals and more, each beside what the product has now.
+> MannMade is the browser side of the MMI plugins for WooCommerce. Connect it to your own store, and the MMI plugins
+> installed there bring their tools to the web pages you work on. You see only the tools your store has.
+>
+> Product Data (with MMI Data Pipeline) is for stores that sell other makers' products. Open a maker's product page,
+> click MannMade in the toolbar, and a panel shows what that page gives the matching product in your store:
+> description, pictures, videos, audio demos, system requirements, manuals and more, each beside what the product
+> has now.
 >
 > - Commit what the page gives to the product, or send it to your store's review first. Every change shows in the
 >   Product Workbench's Recent changes, with Undo.
@@ -42,8 +45,8 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 >   work left.
 > - Send a page that refuses your server from your own browser.
 >
-> The extension talks only to the store you connect it to. It needs MMI Data Pipeline 3.0.1 or later on that store,
-> with an active license or trial. To connect, type your store's address when the extension asks, then click Connect
+> The extension talks only to the store you connect it to, and that store decides which tools it shows. Product Data
+> needs MMI Data Pipeline 3.0.1 or later on that store, with an active license or trial. To connect, type your store's address when the extension asks, then click Connect
 > on your store's Chrome extension page.
 
 **Graphic assets:**
@@ -64,15 +67,15 @@ A store's own download (its Chrome extension page) stays as it is: it is made th
 ## Privacy practices tab
 
 **Single purpose:**
-> Shows and writes product data from a maker's product page to the user's own WooCommerce store, which the user connects.
+> Connects the browser to the user's own WooCommerce store's MMI tools, to work on supplier and maker web pages for that store.
 
 **Permission justifications:**
 
 | Permission | Why |
 | --- | --- |
 | `storage` | Keeps the connected store's address and the key that store issued, and the panel's state per tab. Nothing leaves the browser except to that store. |
-| `scripting` | Puts the panel, the part mapper and the picture picker on the page the user is working on, and the connection helper on the user's own store's admin page. |
-| `activeTab` | The toolbar click opens the panel on the current page without asking for access to every site. |
+| `scripting` | Puts the store's tools on the page the user is working on (Product Data's panel, part mapper and picture picker), and the connection helper on the user's own store's admin page. |
+| `activeTab` | The toolbar click opens the store's panel on the current page without asking for access to every site. |
 | Optional host permissions (`https://*/*`, `http://*/*`) | Asked only when the user chooses: for their own store's address when connecting (any domain, so it is not fixed in advance), and "Keep it open as you browse" on a maker's site. Never granted at install. |
 
 **Remote code:** No. All of the extension's scripts are in the package. It sends requests only to the store the user
