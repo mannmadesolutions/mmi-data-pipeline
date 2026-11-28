@@ -192,7 +192,9 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 		 *     @type string $customer_name
 		 *     @type array  $items list of {
 		 *         name, logo_url?, product_url?, vendor_name?, brand_url?,
-		 *         license_key? (newlines kept), download_url?, support_url?,
+		 *         license_key? (one code per line; "Serial Number: X" shows as label + code),
+		 *         instructions? (the maker's own steps, shown as body text),
+		 *         download_url?, support_url?,
 		 *         order_number?, po_number?,
 		 *         downloads? list of {label, url} — one button per platform
 		 *                    (e.g. SkuPort's separate OSX/Windows links);
@@ -209,17 +211,18 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 			$items = array_values( array_filter( (array) ( $args['items'] ?? array() ), 'is_array' ) );
 			$first = trim( (string) ( $args['customer_name'] ?? '' ) ) ?: __( 'there', 'mmi-shared' );
 
-			// Same WooCommerce brand tokens MMI_Xchange_Fulfillment_Email uses,
-			// so this matches the customer's order-confirmation email. Email
-			// clients need inline styles; there is no stylesheet to put these in.
-			$c = array(
-				'dark'    => get_option( 'woocommerce_email_text_color', '#3c3c3c' ),
-				'muted'   => get_option( 'woocommerce_email_footer_text_color', '#767676' ),
-				'accent'  => get_option( 'woocommerce_email_base_color', '#720eec' ),
-				'panel'   => '#f8f8f8',
-				'border'  => '#e5e5e5',
-				'warn_bg' => '#fff3cd',
-				'warn'    => '#b45309',
+			// The store's WooCommerce email colors, as every customer notice uses
+			// (MMI_Email_Templates::render_customer_notice()), so this matches its
+			// order emails; the light washes and borders are tints of its accent.
+			// Email clients need inline styles; there is no stylesheet to put these in.
+			$accent = (string) get_option( 'woocommerce_email_base_color', '#720eec' );
+			$c      = array(
+				'dark'   => get_option( 'woocommerce_email_text_color', '#3c3c3c' ),
+				'muted'  => get_option( 'woocommerce_email_footer_text_color', '#767676' ),
+				'accent' => $accent,
+				'wash'   => MMI_Email_Templates::tint( $accent, 0.95 ),
+				'edge'   => MMI_Email_Templates::tint( $accent, 0.78 ),
+				'border' => '#e5e7eb',
 			);
 
 			$cards = '';
@@ -229,8 +232,8 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 
 			// One support notice for the whole email rather than per card —
 			// the per-card support button carries the vendor-specific link.
-			$notice = '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 20px;background:' . esc_attr( $c['warn_bg'] ) . ';border-left:4px solid ' . esc_attr( $c['warn'] ) . ';border-radius:6px;">'
-				. '<tr><td style="padding:12px 16px;font-size:13px;line-height:1.5;color:' . esc_attr( $c['dark'] ) . ';">'
+			$notice = '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 20px;border:1px solid ' . esc_attr( $c['border'] ) . ';border-radius:6px;">'
+				. '<tr><td style="padding:12px 16px;font-size:13px;line-height:1.55;color:' . esc_attr( $c['muted'] ) . ';">'
 				. esc_html__( 'Each product below is made and supported by its manufacturer, not by us. For installation or activation help, use the "Manufacturer Support" link on that product — replies to this email can\'t answer those questions.', 'mmi-shared' )
 				. '</td></tr></table>';
 
@@ -259,6 +262,20 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 			) );
 		}
 
+		/**
+		 * A license string split into what it is and the code itself:
+		 * "Overloud THU … - Serial Number: UGHF-K30C" → ["Serial Number",
+		 * "UGHF-K30C"]. A line with no such label stays whole.
+		 *
+		 * @return array{0:string,1:string} label ('' when none), value
+		 */
+		private static function license_parts( string $line ): array {
+			if ( preg_match( '/(?:^|[-–—]\s*)([A-Za-z][A-Za-z ]{1,40}?(?:number|code|key|serial|link|id))\s*:\s*(\S.*)$/i', $line, $m ) ) {
+				return array( trim( $m[1] ), trim( $m[2] ) );
+			}
+			return array( '', trim( $line ) );
+		}
+
 		private static function render_item_card( array $item, array $c ): string {
 			$name     = trim( (string) ( $item['name'] ?? '' ) );
 			$logo     = trim( (string) ( $item['logo_url'] ?? '' ) );
@@ -266,6 +283,7 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 			$vendor   = trim( (string) ( $item['vendor_name'] ?? '' ) );
 			$brand    = trim( (string) ( $item['brand_url'] ?? '' ) );
 			$license  = trim( (string) ( $item['license_key'] ?? '' ) );
+			$notes    = trim( (string) ( $item['instructions'] ?? '' ) );
 			$download = trim( (string) ( $item['download_url'] ?? '' ) );
 			$downloads = array_values( array_filter(
 				(array) ( $item['downloads'] ?? array() ),
@@ -278,17 +296,17 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 			$order_no = trim( (string) ( $item['order_number'] ?? '' ) );
 			$po       = trim( (string) ( $item['po_number'] ?? '' ) );
 
-			$link = static fn( string $href, string $text ): string => $href !== ''
-				? '<a href="' . esc_url( $href ) . '" style="color:' . esc_attr( $c['accent'] ) . ';text-decoration:none;">' . esc_html( $text ) . '</a>'
+			$link = static fn( string $href, string $text, string $color ): string => $href !== ''
+				? '<a href="' . esc_url( $href ) . '" style="color:' . esc_attr( $color ) . ';text-decoration:none;">' . esc_html( $text ) . '</a>'
 				: esc_html( $text );
 
 			$logo_cell = $logo !== ''
-				? '<td style="width:96px;padding:0 16px 0 0;vertical-align:top;"><img src="' . esc_url( $logo ) . '" alt="' . esc_attr( $name ) . '" width="96" style="width:96px;max-width:96px;height:auto;border-radius:6px;display:block;"></td>'
+				? '<td style="width:88px;padding:0 16px 0 0;vertical-align:top;"><img src="' . esc_url( $logo ) . '" alt="' . esc_attr( $name ) . '" width="88" style="width:88px;max-width:88px;height:auto;border-radius:6px;display:block;"></td>'
 				: '';
 
 			$meta = array();
 			if ( $vendor !== '' ) {
-				$meta[] = $link( $brand, $vendor );
+				$meta[] = $link( $brand, $vendor, $c['accent'] );
 			}
 			if ( $order_no !== '' ) {
 				/* translators: %s: order number */
@@ -301,13 +319,27 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 
 			$header = '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr>' . $logo_cell
 				. '<td style="vertical-align:top;">'
-				. '<p style="margin:0 0 4px;font-size:17px;font-weight:700;color:' . esc_attr( $c['dark'] ) . ';">' . $link( $url, $name ) . '</p>'
-				. ( $meta ? '<p style="margin:0;font-size:12px;color:' . esc_attr( $c['muted'] ) . ';">' . implode( ' &middot; ', $meta ) . '</p>' : '' )
+				. '<p style="margin:0 0 6px;font-size:16px;font-weight:600;line-height:1.35;color:' . esc_attr( $c['dark'] ) . ';">' . $link( $url, $name, $c['dark'] ) . '</p>'
+				. ( $meta ? '<p style="margin:0;font-size:12px;line-height:1.5;color:' . esc_attr( $c['muted'] ) . ';">' . implode( ' &middot; ', $meta ) . '</p>' : '' )
 				. '</td></tr></table>';
 
-			$license_html = $license !== ''
-				? '<p style="margin:16px 0 4px;font-size:12px;color:' . esc_attr( $c['muted'] ) . ';text-transform:uppercase;letter-spacing:.04em;">' . esc_html__( 'License Key', 'mmi-shared' ) . '</p>'
-					. '<p style="margin:0;font-family:Consolas,Menlo,monospace;font-size:15px;font-weight:600;background:#ffffff;border:1px solid ' . esc_attr( $c['border'] ) . ';border-radius:6px;padding:12px 14px;color:' . esc_attr( $c['dark'] ) . ';word-break:break-all;">' . nl2br( esc_html( $license ) ) . '</p>'
+			// Each license line: its label small, the code alone in the box; a
+			// link (an authorization URL) as a link.
+			$codes = '';
+			foreach ( array_filter( array_map( 'trim', preg_split( '/\R/', $license ) ) ) as $line ) {
+				[ $label, $value ] = self::license_parts( $line );
+				$value_html = preg_match( '~^https?://\S+$~i', $value )
+					? '<a href="' . esc_url( $value ) . '" style="color:' . esc_attr( $c['accent'] ) . ';word-break:break-all;">' . esc_html( $value ) . '</a>'
+					: esc_html( $value );
+				$codes .= '<p style="margin:16px 0 6px;font-size:11px;line-height:1.4;color:' . esc_attr( $c['muted'] ) . ';text-transform:uppercase;letter-spacing:.06em;">' . esc_html( $label !== '' ? $label : __( 'License Key', 'mmi-shared' ) ) . '</p>'
+					. '<p style="margin:0;font-family:SFMono-Regular,Consolas,Menlo,monospace;font-size:15px;font-weight:500;letter-spacing:.03em;line-height:1.5;background:' . esc_attr( $c['wash'] ) . ';border:1px solid ' . esc_attr( $c['edge'] ) . ';border-radius:6px;padding:10px 14px;color:' . esc_attr( $c['dark'] ) . ';word-break:break-all;">' . $value_html . '</p>';
+			}
+
+			// The maker's own instructions: body text, its addresses clickable.
+			$notes_html = $notes !== ''
+				? '<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:' . esc_attr( $c['dark'] ) . ';">'
+					. nl2br( preg_replace( '~<a ~', '<a style="color:' . esc_attr( $c['accent'] ) . ';" ', make_clickable( esc_html( $notes ) ) ) )
+					. '</p>'
 				: '';
 
 			$buttons = '';
@@ -317,14 +349,14 @@ if ( ! class_exists( 'MMI_Software_Fulfillment', false ) ) {
 					/* translators: %s: platform, e.g. "OSX" */
 					? sprintf( __( 'Download (%s)', 'mmi-shared' ), $label )
 					: __( 'Download', 'mmi-shared' );
-				$buttons .= '<a href="' . esc_url( (string) $d['url'] ) . '" style="display:inline-block;margin:16px 8px 0 0;padding:10px 18px;background:' . esc_attr( $c['accent'] ) . ';color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">' . esc_html( $text ) . ' &rarr;</a>';
+				$buttons .= '<a href="' . esc_url( (string) $d['url'] ) . '" style="display:inline-block;margin:18px 8px 0 0;padding:10px 18px;background:' . esc_attr( $c['accent'] ) . ';color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">' . esc_html( $text ) . '</a>';
 			}
 			if ( $support !== '' ) {
-				$buttons .= '<a href="' . esc_url( $support ) . '" style="display:inline-block;margin:16px 0 0;padding:9px 16px;border:2px solid ' . esc_attr( $c['warn'] ) . ';color:' . esc_attr( $c['warn'] ) . ';text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">' . esc_html__( 'Manufacturer Support', 'mmi-shared' ) . '</a>';
+				$buttons .= '<a href="' . esc_url( $support ) . '" style="display:inline-block;margin:18px 0 0;padding:9px 16px;border:1px solid ' . esc_attr( $c['edge'] ) . ';color:' . esc_attr( $c['accent'] ) . ';text-decoration:none;border-radius:6px;font-size:14px;font-weight:500;">' . esc_html__( 'Manufacturer Support', 'mmi-shared' ) . '</a>';
 			}
 
-			return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 16px;background:' . esc_attr( $c['panel'] ) . ';border:1px solid ' . esc_attr( $c['border'] ) . ';border-radius:8px;">'
-				. '<tr><td style="padding:18px 20px;">' . $header . $license_html . $buttons . '</td></tr></table>';
+			return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 16px;background:#ffffff;border:1px solid ' . esc_attr( $c['border'] ) . ';border-radius:8px;">'
+				. '<tr><td style="padding:20px;">' . $header . $codes . $notes_html . $buttons . '</td></tr></table>';
 		}
 
 		/**

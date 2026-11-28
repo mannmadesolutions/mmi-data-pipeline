@@ -747,6 +747,28 @@ class MMI_Email_Templates {
 	 *
 	 * @param array $args { box_heading, box_subtext?, body_html, cta_url?, cta_label?, footer_text? }
 	 */
+	/**
+	 * $hex mixed toward white by $amount (0 = the color, 1 = white): the
+	 * light backgrounds and borders of a customer email come from the
+	 * store's own accent color, so every store's emails carry its brand.
+	 */
+	public static function tint( string $hex, float $amount ): string {
+		$hex = ltrim( trim( $hex ), '#' );
+		if ( strlen( $hex ) === 3 ) {
+			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+		}
+		if ( ! preg_match( '/^[0-9a-f]{6}$/i', $hex ) ) {
+			return '#ffffff';
+		}
+		$amount = max( 0.0, min( 1.0, $amount ) );
+		$out    = '#';
+		foreach ( str_split( $hex, 2 ) as $part ) {
+			$value = hexdec( $part );
+			$out  .= sprintf( '%02x', (int) round( $value + ( 255 - $value ) * $amount ) );
+		}
+		return $out;
+	}
+
 	public static function render_customer_notice( array $args ): string {
 		$box_heading = (string) ( $args['box_heading'] ?? '' );
 		$box_subtext = (string) ( $args['box_subtext'] ?? '' );
@@ -777,9 +799,10 @@ class MMI_Email_Templates {
 			? '<tr><td style="padding:24px 32px 0;text-align:center;"><img src="' . esc_url( $logo ) . '" alt="' . esc_attr( $site_name ) . '" style="max-height:60px;max-width:220px;"></td></tr>'
 			: '';
 
-		$box_html = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;background:' . esc_attr( $bg ) . ';border-radius:6px;">'
+		// A light wash of the store's accent, with the accent as its edge.
+		$box_html = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;background:' . esc_attr( self::tint( $accent, 0.93 ) ) . ';border-left:4px solid ' . esc_attr( $accent ) . ';border-radius:6px;">'
 			. '<tr><td style="padding:18px 20px;">'
-			. '<p style="margin:0 0 4px;font-size:16px;font-weight:700;color:' . esc_attr( $dark ) . ';">' . esc_html( $box_heading ) . '</p>'
+			. '<p style="margin:0 0 4px;font-size:17px;font-weight:600;line-height:1.35;color:' . esc_attr( $dark ) . ';">' . esc_html( $box_heading ) . '</p>'
 			. ( $box_subtext !== '' ? '<p style="margin:0;font-size:13px;color:' . esc_attr( $muted ) . ';">' . wp_kses_post( $box_subtext ) . '</p>' : '' )
 			. '</td></tr></table>';
 
